@@ -1,5 +1,13 @@
 # Universal Guidelines (progressive)
 
+<agent>
+<goal>Default Rust “house rules” for naming, lints, logs, panics, and API shape.</goal>
+<when_to_use>When you need baseline conventions and consistency checks across crates.</when_to_use>
+<contains>M-CONCISE-NAMES, M-DOCUMENTED-MAGIC, M-LINT-OVERRIDE-EXPECT, M-LOG-STRUCTURED, M-PANIC-IS-STOP, M-PANIC-ON-BUG, M-PUBLIC-DEBUG, M-PUBLIC-DISPLAY, M-REGULAR-FN, M-SMALLER-CRATES, M-STATIC-VERIFICATION, M-UPSTREAM-GUIDELINES</contains>
+<see_also>docs.md, safety.md, libraries-ux.md</see_also>
+<canonical>../rust_guidelines_full.md</canonical>
+</agent>
+
 **TL;DR:** Use clear names, document magic, prefer `#[expect]` for lint overrides, structured logging, panic only for stop/bugs, derive `Debug`/`Display` where appropriate, keep crates small, use static verification, and follow upstream guidance.
 
 **Checklist:**

@@ -1,5 +1,13 @@
 # Libraries / UX (progressive)
 
+<agent>
+<goal>Design small, idiomatic Rust APIs that stay pleasant at scale.</goal>
+<when_to_use>When shaping public library APIs: errors, inputs, constructors/builders, services/DI, and abstraction depth.</when_to_use>
+<contains>M-AVOID-WRAPPERS, M-DI-HIERARCHY, M-ERRORS-CANONICAL-STRUCTS, M-ESSENTIAL-FN-INHERENT, M-IMPL-ASREF, M-IMPL-IO, M-IMPL-RANGEBOUNDS, M-INIT-BUILDER, M-INIT-CASCADED, M-SERVICES-CLONE, M-SIMPLE-ABSTRACTIONS</contains>
+<see_also>applications.md, ai.md, universal.md</see_also>
+<canonical>../rust_guidelines_full.md</canonical>
+</agent>
+
 **TL;DR:** Keep APIs slim and idiomatic: avoid unnecessary wrappers, prefer types over generics/dyn, use canonical error structs, keep essential funcs inherent, accept ergonomic `impl` forms, provide builders/cascaded init, make services `Clone`, and keep abstractions shallow.
 
 **Checklist:**
@@ -18,7 +26,7 @@ Favor straightforward types in public APIs; avoid forcing callers into `Arc`, bo
 
 Prefer concrete types for clarity; if extensibility is needed, use generics before `dyn` trait objects.
 
-## Error are Canonical Structs (M-ERRORS-CANONICAL-STRUCTS) { #M-ERRORS-CANONICAL-STRUCTS }
+## Errors are Canonical Structs (M-ERRORS-CANONICAL-STRUCTS) { #M-ERRORS-CANONICAL-STRUCTS }
 
 Library errors should be well-defined structs (with backtrace where useful), implementing `std::error::Error`, `Display`, `Debug`. Do not use anyhow/eyre in libs.
 

@@ -1,5 +1,13 @@
 # FFI Guidelines (progressive)
 
+<agent>
+<goal>Prevent UB and state corruption across Rust DLL boundaries.</goal>
+<when_to_use>When authoring or consuming Rust dynamic libraries (plugin/DLL/so/dylib) and crossing FFI boundaries.</when_to_use>
+<contains>M-ISOLATE-DLL-STATE</contains>
+<see_also>safety.md, libraries-interop.md</see_also>
+<canonical>../rust_guidelines_full.md</canonical>
+</agent>
+
 **TL;DR:** Only exchange portable, `#[repr(C)]` data between Rust DLLs; never share statics, type IDs, or non-portable allocations across DLL boundaries.
 
 **Checklist:**

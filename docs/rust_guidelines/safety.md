@@ -1,5 +1,13 @@
 # Safety Guidelines (progressive)
 
+<agent>
+<goal>Use `unsafe` deliberately and prove soundness.</goal>
+<when_to_use>When introducing `unsafe`, reviewing unsafe blocks, designing abstractions, or doing FFI.</when_to_use>
+<contains>M-UNSAFE-IMPLIES-UB, M-UNSAFE, M-UNSOUND</contains>
+<see_also>ffi.md, performance.md, universal.md</see_also>
+<canonical>../rust_guidelines_full.md</canonical>
+</agent>
+
 **TL;DR:** Reserve `unsafe` for cases where misuse risks UB; avoid ad-hoc unsafe; prove soundness; never ship unsound code.
 
 **Checklist:**
@@ -31,8 +39,8 @@ unsafe fn delete_database() { }
 
 Valid reasons for `unsafe`:
 1) novel abstractions (e.g., new smart pointer or allocator),
-1) performance (after benchmarking), e.g., `.get_unchecked()`,
-1) FFI/platform calls.
+2) performance (after benchmarking), e.g., `.get_unchecked()`,
+3) FFI/platform calls.
 
 Avoid ad-hoc unsafe to shorten code, bypass `Send`, or bypass lifetimes. Follow these patterns:
 

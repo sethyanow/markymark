@@ -1,5 +1,13 @@
 # Libraries / Interoperability (progressive)
 
+<agent>
+<goal>Keep public APIs stable and ergonomic across dependency changes and threading models.</goal>
+<when_to_use>When defining public interfaces that interact with external crates, OS types, or async/threading.</when_to_use>
+<contains>M-DONT-LEAK-TYPES, M-ESCAPE-HATCHES, M-TYPES-SEND, M-STRONG-TYPES</contains>
+<see_also>libraries-ux.md, libraries-resilience.md, ffi.md</see_also>
+<canonical>../rust_guidelines_full.md</canonical>
+</agent>
+
 **TL;DR:** Don’t leak external types, provide escape hatches, ensure exported types are `Send` where appropriate, and choose the correct type family/strong types for interfaces.
 
 **Checklist:**

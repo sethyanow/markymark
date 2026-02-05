@@ -1,5 +1,13 @@
 # Application Guidelines (progressive)
 
+<agent>
+<goal>Choose app-level defaults that simplify errors and improve perf.</goal>
+<when_to_use>When building binaries/apps (not reusable libraries) in a repo.</when_to_use>
+<contains>M-APP-ERROR, M-MIMALLOC-APPS</contains>
+<see_also>libraries-ux.md, performance.md</see_also>
+<canonical>../rust_guidelines_full.md</canonical>
+</agent>
+
 **TL;DR:** Use a single app-level error type (anyhow/eyre) and switch apps to mimalloc for easy perf wins.
 
 **Checklist:**

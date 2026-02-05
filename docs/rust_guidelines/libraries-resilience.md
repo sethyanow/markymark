@@ -1,5 +1,13 @@
 # Libraries / Resilience (progressive)
 
+<agent>
+<goal>Keep libraries testable, multi-tenant safe, and easy to integrate.</goal>
+<when_to_use>When designing library state management, test seams/mocking, and re-exports.</when_to_use>
+<contains>M-AVOID-STATICS, M-MOCKABLE-SYSCALLS, M-NO-GLOB-REEXPORTS, M-TEST-UTIL</contains>
+<see_also>docs.md, safety.md</see_also>
+<canonical>../rust_guidelines_full.md</canonical>
+</agent>
+
 **TL;DR:** Avoid statics, make system calls mockable, do not glob re-export, and gate test utilities.
 
 **Checklist:**

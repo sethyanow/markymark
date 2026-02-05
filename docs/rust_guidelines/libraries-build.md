@@ -1,5 +1,13 @@
 # Libraries / Building (progressive)
 
+<agent>
+<goal>Make libraries build reliably across platforms and feature sets.</goal>
+<when_to_use>When designing Cargo features, publishing crates, or building `-sys` wrappers.</when_to_use>
+<contains>M-FEATURES-ADDITIVE, M-OOBE, M-SYS-CRATES</contains>
+<see_also>libraries-interop.md, libraries-resilience.md</see_also>
+<canonical>../rust_guidelines_full.md</canonical>
+</agent>
+
 **TL;DR:** Features must be additive, libraries should build out-of-the-box on Tier 1 without extra deps, and `-sys` crates must govern their native builds to “just work”.
 
 **Checklist:**

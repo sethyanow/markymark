@@ -1,5 +1,13 @@
 # Documentation Guidelines (progressive)
 
+<agent>
+<goal>Make Rust docs predictable, skimmable, and navigable.</goal>
+<when_to_use>When writing or reviewing rustdoc for modules, functions, and re-exports.</when_to_use>
+<contains>M-CANONICAL-DOCS, M-DOC-INLINE, M-FIRST-DOC-SENTENCE, M-MODULE-DOCS</contains>
+<see_also>libraries-resilience.md, ai.md</see_also>
+<canonical>../rust_guidelines_full.md</canonical>
+</agent>
+
 **TL;DR:** Use canonical doc sections, inline re-exports with `#[doc(inline)]`, keep first sentences short, and ensure modules are documented.
 
 **Checklist:**
@@ -74,7 +82,7 @@ pub use foo::Foo;
 
 This does not apply to `std` or 3rd party types; these should always be re-exported without inlining to make it clear they are external.
 
-> ### <alert></alert> Still avoid glob exports
+> <alert>Still avoid glob exports</alert>
 >
 > The `#[doc(inline)]` trick above does not change [M-NO-GLOB-REEXPORTS](./libraries-resilience.md#M-NO-GLOB-REEXPORTS); you generally should not re-export items via wildcards.
 

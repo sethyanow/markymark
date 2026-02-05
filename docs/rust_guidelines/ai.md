@@ -1,5 +1,13 @@
 # AI Guidelines (progressive)
 
+<agent>
+<goal>Make Rust APIs and docs easy for agents (and humans) to use correctly.</goal>
+<when_to_use>When designing APIs, docs, examples, or testability for AI-assisted development.</when_to_use>
+<contains>M-DESIGN-FOR-AI</contains>
+<see_also>docs.md, universal.md, libraries-ux.md</see_also>
+<canonical>../rust_guidelines_full.md</canonical>
+</agent>
+
 **TL;DR:** Keep APIs idiomatic, documented, and testable so agents can work reliably with compiler checks.
 
 **Checklist:**

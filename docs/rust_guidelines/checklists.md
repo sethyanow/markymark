@@ -4,6 +4,7 @@
 <goal>Fast “did we remember the basics?” scan during review.</goal>
 <canonical>../rust_guidelines_full.md</canonical>
 <editing_rules>Keep guideline IDs stable; see `AGENTS.md` when updating this list.</editing_rules>
+<how_to_use>Skim this in PR review; follow links in `README.md` for details.</how_to_use>
 </agent>
 
 Quick reminders; see themed files for detail and `../rust_guidelines_full.md` for the original text.

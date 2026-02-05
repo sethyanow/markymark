@@ -7,6 +7,11 @@
 <canonical>../rust_guidelines_full.md</canonical>
 <entrypoint>Start here, then jump to a themed leaf; use the monolith only as a full reference.</entrypoint>
 <maintenance>If you add/change a guideline, keep the `M-...` ID stable and update `map.md` + `checklists.md`.</maintenance>
+<docs_index>
+|start_here:{ai.md,universal.md,applications.md,libraries-build.md,libraries-ux.md}
+|navigation:{map.md,checklists.md}
+|leaves:{docs.md,ffi.md,performance.md,safety.md,libraries-interop.md,libraries-resilience.md}
+</docs_index>
 </agent>
 
 Welcome to the progressive-disclosure view of our Rust guidelines. Start with the smallest, highest-signal paths below, then dive into themed leaves as needed. The original, full document remains unchanged at `../rust_guidelines_full.md`.

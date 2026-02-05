@@ -4,6 +4,19 @@
 <goal>Pick the best next file to read when reviewing or changing Rust code.</goal>
 <canonical>../rust_guidelines_full.md</canonical>
 <editing_rules>See `AGENTS.md` for how to change these docs without breaking IDs/anchors.</editing_rules>
+<routing>
+<rule>unsafe / UB / soundness -> safety.md</rule>
+<rule>FFI / DLL / dylib boundaries -> ffi.md</rule>
+<rule>rustdoc / module docs / re-exports -> docs.md</rule>
+<rule>features / publishing / `-sys` / `build.rs` -> libraries-build.md</rule>
+<rule>API ergonomics / errors / builders / inputs -> libraries-ux.md</rule>
+<rule>statics / mocking / test seams / re-exports -> libraries-resilience.md</rule>
+<rule>external types / `Send` / escape hatches -> libraries-interop.md</rule>
+<rule>hot paths / benchmarking / throughput / yield -> performance.md</rule>
+<rule>naming / logging / lints / panic posture -> universal.md</rule>
+<rule>agent friendliness / examples / testability -> ai.md</rule>
+<rule>application defaults / app errors / mimalloc -> applications.md</rule>
+</routing>
 </agent>
 
 Relationship map and common navigation paths for the progressive Rust guidelines. All guideline IDs/anchors match the original monolith in `../rust_guidelines_full.md`.

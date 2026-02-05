@@ -1,5 +1,13 @@
 # Performance Guidelines (progressive)
 
+<agent>
+<goal>Optimize the right things: hot paths, throughput, and cooperative scheduling.</goal>
+<when_to_use>When working on perf-sensitive crates, async runtimes, or tight loops.</when_to_use>
+<contains>M-HOTPATH, M-THROUGHPUT, M-YIELD-POINTS</contains>
+<see_also>universal.md, safety.md</see_also>
+<canonical>../rust_guidelines_full.md</canonical>
+</agent>
+
 **TL;DR:** Identify hot paths early, benchmark/profile, design for throughput (not empty cycles), and add yield points to long-running tasks.
 
 **Checklist:**
