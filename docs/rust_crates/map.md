@@ -5,6 +5,15 @@
 <when_to_use>When planning implementation or understanding crate dependencies.</when_to_use>
 <contains>Dependency graph, data flow, decision trees, integration patterns</contains>
 <see_also>README.md, AGENTS.md</see_also>
+<routing>
+<rule>Rust workspace / ownership / async baseline -> core.md</rule>
+<rule>LSP server / requests / capabilities -> tower-lsp.md</rule>
+<rule>Incremental parsing / edits / syntax nodes -> tree-sitter.md</rule>
+<rule>Graph algorithms / backrefs / cycles -> petgraph.md</rule>
+<rule>Arena allocation / bulk lifetimes -> bumpalo.md</rule>
+<rule>Typed errors / anyhow boundary -> error-handling.md</rule>
+<rule>Snapshots / proptest -> testing.md</rule>
+</routing>
 </agent>
 
 ## Dependency Graph
