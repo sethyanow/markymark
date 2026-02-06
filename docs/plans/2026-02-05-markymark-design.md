@@ -10,8 +10,8 @@ markymark is a memory-efficient, high-performance Markdown language server imple
 
 ### Dual-Transport Architecture
 
-- **LSP (Language Server Protocol)**: Editor integrations via tower-lsp
-- **MCP (Model Context Protocol)**: AI assistant integrations via MCP SDK
+- **LSP (Language Server Protocol)**: Editor integrations via tower-lsp-server (community fork)
+- **MCP (Model Context Protocol)**: AI assistant integrations via rmcp (official Rust SDK)
 - **Shared Core**: Indexing, realm management, and connection graph logic transport-agnostic
 
 ### Motivation
@@ -40,7 +40,8 @@ markymark is a memory-efficient, high-performance Markdown language server imple
 ┌────────────────────────────────────────────────────────────────────┐
 │                    Transport Layer (pluggable)                     │
 ├──────────────────────────────┬─────────────────────────────────────┤
-│   LSP Transport (tower-lsp)  │   MCP Transport (async-mcp)        │
+│  LSP Transport (tower-lsp-   │   MCP Transport (rmcp)              │
+│  server, community fork)     │
 │   • textDocument/*           │   • markymark/* resources          │
 │   • workspace/*              │   • markymark/* tools              │
 │   • $/* custom methods       │   • prompts/                       │
@@ -82,54 +83,71 @@ markymark is a memory-efficient, high-performance Markdown language server imple
 
 #### Transport Abstraction Trait
 
+The core defines transport-agnostic operations. Each transport crate converts its protocol-specific
+requests into `CoreOperation` values internally - the abstraction layer never sees protocol types.
+
 ```rust
-#[async_trait]
-pub trait Transport: Send + Sync {
-    // Spawn the transport server
-    async fn serve(self, rx: mpsc::Receiver<CoreOperation>) -> Result<()>;
-
-    // Convert protocol-specific requests to core operations
-    fn request_to_operation(&self, req: TransportRequest) -> CoreOperation;
-
-    // Convert core operation results to protocol responses
-    fn operation_to_result(&self, op: CoreOperation) -> TransportResult;
-}
-
-pub enum TransportRequest {
-    LSP(lsp_types::Request),
-    MCP(mcp::Request),
-}
-
+/// Core operations that any transport must map to.
+/// Each transport crate owns the conversion from its protocol to these operations.
 pub enum CoreOperation {
     GetSymbol { uri: DocumentUri, symbol: String },
-    FindReferences { symbol: Symbol },
+    FindReferences { symbol: Symbol, include_declaration: bool },
     Rename { symbol: Symbol, new_name: String },
+    GetOutline { uri: DocumentUri, max_depth: Option<u32> },
+    GetDependencyGraph { realm: RealmId, format: GraphFormat },
     CreateRealm { config: RealmConfig },
-    // ... etc (transport-agnostic operations)
+    DestroyRealm { id: RealmId },
+    ListRealms,
+    AddRoot { realm_id: RealmId, path: String },
+    RemoveRoot { realm_id: RealmId, root_id: RootId },
+    SearchSymbols { query: String, realm: Option<RealmId>, limit: Option<usize> },
+    // ... etc
 }
 
-pub enum TransportResult {
-    LSP(lsp_types::Response),
-    MCP(mcp::Response),
+/// Core operation results - transport-agnostic.
+pub enum CoreResult {
+    Symbol(Option<SymbolInfo>),
+    Locations(Vec<Location>),
+    WorkspaceEdit(WorkspaceEdit),
+    Outline(OutlineNode),
+    Graph(GraphData),
+    RealmId(RealmId),
+    RealmList(Vec<RealmInfo>),
+    RootId(RootId),
+    Symbols(Vec<SymbolInfo>),
+    Ok,
+    Error(CoreError),
+}
+
+/// The core engine that processes operations. Shared by all transports.
+#[async_trait]
+pub trait CoreEngine: Send + Sync {
+    async fn execute(&self, op: CoreOperation) -> CoreResult;
 }
 ```
 
-#### LSP Implementation
+Each transport crate implements its own server loop and converts to/from `CoreOperation`:
+- **markymark-lsp**: Implements `LanguageServer` trait, calls `core.execute(op)` internally
+- **markymark-mcp**: Implements `ServerHandler` trait, calls `core.execute(op)` internally
+- Neither transport depends on the other's protocol types
 
-- Uses `tower-lsp` for stdio/IPC transport
+#### LSP Implementation (markymark-lsp)
+
+- Uses `tower-lsp-server` (community fork, v0.23+) for stdio/IPC transport
 - Implements `LanguageServer` trait
-- Maps LSP requests to `CoreOperation` variants
-- Converts `CoreOperation` results back to LSP responses
+- Each LSP handler converts params → `CoreOperation`, calls `core.execute()`, converts `CoreResult` → LSP response
+- Depends on: `markymark-core` (for `CoreOperation`/`CoreResult`), `tower-lsp-server`, `lsp-types`
 
-#### MCP Implementation
+#### MCP Implementation (markymark-mcp)
 
-- Uses `async-mcp` SDK for JSON-RPC transport
+- Uses `rmcp` (official Rust MCP SDK, v0.13+) for JSON-RPC transport
+- Implements `ServerHandler` trait with `#[tool]` macro for tool definitions
 - Exposes capabilities as:
   - **Resources**: `markymark/symbol`, `markymark/outline`, `markymark/graph`
   - **Tools**: `markymark/rename`, `markymark/find-references`, `markymark/create-realm`
   - **Prompts**: `markymark/explain-link`, `markymark/suggest-references`
-- Maps MCP calls to `CoreOperation` variants
-- Converts results to MCP resource/tool responses
+- Each MCP handler converts params → `CoreOperation`, calls `core.execute()`, converts `CoreResult` → MCP response
+- Depends on: `markymark-core` (for `CoreOperation`/`CoreResult`), `rmcp`
 
 ---
 
@@ -463,8 +481,9 @@ markymark/suggest-references: {
 | Component | Choice | Rationale |
 |-----------|--------|-----------|
 | Language | Rust | Memory safety, performance, ecosystem |
-| LSP Framework | tower-lsp | Mature, async, well-maintained |
-| MCP SDK | async-mcp | Async MCP implementation for Rust |
+| Edition | 2024 | Requires Rust 1.85+, async closures, improved RPIT |
+| LSP Framework | tower-lsp-server 0.23+ | Community fork of tower-lsp, edition 2024, actively maintained (Biome, Oxc) |
+| MCP SDK | rmcp 0.13+ | Official Rust MCP SDK (modelcontextprotocol/rust-sdk), `#[tool]` macros, multi-transport |
 | Parser | tree-sitter-markdown | Incremental parsing, battle-tested |
 | Graph | petgraph | Generational indices, algorithms |
 | Arena | bumpalo | Fast bump allocation, bulk dealloc |
@@ -476,20 +495,29 @@ markymark/suggest-references: {
 
 ```
 markymark/
-├── Cargo.toml
-├── crates/
-│   ├── markymark-core/           # Core types, no dependencies
-│   ├── markymark-parser/         # tree-sitter integration
-│   ├── markymark-index/          # Indexing & connection graph
-│   ├── markymark-transport/      # Transport abstraction trait
-│   ├── markymark-lsp/            # LSP transport implementation
-│   ├── markymark-mcp/            # MCP transport implementation
-│   └── markymark-cli/            # CLI binary (transport selector)
+├── Cargo.toml                    # Workspace root
+├── markymark-core/               # Core types + CoreOperation/CoreResult + CoreEngine trait
+│                                 #   deps: bumpalo (arena-allocated types)
+├── markymark-parser/             # tree-sitter integration
+│                                 #   deps: markymark-core, tree-sitter, tree-sitter-md
+├── markymark-index/              # Indexing, connection graph, realm management
+│                                 #   deps: markymark-core, markymark-parser, petgraph
+├── markymark-lsp/                # LSP transport implementation
+│                                 #   deps: markymark-core, markymark-index, tower-lsp-server
+├── markymark-mcp/                # MCP transport implementation
+│                                 #   deps: markymark-core, markymark-index, rmcp
+├── markymark-cli/                # CLI binary (transport selector)
+│                                 #   deps: markymark-lsp, markymark-mcp, clap, tokio
 ├── tests/
 │   ├── golden/                   # Ported Marksman snapshots
 │   └── integration/
 └── benches/
 ```
+
+**Note:** The `markymark-transport` crate from the original design was eliminated. The transport
+abstraction (`CoreOperation`, `CoreResult`, `CoreEngine` trait) lives in `markymark-core` since
+it has no protocol-specific dependencies. Each transport crate directly depends on `markymark-core`
+and `markymark-index`, converting between their protocol and core operations internally.
 
 ---
 
@@ -547,9 +575,36 @@ markymark/
 
 ---
 
+## Error Handling Across Transports
+
+Each transport maps `CoreResult::Error(CoreError)` to its own protocol's error format:
+- **LSP**: `CoreError` → `jsonrpc::Error` with appropriate error codes
+- **MCP**: `CoreError` → `McpError` with structured error data
+
+`CoreError` uses `thiserror` for typed variants:
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum CoreError {
+    #[error("document not found: {0}")]
+    DocumentNotFound(DocumentUri),
+    #[error("symbol not found at position")]
+    SymbolNotFound,
+    #[error("realm not found: {0}")]
+    RealmNotFound(RealmId),
+    #[error("rename not possible: {reason}")]
+    RenameNotPossible { reason: String },
+    #[error(transparent)]
+    Internal(#[from] anyhow::Error),
+}
+```
+
+---
+
 ## References
 
 - [Marksman](https://github.com/artempyanykh/marksman) - Original F# implementation
-- [tower-lsp](https://github.com/ebkalderon/tower-lsp) - LSP framework
+- [tower-lsp-server](https://github.com/tower-lsp-community/tower-lsp-server) - LSP framework (community fork)
+- [rmcp](https://github.com/modelcontextprotocol/rust-sdk) - Official Rust MCP SDK
 - [tree-sitter-markdown](https://github.com/tree-sitter-grammars/tree-sitter-markdown) - Parser
 - [LSP Specification](https://microsoft.github.io/language-server-protocol/)
+- [MCP Specification](https://modelcontextprotocol.io/)

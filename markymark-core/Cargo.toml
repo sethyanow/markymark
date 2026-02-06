@@ -1,0 +1,11 @@
+[package]
+name = "markymark-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bumpalo = "3.19.1"
+
+[dev-dependencies]
+insta = "1.46.3"
+proptest = "1.10.0"

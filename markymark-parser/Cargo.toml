@@ -1,0 +1,8 @@
+[package]
+name = "markymark-parser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tree-sitter = "0.26.5"
+tree-sitter-md = "0.5.2"

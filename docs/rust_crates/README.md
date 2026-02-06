@@ -6,6 +6,7 @@
 <docs_index>
 |core:{core.md}
 |lsp:{tower-lsp.md}
+|mcp:{rmcp.md}
 |parsing:{tree-sitter.md}
 |graphs:{petgraph.md}
 |memory:{bumpalo.md}
@@ -23,7 +24,10 @@ This hub provides agent-friendly documentation for Rust crates used in markymark
 - **core.md** - Rust language/std/Cargo workspace patterns for implementation work
 
 ### LSP Development
-- **tower-lsp.md** - LSP server framework: async handlers, state management, capabilities
+- **tower-lsp.md** - LSP server framework (community fork): async handlers, state management, capabilities
+
+### MCP Development
+- **rmcp.md** - Official MCP SDK: ServerHandler, #[tool] macros, resources, prompts
 
 ### Parsing
 - **tree-sitter.md** - Incremental parsing: tree-sitter-markdown, queries, node traversal
@@ -43,7 +47,8 @@ This hub provides agent-friendly documentation for Rust crates used in markymark
 | Need | Crate | Doc |
 |------|-------|-----|
 | Rust workspace + fundamentals | (core) | core.md |
-| Build LSP server | tower-lsp | tower-lsp.md |
+| Build LSP server | tower-lsp-server | tower-lsp.md |
+| Build MCP server | rmcp | rmcp.md |
 | Parse markdown/code | tree-sitter | tree-sitter.md |
 | Connection graph | petgraph | petgraph.md |
 | Fast allocation | bumpalo | bumpalo.md |

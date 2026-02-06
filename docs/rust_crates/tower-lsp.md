@@ -1,13 +1,15 @@
-# tower-lsp - LSP Server Framework
+# tower-lsp-server - LSP Server Framework
 
 <agent>
-<goal>Build async LSP servers with proper state management and capability negotiation.</goal>
+<goal>Build async LSP servers with the community fork tower-lsp-server, with proper state management and capability negotiation.</goal>
 <when_to_use>When implementing Language Server Protocol servers in Rust.</when_to_use>
 <contains>Server setup, LanguageServer trait, state patterns, capability config, notifications, custom methods</contains>
 <see_also>tree-sitter.md, petgraph.md, error-handling.md</see_also>
 </agent>
 
-**TL;DR:** tower-lsp provides async LSP server infrastructure. Implement `LanguageServer` trait, use `Client` for notifications, manage state with interior mutability.
+**TL;DR:** tower-lsp-server provides async LSP server infrastructure. Implement `LanguageServer` trait, use `Client` for notifications, manage state with interior mutability.
+
+**Note:** This documents `tower-lsp-server` (the [community fork](https://github.com/tower-lsp-community/tower-lsp-server)), not the original `tower-lsp`. The community fork is actively maintained (v0.23+, edition 2024, Rust 1.85+) and used by Biome, Oxc, and Veryl. The original `tower-lsp` has not been updated since August 2023.
 
 **Checklist:**
 - [ ] Implement `LanguageServer` trait with async methods
@@ -24,7 +26,7 @@
 
 ```toml
 [dependencies]
-tower-lsp = "0.20"
+tower-lsp-server = "0.23"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -33,9 +35,9 @@ serde_json = "1"
 ### Basic Server Structure
 
 ```rust
-use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::*;
-use tower_lsp::{Client, LanguageServer, LspService, Server};
+use tower_lsp_server::jsonrpc::Result;
+use tower_lsp_server::lsp_types::*;
+use tower_lsp_server::{Client, LanguageServer, LspService, Server};
 use tokio::sync::RwLock;
 use std::sync::Arc;
 
@@ -59,7 +61,7 @@ impl Backend {
     }
 }
 
-#[tower_lsp::async_trait]
+#[tower_lsp_server::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
         Ok(InitializeResult {
@@ -111,7 +113,7 @@ async fn main() {
 ### Document Synchronization
 
 ```rust
-#[tower_lsp::async_trait]
+#[tower_lsp_server::async_trait]
 impl LanguageServer for Backend {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
@@ -441,4 +443,4 @@ async fn publish_diagnostics(&self, uri: Url) {
 - Graph operations: `petgraph.md`
 - Error types: `error-handling.md`
 - LSP Specification: https://microsoft.github.io/language-server-protocol/
-- tower-lsp examples: https://github.com/ebkalderon/tower-lsp/tree/master/examples
+- tower-lsp-server: https://github.com/tower-lsp-community/tower-lsp-server

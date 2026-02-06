@@ -9,6 +9,7 @@
 [Rust Crates Index]|root: docs/rust_crates|entrypoint:{README.md}
 |core:{core.md}
 |lsp:{tower-lsp.md}
+|mcp:{rmcp.md}
 |parsing:{tree-sitter.md}
 |graphs:{petgraph.md}
 |memory:{bumpalo.md}
@@ -21,8 +22,9 @@
 ## When to use these docs
 
 Use this documentation when:
-- You need “Rust basics / workspace defaults” → `core.md`
+- You need "Rust basics / workspace defaults" → `core.md`
 - Implementing LSP servers → `tower-lsp.md`
+- Implementing MCP servers → `rmcp.md`
 - Parsing markdown or other text → `tree-sitter.md`
 - Building connection/dependency graphs → `petgraph.md`
 - Optimizing memory allocation → `bumpalo.md`
@@ -43,6 +45,7 @@ Use this documentation when:
 <navigation>map.md</navigation>
 <core>core.md</core>
 <lsp>tower-lsp.md</lsp>
+<mcp>rmcp.md</mcp>
 <parsing>tree-sitter.md</parsing>
 <graphs>petgraph.md</graphs>
 <memory>bumpalo.md</memory>

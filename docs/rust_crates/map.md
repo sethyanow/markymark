@@ -8,6 +8,7 @@
 <routing>
 <rule>Rust workspace / ownership / async baseline -> core.md</rule>
 <rule>LSP server / requests / capabilities -> tower-lsp.md</rule>
+<rule>MCP server / tools / resources / prompts -> rmcp.md</rule>
 <rule>Incremental parsing / edits / syntax nodes -> tree-sitter.md</rule>
 <rule>Graph algorithms / backrefs / cycles -> petgraph.md</rule>
 <rule>Arena allocation / bulk lifetimes -> bumpalo.md</rule>
@@ -20,38 +21,47 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                          markymark Architecture                          │
+│                      markymark Architecture (Dual-Transport)             │
 └─────────────────────────────────────────────────────────────────────────┘
 
-                              ┌─────────────┐
-                              │  tower-lsp  │
-                              │  (LSP I/O)  │
-                              └──────┬──────┘
-                                     │
-                                     ▼
-┌──────────────┐            ┌─────────────────┐            ┌──────────────┐
-│   bumpalo    │───────────▶│  markymark-lsp  │◀───────────│  thiserror   │
-│   (arena)    │            │   (handlers)    │            │  (errors)    │
-└──────────────┘            └────────┬────────┘            └──────────────┘
-       │                             │
-       │                             ▼
-       │                    ┌─────────────────┐
-       │                    │ markymark-index │
-       └───────────────────▶│  (symbols +     │◀───────────┐
-                            │   graph)        │            │
-                            └────────┬────────┘            │
-                                     │                     │
-                                     ▼                     │
-                            ┌─────────────────┐     ┌──────┴──────┐
-                            │markymark-parser │     │  petgraph   │
-                            │ (tree-sitter)   │     │  (graph)    │
-                            └────────┬────────┘     └─────────────┘
-                                     │
-                                     ▼
-                            ┌─────────────────┐
-                            │  tree-sitter +  │
-                            │ tree-sitter-md  │
-                            └─────────────────┘
+┌──────────────────┐                              ┌──────────────────┐
+│  tower-lsp-      │                              │     rmcp         │
+│  server (LSP)    │                              │  (MCP SDK)       │
+└────────┬─────────┘                              └────────┬─────────┘
+         │                                                 │
+         ▼                                                 ▼
+┌─────────────────┐                              ┌─────────────────┐
+│  markymark-lsp  │                              │  markymark-mcp  │
+│  (LSP transport)│                              │  (MCP transport)│
+└────────┬────────┘                              └────────┬────────┘
+         │                                                │
+         └──────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+                   ┌─────────────────┐
+                   │  markymark-core │◀─────────── bumpalo (arena)
+                   │  (CoreEngine +  │◀─────────── thiserror (errors)
+                   │   types)        │
+                   └────────┬────────┘
+                            │
+                            ▼
+                   ┌─────────────────┐
+                   │ markymark-index │◀─────────── petgraph (graph)
+                   │  (symbols +     │
+                   │   graph + realm)│
+                   └────────┬────────┘
+                            │
+                            ▼
+                   ┌─────────────────┐
+                   │markymark-parser │
+                   │ (tree-sitter)   │
+                   └────────┬────────┘
+                            │
+                            ▼
+                   ┌─────────────────┐
+                   │  tree-sitter +  │
+                   │ tree-sitter-md  │
+                   └─────────────────┘
 
 Testing layer (all crates):
 ┌─────────────┐     ┌─────────────┐
@@ -91,27 +101,44 @@ Input Document
      │ Index + Graph
      ▼
 ┌─────────────────────────────────────┐
-│  markymark-lsp                      │  Handle LSP requests
-│  → tower-lsp handlers               │
-│  → thiserror for responses          │
+│  markymark-core (CoreEngine)        │  Execute operations
+│  → CoreOperation → CoreResult       │  Transport-agnostic
 └─────────────────────────────────────┘
      │
-     │ LSP Response
-     ▼
-Editor/Client
+     │ CoreResult
+     ├────────────────────────────────────────┐
+     ▼                                        ▼
+┌─────────────────────────────┐  ┌─────────────────────────────┐
+│  markymark-lsp              │  │  markymark-mcp              │
+│  → tower-lsp-server handlers│  │  → rmcp ServerHandler       │
+│  → LSP Response             │  │  → MCP Response             │
+└──────────────┬──────────────┘  └──────────────┬──────────────┘
+               │                                │
+               ▼                                ▼
+          Editor/IDE                     AI Assistant
 ```
 
 ## When to Use Each Crate
 
-### tower-lsp
+### tower-lsp-server
 | Scenario | Use When |
 |----------|----------|
-| Building LSP server | Always - main framework |
-| Custom LSP methods | `markymark/createRealm`, etc. |
+| Building LSP server | Always - main LSP framework |
+| Custom LSP methods | `$/createRealm`, etc. |
 | Sending notifications | Diagnostics, progress |
 | State management | Document sync, capabilities |
 
-**Don't use for:** Parsing, indexing, graph operations
+**Don't use for:** Parsing, indexing, graph operations, MCP transport
+
+### rmcp
+| Scenario | Use When |
+|----------|----------|
+| Building MCP server | Always - official MCP SDK |
+| Defining tools | `#[tool]` macro on async methods |
+| Exposing resources | Symbol data, outlines, graphs |
+| AI prompts | explain-link, suggest-references |
+
+**Don't use for:** Editor integrations (use tower-lsp-server), parsing, indexing
 
 ### tree-sitter
 | Scenario | Use When |
@@ -238,35 +265,41 @@ Need to handle LSP request?
 │   └── Need error response? → error-handling.md (thiserror)
 └── No
     │
-    ├── Need to parse markdown?
-    │   ├── Yes → tree-sitter.md
+    ├── Need to handle MCP request (AI assistant)?
+    │   ├── Yes → rmcp.md
+    │   │   └── Need error response? → error-handling.md (thiserror)
     │   └── No
     │       │
-    │       ├── Need document/symbol relationships?
-    │       │   ├── Yes → petgraph.md
+    │       ├── Need to parse markdown?
+    │       │   ├── Yes → tree-sitter.md
     │       │   └── No
     │       │       │
-    │       │       ├── Need fast allocation with bulk free?
-    │       │       │   ├── Yes → bumpalo.md
-    │       │       │   └── No → Use standard allocation
+    │       │       ├── Need document/symbol relationships?
+    │       │       │   ├── Yes → petgraph.md
+    │       │       │   └── No
+    │       │       │       │
+    │       │       │       ├── Need fast allocation with bulk free?
+    │       │       │       │   ├── Yes → bumpalo.md
+    │       │       │       │   └── No → Use standard allocation
+    │       │       │       │
+    │       │       │       └── Writing tests?
+    │       │       │           ├── Complex output comparison → testing.md (insta)
+    │       │       │           ├── Invariant testing → testing.md (proptest)
+    │       │       │           └── Both → testing.md (combined)
     │       │       │
-    │       │       └── Writing tests?
-    │       │           ├── Complex output comparison → testing.md (insta)
-    │       │           ├── Invariant testing → testing.md (proptest)
-    │       │           └── Both → testing.md (combined)
-    │       │
-    │       └── Defining error types?
-    │           └── error-handling.md
+    │       │       └── Defining error types?
+    │       │           └── error-handling.md
 ```
 
 ## Version Compatibility
 
 | Crate | Version | Notes |
 |-------|---------|-------|
-| tower-lsp | 0.20.x | Stable, async-trait |
-| tree-sitter | 0.22.x | Breaking changes from 0.21 |
-| tree-sitter-markdown | git | Use tree-sitter-grammars fork |
-| petgraph | 0.6.x | Stable |
+| tower-lsp-server | 0.23.x | Community fork, edition 2024, Rust 1.85+ |
+| rmcp | 0.13.x | Official MCP SDK, pre-1.0 (API may evolve) |
+| tree-sitter | 0.26.x | Current stable |
+| tree-sitter-md | 0.5.x | Markdown grammar |
+| petgraph | 0.8.x | Stable |
 | bumpalo | 3.x | Stable, needs `collections` feature |
 | thiserror | 1.x | Stable |
 | anyhow | 1.x | Stable |

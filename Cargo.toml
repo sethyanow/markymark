@@ -1,0 +1,16 @@
+[workspace]
+members = [
+    "markymark-core",
+    "markymark-parser",
+    "markymark-index",
+    "markymark-lsp",
+    "markymark-mcp",
+    "markymark-cli",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+version = "0.1.0"
+rust-version = "1.85"

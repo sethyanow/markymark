@@ -13,7 +13,7 @@
 - [ ] Add LICENSE, README, CONTRIBUTING
 
 ### 0.2 Dependencies & Scaffolding
-- [ ] Add workspace dependencies (tower-lsp, tree-sitter, petgraph, bumpalo)
+- [ ] Add workspace dependencies (tower-lsp-server, rmcp, tree-sitter, petgraph, bumpalo)
 - [ ] Create empty crate shells with pub interfaces
 - [ ] Set up test infrastructure (insta, proptest)
 - [ ] Create test harness crate
@@ -146,12 +146,26 @@
 
 ---
 
-## Phase 4: LSP Server (markymark-lsp)
+## Phase 3.5: Transport Abstraction (markymark-core)
+
+- [ ] Define `CoreOperation` enum with all transport-agnostic operations
+- [ ] Define `CoreResult` enum for operation results
+- [ ] Define `CoreError` type with thiserror
+- [ ] Define `CoreEngine` trait (async execute method)
+- [ ] Implement `CoreEngine` for the indexing layer (bridges to RealmIndex/ConnectionGraph)
+- [ ] Write tests for CoreEngine with mock realm data
+
+**Deliverable:** Core engine processes all operations, transport crates can depend on it
+
+---
+
+## Phase 4: LSP Transport (markymark-lsp)
 
 ### 4.1 Server Scaffolding
-- [ ] tower-lsp integration
+- [ ] tower-lsp-server integration (community fork)
 - [ ] Initialize/shutdown handlers
 - [ ] Document sync (open/change/close)
+- [ ] LSP handlers convert to CoreOperation internally
 
 ### 4.2 Realm Router
 - [ ] URI to realm mapping
@@ -202,13 +216,42 @@
 
 ---
 
+## Phase 4.5: MCP Transport (markymark-mcp)
+
+### 4.5.1 Server Scaffolding
+- [ ] rmcp `ServerHandler` implementation
+- [ ] `#[tool]` macro setup for tool definitions
+- [ ] Transport configuration (stdio, SSE)
+
+### 4.5.2 Resources
+- [ ] `markymark/symbol` resource
+- [ ] `markymark/outline` resource
+- [ ] `markymark/dependency-graph` resource (json/dot formats)
+- [ ] `markymark/updates` resource (streaming)
+
+### 4.5.3 Tools
+- [ ] `markymark/rename` tool
+- [ ] `markymark/find-references` tool
+- [ ] `markymark/create-realm` / `markymark/destroy-realm` tools
+- [ ] `markymark/search-symbols` tool
+
+### 4.5.4 Prompts
+- [ ] `markymark/explain-link` prompt
+- [ ] `markymark/suggest-references` prompt
+
+**Deliverable:** MCP transport exposes full markymark capabilities to AI assistants
+
+---
+
 ## Phase 5: CLI & Distribution (markymark-cli)
 
 ### 5.1 CLI Binary
 - [ ] Argument parsing (clap)
+- [ ] Transport selector (--lsp / --mcp flags)
 - [ ] Stdio transport mode
 - [ ] TCP transport mode (optional)
 - [ ] Config file support
+- [ ] Transport selection via CLI flags or config
 
 ### 5.2 Build Optimization
 - [ ] LTO configuration
@@ -266,9 +309,14 @@ Phase 2 (Parser) ──────┐
 Phase 3 (Index) ◄──────┘
     │
     ▼
-Phase 4 (LSP)
+Phase 3.5 (Transport Abstraction)
     │
-    ▼
+    ├──────────────────┐
+    ▼                  ▼
+Phase 4 (LSP)    Phase 4.5 (MCP)
+    │                  │
+    └────────┬─────────┘
+             ▼
 Phase 5 (CLI)
     │
     ▼
@@ -285,11 +333,13 @@ Phase 6 (Polish)
 | 1 | 15 | Low-Medium |
 | 2 | 20 | Medium-High |
 | 3 | 18 | High |
+| 3.5 | 6 | Medium |
 | 4 | 25 | High |
+| 4.5 | 15 | Medium-High |
 | 5 | 8 | Low |
 | 6 | 12 | Medium |
 
-**Total:** ~108 discrete tasks
+**Total:** ~129 discrete tasks
 
 ---
 
@@ -299,6 +349,7 @@ Phase 6 (Polish)
 2. **Incremental update correctness** - Complex state machine, needs thorough testing
 3. **Performance under churn** - High-frequency realm creation/destruction
 4. **Cross-platform builds** - Windows and ARM targets
+5. **MCP SDK maturity** - rmcp is v0.13, API may evolve before 1.0
 
 ---
 
