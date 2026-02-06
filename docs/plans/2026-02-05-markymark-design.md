@@ -6,7 +6,13 @@
 
 ## Overview
 
-markymark is a memory-efficient, high-performance Markdown Language Server Protocol (LSP) implementation in Rust. It replaces Marksman for use cases requiring extreme resource efficiency, multi-tenant workspace isolation, and full anchor link rename support.
+markymark is a memory-efficient, high-performance Markdown language server implementation in Rust that supports **both LSP and MCP transport layers**. It replaces Marksman for use cases requiring extreme resource efficiency, multi-tenant workspace isolation, and full anchor link rename support.
+
+### Dual-Transport Architecture
+
+- **LSP (Language Server Protocol)**: Editor integrations via tower-lsp
+- **MCP (Model Context Protocol)**: AI assistant integrations via MCP SDK
+- **Shared Core**: Indexing, realm management, and connection graph logic transport-agnostic
 
 ### Motivation
 
@@ -31,34 +37,99 @@ markymark is a memory-efficient, high-performance Markdown Language Server Proto
 ### High-Level Structure
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      LSP Transport (tower-lsp)                  │
-└─────────────────────────────┬───────────────────────────────────┘
-                              │
-┌─────────────────────────────▼───────────────────────────────────┐
-│                        Realm Router                             │
-│               (dispatches requests to correct realm)            │
-└─────────────────────────────┬───────────────────────────────────┘
-                              │
-          ┌───────────────────┼───────────────────┐
-          ▼                   ▼                   ▼
-    ┌───────────┐       ┌───────────┐       ┌───────────┐
-    │  Realm A  │       │  Realm B  │       │  Realm C  │
-    │  (shared) │       │ (isolated)│       │ (isolated)│
-    ├───────────┤       ├───────────┤       ├───────────┤
-    │ - Arena   │       │ - Arena   │       │ - Arena   │
-    │ - Index   │       │ - Index   │       │ - Index   │
-    │ - Graph   │       │ - Graph   │       │ - Graph   │
-    │ - Roots[] │       │ - Roots[] │       │ - Roots[] │
-    └───────────┘       └───────────┘       └───────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│                    Transport Layer (pluggable)                     │
+├──────────────────────────────┬─────────────────────────────────────┤
+│   LSP Transport (tower-lsp)  │   MCP Transport (async-mcp)        │
+│   • textDocument/*           │   • markymark/* resources          │
+│   • workspace/*              │   • markymark/* tools              │
+│   • $/* custom methods       │   • prompts/                       │
+└──────────────────────────────┴─────────────────────────────────────┘
+                                │
+┌───────────────────────────────▼───────────────────────────────────┐
+│                        Transport Abstraction                      │
+│                  (Request → CoreOperation bridge)                 │
+└───────────────────────────────┬───────────────────────────────────┘
+                                │
+┌───────────────────────────────▼───────────────────────────────────┐
+│                        Realm Router                               │
+│               (dispatches operations to correct realm)            │
+└───────────────────────────────┬───────────────────────────────────┘
+                                │
+            ┌───────────────────┼───────────────────┐
+            ▼                   ▼                   ▼
+      ┌───────────┐       ┌───────────┐       ┌───────────┐
+      │  Realm A  │       │  Realm B  │       │  Realm C  │
+      │  (shared) │       │ (isolated)│       │ (isolated)│
+      ├───────────┤       ├───────────┤       ├───────────┤
+      │ - Arena   │       │ - Arena   │       │ - Arena   │
+      │ - Index   │       │ - Index   │       │ - Index   │
+      │ - Graph   │       │ - Graph   │       │ - Graph   │
+      │ - Roots[] │       │ - Roots[] │       │ - Roots[] │
+      └───────────┘       └───────────┘       └───────────┘
 ```
 
 ### Key Components
 
+- **Transport Layer**: Pluggable interface supporting LSP and MCP protocols
+- **Transport Abstraction**: Bridges protocol-specific requests to core operations
 - **Realm Router**: Maps document URIs to owning realm. O(1) lookup via prefix tree.
 - **Realm**: Isolated unit with own arena allocator, symbol index, and connection graph.
 - **Root**: Directory (real or virtual) within a realm. Multiple roots enable cross-references.
 - **Arena**: Per-realm bump allocator. Realm destruction = instant memory cleanup.
+
+### Transport Architecture
+
+#### Transport Abstraction Trait
+
+```rust
+#[async_trait]
+pub trait Transport: Send + Sync {
+    // Spawn the transport server
+    async fn serve(self, rx: mpsc::Receiver<CoreOperation>) -> Result<()>;
+
+    // Convert protocol-specific requests to core operations
+    fn request_to_operation(&self, req: TransportRequest) -> CoreOperation;
+
+    // Convert core operation results to protocol responses
+    fn operation_to_result(&self, op: CoreOperation) -> TransportResult;
+}
+
+pub enum TransportRequest {
+    LSP(lsp_types::Request),
+    MCP(mcp::Request),
+}
+
+pub enum CoreOperation {
+    GetSymbol { uri: DocumentUri, symbol: String },
+    FindReferences { symbol: Symbol },
+    Rename { symbol: Symbol, new_name: String },
+    CreateRealm { config: RealmConfig },
+    // ... etc (transport-agnostic operations)
+}
+
+pub enum TransportResult {
+    LSP(lsp_types::Response),
+    MCP(mcp::Response),
+}
+```
+
+#### LSP Implementation
+
+- Uses `tower-lsp` for stdio/IPC transport
+- Implements `LanguageServer` trait
+- Maps LSP requests to `CoreOperation` variants
+- Converts `CoreOperation` results back to LSP responses
+
+#### MCP Implementation
+
+- Uses `async-mcp` SDK for JSON-RPC transport
+- Exposes capabilities as:
+  - **Resources**: `markymark/symbol`, `markymark/outline`, `markymark/graph`
+  - **Tools**: `markymark/rename`, `markymark/find-references`, `markymark/create-realm`
+  - **Prompts**: `markymark/explain-link`, `markymark/suggest-references`
+- Maps MCP calls to `CoreOperation` variants
+- Converts results to MCP resource/tool responses
 
 ---
 
@@ -88,21 +159,26 @@ enum RealmMode {
 }
 ```
 
-### Custom LSP Methods
+### Custom Methods (Core Operations)
 
-```
-markymark/createRealm    { id, mode, settings? }        → RealmId
-markymark/destroyRealm   { id }                         → ()
-markymark/listRealms     {}                             → [RealmInfo]
-markymark/getRealm       { id }                         → RealmInfo | null
+These operations are exposed via both transports:
 
-markymark/addRoot        { realm_id, path, virtual_fs? } → RootId
-markymark/removeRoot     { realm_id, root_id }           → ()
-markymark/listRoots      { realm_id }                    → [RootInfo]
+**Realm Management:**
+- `createRealm(config)` → `RealmId`
+- `destroyRealm(id)` → `()`
+- `listRealms()` → `[RealmInfo]`
+- `getRealm(id)` → `RealmInfo | null`
+- `addRoot(realm_id, path, virtual_fs?)` → `RootId`
+- `removeRoot(realm_id, root_id)` → `()`
+- `listRoots(realm_id)` → `[RootInfo]`
+- `realmStats(id)` → `{ doc_count, symbol_count, mem_bytes }`
+- `compact(id)` → `()`
 
-markymark/realmStats     { id }  → { doc_count, symbol_count, mem_bytes }
-markymark/compact        { id }  → ()
-```
+**LSP-specific (`$/` namespace):**
+- `$/createRealm`, `$/destroyRealm`, etc.
+
+**MCP-specific (tools):**
+- `markymark/create-realm`, `markymark/destroy-realm`, etc.
 
 ### Lifecycle Hooks
 
@@ -308,13 +384,77 @@ async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
 
 ### Extended Methods
 
-| Method | Description |
-|--------|-------------|
-| `markymark/getOutline` | Full document outline with depth |
-| `markymark/getDependencyGraph` | Cross-document dependency graph |
-| `markymark/findOrphans` | Documents with no incoming links |
-| `markymark/exportIndex` | Export index for external consumers |
-| `markymark/subscribeUpdates` | Stream symbol updates |
+| Core Operation | LSP Method | MCP Tool/Resource | Description |
+|----------------|------------|-------------------|-------------|
+| `getOutline` | `markymark/getOutline` | `markymark/outline` resource | Full document outline with depth |
+| `getDependencyGraph` | `markymark/getDependencyGraph` | `markymark/dependency-graph` resource | Cross-document dependency graph |
+| `findOrphans` | `markymark/findOrphans` | `markymark/find-orphans` tool | Documents with no incoming links |
+| `exportIndex` | `markymark/exportIndex` | `markymark/export-index` tool | Export index for external consumers |
+| `subscribeUpdates` | `markymark/onIndexUpdated` notification | `markymark/updates` resource (stream) | Stream symbol updates |
+
+### MCP-Specific Features
+
+#### Resources
+
+```typescript
+// Read symbol details
+markymark/symbol?uri={document_uri}&symbol={symbol_id}
+
+// Read document outline
+markymark/outline?uri={document_uri}&depth={max_depth}
+
+// Read dependency graph
+markymark/dependency-graph?realm={realm_id}&format={json|dot}
+
+// Stream index updates (Server-Sent Events)
+markymark/updates?realm={realm_id}
+```
+
+#### Tools
+
+```typescript
+// Rename symbol with link updates
+markymark/rename: {
+  symbol: { uri, type, id },
+  new_name: string
+}
+
+// Find all references
+markymark/find-references: {
+  symbol: { uri, type, id }
+  include_declaration: boolean
+}
+
+// Create/destroy realm
+markymark/create-realm: { config }
+markymark/destroy-realm: { id }
+
+// Search symbols
+markymark/search-symbols: {
+  query: string,
+  realm?: string,
+  limit?: number
+}
+```
+
+#### Prompts
+
+```typescript
+// Explain link resolution
+markymark/explain-link: {
+  uri: string,
+  link_text: string,
+  link_range: Range
+}
+// → Returns: "This [[wiki-link]] resolves to Foo.md#Heading because..."
+
+// Suggest references
+markymark/suggest-references: {
+  uri: string,
+  symbol: string
+}
+// → Returns: "Consider adding backlinks from: Bar.md, Baz.md"
+```
 
 ---
 
@@ -324,6 +464,7 @@ async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
 |-----------|--------|-----------|
 | Language | Rust | Memory safety, performance, ecosystem |
 | LSP Framework | tower-lsp | Mature, async, well-maintained |
+| MCP SDK | async-mcp | Async MCP implementation for Rust |
 | Parser | tree-sitter-markdown | Incremental parsing, battle-tested |
 | Graph | petgraph | Generational indices, algorithms |
 | Arena | bumpalo | Fast bump allocation, bulk dealloc |
@@ -340,8 +481,10 @@ markymark/
 │   ├── markymark-core/           # Core types, no dependencies
 │   ├── markymark-parser/         # tree-sitter integration
 │   ├── markymark-index/          # Indexing & connection graph
-│   ├── markymark-lsp/            # LSP server implementation
-│   └── markymark-cli/            # CLI binary
+│   ├── markymark-transport/      # Transport abstraction trait
+│   ├── markymark-lsp/            # LSP transport implementation
+│   ├── markymark-mcp/            # MCP transport implementation
+│   └── markymark-cli/            # CLI binary (transport selector)
 ├── tests/
 │   ├── golden/                   # Ported Marksman snapshots
 │   └── integration/
