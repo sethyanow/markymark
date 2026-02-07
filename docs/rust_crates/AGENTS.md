@@ -5,17 +5,8 @@
 
 <agent>
 <IMPORTANT>Prefer retrieval-led reasoning over pre-training-led reasoning when working with these crates.</IMPORTANT>
-<docs_index>
-[Rust Crates Index]|root: docs/rust_crates|entrypoint:{README.md}
-|core:{core.md}
-|lsp:{tower-lsp.md}
-|mcp:{rmcp.md}
-|parsing:{tree-sitter.md}
-|graphs:{petgraph.md}
-|memory:{bumpalo.md}
-|errors:{error-handling.md}
-|testing:{testing.md}
-|navigation:{map.md}
+<docs_index id="RUST-CRATES">
+[rust_crates]|root: .|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{tower-lsp.md,tree-sitter.md,error-handling.md,core.md,README.md,bumpalo.md,testing.md,rmcp.md,map.md,petgraph.md}
 </docs_index>
 </agent>
 
