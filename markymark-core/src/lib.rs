@@ -1,144 +1,187 @@
-use std::fmt;
+//! markymark-core: Core types and abstractions for the markymark LSP
+//!
+//! This crate provides the fundamental data structures and traits
+//! used across all markymark crates.
+
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+
+use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub use error::{CoreError, CoreResult};
+
+/// A 0-based position in a text document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Position {
+    /// 0-based line index.
     pub line: u32,
+
+    /// 0-based character offset (UTF-16 code unit in LSP, but we treat as an opaque index here).
     pub character: u32,
 }
 
 impl Position {
+    /// Create a new [`Position`].
     pub const fn new(line: u32, character: u32) -> Self {
         Self { line, character }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+impl Ord for Position {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.line.cmp(&other.line) {
+            Ordering::Equal => self.character.cmp(&other.character),
+            o => o,
+        }
+    }
+}
+
+impl PartialOrd for Position {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// A range in a text document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Range {
+    /// Start position (inclusive).
     pub start: Position,
+
+    /// End position (exclusive).
     pub end: Position,
 }
 
 impl Range {
+    /// Create a new [`Range`].
     pub const fn new(start: Position, end: Position) -> Self {
         Self { start, end }
     }
 
+    /// Returns true if `position` is within this range.
+    ///
+    /// Semantics follow LSP conventions: start is inclusive, end is exclusive.
     pub fn contains(&self, position: Position) -> bool {
-        if position.line < self.start.line || position.line > self.end.line {
-            return false;
-        }
-
-        if position.line == self.start.line && position.character < self.start.character {
-            return false;
-        }
-
-        if position.line == self.end.line && position.character > self.end.character {
-            return false;
-        }
-
-        true
+        self.start <= position && position < self.end
     }
 }
 
+/// A document URI.
+///
+/// For now this is a small wrapper with basic support for `file://` URIs.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct DocumentUri {
-    raw: String,
-}
+pub struct DocumentUri(String);
 
 impl DocumentUri {
-    pub fn new(uri: impl Into<String>) -> Result<Self, DocumentUriError> {
-        let raw = uri.into();
-        if raw.split_once("://").is_none() {
-            return Err(DocumentUriError::MissingScheme);
-        }
-        Ok(Self { raw })
-    }
-
-    pub fn from_file_path(path: &Path) -> Self {
-        let path = path.to_string_lossy();
-        let encoded = percent_encode_path(&path);
-        Self {
-            raw: format!("file://{encoded}"),
+    /// Parse a URI string.
+    ///
+    /// This currently enforces that a scheme is present (e.g. `file://`).
+    pub fn new(uri: &str) -> CoreResult<Self> {
+        if uri.contains("://") {
+            Ok(Self(uri.to_string()))
+        } else {
+            Err(CoreError::InvalidUri("URI is missing scheme".to_string()))
         }
     }
 
+    /// Return the URI as a string slice.
     pub fn as_str(&self) -> &str {
-        &self.raw
+        &self.0
     }
 
+    /// Construct a `file://` URI from a filesystem path.
+    pub fn from_file_path(path: &Path) -> Self {
+        let raw = path.to_string_lossy();
+        let encoded = percent_encode_path(&raw);
+        Self(format!("file://{}", encoded))
+    }
+
+    /// Convert a `file://` URI to a filesystem path.
     pub fn to_file_path(&self) -> Option<PathBuf> {
-        let path = self.raw.strip_prefix("file://")?;
-        let decoded = percent_decode_path(path);
+        let rest = self.0.strip_prefix("file://")?;
+        let decoded = percent_decode(rest)?;
         Some(PathBuf::from(decoded))
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DocumentUriError {
-    MissingScheme,
-}
-
-impl fmt::Display for DocumentUriError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MissingScheme => f.write_str("URI is missing a scheme"),
-        }
-    }
-}
-
-impl std::error::Error for DocumentUriError {}
-
 fn percent_encode_path(path: &str) -> String {
     let mut out = String::with_capacity(path.len());
-    for byte in path.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' | b':' => {
-                out.push(byte as char)
+
+    for b in path.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                out.push(*b as char)
             }
-            _ => {
-                out.push('%');
-                out.push(hex_digit(byte >> 4));
-                out.push(hex_digit(byte & 0x0f));
-            }
+            b' ' => out.push_str("%20"),
+            _ => out.push_str(&format!("%{:02X}", b)),
         }
     }
+
     out
 }
 
-fn percent_decode_path(path: &str) -> String {
-    let bytes = path.as_bytes();
-    let mut out = String::with_capacity(path.len());
+fn percent_decode(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            let hi = from_hex_digit(bytes[i + 1]);
-            let lo = from_hex_digit(bytes[i + 2]);
-            if let (Some(hi), Some(lo)) = (hi, lo) {
-                out.push((hi << 4 | lo) as char);
-                i += 3;
-                continue;
+        if bytes[i] == b'%' {
+            if i + 2 >= bytes.len() {
+                return None;
             }
+
+            let hi = from_hex(bytes[i + 1])?;
+            let lo = from_hex(bytes[i + 2])?;
+            out.push((hi << 4) | lo);
+            i += 3;
+            continue;
         }
 
-        out.push(bytes[i] as char);
+        out.push(bytes[i]);
         i += 1;
     }
-    out
+
+    String::from_utf8(out).ok()
 }
 
-fn hex_digit(value: u8) -> char {
-    match value {
-        0..=9 => (b'0' + value) as char,
-        _ => (b'A' + (value - 10)) as char,
+fn from_hex(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
     }
 }
 
-fn from_hex_digit(value: u8) -> Option<u8> {
-    match value {
-        b'0'..=b'9' => Some(value - b'0'),
-        b'a'..=b'f' => Some(value - b'a' + 10),
-        b'A'..=b'F' => Some(value - b'A' + 10),
-        _ => None,
+pub mod prelude {
+    //! Prelude module with common imports
+
+    pub use crate::{CoreError, CoreResult, DocumentUri, Position, Range};
+}
+
+pub mod error {
+    //! Core error types
+
+    use thiserror::Error;
+
+    /// Core result type
+    pub type CoreResult<T> = Result<T, CoreError>;
+
+    /// Core error type
+    #[derive(Error, Debug)]
+    pub enum CoreError {
+        /// Generic error message
+        #[error("{0}")]
+        Message(String),
+
+        /// Invalid URI
+        #[error("Invalid URI: {0}")]
+        InvalidUri(String),
+
+        /// Not implemented yet
+        #[error("Not implemented: {0}")]
+        NotImplemented(String),
     }
 }

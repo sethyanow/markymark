@@ -1,11 +1,17 @@
 [package]
 name = "markymark-core"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]
-bumpalo = "3.19.1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
 
 [dev-dependencies]
-insta = "1.46.3"
-proptest = "1.10.0"
+insta = { workspace = true }
+proptest = { workspace = true }

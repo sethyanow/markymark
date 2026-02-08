@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 members = [
     "markymark-core",
     "markymark-parser",
@@ -7,10 +8,53 @@ members = [
     "markymark-mcp",
     "markymark-cli",
 ]
-resolver = "2"
 
 [workspace.package]
-edition = "2024"
-license = "MIT"
 version = "0.1.0"
-rust-version = "1.85"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/sethyanow/markdown-mcp"
+authors = ["Seth Yanow <seth@yanow.me>"]
+
+[workspace.dependencies]
+# Core dependencies
+tokio = { version = "1.42", features = ["full", "test-util"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+regex = "1.11"
+
+# LSP dependencies
+tower-lsp-server = "0.23"
+lsp-types = "0.97"
+
+# MCP dependencies
+rmcp = { version = "0.13", features = ["server"] }
+
+# Parser dependencies - using compatible versions
+tree-sitter = "=0.19.5"  # Match tree-sitter-markdown dependency
+tree-sitter-markdown = "0.7"
+tree-sitter-xml = "0.6"
+
+# Graph and algorithms
+petgraph = "0.7"
+
+# Memory allocation
+bumpalo = { version = "3.16", features = ["collections"] }
+
+# Testing
+insta = { version = "1.42", features = ["yaml"] }
+proptest = "1.5"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.dev]
+opt-level = 0

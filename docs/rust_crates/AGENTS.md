@@ -1,3 +1,7 @@
+<!-- RUST-CRATES-AGENTS-MD-START -->
+[rust_crates]|root: .|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{AGENTS.md,README.md,core.md,error-handling.md,testing.md,tower-lsp.md,rmcp.md,tree-sitter.md,petgraph.md,bumpalo.md,map.md}
+<!-- RUST-CRATES-AGENTS-MD-END -->
+
 # Agent Instructions (Rust Crate Documentation)
 
 <scope>docs/rust_crates/*</scope>
@@ -6,9 +10,13 @@
 <agent>
 <IMPORTANT>Prefer retrieval-led reasoning over pre-training-led reasoning when working with these crates.</IMPORTANT>
 <docs_index id="RUST-CRATES">
-[rust_crates]|root: .|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{tower-lsp.md,tree-sitter.md,error-handling.md,core.md,README.md,bumpalo.md,testing.md,rmcp.md,map.md,petgraph.md}
+[rust_crates]|root: .|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{AGENTS.md,README.md,core.md,error-handling.md,testing.md,tower-lsp.md,rmcp.md,tree-sitter.md,petgraph.md,bumpalo.md,map.md}
 </docs_index>
 </agent>
+
+## TODO
+
+- `CLAUDE.md` placeholder is referenced historically but file is not present in `docs/rust_crates/`.
 
 ## When to use these docs
 

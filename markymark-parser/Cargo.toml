@@ -1,8 +1,21 @@
 [package]
 name = "markymark-parser"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]
-tree-sitter = "0.26.5"
-tree-sitter-md = "0.5.2"
+markymark-core = { path = "../markymark-core" }
+tree-sitter = { workspace = true }
+tree-sitter-markdown = { workspace = true }
+tree-sitter-xml = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+regex = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+proptest = { workspace = true }

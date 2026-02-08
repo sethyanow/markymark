@@ -1,14 +1,16 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! markymark-lsp: LSP server implementation using tower-lsp-server
+//!
+//! Provides Language Server Protocol support for markdown documents.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#![warn(missing_docs)]
+#![warn(clippy::all)]
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+use markymark_core::prelude::*;
+
+// LSP will be implemented in TDD Phase 4
+// This is a placeholder to make the crate compilable
+
+/// Placeholder function to make the crate compilable
+pub fn lsp_placeholder() -> CoreResult<()> {
+    Ok(())
 }

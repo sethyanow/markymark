@@ -1,14 +1,16 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! markymark-index: Document indexing and symbol resolution
+//!
+//! Provides document indexing, symbol lookup, and reference tracking.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#![warn(missing_docs)]
+#![warn(clippy::all)]
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+use markymark_core::prelude::*;
+
+// Index will be implemented in TDD Phase 3
+// This is a placeholder to make the crate compilable
+
+/// Placeholder function to make the crate compilable
+pub fn index_placeholder() -> CoreResult<()> {
+    Ok(())
 }

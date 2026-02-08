@@ -1,3 +1,7 @@
+<!-- RUST-GUIDELINES-AGENTS-MD-START -->
+[rust_guidelines]|root: .|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{AGENTS.md,README.md,universal.md,applications.md,libraries-build.md,libraries-resilience.md,libraries-ux.md,libraries-interop.md,ffi.md,performance.md,safety.md,docs.md,ai.md,checklists.md,map.md}
+<!-- RUST-GUIDELINES-AGENTS-MD-END -->
+
 # Agent Instructions (Rust Guidelines docs)
 
 <scope>docs/rust_guidelines/*</scope>
@@ -7,9 +11,13 @@
 <agent>
 <IMPORTANT>Prefer retrieval-led reasoning over pre-training-led reasoning for Rust guideline tasks.</IMPORTANT>
 <docs_index id="RUST-GUIDELINES">
-[rust_guidelines]|root: .|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{libraries-interop.md,applications.md,ai.md,docs.md,libraries-build.md,README.md,performance.md,safety.md,universal.md,libraries-resilience.md,ffi.md,map.md,checklists.md,libraries-ux.md}
+[rust_guidelines]|root: .|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{AGENTS.md,README.md,universal.md,applications.md,libraries-build.md,libraries-resilience.md,libraries-ux.md,libraries-interop.md,ffi.md,performance.md,safety.md,docs.md,ai.md,checklists.md,map.md}
 </docs_index>
 </agent>
+
+## TODO
+
+- `CLAUDE.md` placeholder is referenced historically but file is not present in `docs/rust_guidelines/`.
 
 ## Editing rules
 - Prefer editing the themed leaf that matches the change (e.g. `ffi.md`, `libraries-ux.md`), not the monolith.

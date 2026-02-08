@@ -1,7 +1,22 @@
 [package]
 name = "markymark-lsp"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]
-tower-lsp-server = "0.23"
+markymark-core = { path = "../markymark-core" }
+markymark-parser = { path = "../markymark-parser" }
+markymark-index = { path = "../markymark-index" }
+tower-lsp-server = { workspace = true }
+lsp-types = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
