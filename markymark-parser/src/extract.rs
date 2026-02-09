@@ -389,8 +389,159 @@ pub fn extract_page_properties(_elements: &[Element], source: &str) -> Option<Pr
 }
 
 /// Extract XML/HTML tags from the document source
-pub fn extract_xml_tags(_elements: &[Element], _source: &str) -> Vec<XmlTag> {
-    Vec::new() // Stub — tests will FAIL
+pub fn extract_xml_tags(_elements: &[Element], source: &str) -> Vec<XmlTag> {
+    use std::collections::HashMap;
+
+    let mut tags = Vec::new();
+
+    // HTML void elements that are self-closing even without />
+    const VOID_ELEMENTS: &[&str] = &[
+        "br", "hr", "img", "input", "meta", "link", "source", "track", "wbr", "area", "base",
+        "col", "embed", "param",
+    ];
+
+    // Regex for self-closing tags: <tag ... />
+    let self_closing_re =
+        Regex::new(r#"<([a-zA-Z][a-zA-Z0-9-]*)(\s[^>]*)?\s*/>"#).unwrap();
+
+    // Regex for opening tags: <tag ...> (but not self-closing or closing)
+    let open_re =
+        Regex::new(r#"<([a-zA-Z][a-zA-Z0-9-]*)(\s[^>]*)?\s*>"#).unwrap();
+
+    // Regex for attributes: key="value"
+    let attr_re = Regex::new(r#"([a-zA-Z_:][a-zA-Z0-9_.:-]*)\s*=\s*"([^"]*)""#).unwrap();
+
+    // Helper to parse attributes from attribute string
+    let parse_attrs = |attr_str: &str| -> HashMap<String, String> {
+        let mut attrs = HashMap::new();
+        for cap in attr_re.captures_iter(attr_str) {
+            if let (Some(key), Some(val)) = (cap.get(1), cap.get(2)) {
+                attrs.insert(key.as_str().to_string(), val.as_str().to_string());
+            }
+        }
+        attrs
+    };
+
+    // Helper to compute Range from byte offset
+    let compute_range = |start: usize, end: usize| -> Range {
+        let start_line = source[..start].matches('\n').count() as u32;
+        let start_line_offset = source[..start].rfind('\n').map(|p| p + 1).unwrap_or(0);
+        let start_char = (start - start_line_offset) as u32;
+
+        let end_line = source[..end].matches('\n').count() as u32;
+        let end_line_offset = source[..end].rfind('\n').map(|p| p + 1).unwrap_or(0);
+        let end_char = (end - end_line_offset) as u32;
+
+        Range::new(
+            Position::new(start_line, start_char),
+            Position::new(end_line, end_char),
+        )
+    };
+
+    // 1) Find self-closing tags: <tag ... />
+    for cap in self_closing_re.captures_iter(source) {
+        let full = cap.get(0).unwrap();
+        let tag_name = cap.get(1).unwrap().as_str().to_string();
+        let attr_str = cap.get(2).map(|m| m.as_str()).unwrap_or("");
+        let attrs = parse_attrs(attr_str);
+        let range = compute_range(full.start(), full.end());
+
+        tags.push(XmlTag::new(tag_name, attrs, true, None, range));
+    }
+
+    // 2) Find opening tags and match with closing tags (or void elements)
+    for cap in open_re.captures_iter(source) {
+        let full = cap.get(0).unwrap();
+        let tag_name = cap.get(1).unwrap().as_str();
+        let attr_str = cap.get(2).map(|m| m.as_str()).unwrap_or("");
+        let attrs = parse_attrs(attr_str);
+
+        let is_void = VOID_ELEMENTS.contains(&tag_name.to_lowercase().as_str());
+
+        if is_void {
+            let range = compute_range(full.start(), full.end());
+            tags.push(XmlTag::new(
+                tag_name.to_string(),
+                attrs,
+                true,
+                None,
+                range,
+            ));
+        } else {
+            // Find matching closing tag, handling nesting
+            let after_open = full.end();
+            let closing_tag = format!("</{}>", tag_name);
+            let opening_pattern = format!("<{}", tag_name);
+
+            let mut depth = 1;
+            let mut search_pos = after_open;
+
+            while depth > 0 {
+                // Find next opening or closing of same tag
+                let next_close = source[search_pos..].find(&closing_tag);
+                let next_open = source[search_pos..].find(&opening_pattern).and_then(|pos| {
+                    // Verify it's actually an opening tag (followed by > or space)
+                    let after_name = search_pos + pos + opening_pattern.len();
+                    if after_name < source.len() {
+                        let ch = source.as_bytes()[after_name];
+                        if ch == b'>' || ch == b' ' || ch == b'\t' || ch == b'\n' || ch == b'/' {
+                            Some(pos)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                });
+
+                match (next_close, next_open) {
+                    (Some(close_pos), Some(open_pos)) if open_pos < close_pos => {
+                        // Another opening tag found before closing
+                        depth += 1;
+                        search_pos = search_pos + open_pos + opening_pattern.len();
+                    }
+                    (Some(close_pos), _) => {
+                        depth -= 1;
+                        if depth == 0 {
+                            let content_start = after_open;
+                            let content_end = search_pos + close_pos;
+                            let tag_end = content_end + closing_tag.len();
+
+                            let content_str = &source[content_start..content_end];
+                            let content = if content_str.is_empty() {
+                                None
+                            } else {
+                                Some(content_str.to_string())
+                            };
+
+                            let range = compute_range(full.start(), tag_end);
+                            tags.push(XmlTag::new(
+                                tag_name.to_string(),
+                                attrs.clone(),
+                                false,
+                                content,
+                                range,
+                            ));
+                        } else {
+                            search_pos = search_pos + close_pos + closing_tag.len();
+                        }
+                    }
+                    _ => {
+                        // No closing tag found — treat as unclosed, skip
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort by position in source for consistent ordering
+    tags.sort_by_key(|t| {
+        let r = t.range();
+        (r.start.line, r.start.character)
+    });
+
+    tags
 }
 
 /// Simple YAML parser for frontmatter
