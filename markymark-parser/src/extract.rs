@@ -165,7 +165,7 @@ pub fn extract_block_ids(_elements: &[Element], source: &str) -> Vec<BlockId> {
     let mut blocks = Vec::new();
 
     // Regex for block IDs: ^blockid at end of line
-    let re = Regex::new(r"\^([a-zA-Z0-9_-]+)\s*$").unwrap();
+    let re = Regex::new(r"(?m)\^([a-zA-Z0-9_-]+)\s*$").unwrap();
 
     for captures in re.captures_iter(source) {
         if let Some(id_match) = captures.get(1) {

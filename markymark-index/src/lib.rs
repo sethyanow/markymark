@@ -7,6 +7,10 @@
 
 pub mod document;
 pub mod graph;
+pub mod realm;
+pub mod resolution;
 
 pub use document::*;
 pub use graph::*;
+pub use realm::*;
+pub use resolution::*;

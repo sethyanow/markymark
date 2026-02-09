@@ -155,6 +155,8 @@ fn from_hex(b: u8) -> Option<u8> {
     }
 }
 
+pub mod engine;
+
 pub mod prelude {
     //! Prelude module with common imports
 
