@@ -5,12 +5,8 @@
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 
-use markymark_core::prelude::*;
+pub mod document;
+pub mod graph;
 
-// Index will be implemented in TDD Phase 3
-// This is a placeholder to make the crate compilable
-
-/// Placeholder function to make the crate compilable
-pub fn index_placeholder() -> CoreResult<()> {
-    Ok(())
-}
+pub use document::*;
+pub use graph::*;
