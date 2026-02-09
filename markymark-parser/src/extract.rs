@@ -388,6 +388,11 @@ pub fn extract_page_properties(_elements: &[Element], source: &str) -> Option<Pr
     }
 }
 
+/// Extract XML/HTML tags from the document source
+pub fn extract_xml_tags(_elements: &[Element], _source: &str) -> Vec<XmlTag> {
+    Vec::new() // Stub — tests will FAIL
+}
+
 /// Simple YAML parser for frontmatter
 fn parse_simple_yaml(content: &str) -> Frontmatter {
     use std::collections::HashMap;

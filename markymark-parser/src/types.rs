@@ -1,4 +1,5 @@
 use markymark_core::prelude::*;
+use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// An element in the markdown AST
@@ -637,5 +638,59 @@ impl PropertyValue {
     /// Check if this is a page reference
     pub fn is_page_ref(&self) -> bool {
         matches!(self, PropertyValue::PageRef(_))
+    }
+}
+
+/// An XML/HTML tag element extracted from markdown
+#[derive(Debug, Clone)]
+pub struct XmlTag {
+    tag_name: String,
+    attributes: HashMap<String, String>,
+    is_self_closing: bool,
+    content: Option<String>,
+    range: Range,
+}
+
+impl XmlTag {
+    /// Create a new XML tag
+    pub(crate) fn new(
+        tag_name: String,
+        attributes: HashMap<String, String>,
+        is_self_closing: bool,
+        content: Option<String>,
+        range: Range,
+    ) -> Self {
+        Self {
+            tag_name,
+            attributes,
+            is_self_closing,
+            content,
+            range,
+        }
+    }
+
+    /// Get tag name (e.g. "div", "agent", "br")
+    pub fn tag_name(&self) -> &str {
+        &self.tag_name
+    }
+
+    /// Get attributes as key-value pairs
+    pub fn attributes(&self) -> &HashMap<String, String> {
+        &self.attributes
+    }
+
+    /// Whether this is a self-closing tag (e.g. `<br/>`, `<img ...>`)
+    pub fn is_self_closing(&self) -> bool {
+        self.is_self_closing
+    }
+
+    /// Text content between opening and closing tags, if applicable
+    pub fn content(&self) -> Option<&str> {
+        self.content.as_deref()
+    }
+
+    /// Get range in source document
+    pub fn range(&self) -> Range {
+        self.range
     }
 }
