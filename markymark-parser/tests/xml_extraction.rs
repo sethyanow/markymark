@@ -267,6 +267,50 @@ fn extract_tag_with_single_attribute() {
 }
 
 // ===========================================================================
+// Self-closing same-name nesting (regression test for PR #8 review)
+// ===========================================================================
+
+#[test]
+fn extract_self_closing_same_name_inside_opening_tag() {
+    let mut parser = Parser::new().unwrap();
+    let markdown = "<agent><agent/></agent>\n";
+
+    let ast = parser.parse(markdown).unwrap();
+    let tags = ast.extract_xml_tags();
+
+    // Should find both: the outer <agent>...</agent> and the inner <agent/>
+    assert_eq!(tags.len(), 2);
+
+    let self_closing: Vec<_> = tags.iter().filter(|t| t.is_self_closing()).collect();
+    let non_self_closing: Vec<_> = tags.iter().filter(|t| !t.is_self_closing()).collect();
+
+    assert_eq!(self_closing.len(), 1);
+    assert_eq!(self_closing[0].tag_name(), "agent");
+
+    assert_eq!(non_self_closing.len(), 1);
+    assert_eq!(non_self_closing[0].tag_name(), "agent");
+    assert!(non_self_closing[0].content().is_some());
+}
+
+#[test]
+fn extract_attribute_with_gt_in_value() {
+    let mut parser = Parser::new().unwrap();
+    // Attribute value contains > which should not break tag detection
+    let markdown = "<div data-expr=\"a > b\">content</div>\n";
+
+    let ast = parser.parse(markdown).unwrap();
+    let tags = ast.extract_xml_tags();
+
+    assert_eq!(tags.len(), 1);
+    assert_eq!(tags[0].tag_name(), "div");
+    assert_eq!(
+        tags[0].attributes().get("data-expr"),
+        Some(&"a > b".to_string())
+    );
+    assert_eq!(tags[0].content(), Some("content"));
+}
+
+// ===========================================================================
 // No XML tags
 // ===========================================================================
 
