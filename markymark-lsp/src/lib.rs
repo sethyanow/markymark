@@ -1,16 +1,16 @@
 //! markymark-lsp: LSP server implementation using tower-lsp-server
 //!
 //! Provides Language Server Protocol support for markdown documents.
+//!
+//! ## Architecture
+//!
+//! - [`convert`]: Type conversions between `lsp_types` and `markymark_core` types
+//! - [`state`]: Document store, parsing, and indexing (transport-agnostic)
+//! - [`server`]: `LanguageServer` trait implementation delegating to state + convert
 
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 
-use markymark_core::prelude::*;
-
-// LSP will be implemented in TDD Phase 4
-// This is a placeholder to make the crate compilable
-
-/// Placeholder function to make the crate compilable
-pub fn lsp_placeholder() -> CoreResult<()> {
-    Ok(())
-}
+pub mod convert;
+pub mod server;
+pub mod state;
