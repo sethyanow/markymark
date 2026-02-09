@@ -117,6 +117,11 @@ impl Ast {
     pub fn page_properties(&self) -> Option<Properties> {
         crate::extract::extract_page_properties(&self.root_elements, &self.source)
     }
+
+    /// Extract all XML/HTML tags from the document
+    pub fn extract_xml_tags(&self) -> Vec<XmlTag> {
+        crate::extract::extract_xml_tags(&self.root_elements, &self.source)
+    }
 }
 
 fn collect_top_level_list_items<'a>(node: Node<'a>, source: &str, items: &mut Vec<ListItem>) {

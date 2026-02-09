@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::types::*;
 use markymark_core::prelude::*;
 use regex::Regex;
@@ -386,6 +388,191 @@ pub fn extract_page_properties(_elements: &[Element], source: &str) -> Option<Pr
     } else {
         None
     }
+}
+
+/// Extract XML/HTML tags from the document source.
+///
+/// Uses a single-pass stack-based tokenizer for O(n) performance.
+/// Handles self-closing tags, void HTML elements, nested same-name tags,
+/// and attribute values containing `>`.
+pub fn extract_xml_tags(_elements: &[Element], source: &str) -> Vec<XmlTag> {
+    let mut tags = Vec::new();
+
+    // HTML void elements that are self-closing even without />
+    const VOID_ELEMENTS: &[&str] = &[
+        "br", "hr", "img", "input", "meta", "link", "source", "track", "wbr", "area", "base",
+        "col", "embed", "param",
+    ];
+
+    // Regex for attributes: key="value"
+    let attr_re = Regex::new(r#"([a-zA-Z_:][a-zA-Z0-9_.:-]*)\s*=\s*"([^"]*)""#).unwrap();
+
+    let parse_attrs = |attr_str: &str| -> HashMap<String, String> {
+        let mut attrs = HashMap::new();
+        for cap in attr_re.captures_iter(attr_str) {
+            if let (Some(key), Some(val)) = (cap.get(1), cap.get(2)) {
+                attrs.insert(key.as_str().to_string(), val.as_str().to_string());
+            }
+        }
+        attrs
+    };
+
+    let compute_range = |start: usize, end: usize| -> Range {
+        let start_line = source[..start].matches('\n').count() as u32;
+        let start_line_offset = source[..start].rfind('\n').map(|p| p + 1).unwrap_or(0);
+        let start_char = (start - start_line_offset) as u32;
+
+        let end_line = source[..end].matches('\n').count() as u32;
+        let end_line_offset = source[..end].rfind('\n').map(|p| p + 1).unwrap_or(0);
+        let end_char = (end - end_line_offset) as u32;
+
+        Range::new(
+            Position::new(start_line, start_char),
+            Position::new(end_line, end_char),
+        )
+    };
+
+    /// Frame on the tag-matching stack for open tags awaiting their close.
+    struct StackFrame {
+        tag_name: String,
+        attrs: HashMap<String, String>,
+        tag_start: usize,
+        content_start: usize,
+    }
+
+    // Find the end of a tag starting at `<`, respecting quoted attribute values
+    // that may contain `>`. Returns the byte index *after* the closing `>`.
+    let find_tag_end = |from: usize| -> Option<usize> {
+        let bytes = source.as_bytes();
+        let mut i = from;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'"' => {
+                    // Skip to closing quote
+                    i += 1;
+                    while i < bytes.len() && bytes[i] != b'"' {
+                        i += 1;
+                    }
+                }
+                b'\'' => {
+                    i += 1;
+                    while i < bytes.len() && bytes[i] != b'\'' {
+                        i += 1;
+                    }
+                }
+                b'>' => return Some(i + 1),
+                _ => {}
+            }
+            i += 1;
+        }
+        None
+    };
+
+    let mut stack: Vec<StackFrame> = Vec::new();
+    let bytes = source.as_bytes();
+    let mut pos = 0;
+
+    while pos < bytes.len() {
+        if bytes[pos] != b'<' {
+            pos += 1;
+            continue;
+        }
+
+        // We found a '<'. Determine what kind of tag it is.
+        let tag_start = pos;
+
+        // Find the end of this tag (quote-aware)
+        let tag_end = match find_tag_end(tag_start) {
+            Some(end) => end,
+            None => break, // Malformed, no closing >
+        };
+
+        let tag_str = &source[tag_start..tag_end];
+
+        // Is this a closing tag?  </name>
+        if tag_str.starts_with("</") {
+            let name_start = 2;
+            let name_end = tag_str[name_start..]
+                .find(|c: char| !c.is_alphanumeric() && c != '-' && c != ':' && c != '_')
+                .map(|p| name_start + p)
+                .unwrap_or(tag_str.len() - 1);
+            let tag_name = &tag_str[name_start..name_end];
+
+            if !tag_name.is_empty() {
+                // Walk the stack backwards to find the matching open tag
+                let mut idx = stack.len();
+                while idx > 0 {
+                    idx -= 1;
+                    if stack[idx].tag_name == tag_name {
+                        let frame = stack.remove(idx);
+                        let content_str = &source[frame.content_start..tag_start];
+                        let content = if content_str.is_empty() {
+                            None
+                        } else {
+                            Some(content_str.to_string())
+                        };
+                        let range = compute_range(frame.tag_start, tag_end);
+                        tags.push(XmlTag::new(
+                            frame.tag_name,
+                            frame.attrs,
+                            false,
+                            content,
+                            range,
+                        ));
+                        break;
+                    }
+                }
+            }
+
+            pos = tag_end;
+            continue;
+        }
+
+        // Not a closing tag — extract the tag name
+        let name_start = 1; // skip '<'
+        let name_end = tag_str[name_start..]
+            .find(|c: char| !c.is_alphanumeric() && c != '-' && c != ':' && c != '_')
+            .map(|p| name_start + p)
+            .unwrap_or(tag_str.len() - 1);
+        let tag_name = &tag_str[name_start..name_end];
+
+        if tag_name.is_empty() || !tag_name.as_bytes()[0].is_ascii_alphabetic() {
+            pos = tag_end;
+            continue;
+        }
+
+        // Extract attribute region (between tag name and closing > or />)
+        let attr_region = &tag_str[name_end..tag_str.len() - 1]; // strip trailing >
+        let is_self_closing = tag_str.ends_with("/>") || attr_region.trim_end().ends_with('/');
+        let is_void = VOID_ELEMENTS
+            .iter()
+            .any(|v| v.eq_ignore_ascii_case(tag_name));
+
+        let attrs = parse_attrs(attr_region);
+
+        if is_self_closing || is_void {
+            let range = compute_range(tag_start, tag_end);
+            tags.push(XmlTag::new(tag_name.to_string(), attrs, true, None, range));
+        } else {
+            // Regular opening tag — push onto stack
+            stack.push(StackFrame {
+                tag_name: tag_name.to_string(),
+                attrs,
+                tag_start,
+                content_start: tag_end,
+            });
+        }
+
+        pos = tag_end;
+    }
+
+    // Sort by position in source for consistent ordering
+    tags.sort_by_key(|t| {
+        let r = t.range();
+        (r.start.line, r.start.character)
+    });
+
+    tags
 }
 
 /// Simple YAML parser for frontmatter
