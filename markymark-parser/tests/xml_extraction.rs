@@ -130,7 +130,8 @@ fn extract_document_level_tags() {
 #[test]
 fn extract_html_block() {
     let mut parser = Parser::new().unwrap();
-    let markdown = "Paragraph before.\n\n<div>\n  <p>HTML block content</p>\n</div>\n\nParagraph after.\n";
+    let markdown =
+        "Paragraph before.\n\n<div>\n  <p>HTML block content</p>\n</div>\n\nParagraph after.\n";
 
     let ast = parser.parse(markdown).unwrap();
     let tags = ast.extract_xml_tags();

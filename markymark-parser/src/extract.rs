@@ -401,12 +401,10 @@ pub fn extract_xml_tags(_elements: &[Element], source: &str) -> Vec<XmlTag> {
     ];
 
     // Regex for self-closing tags: <tag ... />
-    let self_closing_re =
-        Regex::new(r#"<([a-zA-Z][a-zA-Z0-9-]*)(\s[^>]*)?\s*/>"#).unwrap();
+    let self_closing_re = Regex::new(r#"<([a-zA-Z][a-zA-Z0-9-]*)(\s[^>]*)?\s*/>"#).unwrap();
 
     // Regex for opening tags: <tag ...> (but not self-closing or closing)
-    let open_re =
-        Regex::new(r#"<([a-zA-Z][a-zA-Z0-9-]*)(\s[^>]*)?\s*>"#).unwrap();
+    let open_re = Regex::new(r#"<([a-zA-Z][a-zA-Z0-9-]*)(\s[^>]*)?\s*>"#).unwrap();
 
     // Regex for attributes: key="value"
     let attr_re = Regex::new(r#"([a-zA-Z_:][a-zA-Z0-9_.:-]*)\s*=\s*"([^"]*)""#).unwrap();
@@ -460,13 +458,7 @@ pub fn extract_xml_tags(_elements: &[Element], source: &str) -> Vec<XmlTag> {
 
         if is_void {
             let range = compute_range(full.start(), full.end());
-            tags.push(XmlTag::new(
-                tag_name.to_string(),
-                attrs,
-                true,
-                None,
-                range,
-            ));
+            tags.push(XmlTag::new(tag_name.to_string(), attrs, true, None, range));
         } else {
             // Find matching closing tag, handling nesting
             let after_open = full.end();
