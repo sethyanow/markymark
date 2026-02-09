@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::types::*;
 use markymark_core::prelude::*;
 use regex::Regex;
@@ -390,8 +392,6 @@ pub fn extract_page_properties(_elements: &[Element], source: &str) -> Option<Pr
 
 /// Extract XML/HTML tags from the document source
 pub fn extract_xml_tags(_elements: &[Element], source: &str) -> Vec<XmlTag> {
-    use std::collections::HashMap;
-
     let mut tags = Vec::new();
 
     // HTML void elements that are self-closing even without />
