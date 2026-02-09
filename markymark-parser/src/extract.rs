@@ -120,7 +120,20 @@ pub fn extract_markdown_links(_elements: &[Element], source: &str) -> Vec<Markdo
                 (url_str.to_string(), None)
             };
 
-            links.push(MarkdownLink::new(text, url, anchor, None));
+            // Calculate range: from '[' (1 before text_match) to ')' (1 after url_match)
+            let full_match = captures.get(0).unwrap();
+            let start = full_match.start();
+            let end = full_match.end();
+            let line = source[..start].matches('\n').count() as u32;
+            let line_start = source[..start].rfind('\n').map(|pos| pos + 1).unwrap_or(0);
+            let start_char = (start - line_start) as u32;
+            let end_char = start_char + (end - start) as u32;
+            let range = Range::new(
+                Position::new(line, start_char),
+                Position::new(line, end_char),
+            );
+
+            links.push(MarkdownLink::new(text, url, anchor, None, range));
         }
     }
 
@@ -129,11 +142,25 @@ pub fn extract_markdown_links(_elements: &[Element], source: &str) -> Vec<Markdo
         if let (Some(text_match), Some(ref_match)) = (captures.get(1), captures.get(2)) {
             let text = text_match.as_str().to_string();
             let reference = ref_match.as_str().to_string();
+
+            let full_match = captures.get(0).unwrap();
+            let start = full_match.start();
+            let end = full_match.end();
+            let line = source[..start].matches('\n').count() as u32;
+            let line_start = source[..start].rfind('\n').map(|pos| pos + 1).unwrap_or(0);
+            let start_char = (start - line_start) as u32;
+            let end_char = start_char + (end - start) as u32;
+            let range = Range::new(
+                Position::new(line, start_char),
+                Position::new(line, end_char),
+            );
+
             links.push(MarkdownLink::new(
                 text,
                 String::new(),
                 None,
                 Some(reference),
+                range,
             ));
         }
     }

@@ -7,7 +7,10 @@ use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::*;
 use tower_lsp_server::{Client, LanguageServer, LspService};
 
-use crate::state::ServerState;
+use crate::state::{ServerState, SymbolAtPosition};
+use markymark_core::{DocumentUri, Range as CoreRange};
+use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link, ResolvedTarget};
+use markymark_index::{DocumentIndex, OutlineNode};
 
 /// The LSP server backend.
 pub struct Backend {
@@ -103,23 +106,246 @@ impl LanguageServer for Backend {
 
     async fn goto_definition(
         &self,
-        _params: GotoDefinitionParams,
+        params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
-        Ok(None)
+        let uri_str = &params.text_document_position_params.text_document.uri;
+        let pos = params.text_document_position_params.position;
+        let core_pos = crate::convert::from_lsp_position(pos);
+
+        let state = self.state.read().await;
+        let doc_uri = match crate::convert::from_lsp_uri(uri_str) {
+            Ok(u) => u,
+            Err(_) => return Ok(None),
+        };
+
+        let symbol = match state.symbol_at_position(&doc_uri, core_pos) {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+
+        let resolved = match &symbol {
+            SymbolAtPosition::WikiLink(wl) => {
+                resolve_wiki_link(state.realm(), &doc_uri, &wl.target, wl.heading.as_deref())
+            }
+            SymbolAtPosition::MarkdownLink(ml) => {
+                // MarkdownLinkEntry stores the url with anchor appended; extract raw url
+                let raw_url = match &ml.anchor {
+                    Some(anchor) => ml
+                        .url
+                        .strip_suffix(&format!("#{}", anchor))
+                        .unwrap_or(&ml.url),
+                    None => &ml.url,
+                };
+                resolve_markdown_link(state.realm(), &doc_uri, raw_url, ml.anchor.as_deref())
+            }
+            SymbolAtPosition::Heading(_) => return Ok(None),
+        };
+
+        let resolved = match resolved {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+
+        let location = resolved_target_to_location(&state, &resolved)?;
+        match location {
+            Some(loc) => Ok(Some(GotoDefinitionResponse::Scalar(loc))),
+            None => Ok(None),
+        }
     }
 
-    async fn references(&self, _params: ReferenceParams) -> Result<Option<Vec<Location>>> {
-        Ok(None)
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        let uri_str = &params.text_document_position.text_document.uri;
+        let pos = params.text_document_position.position;
+        let core_pos = crate::convert::from_lsp_position(pos);
+
+        let state = self.state.read().await;
+        let doc_uri = match crate::convert::from_lsp_uri(uri_str) {
+            Ok(u) => u,
+            Err(_) => return Ok(None),
+        };
+
+        let symbol = match state.symbol_at_position(&doc_uri, core_pos) {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+
+        // Only headings have "references" (incoming links)
+        let heading = match symbol {
+            SymbolAtPosition::Heading(h) => h,
+            _ => return Ok(None),
+        };
+
+        let slug = &heading.slug;
+        let mut locations = Vec::new();
+
+        // Search all documents for wiki links and markdown links referencing this slug
+        for (uri, index) in iter_realm_documents(&state) {
+            for wl in index.wiki_links() {
+                if wl.heading.as_deref() == Some(slug) {
+                    if let Ok(loc) = crate::convert::to_lsp_location(uri, wl.range) {
+                        locations.push(loc);
+                    }
+                }
+            }
+            for ml in index.markdown_links() {
+                if ml.anchor.as_deref() == Some(slug) {
+                    if let Ok(loc) = crate::convert::to_lsp_location(uri, ml.range) {
+                        locations.push(loc);
+                    }
+                }
+            }
+        }
+
+        if locations.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(locations))
+        }
     }
 
-    async fn hover(&self, _params: HoverParams) -> Result<Option<Hover>> {
-        Ok(None)
+    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+        let uri_str = &params.text_document_position_params.text_document.uri;
+        let pos = params.text_document_position_params.position;
+        let core_pos = crate::convert::from_lsp_position(pos);
+
+        let state = self.state.read().await;
+        let doc_uri = match crate::convert::from_lsp_uri(uri_str) {
+            Ok(u) => u,
+            Err(_) => return Ok(None),
+        };
+
+        let symbol = match state.symbol_at_position(&doc_uri, core_pos) {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+
+        let markdown = match &symbol {
+            SymbolAtPosition::Heading(h) => {
+                let prefix = "#".repeat(h.level as usize);
+                format!("{} {}\n\nHeading (level {})", prefix, h.text, h.level)
+            }
+            SymbolAtPosition::WikiLink(wl) => {
+                let resolved =
+                    resolve_wiki_link(state.realm(), &doc_uri, &wl.target, wl.heading.as_deref());
+                match resolved {
+                    Some(ResolvedTarget::Document(uri)) => {
+                        format!("Wiki link to **{}**", uri.as_str())
+                    }
+                    Some(ResolvedTarget::Heading { uri, text, .. }) => {
+                        format!("Wiki link to heading **{}** in {}", text, uri.as_str())
+                    }
+                    Some(ResolvedTarget::Block { uri, id }) => {
+                        format!("Wiki link to block `{}` in {}", id, uri.as_str())
+                    }
+                    None => {
+                        format!("Wiki link to **{}** (unresolved)", wl.target)
+                    }
+                }
+            }
+            SymbolAtPosition::MarkdownLink(ml) => {
+                format!("Markdown link: [{}]({})", ml.text, ml.url)
+            }
+        };
+
+        Ok(Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: markdown,
+            }),
+            range: None,
+        }))
     }
 
     async fn document_symbol(
         &self,
-        _params: DocumentSymbolParams,
+        params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
-        Ok(None)
+        let uri_str = &params.text_document.uri;
+
+        let state = self.state.read().await;
+        let doc_uri = match crate::convert::from_lsp_uri(uri_str) {
+            Ok(u) => u,
+            Err(_) => return Ok(None),
+        };
+
+        let index = match state.get_document_index(&doc_uri) {
+            Some(idx) => idx,
+            None => return Ok(None),
+        };
+
+        let outline = index.outline();
+        let symbols = outline_children_to_symbols(&outline.children);
+
+        if symbols.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(DocumentSymbolResponse::Nested(symbols)))
+        }
     }
+}
+
+/// Convert a `ResolvedTarget` to an `ls_types::Location`, looking up heading/block ranges.
+fn resolved_target_to_location(
+    state: &ServerState,
+    target: &ResolvedTarget,
+) -> Result<Option<Location>> {
+    let zero_range = CoreRange::new(
+        markymark_core::Position::new(0, 0),
+        markymark_core::Position::new(0, 0),
+    );
+
+    match target {
+        ResolvedTarget::Document(uri) => crate::convert::to_lsp_location(uri, zero_range)
+            .map(Some)
+            .map_err(|_| tower_lsp_server::jsonrpc::Error::internal_error()),
+        ResolvedTarget::Heading { uri, slug, .. } => {
+            let range = state
+                .get_document_index(uri)
+                .and_then(|idx| idx.heading_by_slug(slug))
+                .map(|h| h.range)
+                .unwrap_or(zero_range);
+            crate::convert::to_lsp_location(uri, range)
+                .map(Some)
+                .map_err(|_| tower_lsp_server::jsonrpc::Error::internal_error())
+        }
+        ResolvedTarget::Block { uri, id } => {
+            let range = state
+                .get_document_index(uri)
+                .and_then(|idx| idx.block_by_id(id))
+                .map(|b| b.range)
+                .unwrap_or(zero_range);
+            crate::convert::to_lsp_location(uri, range)
+                .map(Some)
+                .map_err(|_| tower_lsp_server::jsonrpc::Error::internal_error())
+        }
+    }
+}
+
+/// Iterate over all `(DocumentUri, DocumentIndex)` pairs in the realm.
+fn iter_realm_documents(
+    state: &ServerState,
+) -> impl Iterator<Item = (&DocumentUri, &DocumentIndex)> {
+    state.realm().iter_documents()
+}
+
+/// Convert outline children to `DocumentSymbol` entries.
+fn outline_children_to_symbols(children: &[OutlineNode]) -> Vec<DocumentSymbol> {
+    children
+        .iter()
+        .filter_map(|node| {
+            let heading = node.heading.as_ref()?;
+            let range = crate::convert::to_lsp_range(heading.range);
+            #[allow(deprecated)]
+            Some(DocumentSymbol {
+                name: heading.text.clone(),
+                detail: None,
+                kind: SymbolKind::STRING,
+                tags: None,
+                deprecated: None,
+                range,
+                selection_range: range,
+                children: Some(outline_children_to_symbols(&node.children)),
+            })
+        })
+        .collect()
 }

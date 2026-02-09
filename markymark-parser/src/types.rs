@@ -314,6 +314,7 @@ pub struct MarkdownLink {
     url: String,
     anchor: Option<String>,
     reference: Option<String>,
+    range: Range,
 }
 
 impl MarkdownLink {
@@ -323,12 +324,14 @@ impl MarkdownLink {
         url: String,
         anchor: Option<String>,
         reference: Option<String>,
+        range: Range,
     ) -> Self {
         Self {
             text,
             url,
             anchor,
             reference,
+            range,
         }
     }
 
@@ -350,6 +353,11 @@ impl MarkdownLink {
     /// Get reference
     pub fn reference(&self) -> Option<&str> {
         self.reference.as_deref()
+    }
+
+    /// Get range
+    pub fn range(&self) -> Range {
+        self.range
     }
 }
 

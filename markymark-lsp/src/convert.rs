@@ -34,3 +34,9 @@ pub fn to_lsp_uri(uri: &DocumentUri) -> Result<ls_types::Uri, String> {
         .parse::<ls_types::Uri>()
         .map_err(|e| e.to_string())
 }
+
+/// Build an `ls_types::Location` from a `DocumentUri` and a `Range`.
+pub fn to_lsp_location(uri: &DocumentUri, range: Range) -> Result<ls_types::Location, String> {
+    let lsp_uri = to_lsp_uri(uri)?;
+    Ok(ls_types::Location::new(lsp_uri, to_lsp_range(range)))
+}

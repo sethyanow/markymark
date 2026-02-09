@@ -80,6 +80,11 @@ impl RealmIndex {
         self.docs.get(uri.as_str()).map(|(_uri, index)| index)
     }
 
+    /// Iterate over all documents in the realm as `(uri, index)` pairs.
+    pub fn iter_documents(&self) -> impl Iterator<Item = (&DocumentUri, &DocumentIndex)> {
+        self.docs.values().map(|(uri, index)| (uri, index))
+    }
+
     /// Find a document URI by matching its file stem against a target name
     /// (case-insensitive). Used by the resolution module.
     pub(crate) fn find_uri_by_stem(&self, target: &str) -> Option<DocumentUri> {

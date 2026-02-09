@@ -2,9 +2,20 @@
 
 use std::collections::HashMap;
 
-use markymark_core::DocumentUri;
-use markymark_index::{DocumentIndex, RealmIndex};
+use markymark_core::{DocumentUri, Position};
+use markymark_index::{DocumentIndex, HeadingEntry, MarkdownLinkEntry, RealmIndex, WikiLinkEntry};
 use markymark_parser::Parser;
+
+/// Describes what symbol (if any) the cursor is sitting on.
+#[derive(Debug, Clone)]
+pub enum SymbolAtPosition {
+    /// A heading line.
+    Heading(HeadingEntry),
+    /// A wiki link.
+    WikiLink(WikiLinkEntry),
+    /// A markdown link.
+    MarkdownLink(MarkdownLinkEntry),
+}
 
 /// The internal state of the LSP server.
 ///
@@ -69,5 +80,33 @@ impl ServerState {
     /// Get the number of open documents.
     pub fn document_count(&self) -> usize {
         self.documents.len()
+    }
+
+    /// Identify what element the cursor is on.
+    pub fn symbol_at_position(&self, uri: &DocumentUri, pos: Position) -> Option<SymbolAtPosition> {
+        let index = self.realm.get_document(uri)?;
+
+        // Check wiki links first (most specific)
+        for wl in index.wiki_links() {
+            if wl.range.contains(pos) {
+                return Some(SymbolAtPosition::WikiLink(wl.clone()));
+            }
+        }
+
+        // Check markdown links
+        for ml in index.markdown_links() {
+            if ml.range.contains(pos) {
+                return Some(SymbolAtPosition::MarkdownLink(ml.clone()));
+            }
+        }
+
+        // Check headings
+        for h in index.headings() {
+            if h.range.contains(pos) {
+                return Some(SymbolAtPosition::Heading(h.clone()));
+            }
+        }
+
+        None
     }
 }

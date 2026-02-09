@@ -77,6 +77,8 @@ pub struct MarkdownLinkEntry {
     pub url: String,
     /// Optional anchor/fragment.
     pub anchor: Option<String>,
+    /// Source range.
+    pub range: Range,
 }
 
 /// Convert heading text to a URL-safe slug.
@@ -216,6 +218,7 @@ impl DocumentIndex {
                     text: ml.text().to_string(),
                     url,
                     anchor: ml.anchor().map(|s| s.to_string()),
+                    range: ml.range(),
                 }
             })
             .collect();
