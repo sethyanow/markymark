@@ -1661,3 +1661,586 @@ mod workspace_symbol_tests {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Completion tests (Phase: textDocument/completion handler — feature-009)
+// ---------------------------------------------------------------------------
+
+mod completion_context_tests {
+    use markymark_core::{DocumentUri, Position};
+    use markymark_lsp::state::{CompletionContext, ServerState};
+
+    #[test]
+    fn test_detect_completion_context_wiki_link() {
+        // Text ending with `[[no` should detect WikiLink context with partial "no".
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+        state.open_document(uri.clone(), "Check [[no".to_string());
+
+        let ctx = state.detect_completion_context(&uri, Position::new(0, 10));
+        assert_eq!(
+            ctx,
+            Some(CompletionContext::WikiLink {
+                partial: "no".to_string()
+            }),
+            "should detect wiki link context with partial 'no'"
+        );
+    }
+
+    #[test]
+    fn test_detect_completion_context_wiki_link_empty() {
+        // Text ending with `[[` should detect WikiLink context with empty partial.
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+        state.open_document(uri.clone(), "Check [[".to_string());
+
+        let ctx = state.detect_completion_context(&uri, Position::new(0, 8));
+        assert_eq!(
+            ctx,
+            Some(CompletionContext::WikiLink {
+                partial: String::new()
+            }),
+            "should detect wiki link context with empty partial"
+        );
+    }
+
+    #[test]
+    fn test_detect_completion_context_wiki_link_heading() {
+        // Text `[[MyPage#int` should detect WikiLinkHeading context.
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+        state.open_document(uri.clone(), "See [[MyPage#int".to_string());
+
+        let ctx = state.detect_completion_context(&uri, Position::new(0, 16));
+        assert_eq!(
+            ctx,
+            Some(CompletionContext::WikiLinkHeading {
+                target: "MyPage".to_string(),
+                partial: "int".to_string(),
+            }),
+            "should detect wiki link heading context"
+        );
+    }
+
+    #[test]
+    fn test_detect_completion_context_tag() {
+        // Text `Tags: #pro` should detect Tag context (not inside [[).
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+        state.open_document(uri.clone(), "Tags: #pro".to_string());
+
+        let ctx = state.detect_completion_context(&uri, Position::new(0, 10));
+        assert_eq!(
+            ctx,
+            Some(CompletionContext::Tag {
+                partial: "pro".to_string()
+            }),
+            "should detect tag context with partial 'pro'"
+        );
+    }
+
+    #[test]
+    fn test_detect_completion_context_block_ref() {
+        // Text `Ref ((abc` should detect BlockRef context.
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+        state.open_document(uri.clone(), "Ref ((abc".to_string());
+
+        let ctx = state.detect_completion_context(&uri, Position::new(0, 9));
+        assert_eq!(
+            ctx,
+            Some(CompletionContext::BlockRef {
+                partial: "abc".to_string()
+            }),
+            "should detect block ref context with partial 'abc'"
+        );
+    }
+
+    #[test]
+    fn test_detect_completion_context_none() {
+        // Plain text with no trigger characters should return None.
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+        state.open_document(uri.clone(), "Hello world".to_string());
+
+        let ctx = state.detect_completion_context(&uri, Position::new(0, 11));
+        assert_eq!(
+            ctx, None,
+            "plain text should not trigger any completion context"
+        );
+    }
+}
+
+mod completion_result_tests {
+    use markymark_core::{DocumentUri, Position};
+    use markymark_lsp::state::{CompletionCandidateKind, ServerState};
+
+    #[test]
+    fn test_wiki_link_completion_returns_page_names() {
+        // Open 3 documents, complete inside `[[` → returns all 3 page names.
+        let mut state = ServerState::new();
+        let uri_notes = DocumentUri::new("file:///test/notes.md").unwrap();
+        let uri_readme = DocumentUri::new("file:///test/readme.md").unwrap();
+        let uri_todo = DocumentUri::new("file:///test/todo.md").unwrap();
+        let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
+
+        state.open_document(uri_notes, "# Notes\n".to_string());
+        state.open_document(uri_readme, "# Readme\n".to_string());
+        state.open_document(uri_todo, "# Todo\n".to_string());
+        // The editing document triggers completion
+        state.open_document(uri_editor.clone(), "Link to [[".to_string());
+
+        let candidates = state.completion_at(&uri_editor, Position::new(0, 10));
+        assert!(
+            !candidates.is_empty(),
+            "wiki link completion should return page names"
+        );
+
+        let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+        assert!(
+            labels.contains(&"notes"),
+            "should include 'notes' in completions; got: {:?}",
+            labels
+        );
+        assert!(
+            labels.contains(&"readme"),
+            "should include 'readme' in completions; got: {:?}",
+            labels
+        );
+        assert!(
+            labels.contains(&"todo"),
+            "should include 'todo' in completions; got: {:?}",
+            labels
+        );
+
+        // All should be Page kind
+        assert!(
+            candidates
+                .iter()
+                .all(|c| c.kind == CompletionCandidateKind::Page),
+            "all wiki link completions should be Page kind"
+        );
+    }
+
+    #[test]
+    fn test_wiki_link_completion_filters_by_partial() {
+        // Open 3 documents, complete `[[no` → returns only "notes".
+        let mut state = ServerState::new();
+        let uri_notes = DocumentUri::new("file:///test/notes.md").unwrap();
+        let uri_readme = DocumentUri::new("file:///test/readme.md").unwrap();
+        let uri_todo = DocumentUri::new("file:///test/todo.md").unwrap();
+        let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
+
+        state.open_document(uri_notes, "# Notes\n".to_string());
+        state.open_document(uri_readme, "# Readme\n".to_string());
+        state.open_document(uri_todo, "# Todo\n".to_string());
+        state.open_document(uri_editor.clone(), "Link to [[no".to_string());
+
+        let candidates = state.completion_at(&uri_editor, Position::new(0, 12));
+        assert!(
+            !candidates.is_empty(),
+            "wiki link completion with partial 'no' should return matches"
+        );
+
+        let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+        assert!(
+            labels.contains(&"notes"),
+            "should include 'notes'; got: {:?}",
+            labels
+        );
+        assert!(
+            !labels.contains(&"readme"),
+            "should NOT include 'readme'; got: {:?}",
+            labels
+        );
+        assert!(
+            !labels.contains(&"todo"),
+            "should NOT include 'todo'; got: {:?}",
+            labels
+        );
+    }
+
+    #[test]
+    fn test_heading_completion_returns_target_headings() {
+        // Open a target document with headings, complete `[[target#` → returns headings.
+        let mut state = ServerState::new();
+        let uri_target = DocumentUri::new("file:///test/target.md").unwrap();
+        let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
+
+        state.open_document(
+            uri_target,
+            "# Introduction\n\n## Getting Started\n\n## Advanced Topics\n".to_string(),
+        );
+        state.open_document(uri_editor.clone(), "See [[target#".to_string());
+
+        let candidates = state.completion_at(&uri_editor, Position::new(0, 13));
+        assert!(
+            !candidates.is_empty(),
+            "heading completion should return headings from target document"
+        );
+
+        let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+        assert!(
+            labels.contains(&"Introduction"),
+            "should include 'Introduction'; got: {:?}",
+            labels
+        );
+        assert!(
+            labels.contains(&"Getting Started"),
+            "should include 'Getting Started'; got: {:?}",
+            labels
+        );
+        assert!(
+            labels.contains(&"Advanced Topics"),
+            "should include 'Advanced Topics'; got: {:?}",
+            labels
+        );
+
+        // All should be Heading kind
+        assert!(
+            candidates
+                .iter()
+                .all(|c| c.kind == CompletionCandidateKind::Heading),
+            "all heading completions should be Heading kind"
+        );
+    }
+
+    #[test]
+    fn test_heading_completion_filters_by_partial() {
+        // Complete `[[target#int` → returns only headings containing "int".
+        let mut state = ServerState::new();
+        let uri_target = DocumentUri::new("file:///test/target.md").unwrap();
+        let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
+
+        state.open_document(
+            uri_target,
+            "# Introduction\n\n## Getting Started\n\n## Advanced Topics\n".to_string(),
+        );
+        state.open_document(uri_editor.clone(), "See [[target#int".to_string());
+
+        let candidates = state.completion_at(&uri_editor, Position::new(0, 16));
+        assert!(
+            !candidates.is_empty(),
+            "heading completion with partial 'int' should return matches"
+        );
+
+        let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+        assert!(
+            labels.iter().any(|l| l.to_lowercase().contains("int")),
+            "should include heading matching 'int'; got: {:?}",
+            labels
+        );
+        assert!(
+            !labels.contains(&"Getting Started"),
+            "should NOT include 'Getting Started'; got: {:?}",
+            labels
+        );
+    }
+
+    #[test]
+    fn test_tag_completion_returns_tags() {
+        // Open a document with tags, complete `#` → returns available tags.
+        let mut state = ServerState::new();
+        let uri_source = DocumentUri::new("file:///test/source.md").unwrap();
+        let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
+
+        state.open_document(
+            uri_source,
+            "Some text with #rust and #programming tags.\n".to_string(),
+        );
+        state.open_document(uri_editor.clone(), "Tags: #".to_string());
+
+        let candidates = state.completion_at(&uri_editor, Position::new(0, 7));
+        assert!(
+            !candidates.is_empty(),
+            "tag completion should return available tags"
+        );
+
+        let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+        assert!(
+            labels.contains(&"rust"),
+            "should include 'rust'; got: {:?}",
+            labels
+        );
+        assert!(
+            labels.contains(&"programming"),
+            "should include 'programming'; got: {:?}",
+            labels
+        );
+
+        // All should be Tag kind
+        assert!(
+            candidates
+                .iter()
+                .all(|c| c.kind == CompletionCandidateKind::Tag),
+            "all tag completions should be Tag kind"
+        );
+    }
+
+    #[test]
+    fn test_tag_completion_filters_by_partial() {
+        // Complete `#pro` → returns only matching tags.
+        let mut state = ServerState::new();
+        let uri_source = DocumentUri::new("file:///test/source.md").unwrap();
+        let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
+
+        state.open_document(
+            uri_source,
+            "Some text with #rust and #programming tags.\n".to_string(),
+        );
+        state.open_document(uri_editor.clone(), "Tags: #pro".to_string());
+
+        let candidates = state.completion_at(&uri_editor, Position::new(0, 10));
+        assert!(
+            !candidates.is_empty(),
+            "tag completion with partial 'pro' should return matches"
+        );
+
+        let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+        assert!(
+            labels.contains(&"programming"),
+            "should include 'programming'; got: {:?}",
+            labels
+        );
+        assert!(
+            !labels.contains(&"rust"),
+            "should NOT include 'rust'; got: {:?}",
+            labels
+        );
+    }
+
+    #[test]
+    fn test_block_ref_completion_returns_block_ids() {
+        // Open a document with block IDs, complete `((` → returns block IDs.
+        let mut state = ServerState::new();
+        let uri_source = DocumentUri::new("file:///test/source.md").unwrap();
+        let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
+
+        state.open_document(
+            uri_source,
+            "Some paragraph ^abc123\n\nAnother paragraph ^def456\n".to_string(),
+        );
+        state.open_document(uri_editor.clone(), "Ref ((".to_string());
+
+        let candidates = state.completion_at(&uri_editor, Position::new(0, 6));
+        assert!(
+            !candidates.is_empty(),
+            "block ref completion should return block IDs"
+        );
+
+        let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+        assert!(
+            labels.contains(&"abc123"),
+            "should include 'abc123'; got: {:?}",
+            labels
+        );
+        assert!(
+            labels.contains(&"def456"),
+            "should include 'def456'; got: {:?}",
+            labels
+        );
+
+        // All should be BlockRef kind
+        assert!(
+            candidates
+                .iter()
+                .all(|c| c.kind == CompletionCandidateKind::BlockRef),
+            "all block ref completions should be BlockRef kind"
+        );
+    }
+
+    #[test]
+    fn test_block_ref_completion_filters_by_partial() {
+        // Complete `((ab` → returns only matching block IDs.
+        let mut state = ServerState::new();
+        let uri_source = DocumentUri::new("file:///test/source.md").unwrap();
+        let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
+
+        state.open_document(
+            uri_source,
+            "Some paragraph ^abc123\n\nAnother paragraph ^def456\n".to_string(),
+        );
+        state.open_document(uri_editor.clone(), "Ref ((ab".to_string());
+
+        let candidates = state.completion_at(&uri_editor, Position::new(0, 8));
+        assert!(
+            !candidates.is_empty(),
+            "block ref completion with partial 'ab' should return matches"
+        );
+
+        let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+        assert!(
+            labels.contains(&"abc123"),
+            "should include 'abc123'; got: {:?}",
+            labels
+        );
+        assert!(
+            !labels.contains(&"def456"),
+            "should NOT include 'def456'; got: {:?}",
+            labels
+        );
+    }
+}
+
+mod completion_capability_tests {
+    use markymark_lsp::server::create_service;
+    use tower_lsp_server::ls_types::*;
+    use tower_lsp_server::LanguageServer;
+
+    #[tokio::test]
+    async fn test_capabilities_completion_provider() {
+        // Verify ServerCapabilities includes completion_provider.
+        let (service, _socket) = create_service();
+        let backend = service.inner();
+        let result = backend
+            .initialize(InitializeParams::default())
+            .await
+            .expect("initialize should succeed");
+        let caps = result.capabilities;
+
+        assert!(
+            caps.completion_provider.is_some(),
+            "server should declare completion provider capability"
+        );
+    }
+}
+
+mod completion_acceptance_tests {
+    use markymark_core::{DocumentUri, Position};
+    use markymark_lsp::state::ServerState;
+
+    #[test]
+    fn test_acceptance_completion_updates_after_document_change() {
+        // Open a doc, get heading completions, change doc (add heading),
+        // get completions again → new heading appears.
+        let mut state = ServerState::new();
+        let uri_target = DocumentUri::new("file:///test/target.md").unwrap();
+        let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
+
+        state.open_document(uri_target.clone(), "# Original Heading\n".to_string());
+        state.open_document(uri_editor.clone(), "See [[target#".to_string());
+
+        // First completion: should include "Original Heading"
+        let candidates = state.completion_at(&uri_editor, Position::new(0, 13));
+        assert!(
+            !candidates.is_empty(),
+            "should return heading completions from target document"
+        );
+        let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+        assert!(
+            labels.contains(&"Original Heading"),
+            "should include 'Original Heading'; got: {:?}",
+            labels
+        );
+
+        // Change the target document: add a new heading
+        state.change_document(
+            &uri_target,
+            "# Original Heading\n\n## Added Later\n".to_string(),
+        );
+
+        // Second completion: should now include both headings
+        let candidates = state.completion_at(&uri_editor, Position::new(0, 13));
+        let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+        assert!(
+            labels.contains(&"Original Heading"),
+            "should still include 'Original Heading'; got: {:?}",
+            labels
+        );
+        assert!(
+            labels.contains(&"Added Later"),
+            "should include newly added 'Added Later'; got: {:?}",
+            labels
+        );
+    }
+
+    #[test]
+    fn test_acceptance_wiki_link_completion_excludes_current_document() {
+        // Wiki link completion should NOT suggest the current document.
+        // You shouldn't get a suggestion to link to yourself.
+        let mut state = ServerState::new();
+        let uri_a = DocumentUri::new("file:///test/alpha.md").unwrap();
+        let uri_b = DocumentUri::new("file:///test/beta.md").unwrap();
+
+        state.open_document(uri_a.clone(), "# Alpha\n\nLink: [[".to_string());
+        state.open_document(uri_b, "# Beta\n".to_string());
+
+        let candidates = state.completion_at(&uri_a, Position::new(2, 8));
+        let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+
+        assert!(
+            labels.contains(&"beta"),
+            "should include 'beta' from the other document; got: {:?}",
+            labels
+        );
+        assert!(
+            !labels.contains(&"alpha"),
+            "should NOT include 'alpha' (current document) in its own completions; got: {:?}",
+            labels
+        );
+    }
+
+    #[test]
+    fn test_acceptance_tag_not_triggered_inside_wiki_link() {
+        // A `#` inside `[[Page#heading` should be detected as WikiLinkHeading,
+        // NOT as a Tag context. The wiki link context takes priority.
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+        state.open_document(uri.clone(), "See [[Page#heading".to_string());
+
+        let ctx = state.detect_completion_context(&uri, Position::new(0, 18));
+        assert_eq!(
+            ctx,
+            Some(markymark_lsp::state::CompletionContext::WikiLinkHeading {
+                target: "Page".to_string(),
+                partial: "heading".to_string(),
+            }),
+            "# inside [[ should be WikiLinkHeading, not Tag"
+        );
+    }
+
+    #[test]
+    fn test_acceptance_closed_document_removed_from_completions() {
+        // Open 2 docs, verify wiki link completion returns both,
+        // close one, verify it no longer appears in completions.
+        let mut state = ServerState::new();
+        let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
+        let uri_keep = DocumentUri::new("file:///test/keep.md").unwrap();
+        let uri_close = DocumentUri::new("file:///test/close-me.md").unwrap();
+
+        state.open_document(uri_editor.clone(), "Link: [[".to_string());
+        state.open_document(uri_keep.clone(), "# Keep\n".to_string());
+        state.open_document(uri_close.clone(), "# Close Me\n".to_string());
+
+        // Both should appear initially
+        let candidates = state.completion_at(&uri_editor, Position::new(0, 8));
+        let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+        assert!(
+            labels.contains(&"keep"),
+            "should include 'keep' initially; got: {:?}",
+            labels
+        );
+        assert!(
+            labels.contains(&"close-me"),
+            "should include 'close-me' initially; got: {:?}",
+            labels
+        );
+
+        // Close one document
+        state.close_document(&uri_close);
+
+        // Only 'keep' should remain
+        let candidates = state.completion_at(&uri_editor, Position::new(0, 8));
+        let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+        assert!(
+            labels.contains(&"keep"),
+            "should still include 'keep' after close; got: {:?}",
+            labels
+        );
+        assert!(
+            !labels.contains(&"close-me"),
+            "should NOT include 'close-me' after close; got: {:?}",
+            labels
+        );
+    }
+}

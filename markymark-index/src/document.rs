@@ -276,6 +276,11 @@ impl DocumentIndex {
     pub fn markdown_links(&self) -> &[MarkdownLinkEntry] {
         &self.markdown_links
     }
+
+    /// Get all block IDs in this document.
+    pub fn block_ids(&self) -> impl Iterator<Item = &str> {
+        self.blocks.keys().map(|s| s.as_str())
+    }
 }
 
 /// Build flat TOC entries with depth calculation.

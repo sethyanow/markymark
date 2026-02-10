@@ -65,6 +65,14 @@ impl LanguageServer for Backend {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 workspace_symbol_provider: Some(OneOf::Left(true)),
+                completion_provider: Some(CompletionOptions {
+                    trigger_characters: Some(vec![
+                        "[".to_string(),
+                        "#".to_string(),
+                        "(".to_string(),
+                    ]),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             ..Default::default()
@@ -282,6 +290,40 @@ impl LanguageServer for Backend {
         } else {
             Ok(Some(DocumentSymbolResponse::Nested(symbols)))
         }
+    }
+
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let uri_str = &params.text_document_position.text_document.uri;
+        let pos = params.text_document_position.position;
+        let core_pos = crate::convert::from_lsp_position(pos);
+
+        let state = self.state.read().await;
+        let doc_uri = match crate::convert::from_lsp_uri(uri_str) {
+            Ok(u) => u,
+            Err(_) => return Ok(None),
+        };
+
+        let candidates = state.completion_at(&doc_uri, core_pos);
+        if candidates.is_empty() {
+            return Ok(None);
+        }
+
+        let items: Vec<CompletionItem> = candidates
+            .into_iter()
+            .map(|c| CompletionItem {
+                label: c.label,
+                kind: Some(match c.kind {
+                    crate::state::CompletionCandidateKind::Page => CompletionItemKind::FILE,
+                    crate::state::CompletionCandidateKind::Heading => CompletionItemKind::REFERENCE,
+                    crate::state::CompletionCandidateKind::Tag => CompletionItemKind::KEYWORD,
+                    crate::state::CompletionCandidateKind::BlockRef => CompletionItemKind::SNIPPET,
+                }),
+                detail: c.detail,
+                ..Default::default()
+            })
+            .collect();
+
+        Ok(Some(CompletionResponse::Array(items)))
     }
 
     async fn symbol(
