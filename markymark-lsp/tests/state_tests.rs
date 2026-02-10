@@ -1,0 +1,111 @@
+//! Tests for server state management (document lifecycle).
+
+use markymark_core::DocumentUri;
+use markymark_lsp::state::ServerState;
+
+#[test]
+fn test_state_new_is_empty() {
+    let state = ServerState::new();
+    assert_eq!(state.document_count(), 0);
+}
+
+#[test]
+fn test_state_open_document() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Hello\n\nWorld".to_string());
+
+    assert_eq!(state.document_count(), 1);
+    assert_eq!(state.get_document_text(&uri), Some("# Hello\n\nWorld"));
+}
+
+#[test]
+fn test_state_open_document_creates_index() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Title\n\n## Section".to_string());
+
+    let index = state.get_document_index(&uri);
+    assert!(index.is_some(), "opening a document should create an index");
+    let index = index.unwrap();
+    assert_eq!(index.headings().len(), 2);
+    assert_eq!(index.headings()[0].text, "Title");
+    assert_eq!(index.headings()[1].text, "Section");
+}
+
+#[test]
+fn test_state_change_document() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Old Title".to_string());
+
+    state.change_document(&uri, "# New Title\n\n## Added".to_string());
+
+    assert_eq!(
+        state.get_document_text(&uri),
+        Some("# New Title\n\n## Added")
+    );
+    let index = state.get_document_index(&uri).unwrap();
+    assert_eq!(index.headings().len(), 2);
+    assert_eq!(index.headings()[0].text, "New Title");
+}
+
+#[test]
+fn test_state_close_document() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Hello".to_string());
+    assert_eq!(state.document_count(), 1);
+
+    state.close_document(&uri);
+    assert_eq!(state.document_count(), 0);
+    assert!(state.get_document_text(&uri).is_none());
+    assert!(state.get_document_index(&uri).is_none());
+}
+
+#[test]
+fn test_state_multiple_documents() {
+    let mut state = ServerState::new();
+    let uri_a = DocumentUri::new("file:///test/a.md").unwrap();
+    let uri_b = DocumentUri::new("file:///test/b.md").unwrap();
+
+    state.open_document(uri_a.clone(), "# Doc A".to_string());
+    state.open_document(uri_b.clone(), "# Doc B".to_string());
+
+    assert_eq!(state.document_count(), 2);
+    assert_eq!(state.get_document_text(&uri_a), Some("# Doc A"));
+    assert_eq!(state.get_document_text(&uri_b), Some("# Doc B"));
+}
+
+#[test]
+fn test_state_realm_cross_document_lookup() {
+    let mut state = ServerState::new();
+    let uri_a = DocumentUri::new("file:///test/a.md").unwrap();
+    let uri_b = DocumentUri::new("file:///test/b.md").unwrap();
+
+    state.open_document(uri_a.clone(), "# Shared Heading".to_string());
+    state.open_document(uri_b.clone(), "# Other\n\n## Shared Heading".to_string());
+
+    let results = state.realm().lookup_heading("shared-heading");
+    assert_eq!(
+        results.len(),
+        2,
+        "heading should be found in both documents"
+    );
+}
+
+#[test]
+fn test_state_wiki_links_indexed() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(
+        uri.clone(),
+        "See [[other-page]] and [[another]]".to_string(),
+    );
+
+    let index = state.get_document_index(&uri).unwrap();
+    let links = index.wiki_links();
+    assert_eq!(links.len(), 2);
+    assert_eq!(links[0].target, "other-page");
+    assert_eq!(links[1].target, "another");
+}
