@@ -11,6 +11,7 @@ use crate::state::{ServerState, SymbolAtPosition};
 use markymark_core::{DocumentUri, Range as CoreRange};
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link, ResolvedTarget};
 use markymark_index::{DocumentIndex, OutlineNode};
+use std::collections::HashMap;
 
 /// The LSP server backend.
 pub struct Backend {
@@ -65,6 +66,10 @@ impl LanguageServer for Backend {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 workspace_symbol_provider: Some(OneOf::Left(true)),
+                rename_provider: Some(OneOf::Right(RenameOptions {
+                    prepare_provider: Some(true),
+                    work_done_progress_options: Default::default(),
+                })),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(vec![
                         "[".to_string(),
@@ -324,6 +329,67 @@ impl LanguageServer for Backend {
             .collect();
 
         Ok(Some(CompletionResponse::Array(items)))
+    }
+
+    async fn prepare_rename(
+        &self,
+        params: TextDocumentPositionParams,
+    ) -> Result<Option<PrepareRenameResponse>> {
+        let uri_str = &params.text_document.uri;
+        let pos = params.position;
+        let core_pos = crate::convert::from_lsp_position(pos);
+
+        let state = self.state.read().await;
+        let doc_uri = match crate::convert::from_lsp_uri(uri_str) {
+            Ok(u) => u,
+            Err(_) => return Ok(None),
+        };
+
+        let result = match state.prepare_rename_at(&doc_uri, core_pos) {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+
+        Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
+            range: crate::convert::to_lsp_range(result.range),
+            placeholder: result.placeholder,
+        }))
+    }
+
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let uri_str = &params.text_document_position.text_document.uri;
+        let pos = params.text_document_position.position;
+        let core_pos = crate::convert::from_lsp_position(pos);
+        let new_name = &params.new_name;
+
+        let state = self.state.read().await;
+        let doc_uri = match crate::convert::from_lsp_uri(uri_str) {
+            Ok(u) => u,
+            Err(_) => return Ok(None),
+        };
+
+        let edits = match state.rename_at(&doc_uri, core_pos, new_name) {
+            Some(e) => e,
+            None => return Ok(None),
+        };
+
+        // Group edits by URI
+        let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
+        for edit in edits {
+            let lsp_uri = match crate::convert::to_lsp_uri(&edit.uri) {
+                Ok(u) => u,
+                Err(_) => continue,
+            };
+            changes.entry(lsp_uri).or_default().push(TextEdit {
+                range: crate::convert::to_lsp_range(edit.range),
+                new_text: edit.new_text,
+            });
+        }
+
+        Ok(Some(WorkspaceEdit {
+            changes: Some(changes),
+            ..Default::default()
+        }))
     }
 
     async fn symbol(

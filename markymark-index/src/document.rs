@@ -82,7 +82,7 @@ pub struct MarkdownLinkEntry {
 }
 
 /// Convert heading text to a URL-safe slug.
-fn slugify(text: &str) -> String {
+pub fn slugify(text: &str) -> String {
     let lower = text.to_lowercase();
     let mut slug = String::with_capacity(lower.len());
 
