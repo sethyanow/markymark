@@ -7,7 +7,7 @@ use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::*;
 use tower_lsp_server::{Client, LanguageServer, LspService};
 
-use crate::state::{ServerState, SymbolAtPosition};
+use crate::state::{DiagnosticSeverity as MarkyDiagSeverity, ServerState, SymbolAtPosition};
 use markymark_core::{DocumentUri, Range as CoreRange};
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link, ResolvedTarget};
 use markymark_index::{DocumentIndex, OutlineNode};
@@ -16,7 +16,6 @@ use std::collections::HashMap;
 /// The LSP server backend.
 pub struct Backend {
     /// The tower-lsp client for sending notifications.
-    #[allow(dead_code)]
     client: Client,
     /// Shared server state behind a read-write lock.
     state: Arc<RwLock<ServerState>>,
@@ -42,6 +41,36 @@ impl Backend {
     /// Get a reference to the shared state (for testing).
     pub fn state(&self) -> &Arc<RwLock<ServerState>> {
         &self.state
+    }
+
+    /// Compute and publish diagnostics for a document.
+    ///
+    /// Acquires a read lock on state, computes diagnostics, drops the lock,
+    /// then sends the diagnostics notification to the client.
+    async fn publish_diagnostics_for(&self, lsp_uri: Uri, doc_uri: &DocumentUri) {
+        let diagnostics = {
+            let state = self.state.read().await;
+            state.compute_diagnostics(doc_uri)
+        };
+        // Lock is dropped before the async client call (deadlock prevention)
+
+        let lsp_diagnostics: Vec<Diagnostic> = diagnostics
+            .into_iter()
+            .map(|d| Diagnostic {
+                range: crate::convert::to_lsp_range(d.range),
+                severity: Some(match d.severity {
+                    MarkyDiagSeverity::Error => DiagnosticSeverity::ERROR,
+                    MarkyDiagSeverity::Warning => DiagnosticSeverity::WARNING,
+                }),
+                source: Some("markymark".to_string()),
+                message: d.message,
+                ..Default::default()
+            })
+            .collect();
+
+        self.client
+            .publish_diagnostics(lsp_uri, lsp_diagnostics, None)
+            .await;
     }
 }
 
@@ -95,8 +124,11 @@ impl LanguageServer for Backend {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri_str = params.text_document.uri;
         if let Ok(doc_uri) = crate::convert::from_lsp_uri(&uri_str) {
-            let mut state = self.state.write().await;
-            state.open_document(doc_uri, params.text_document.text);
+            {
+                let mut state = self.state.write().await;
+                state.open_document(doc_uri.clone(), params.text_document.text);
+            }
+            self.publish_diagnostics_for(uri_str, &doc_uri).await;
         }
     }
 
@@ -104,8 +136,11 @@ impl LanguageServer for Backend {
         let uri_str = params.text_document.uri;
         if let Ok(doc_uri) = crate::convert::from_lsp_uri(&uri_str) {
             if let Some(change) = params.content_changes.into_iter().last() {
-                let mut state = self.state.write().await;
-                state.change_document(&doc_uri, change.text);
+                {
+                    let mut state = self.state.write().await;
+                    state.change_document(&doc_uri, change.text);
+                }
+                self.publish_diagnostics_for(uri_str, &doc_uri).await;
             }
         }
     }
@@ -113,8 +148,14 @@ impl LanguageServer for Backend {
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri_str = params.text_document.uri;
         if let Ok(doc_uri) = crate::convert::from_lsp_uri(&uri_str) {
-            let mut state = self.state.write().await;
-            state.close_document(&doc_uri);
+            {
+                let mut state = self.state.write().await;
+                state.close_document(&doc_uri);
+            }
+            // Clear diagnostics on close
+            self.client
+                .publish_diagnostics(uri_str, Vec::new(), None)
+                .await;
         }
     }
 

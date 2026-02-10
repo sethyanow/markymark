@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use markymark_core::{DocumentUri, Position, Range};
+use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link};
 use markymark_index::{
     slugify, DocumentIndex, HeadingEntry, MarkdownLinkEntry, RealmIndex, WikiLinkEntry,
 };
@@ -77,6 +78,26 @@ pub struct RenameEdit {
     pub range: Range,
     /// The replacement text.
     pub new_text: String,
+}
+
+/// Severity level for a diagnostic.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DiagnosticSeverity {
+    /// An error (e.g., broken link).
+    Error,
+    /// A warning (e.g., duplicate slug).
+    Warning,
+}
+
+/// A diagnostic produced by document analysis.
+#[derive(Debug, Clone)]
+pub struct MarkyDiagnostic {
+    /// Source range of the problem.
+    pub range: Range,
+    /// Severity level.
+    pub severity: DiagnosticSeverity,
+    /// Human-readable message.
+    pub message: String,
 }
 
 /// Describes what symbol (if any) the cursor is sitting on.
@@ -315,6 +336,85 @@ impl ServerState {
         }
 
         candidates
+    }
+
+    /// Compute diagnostics for a document.
+    ///
+    /// Checks for:
+    /// - Broken wiki links (target page or heading doesn't exist)
+    /// - Broken markdown link anchors (heading slug doesn't exist in current doc)
+    /// - Duplicate heading slugs within the same document
+    pub fn compute_diagnostics(&self, uri: &DocumentUri) -> Vec<MarkyDiagnostic> {
+        let index = match self.realm.get_document(uri) {
+            Some(idx) => idx,
+            None => return Vec::new(),
+        };
+
+        let mut diagnostics = Vec::new();
+
+        // 1. Check wiki links for broken references
+        for wl in index.wiki_links() {
+            let resolved = resolve_wiki_link(&self.realm, uri, &wl.target, wl.heading.as_deref());
+            if resolved.is_none() {
+                let target_desc = match &wl.heading {
+                    Some(h) => format!("{}#{}", wl.target, h),
+                    None => wl.target.clone(),
+                };
+                diagnostics.push(MarkyDiagnostic {
+                    range: wl.range,
+                    severity: DiagnosticSeverity::Error,
+                    message: format!("Broken wiki link: [[{}]]", target_desc),
+                });
+            }
+        }
+
+        // 2. Check markdown link anchors for broken references
+        for ml in index.markdown_links() {
+            if let Some(anchor) = &ml.anchor {
+                // Same-page anchor links: check if slug exists in current doc
+                let raw_url = ml
+                    .url
+                    .strip_suffix(&format!("#{}", anchor))
+                    .unwrap_or(&ml.url);
+                let resolved =
+                    resolve_markdown_link(&self.realm, uri, raw_url, Some(anchor.as_str()));
+                if resolved.is_none() {
+                    diagnostics.push(MarkyDiagnostic {
+                        range: ml.range,
+                        severity: DiagnosticSeverity::Error,
+                        message: format!("Broken link: heading '{}' not found", anchor),
+                    });
+                }
+            }
+        }
+
+        // 3. Check for duplicate heading slugs
+        //
+        // Use the *base* slug (from slugify) rather than the stored (deduped)
+        // slug so that headings whose text produces the same slug are detected
+        // (the indexer already appends `-1`, `-2`, etc. to avoid collisions).
+        let mut slug_counts: HashMap<String, Vec<Range>> = HashMap::new();
+        for h in index.headings() {
+            let base_slug = slugify(&h.text);
+            slug_counts.entry(base_slug).or_default().push(h.range);
+        }
+        for (slug, ranges) in &slug_counts {
+            if ranges.len() > 1 {
+                for range in ranges {
+                    diagnostics.push(MarkyDiagnostic {
+                        range: *range,
+                        severity: DiagnosticSeverity::Warning,
+                        message: format!(
+                            "Duplicate heading slug '{}' ({} occurrences)",
+                            slug,
+                            ranges.len()
+                        ),
+                    });
+                }
+            }
+        }
+
+        diagnostics
     }
 
     /// Check whether the symbol at the given position can be renamed.
