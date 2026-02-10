@@ -64,6 +64,7 @@ impl LanguageServer for Backend {
                 references_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                workspace_symbol_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             ..Default::default()
@@ -280,6 +281,71 @@ impl LanguageServer for Backend {
             Ok(None)
         } else {
             Ok(Some(DocumentSymbolResponse::Nested(symbols)))
+        }
+    }
+
+    async fn symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> Result<Option<WorkspaceSymbolResponse>> {
+        let query = params.query.to_lowercase();
+        let state = self.state.read().await;
+
+        let zero_range = markymark_core::Range::new(
+            markymark_core::Position::new(0, 0),
+            markymark_core::Position::new(0, 0),
+        );
+
+        let mut symbols = Vec::new();
+
+        for (uri, index) in iter_realm_documents(&state) {
+            let lsp_uri = match crate::convert::to_lsp_uri(uri) {
+                Ok(u) => u,
+                Err(_) => continue,
+            };
+
+            for heading in index.headings() {
+                if query.is_empty() || heading.text.to_lowercase().contains(&query) {
+                    let range = crate::convert::to_lsp_range(heading.range);
+                    #[allow(deprecated)]
+                    symbols.push(SymbolInformation {
+                        name: heading.text.clone(),
+                        kind: SymbolKind::STRING,
+                        tags: None,
+                        deprecated: None,
+                        location: Location {
+                            uri: lsp_uri.clone(),
+                            range,
+                        },
+                        container_name: None,
+                    });
+                }
+            }
+
+            for tag in index.tags() {
+                let tag_name = format!("#{}", tag.name);
+                if query.is_empty() || tag_name.to_lowercase().contains(&query) {
+                    let range = crate::convert::to_lsp_range(zero_range);
+                    #[allow(deprecated)]
+                    symbols.push(SymbolInformation {
+                        name: tag_name,
+                        kind: SymbolKind::CONSTANT,
+                        tags: None,
+                        deprecated: None,
+                        location: Location {
+                            uri: lsp_uri.clone(),
+                            range,
+                        },
+                        container_name: None,
+                    });
+                }
+            }
+        }
+
+        if symbols.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(WorkspaceSymbolResponse::Flat(symbols)))
         }
     }
 }

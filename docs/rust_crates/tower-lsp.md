@@ -7,12 +7,21 @@
 <see_also>tree-sitter.md, petgraph.md, error-handling.md</see_also>
 </agent>
 
-**TL;DR:** tower-lsp-server provides async LSP server infrastructure. Implement `LanguageServer` trait, use `Client` for notifications, manage state with interior mutability.
+**TL;DR:** tower-lsp-server provides async LSP server infrastructure. Implement `LanguageServer` trait (native async — no `#[async_trait]`), use `Client` for notifications, manage state with interior mutability.
 
-**Note:** This documents `tower-lsp-server` (the [community fork](https://github.com/tower-lsp-community/tower-lsp-server)), not the original `tower-lsp`. The community fork is actively maintained (v0.23+, edition 2024, Rust 1.85+) and used by Biome, Oxc, and Veryl. The original `tower-lsp` has not been updated since August 2023.
+**Note:** This documents `tower-lsp-server` (the [community fork](https://github.com/tower-lsp-community/tower-lsp-server)), not the original `tower-lsp`. The community fork is actively maintained (v0.23+) and used by Biome, Oxc, and Veryl. The original `tower-lsp` has not been updated since August 2023.
+
+**Critical differences from original tower-lsp:**
+- **Types**: Re-exports `ls_types` (NOT `lsp_types`). Use `tower_lsp_server::ls_types::*`.
+- **Async**: Uses native async traits (Rust 1.75+ RPITIT). No `#[async_trait]` macro needed.
+- **URI**: `ls_types::Uri` uses `fluent_uri` (created via `.parse::<Uri>()`), not `url::Url`.
+- **Service**: `LspService::new(Backend::new)` takes a function pointer, not a closure.
 
 **Checklist:**
-- [ ] Implement `LanguageServer` trait with async methods
+- [ ] Use `tower_lsp_server::ls_types::*` (NOT `lsp_types`)
+- [ ] Implement `LanguageServer` with plain `async fn` (no async_trait macro)
+- [ ] Use `ls_types::Uri` (fluent_uri-based, FromStr) not `url::Url`
+- [ ] `LspService::new(Backend::new)` with fn pointer
 - [ ] Use `Client` for sending notifications/requests to editor
 - [ ] Declare capabilities in `initialize` response
 - [ ] Handle state with `tokio::sync::RwLock` or similar
@@ -36,7 +45,7 @@ serde_json = "1"
 
 ```rust
 use tower_lsp_server::jsonrpc::Result;
-use tower_lsp_server::lsp_types::*;
+use tower_lsp_server::ls_types::*;
 use tower_lsp_server::{Client, LanguageServer, LspService, Server};
 use tokio::sync::RwLock;
 use std::sync::Arc;
@@ -48,7 +57,7 @@ struct Backend {
 
 #[derive(Default)]
 struct ServerState {
-    documents: HashMap<Url, String>,
+    documents: HashMap<Uri, String>,
     // ... other state
 }
 
@@ -61,7 +70,7 @@ impl Backend {
     }
 }
 
-#[tower_lsp_server::async_trait]
+// NOTE: No #[async_trait] needed — tower-lsp-server v0.23 uses native async traits
 impl LanguageServer for Backend {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
         Ok(InitializeResult {
@@ -69,16 +78,15 @@ impl LanguageServer for Backend {
                 text_document_sync: Some(TextDocumentSyncCapability::Options(
                     TextDocumentSyncOptions {
                         open_close: Some(true),
-                        change: Some(TextDocumentSyncKind::INCREMENTAL),
+                        change: Some(TextDocumentSyncKind::FULL),
                         ..Default::default()
                     }
                 )),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
-                rename_provider: Some(OneOf::Right(RenameOptions {
-                    prepare_provider: Some(true),
-                    work_done_progress_options: Default::default(),
-                })),
+                hover_provider: Some(HoverProviderCapability::Simple(true)),
+                document_symbol_provider: Some(OneOf::Left(true)),
+                workspace_symbol_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             ..Default::default()
@@ -101,7 +109,8 @@ async fn main() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, socket) = LspService::new(|client| Backend::new(client));
+    // NOTE: Function pointer, not closure
+    let (service, socket) = LspService::new(Backend::new);
     Server::new(stdin, stdout, socket).serve(service).await;
 }
 ```
@@ -113,7 +122,7 @@ async fn main() {
 ### Document Synchronization
 
 ```rust
-#[tower_lsp_server::async_trait]
+// NOTE: No #[async_trait] — native async
 impl LanguageServer for Backend {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
@@ -132,15 +141,9 @@ impl LanguageServer for Backend {
 
         let mut state = self.state.write().await;
         if let Some(doc) = state.documents.get_mut(&uri) {
-            // Apply incremental changes
-            for change in params.content_changes {
-                if let Some(range) = change.range {
-                    // Convert LSP range to byte offsets and apply
-                    apply_change(doc, range, &change.text);
-                } else {
-                    // Full document replacement
-                    *doc = change.text;
-                }
+            // For FULL sync: take the last change (entire document)
+            if let Some(change) = params.content_changes.into_iter().last() {
+                *doc = change.text;
             }
         }
 
@@ -238,7 +241,7 @@ async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
     let refs = find_all_references(&state, &symbol);
 
     // Build workspace edit
-    let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
+    let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
 
     for location in refs {
         changes
@@ -261,7 +264,7 @@ async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
 
 ```rust
 impl Backend {
-    async fn publish_diagnostics(&self, uri: Url) {
+    async fn publish_diagnostics(&self, uri: Uri) {
         let state = self.state.read().await;
         let Some(doc) = state.documents.get(&uri) else { return };
 
@@ -307,17 +310,100 @@ impl Backend {
 }
 
 // Register custom methods in main
-let (service, socket) = LspService::build(|client| Backend::new(client))
+let (service, socket) = LspService::build(Backend::new)
     .custom_method("markymark/createRealm", Backend::create_realm)
     .custom_method("markymark/destroyRealm", Backend::destroy_realm)
     .finish();
+```
+
+### URI Handling
+
+```rust
+// ls_types::Uri uses fluent_uri (NOT url::Url)
+// Create URIs via FromStr / .parse()
+let uri: ls_types::Uri = "file:///path/to/doc.md".parse().unwrap();
+
+// Convert from string
+fn string_to_uri(s: &str) -> Result<ls_types::Uri, String> {
+    s.parse::<ls_types::Uri>().map_err(|e| e.to_string())
+}
+
+// Get string representation
+let uri_str: &str = uri.as_str();
+```
+
+### Creating the Service
+
+```rust
+// Function pointer — NOT a closure
+let (service, socket) = LspService::new(Backend::new);
+
+// With custom methods — also fn pointer
+let (service, socket) = LspService::build(Backend::new)
+    .custom_method("custom/method", Backend::handler)
+    .finish();
+
+// Access the backend from service (useful in tests)
+let backend = service.inner();
 ```
 
 ---
 
 ## Pitfalls
 
-### Lock Ordering - Deadlock Risk
+### ls_types vs lsp_types — CRITICAL
+
+<pitfall>
+**Problem:** Using `lsp_types` crate directly or importing `tower_lsp_server::lsp_types::*` fails to compile. Old tower-lsp (v0.20) used `lsp_types`; the community fork tower-lsp-server (v0.23) re-exports `ls_types` instead.
+
+```rust
+// WRONG — does not exist in tower-lsp-server v0.23
+use tower_lsp_server::lsp_types::*;
+use lsp_types::*;
+
+// WRONG — Url is from url crate, not ls_types
+use url::Url;
+```
+
+**Solution:** Always use `ls_types` from tower-lsp-server's re-export:
+
+```rust
+// CORRECT
+use tower_lsp_server::ls_types::*;
+
+// URI is ls_types::Uri (fluent_uri-based), created via .parse()
+let uri: Uri = "file:///path".parse().unwrap();
+```
+
+**Note:** Your Cargo.toml may still list `lsp-types` as a workspace dependency for other uses, but the LSP server code must use `ls_types`.
+</pitfall>
+
+### No async_trait Macro Needed
+
+<pitfall>
+**Problem:** Adding `#[tower_lsp_server::async_trait]` or `#[async_trait::async_trait]` causes compilation errors. Old tower-lsp required this; the community fork uses native async traits (RPITIT, stabilized in Rust 1.75+).
+
+```rust
+// WRONG — don't use async_trait macro
+#[tower_lsp_server::async_trait]
+impl LanguageServer for Backend {
+    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> { ... }
+}
+```
+
+**Solution:** Plain `impl` block with `async fn`:
+
+```rust
+// CORRECT — native async, no macro
+impl LanguageServer for Backend {
+    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> { ... }
+}
+```
+
+This works with edition 2021 on Rust 1.75+. No need for edition 2024.
+</pitfall>
+
+### Lock Ordering — Deadlock Risk
 
 <pitfall>
 **Problem:** Holding a lock while making async calls can cause deadlocks.
@@ -343,6 +429,8 @@ async fn did_change(&self, params: DidChangeTextDocumentParams) {
     self.publish_diagnostics(uri).await;
 }
 ```
+
+**markymark note:** All notification handlers (did_open, did_change, did_close) do synchronous state mutation only — the lock drops at function end. No async calls while holding the lock.
 </pitfall>
 
 ### TextDocumentSyncKind Mismatch
@@ -353,20 +441,25 @@ async fn did_change(&self, params: DidChangeTextDocumentParams) {
 **Solution:** Match your `did_change` implementation to declared capability:
 
 ```rust
-// If you declare INCREMENTAL:
-TextDocumentSyncKind::INCREMENTAL
+// FULL sync (simpler — recommended for v1):
+TextDocumentSyncKind::FULL
+// Take last change = entire document text
+if let Some(change) = params.content_changes.into_iter().last() {
+    *doc = change.text;
+}
 
-// You MUST apply changes incrementally:
+// INCREMENTAL sync (more complex, better perf for large docs):
+TextDocumentSyncKind::INCREMENTAL
 for change in params.content_changes {
     if let Some(range) = change.range {
-        // Apply at specific range
         apply_incremental_change(doc, range, &change.text);
     } else {
-        // Fallback to full replacement
         *doc = change.text;
     }
 }
 ```
+
+**markymark note:** Uses FULL sync for simplicity. Can upgrade to INCREMENTAL later if perf requires.
 </pitfall>
 
 ### Position Encoding
@@ -426,7 +519,7 @@ async fn initialized(&self, _: InitializedParams) {
     self.initialized.store(true, Ordering::SeqCst);
 }
 
-async fn publish_diagnostics(&self, uri: Url) {
+async fn publish_diagnostics(&self, uri: Uri) {
     if !self.initialized.load(Ordering::SeqCst) {
         return; // Client not ready
     }
@@ -434,6 +527,41 @@ async fn publish_diagnostics(&self, uri: Url) {
 }
 ```
 </pitfall>
+
+### LspService::new Takes Function Pointer
+
+<pitfall>
+**Problem:** Passing a closure to `LspService::new` fails to compile.
+
+```rust
+// WRONG — closure doesn't match expected signature
+let (service, socket) = LspService::new(|client| Backend::new(client));
+```
+
+**Solution:** Pass a function pointer directly:
+
+```rust
+// CORRECT
+let (service, socket) = LspService::new(Backend::new);
+```
+
+This requires `Backend::new` to have the exact signature `fn(Client) -> Backend`.
+</pitfall>
+
+---
+
+## Migration from tower-lsp (original)
+
+If porting from `tower-lsp` v0.20 to `tower-lsp-server` v0.23:
+
+| Original (tower-lsp v0.20) | Community fork (tower-lsp-server v0.23) |
+|---|---|
+| `tower_lsp::lsp_types::*` | `tower_lsp_server::ls_types::*` |
+| `#[tower_lsp::async_trait]` | Remove — native async |
+| `url::Url` for URIs | `ls_types::Uri` (fluent_uri, `.parse()`) |
+| `LspService::new(\|client\| Backend::new(client))` | `LspService::new(Backend::new)` |
+| `tower_lsp::Client` | `tower_lsp_server::Client` |
+| `tower_lsp::jsonrpc::Result` | `tower_lsp_server::jsonrpc::Result` |
 
 ---
 
@@ -444,3 +572,4 @@ async fn publish_diagnostics(&self, uri: Url) {
 - Error types: `error-handling.md`
 - LSP Specification: https://microsoft.github.io/language-server-protocol/
 - tower-lsp-server: https://github.com/tower-lsp-community/tower-lsp-server
+- ls-types crate: re-exported by tower-lsp-server, not imported directly
