@@ -93,8 +93,14 @@ async fn test_capabilities_sync_kind_is_full() {
 async fn test_capabilities_completion_provider() {
     // Verify ServerCapabilities includes completion_provider.
     let caps = get_capabilities().await;
+    let completion = caps
+        .completion_provider
+        .expect("server should declare completion provider capability");
+    let triggers = completion
+        .trigger_characters
+        .expect("completion provider should set trigger characters");
     assert!(
-        caps.completion_provider.is_some(),
-        "server should declare completion provider capability"
+        triggers.iter().any(|trigger| trigger == "<"),
+        "completion provider should trigger on '<' for XML tags"
     );
 }
