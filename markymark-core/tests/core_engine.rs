@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use markymark_core::engine::{CoreOperation, CoreOperationResult};
+use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_core::{CoreError, DocumentUri, Position, Range};
 
 // ---------------------------------------------------------------------------
@@ -174,4 +174,35 @@ fn test_core_error_display_invalid_uri() {
 fn test_core_error_display_not_implemented() {
     let err = CoreError::NotImplemented("feature X".to_string());
     assert_eq!(format!("{}", err), "Not implemented: feature X");
+}
+
+// ---------------------------------------------------------------------------
+// CoreEngine trait contract
+// ---------------------------------------------------------------------------
+
+struct MockEngine;
+
+impl CoreEngine for MockEngine {
+    fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
+        match operation {
+            CoreOperation::GetOutline { .. } => {
+                CoreOperationResult::Outline(vec!["Heading".to_string()])
+            }
+            _ => CoreOperationResult::Ok,
+        }
+    }
+}
+
+#[test]
+fn test_core_engine_executes_operation() {
+    let engine = MockEngine;
+    let uri = DocumentUri::from_file_path(&PathBuf::from("/vault/notes.md"));
+    let result = engine.execute(CoreOperation::GetOutline { uri });
+
+    match result {
+        CoreOperationResult::Outline(items) => {
+            assert_eq!(items, vec!["Heading".to_string()]);
+        }
+        _ => panic!("expected outline result"),
+    }
 }

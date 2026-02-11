@@ -33,6 +33,15 @@ pub enum CoreOperation {
     },
 }
 
+/// Transport-agnostic interface for executing core operations.
+///
+/// Both LSP and MCP transports call into this trait so indexing and
+/// resolution logic stays shared in one place.
+pub trait CoreEngine: Send + Sync {
+    /// Execute a core operation and return the transport-neutral result.
+    fn execute(&self, operation: CoreOperation) -> CoreOperationResult;
+}
+
 /// The result of a core engine operation.
 #[derive(Debug)]
 pub enum CoreOperationResult {

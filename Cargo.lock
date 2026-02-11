@@ -682,6 +682,7 @@ dependencies = [
  "markymark-index",
  "markymark-parser",
  "rmcp",
+ "schemars",
  "serde",
  "serde_json",
  "thiserror",
