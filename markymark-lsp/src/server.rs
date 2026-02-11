@@ -193,7 +193,7 @@ impl LanguageServer for Backend {
                 };
                 resolve_markdown_link(state.realm(), &doc_uri, raw_url, ml.anchor.as_deref())
             }
-            SymbolAtPosition::Heading(_) => return Ok(None),
+            SymbolAtPosition::Heading(_) | SymbolAtPosition::XmlTag(_) => return Ok(None),
         };
 
         let resolved = match resolved {
@@ -299,6 +299,25 @@ impl LanguageServer for Backend {
             }
             SymbolAtPosition::MarkdownLink(ml) => {
                 format!("Markdown link: [{}]({})", ml.text, ml.url)
+            }
+            SymbolAtPosition::XmlTag(xt) => {
+                let mut lines = vec![format!("**`<{}>`** XML tag", xt.tag_name)];
+                if !xt.attributes.is_empty() {
+                    let mut attrs: Vec<_> = xt.attributes.iter().collect();
+                    attrs.sort_by_key(|(k, _)| k.as_str());
+                    let attr_list: Vec<String> = attrs
+                        .iter()
+                        .map(|(k, v)| format!("- `{}` = `{}`", k, v))
+                        .collect();
+                    lines.push(String::new());
+                    lines.push("**Attributes:**".to_string());
+                    lines.extend(attr_list);
+                }
+                if xt.is_self_closing {
+                    lines.push(String::new());
+                    lines.push("*Self-closing tag*".to_string());
+                }
+                lines.join("\n")
             }
         };
 

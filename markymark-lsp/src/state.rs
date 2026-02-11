@@ -6,6 +6,7 @@ use markymark_core::{DocumentUri, Position, Range};
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link};
 use markymark_index::{
     slugify, DocumentIndex, HeadingEntry, MarkdownLinkEntry, RealmIndex, WikiLinkEntry,
+    XmlTagEntry,
 };
 use markymark_parser::Parser;
 
@@ -109,6 +110,8 @@ pub enum SymbolAtPosition {
     WikiLink(WikiLinkEntry),
     /// A markdown link.
     MarkdownLink(MarkdownLinkEntry),
+    /// An XML tag.
+    XmlTag(XmlTagEntry),
 }
 
 /// The internal state of the LSP server.
@@ -538,6 +541,13 @@ impl ServerState {
         for h in index.headings() {
             if h.range.contains(pos) {
                 return Some(SymbolAtPosition::Heading(h.clone()));
+            }
+        }
+
+        // Check XML tags
+        for xt in index.xml_tags() {
+            if xt.range.contains(pos) {
+                return Some(SymbolAtPosition::XmlTag(xt.clone()));
             }
         }
 
