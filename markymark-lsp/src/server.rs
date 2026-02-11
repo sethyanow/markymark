@@ -224,31 +224,43 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        // Only headings have "references" (incoming links)
-        let heading = match symbol {
-            SymbolAtPosition::Heading(h) => h,
-            _ => return Ok(None),
-        };
-
-        let slug = &heading.slug;
         let mut locations = Vec::new();
 
-        // Search all documents for wiki links and markdown links referencing this slug
-        for (uri, index) in iter_realm_documents(&state) {
-            for wl in index.wiki_links() {
-                if wl.heading.as_deref() == Some(slug) {
-                    if let Ok(loc) = crate::convert::to_lsp_location(uri, wl.range) {
-                        locations.push(loc);
+        match symbol {
+            SymbolAtPosition::Heading(ref heading) => {
+                let slug = &heading.slug;
+                // Search all documents for wiki links and markdown links referencing this slug
+                for (uri, index) in iter_realm_documents(&state) {
+                    for wl in index.wiki_links() {
+                        if wl.heading.as_deref() == Some(slug) {
+                            if let Ok(loc) = crate::convert::to_lsp_location(uri, wl.range) {
+                                locations.push(loc);
+                            }
+                        }
+                    }
+                    for ml in index.markdown_links() {
+                        if ml.anchor.as_deref() == Some(slug) {
+                            if let Ok(loc) = crate::convert::to_lsp_location(uri, ml.range) {
+                                locations.push(loc);
+                            }
+                        }
                     }
                 }
             }
-            for ml in index.markdown_links() {
-                if ml.anchor.as_deref() == Some(slug) {
-                    if let Ok(loc) = crate::convert::to_lsp_location(uri, ml.range) {
-                        locations.push(loc);
+            SymbolAtPosition::XmlTag(ref xt) => {
+                let tag_name = &xt.tag_name;
+                // Search all documents for XML tags with the same name
+                for (uri, index) in iter_realm_documents(&state) {
+                    for xml in index.xml_tags() {
+                        if xml.tag_name == *tag_name {
+                            if let Ok(loc) = crate::convert::to_lsp_location(uri, xml.range) {
+                                locations.push(loc);
+                            }
+                        }
                     }
                 }
             }
+            _ => return Ok(None),
         }
 
         if locations.is_empty() {
