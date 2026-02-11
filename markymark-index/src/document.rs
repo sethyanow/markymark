@@ -90,6 +90,8 @@ pub struct XmlTagEntry {
     pub attributes: HashMap<String, String>,
     /// Whether this is a self-closing tag (e.g. `<br/>`).
     pub is_self_closing: bool,
+    /// Whether this tag has no matching closing tag.
+    pub is_unclosed: bool,
     /// Source range of the entire tag.
     pub range: Range,
 }
@@ -245,6 +247,7 @@ impl DocumentIndex {
                 tag_name: xt.tag_name().to_string(),
                 attributes: xt.attributes().clone(),
                 is_self_closing: xt.is_self_closing(),
+                is_unclosed: xt.is_unclosed(),
                 range: xt.range(),
             })
             .collect();

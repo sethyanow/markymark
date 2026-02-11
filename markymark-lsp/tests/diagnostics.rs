@@ -367,3 +367,77 @@ fn test_diagnostics_cleared_after_close() {
         "after close, diagnostics should be empty (doc removed from realm)"
     );
 }
+
+// =======================================================================
+// XML tag diagnostics
+// =======================================================================
+
+#[test]
+fn test_unclosed_xml_tag_produces_warning() {
+    // <agent> without </agent> -> Warning
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Doc\n\n<agent>\nSome content\n".to_string());
+
+    let diagnostics = state.compute_diagnostics(&uri);
+    let warnings: Vec<&MarkyDiagnostic> = diagnostics
+        .iter()
+        .filter(|d| d.severity == DiagnosticSeverity::Warning)
+        .collect();
+
+    assert_eq!(
+        warnings.len(),
+        1,
+        "should produce 1 warning for unclosed <agent> tag; got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    assert!(
+        warnings[0].message.contains("agent"),
+        "warning should mention the tag name; got: {}",
+        warnings[0].message
+    );
+}
+
+#[test]
+fn test_closed_xml_tag_no_diagnostic() {
+    // <agent>...</agent> -> no diagnostic
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(
+        uri.clone(),
+        "# Doc\n\n<agent>\nContent\n</agent>\n".to_string(),
+    );
+
+    let diagnostics = state.compute_diagnostics(&uri);
+    let xml_warnings: Vec<&MarkyDiagnostic> = diagnostics
+        .iter()
+        .filter(|d| d.message.contains("Unclosed"))
+        .collect();
+    assert!(
+        xml_warnings.is_empty(),
+        "properly closed tag should produce no XML diagnostics; got: {:?}",
+        xml_warnings.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_self_closing_xml_tag_no_diagnostic() {
+    // <br/> -> no diagnostic (self-closing is valid)
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(
+        uri.clone(),
+        "# Doc\n\n<config type=\"test\"/>\n".to_string(),
+    );
+
+    let diagnostics = state.compute_diagnostics(&uri);
+    let xml_warnings: Vec<&MarkyDiagnostic> = diagnostics
+        .iter()
+        .filter(|d| d.message.contains("Unclosed"))
+        .collect();
+    assert!(
+        xml_warnings.is_empty(),
+        "self-closing tag should produce no XML diagnostics; got: {:?}",
+        xml_warnings.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}

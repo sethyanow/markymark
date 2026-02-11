@@ -459,6 +459,17 @@ impl ServerState {
             }
         }
 
+        // 4. Check for unclosed XML tags
+        for xt in index.xml_tags() {
+            if xt.is_unclosed {
+                diagnostics.push(MarkyDiagnostic {
+                    range: xt.range,
+                    severity: DiagnosticSeverity::Warning,
+                    message: format!("Unclosed XML tag: <{}>", xt.tag_name),
+                });
+            }
+        }
+
         diagnostics
     }
 

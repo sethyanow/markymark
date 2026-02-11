@@ -593,6 +593,12 @@ pub fn extract_xml_tags(_elements: &[Element], source: &str) -> Vec<XmlTag> {
         pos = tag_end;
     }
 
+    // Emit remaining unclosed tags from the stack
+    for frame in stack {
+        let range = compute_range(frame.tag_start, frame.content_start);
+        tags.push(XmlTag::unclosed(frame.tag_name, frame.attrs, range));
+    }
+
     // Sort by position in source for consistent ordering
     tags.sort_by_key(|t| {
         let r = t.range();
