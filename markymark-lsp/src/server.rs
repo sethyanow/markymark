@@ -352,6 +352,7 @@ impl LanguageServer for Backend {
             }
             SymbolAtPosition::XmlTag(xt) => {
                 let mut lines = vec![format!("**`<{}>`** XML tag", xt.tag_name)];
+                let stats = xml_hover_stats(&state, &xt.tag_name);
                 if !xt.attributes.is_empty() {
                     let mut attrs: Vec<_> = xt.attributes.iter().collect();
                     attrs.sort_by_key(|(k, _)| k.as_str());
@@ -363,9 +364,33 @@ impl LanguageServer for Backend {
                     lines.push("**Attributes:**".to_string());
                     lines.extend(attr_list);
                 }
+                lines.push(String::new());
+                lines.push("**Workspace usage:**".to_string());
+                lines.push(format!(
+                    "- Occurrences in workspace: **{}**",
+                    stats.occurrences
+                ));
+                lines.push(format!(
+                    "- Documents with this tag: **{}**",
+                    stats.document_count
+                ));
+                if !stats.attribute_counts.is_empty() {
+                    lines.push(String::new());
+                    lines.push("**Common attributes:**".to_string());
+                    lines.extend(
+                        stats
+                            .attribute_counts
+                            .iter()
+                            .map(|(name, count)| format!("- `{}` ({})", name, count)),
+                    );
+                }
                 if xt.is_self_closing {
                     lines.push(String::new());
                     lines.push("*Self-closing tag*".to_string());
+                }
+                if xt.is_unclosed {
+                    lines.push(String::new());
+                    lines.push("**Warning: unclosed tag**".to_string());
                 }
                 lines.join("\n")
             }
@@ -660,6 +685,46 @@ struct XmlSymbolNode {
     name: String,
     range: CoreRange,
     children: Vec<XmlSymbolNode>,
+}
+
+#[derive(Debug, Default)]
+struct XmlHoverStats {
+    occurrences: usize,
+    document_count: usize,
+    attribute_counts: Vec<(String, usize)>,
+}
+
+fn xml_hover_stats(state: &ServerState, tag_name: &str) -> XmlHoverStats {
+    let mut occurrences = 0usize;
+    let mut document_count = 0usize;
+    let mut attribute_counts: HashMap<String, usize> = HashMap::new();
+
+    for (_uri, index) in iter_realm_documents(state) {
+        let mut has_tag_in_document = false;
+        for tag in index.xml_tags() {
+            if tag.tag_name != tag_name {
+                continue;
+            }
+            has_tag_in_document = true;
+            occurrences += 1;
+            for attr_name in tag.attributes.keys() {
+                *attribute_counts.entry(attr_name.clone()).or_insert(0) += 1;
+            }
+        }
+
+        if has_tag_in_document {
+            document_count += 1;
+        }
+    }
+
+    let mut attribute_counts: Vec<(String, usize)> = attribute_counts.into_iter().collect();
+    attribute_counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+    XmlHoverStats {
+        occurrences,
+        document_count,
+        attribute_counts,
+    }
 }
 
 fn xml_tags_to_symbols(xml_tags: &[XmlTagEntry]) -> Vec<DocumentSymbol> {

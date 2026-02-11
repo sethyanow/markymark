@@ -259,3 +259,96 @@ async fn test_hover_on_xml_tag_shows_attributes() {
         _ => panic!("expected markup hover content"),
     }
 }
+
+#[tokio::test]
+async fn test_hover_on_xml_tag_shows_workspace_usage_stats() {
+    let (service, _socket, _, _) = setup_workspace().await;
+    let backend = service.inner();
+
+    let xml_a: Uri = "file:///workspace/xml-a.md".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let uri_a = DocumentUri::new("file:///workspace/xml-a.md").unwrap();
+        let uri_b = DocumentUri::new("file:///workspace/xml-b.md").unwrap();
+        let uri_c = DocumentUri::new("file:///workspace/xml-c.md").unwrap();
+
+        state.open_document(
+            uri_a,
+            "<agent priority=\"high\" scope=\"global\">a</agent>\n".to_string(),
+        );
+        state.open_document(uri_b, "<agent priority=\"low\">b</agent>\n".to_string());
+        state.open_document(uri_c, "<task priority=\"high\">c</task>\n".to_string());
+    }
+
+    let params = HoverParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: xml_a },
+            position: Position::new(0, 2), // inside "<agent"
+        },
+        work_done_progress_params: Default::default(),
+    };
+
+    let result = backend.hover(params).await.unwrap();
+    assert!(result.is_some(), "hover on XML tag should return hover info");
+    let hover = result.unwrap();
+    match hover.contents {
+        HoverContents::Markup(markup) => {
+            assert!(
+                markup.value.contains("Occurrences in workspace: **2**"),
+                "hover should show workspace count; got: {}",
+                markup.value
+            );
+            assert!(
+                markup.value.contains("Documents with this tag: **2**"),
+                "hover should show document count; got: {}",
+                markup.value
+            );
+            assert!(
+                markup.value.contains("`priority` (2)"),
+                "hover should show common attribute frequencies; got: {}",
+                markup.value
+            );
+            assert!(
+                markup.value.contains("`scope` (1)"),
+                "hover should show less-common attributes too; got: {}",
+                markup.value
+            );
+        }
+        _ => panic!("expected markup hover content"),
+    }
+}
+
+#[tokio::test]
+async fn test_hover_on_unclosed_xml_tag_shows_warning() {
+    let (service, _socket, _, _) = setup_workspace().await;
+    let backend = service.inner();
+
+    let xml_uri: Uri = "file:///workspace/unclosed.md".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let core_uri = DocumentUri::new("file:///workspace/unclosed.md").unwrap();
+        state.open_document(core_uri, "<agent priority=\"high\">\n".to_string());
+    }
+
+    let params = HoverParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: xml_uri },
+            position: Position::new(0, 2), // inside "<agent"
+        },
+        work_done_progress_params: Default::default(),
+    };
+
+    let result = backend.hover(params).await.unwrap();
+    assert!(result.is_some(), "hover on XML tag should return hover info");
+    let hover = result.unwrap();
+    match hover.contents {
+        HoverContents::Markup(markup) => {
+            assert!(
+                markup.value.contains("Warning: unclosed tag"),
+                "hover should warn for unclosed tags; got: {}",
+                markup.value
+            );
+        }
+        _ => panic!("expected markup hover content"),
+    }
+}
