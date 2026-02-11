@@ -329,7 +329,23 @@ impl LanguageServer for Backend {
         };
 
         let outline = index.outline();
-        let symbols = outline_children_to_symbols(&outline.children);
+        let mut symbols = outline_children_to_symbols(&outline.children);
+
+        // Include XML tags as top-level symbols
+        for xt in index.xml_tags() {
+            let range = crate::convert::to_lsp_range(xt.range);
+            #[allow(deprecated)]
+            symbols.push(DocumentSymbol {
+                name: format!("<{}>", xt.tag_name),
+                detail: None,
+                kind: SymbolKind::OBJECT,
+                tags: None,
+                deprecated: None,
+                range,
+                selection_range: range,
+                children: None,
+            });
+        }
 
         if symbols.is_empty() {
             Ok(None)
@@ -479,6 +495,25 @@ impl LanguageServer for Backend {
                     symbols.push(SymbolInformation {
                         name: tag_name,
                         kind: SymbolKind::CONSTANT,
+                        tags: None,
+                        deprecated: None,
+                        location: Location {
+                            uri: lsp_uri.clone(),
+                            range,
+                        },
+                        container_name: None,
+                    });
+                }
+            }
+
+            for xt in index.xml_tags() {
+                let xml_name = format!("<{}>", xt.tag_name);
+                if query.is_empty() || xml_name.to_lowercase().contains(&query) {
+                    let range = crate::convert::to_lsp_range(xt.range);
+                    #[allow(deprecated)]
+                    symbols.push(SymbolInformation {
+                        name: xml_name,
+                        kind: SymbolKind::OBJECT,
                         tags: None,
                         deprecated: None,
                         location: Location {

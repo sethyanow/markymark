@@ -209,3 +209,94 @@ async fn test_document_symbol_other_page() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// XML tag document symbols
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_document_symbol_includes_xml_tags() {
+    let (service, _socket, _, _) = setup_workspace().await;
+    let backend = service.inner();
+
+    let xml_uri: Uri = "file:///workspace/xml-doc.md".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let core_uri = DocumentUri::new("file:///workspace/xml-doc.md").unwrap();
+        state.open_document(
+            core_uri,
+            "# Config\n\n<agent>content</agent>\n\n<goal>win</goal>\n".to_string(),
+        );
+    }
+
+    let params = DocumentSymbolParams {
+        text_document: TextDocumentIdentifier {
+            uri: xml_uri.clone(),
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    };
+
+    let result = backend.document_symbol(params).await.unwrap();
+    assert!(result.is_some(), "should return symbols");
+    match result.unwrap() {
+        DocumentSymbolResponse::Nested(symbols) => {
+            // Should have heading + XML tags
+            // Headings are nested, XML tags should appear as top-level symbols
+            let all_names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
+            assert!(
+                all_names.contains(&"<agent>"),
+                "should include <agent> XML tag in symbols, got: {:?}",
+                all_names
+            );
+            assert!(
+                all_names.contains(&"<goal>"),
+                "should include <goal> XML tag in symbols, got: {:?}",
+                all_names
+            );
+        }
+        _ => panic!("expected nested response"),
+    }
+}
+
+#[tokio::test]
+async fn test_document_symbol_xml_only_document() {
+    let (service, _socket, _, _) = setup_workspace().await;
+    let backend = service.inner();
+
+    let xml_uri: Uri = "file:///workspace/xml-only.md".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let core_uri = DocumentUri::new("file:///workspace/xml-only.md").unwrap();
+        state.open_document(
+            core_uri,
+            "<agent>content</agent>\n<br/>\n".to_string(),
+        );
+    }
+
+    let params = DocumentSymbolParams {
+        text_document: TextDocumentIdentifier {
+            uri: xml_uri.clone(),
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    };
+
+    let result = backend.document_symbol(params).await.unwrap();
+    assert!(
+        result.is_some(),
+        "XML-only document should still return symbols"
+    );
+    match result.unwrap() {
+        DocumentSymbolResponse::Nested(symbols) => {
+            assert!(
+                !symbols.is_empty(),
+                "should have at least one XML tag symbol"
+            );
+            // Check we have the agent tag
+            let has_agent = symbols.iter().any(|s| s.name == "<agent>");
+            assert!(has_agent, "should contain <agent> symbol");
+        }
+        _ => panic!("expected nested response"),
+    }
+}
