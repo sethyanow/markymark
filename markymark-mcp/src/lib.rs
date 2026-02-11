@@ -84,6 +84,73 @@ pub struct SearchSymbolsResponse {
     pub symbols: Vec<SymbolMatchDto>,
 }
 
+/// Request payload for `find-references`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FindReferencesRequest {
+    /// Document URI (`file://...`) containing the symbol.
+    pub uri: String,
+    /// 0-based line of the symbol.
+    pub line: u32,
+    /// 0-based character offset of the symbol.
+    pub character: u32,
+}
+
+/// Location payload in MCP responses.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LocationDto {
+    /// Document URI where the reference appears.
+    pub uri: String,
+    /// Range of the reference.
+    pub range: RangeDto,
+}
+
+/// Response payload for `find-references`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct FindReferencesResponse {
+    /// Input document URI.
+    pub uri: String,
+    /// Deterministically ordered reference locations.
+    pub locations: Vec<LocationDto>,
+}
+
+/// Request payload for `rename`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RenameRequest {
+    /// Document URI (`file://...`) containing the symbol.
+    pub uri: String,
+    /// 0-based line of the symbol.
+    pub line: u32,
+    /// 0-based character offset of the symbol.
+    pub character: u32,
+    /// New name for the symbol.
+    pub new_name: String,
+}
+
+/// A single text edit within a document.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TextEditDto {
+    /// Range to replace.
+    pub range: RangeDto,
+    /// Replacement text.
+    pub new_text: String,
+}
+
+/// Per-document edits in a workspace edit.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DocumentEditDto {
+    /// Document URI.
+    pub uri: String,
+    /// Text edits for this document, sorted by range.
+    pub edits: Vec<TextEditDto>,
+}
+
+/// Response payload for `rename`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct RenameResponse {
+    /// Per-document text edits to apply.
+    pub changes: Vec<DocumentEditDto>,
+}
+
 /// Tool error envelope for consistent structured failures.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct ToolErrorEnvelope {
@@ -238,6 +305,99 @@ impl MarkymarkMcp {
             }
             CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
             other => Ok(unexpected_result_error("search-symbols", &other)),
+        }
+    }
+
+    /// Find all references to a symbol at the given position.
+    #[tool(
+        name = "find-references",
+        description = "Find all references to a heading or XML tag at a position."
+    )]
+    pub async fn find_references_tool(
+        &self,
+        params: Parameters<FindReferencesRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let uri = match parse_file_uri(&params.0.uri) {
+            Ok(uri) => uri,
+            Err(err) => return Ok(tool_error(&err.code, err.message)),
+        };
+
+        let position = Range::new(
+            Position::new(params.0.line, params.0.character),
+            Position::new(params.0.line, params.0.character),
+        );
+
+        match self.find_references(uri, position) {
+            CoreOperationResult::Locations(locations) => {
+                let mut mapped: Vec<LocationDto> = locations
+                    .into_iter()
+                    .map(|(uri, range)| LocationDto {
+                        uri: uri.as_str().to_string(),
+                        range: range_to_dto(range),
+                    })
+                    .collect();
+                mapped.sort();
+
+                Ok(CallToolResult::structured(json!(FindReferencesResponse {
+                    uri: params.0.uri,
+                    locations: mapped,
+                })))
+            }
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("find-references", &other)),
+        }
+    }
+
+    /// Rename a heading or XML tag and all its references.
+    #[tool(
+        name = "rename",
+        description = "Rename a heading or XML tag at a position, updating all references."
+    )]
+    pub async fn rename_tool(
+        &self,
+        params: Parameters<RenameRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let uri = match parse_file_uri(&params.0.uri) {
+            Ok(uri) => uri,
+            Err(err) => return Ok(tool_error(&err.code, err.message)),
+        };
+
+        let new_name = params.0.new_name.trim().to_string();
+        if new_name.is_empty() {
+            return Ok(tool_error(
+                "invalid_name",
+                "new_name must not be empty for rename",
+            ));
+        }
+
+        let position = Range::new(
+            Position::new(params.0.line, params.0.character),
+            Position::new(params.0.line, params.0.character),
+        );
+
+        match self.rename(uri, position, new_name) {
+            CoreOperationResult::WorkspaceEdit(edits) => {
+                let mut changes: Vec<DocumentEditDto> = edits
+                    .into_iter()
+                    .map(|(uri, text_edits)| DocumentEditDto {
+                        uri: uri.as_str().to_string(),
+                        edits: text_edits
+                            .into_iter()
+                            .map(|(range, new_text)| TextEditDto {
+                                range: range_to_dto(range),
+                                new_text,
+                            })
+                            .collect(),
+                    })
+                    .collect();
+                changes.sort();
+
+                Ok(CallToolResult::structured(json!(RenameResponse {
+                    changes
+                })))
+            }
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("rename", &other)),
         }
     }
 }
@@ -404,6 +564,8 @@ mod tests {
         let names: Vec<_> = tools.iter().map(|t| t.name.as_ref()).collect();
         assert!(names.contains(&"get-outline"));
         assert!(names.contains(&"search-symbols"));
+        assert!(names.contains(&"find-references"));
+        assert!(names.contains(&"rename"));
     }
 
     #[tokio::test]
@@ -485,6 +647,156 @@ mod tests {
         let result = mcp
             .search_symbols_tool(Parameters(SearchSymbolsRequest {
                 query: "intro".to_string(),
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(true));
+        let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+        assert_eq!(payload.error.code, "core_error");
+    }
+
+    // --- find-references tool tests ---
+
+    #[tokio::test]
+    async fn find_references_tool_returns_structured_locations() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::Happy,
+        }));
+        let result = mcp
+            .find_references_tool(Parameters(FindReferencesRequest {
+                uri: "file:///vault/notes.md".to_string(),
+                line: 0,
+                character: 2,
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(false));
+        let payload: FindReferencesResponse = result.into_typed().expect("typed response");
+        assert_eq!(payload.uri, "file:///vault/notes.md");
+        assert_eq!(payload.locations.len(), 1);
+        assert_eq!(payload.locations[0].range.start.line, 1);
+        assert_eq!(payload.locations[0].range.start.character, 0);
+        assert_eq!(payload.locations[0].range.end.line, 1);
+        assert_eq!(payload.locations[0].range.end.character, 5);
+    }
+
+    #[tokio::test]
+    async fn find_references_tool_rejects_non_file_uri() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::Happy,
+        }));
+        let result = mcp
+            .find_references_tool(Parameters(FindReferencesRequest {
+                uri: "https://example.com/notes.md".to_string(),
+                line: 0,
+                character: 0,
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(true));
+        let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+        assert_eq!(payload.error.code, "non_file_uri");
+    }
+
+    #[tokio::test]
+    async fn find_references_tool_maps_core_error() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::CoreError,
+        }));
+        let result = mcp
+            .find_references_tool(Parameters(FindReferencesRequest {
+                uri: "file:///vault/notes.md".to_string(),
+                line: 0,
+                character: 0,
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(true));
+        let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+        assert_eq!(payload.error.code, "core_error");
+    }
+
+    // --- rename tool tests ---
+
+    #[tokio::test]
+    async fn rename_tool_returns_structured_workspace_edit() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::Happy,
+        }));
+        let result = mcp
+            .rename_tool(Parameters(RenameRequest {
+                uri: "file:///vault/notes.md".to_string(),
+                line: 2,
+                character: 3,
+                new_name: "NewTitle".to_string(),
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(false));
+        let payload: RenameResponse = result.into_typed().expect("typed response");
+        assert_eq!(payload.changes.len(), 1);
+        assert_eq!(payload.changes[0].edits.len(), 1);
+        assert_eq!(payload.changes[0].edits[0].new_text, "NewTitle");
+        assert_eq!(payload.changes[0].edits[0].range.start.line, 2);
+        assert_eq!(payload.changes[0].edits[0].range.start.character, 0);
+    }
+
+    #[tokio::test]
+    async fn rename_tool_rejects_non_file_uri() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::Happy,
+        }));
+        let result = mcp
+            .rename_tool(Parameters(RenameRequest {
+                uri: "https://example.com/notes.md".to_string(),
+                line: 0,
+                character: 0,
+                new_name: "Whatever".to_string(),
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(true));
+        let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+        assert_eq!(payload.error.code, "non_file_uri");
+    }
+
+    #[tokio::test]
+    async fn rename_tool_rejects_empty_name() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::Happy,
+        }));
+        let result = mcp
+            .rename_tool(Parameters(RenameRequest {
+                uri: "file:///vault/notes.md".to_string(),
+                line: 0,
+                character: 0,
+                new_name: "   ".to_string(),
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(true));
+        let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+        assert_eq!(payload.error.code, "invalid_name");
+    }
+
+    #[tokio::test]
+    async fn rename_tool_maps_core_error() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::CoreError,
+        }));
+        let result = mcp
+            .rename_tool(Parameters(RenameRequest {
+                uri: "file:///vault/notes.md".to_string(),
+                line: 0,
+                character: 0,
+                new_name: "NewName".to_string(),
             }))
             .await
             .expect("tool call should not return protocol error");
