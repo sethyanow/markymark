@@ -88,6 +88,17 @@ impl CoreEngine for MockEngine {
                 wiki_link_count: 8,
                 markdown_link_count: 4,
             },
+            (_, CoreOperation::DependencyGraph { realm, format }) => {
+                CoreOperationResult::DependencyGraph {
+                    realm,
+                    format: format.clone(),
+                    content: if format == "dot" {
+                        "digraph { }".to_string()
+                    } else {
+                        r#"{"nodes":[],"edges":[]}"#.to_string()
+                    },
+                }
+            }
             (_, CoreOperation::ExportIndex { uri }) => CoreOperationResult::DocumentExport {
                 uri: uri.clone(),
                 headings: vec![(

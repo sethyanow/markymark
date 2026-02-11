@@ -419,6 +419,27 @@ impl CoreEngine for RuntimeEngine {
                     markdown_link_count,
                 }
             }
+            CoreOperation::DependencyGraph { realm, format } => {
+                let state = self.state.read().expect("lock poisoned");
+                let realm_data = match state.get(&realm) {
+                    Some(data) => data,
+                    None => {
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "realm does not exist: {realm}"
+                        )));
+                    }
+                };
+
+                let content = build_dependency_graph(&realm_data.index, &format);
+                match content {
+                    Ok(content) => CoreOperationResult::DependencyGraph {
+                        realm,
+                        format,
+                        content,
+                    },
+                    Err(msg) => CoreOperationResult::Error(CoreError::Message(msg)),
+                }
+            }
             CoreOperation::ExportIndex { uri } => {
                 let state = self.state.read().expect("lock poisoned");
                 let realm = &state[DEFAULT_REALM].index;
@@ -513,4 +534,72 @@ fn is_markdown_path(path: &Path) -> bool {
         path.extension().and_then(|ext| ext.to_str()),
         Some("md") | Some("markdown")
     )
+}
+
+/// Build a dependency graph from the realm's indexed documents.
+///
+/// Returns the graph as either JSON or DOT format.
+fn build_dependency_graph(realm: &RealmIndex, format: &str) -> Result<String, String> {
+    use serde_json::json;
+    use std::collections::{BTreeMap, BTreeSet};
+
+    // Collect document URIs and outgoing links.
+    let mut nodes: BTreeSet<String> = BTreeSet::new();
+    let mut edges: Vec<(String, String, String)> = Vec::new();
+
+    for (uri, index) in realm.iter_documents() {
+        let from = uri.as_str().to_string();
+        nodes.insert(from.clone());
+
+        for wl in index.wiki_links() {
+            // Wiki links target page names, not full URIs.
+            // Record the target as-is for the graph.
+            let to = format!("wiki:{}", wl.target);
+            nodes.insert(to.clone());
+            edges.push((from.clone(), to, "wiki_link".to_string()));
+        }
+
+        for ml in index.markdown_links() {
+            if ml.url.starts_with("http://") || ml.url.starts_with("https://") {
+                continue; // Skip external URLs.
+            }
+            let to = ml.url.clone();
+            nodes.insert(to.clone());
+            edges.push((from.clone(), to, "markdown_link".to_string()));
+        }
+    }
+
+    match format {
+        "json" => {
+            let nodes_json: Vec<_> = nodes.iter().map(|n| json!({ "id": n })).collect();
+            let edges_json: Vec<_> = edges
+                .iter()
+                .map(|(from, to, kind)| json!({ "from": from, "to": to, "kind": kind }))
+                .collect();
+            let graph = json!({ "nodes": nodes_json, "edges": edges_json });
+            serde_json::to_string_pretty(&graph).map_err(|e| e.to_string())
+        }
+        "dot" => {
+            let mut out = String::from("digraph dependency_graph {\n");
+            // Assign short labels for readability.
+            let label_map: BTreeMap<&str, usize> = nodes
+                .iter()
+                .enumerate()
+                .map(|(i, n)| (n.as_str(), i))
+                .collect();
+            for (name, idx) in &label_map {
+                // Use the file stem or short name as label.
+                let label = name.rsplit('/').next().unwrap_or(name);
+                out.push_str(&format!("  n{idx} [label={label:?}];\n"));
+            }
+            for (from, to, kind) in &edges {
+                let from_idx = label_map[from.as_str()];
+                let to_idx = label_map[to.as_str()];
+                out.push_str(&format!("  n{from_idx} -> n{to_idx} [label={kind:?}];\n"));
+            }
+            out.push_str("}\n");
+            Ok(out)
+        }
+        other => Err(format!("unsupported dependency graph format: {other}")),
+    }
 }

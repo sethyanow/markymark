@@ -65,6 +65,13 @@ pub enum CoreOperation {
         /// Target document.
         uri: DocumentUri,
     },
+    /// Get a dependency graph showing inter-document links.
+    DependencyGraph {
+        /// Realm name (e.g. "default").
+        realm: String,
+        /// Output format: "json" or "dot".
+        format: String,
+    },
 }
 
 /// Transport-agnostic interface for executing core operations.
@@ -125,6 +132,15 @@ pub enum CoreOperationResult {
         wiki_links: Vec<(String, Option<String>, Range)>,
         /// Markdown link URLs with ranges.
         markdown_links: Vec<(String, String, Range)>,
+    },
+    /// A dependency graph in the requested format (json or dot).
+    DependencyGraph {
+        /// Realm name.
+        realm: String,
+        /// Output format used.
+        format: String,
+        /// Serialized graph content.
+        content: String,
     },
     /// Success with no payload.
     Ok,
