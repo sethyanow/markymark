@@ -300,3 +300,69 @@ async fn test_document_symbol_xml_only_document() {
         _ => panic!("expected nested response"),
     }
 }
+
+#[tokio::test]
+async fn test_document_symbol_nests_xml_tags_by_range() {
+    let (service, _socket, _, _) = setup_workspace().await;
+    let backend = service.inner();
+
+    let xml_uri: Uri = "file:///workspace/xml-nested.md".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let core_uri = DocumentUri::new("file:///workspace/xml-nested.md").unwrap();
+        state.open_document(
+            core_uri,
+            concat!(
+                "<agent>\n",
+                "  <goal>win</goal>\n",
+                "  <task>\n",
+                "    <step>one</step>\n",
+                "  </task>\n",
+                "</agent>\n",
+            )
+            .to_string(),
+        );
+    }
+
+    let params = DocumentSymbolParams {
+        text_document: TextDocumentIdentifier {
+            uri: xml_uri.clone(),
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    };
+
+    let result = backend.document_symbol(params).await.unwrap();
+    assert!(result.is_some(), "nested XML document should return symbols");
+
+    let symbols = match result.unwrap() {
+        DocumentSymbolResponse::Nested(symbols) => symbols,
+        _ => panic!("expected nested response"),
+    };
+
+    let agent = symbols
+        .iter()
+        .find(|s| s.name == "<agent>")
+        .expect("top-level <agent> symbol should exist");
+    let agent_children = agent
+        .children
+        .as_ref()
+        .expect("<agent> should contain nested XML symbols");
+    assert!(
+        agent_children.iter().any(|s| s.name == "<goal>"),
+        "<agent> should include <goal> as child"
+    );
+
+    let task = agent_children
+        .iter()
+        .find(|s| s.name == "<task>")
+        .expect("<agent> should include <task> as child");
+    let task_children = task
+        .children
+        .as_ref()
+        .expect("<task> should contain nested XML symbols");
+    assert!(
+        task_children.iter().any(|s| s.name == "<step>"),
+        "<task> should include <step> as child"
+    );
+}

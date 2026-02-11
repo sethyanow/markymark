@@ -10,7 +10,7 @@ use tower_lsp_server::{Client, LanguageServer, LspService};
 use crate::state::{DiagnosticSeverity as MarkyDiagSeverity, ServerState, SymbolAtPosition};
 use markymark_core::{DocumentUri, Range as CoreRange};
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link, ResolvedTarget};
-use markymark_index::{DocumentIndex, OutlineNode};
+use markymark_index::{DocumentIndex, OutlineNode, XmlTagEntry};
 use std::collections::HashMap;
 
 /// The LSP server backend.
@@ -399,22 +399,7 @@ impl LanguageServer for Backend {
 
         let outline = index.outline();
         let mut symbols = outline_children_to_symbols(&outline.children);
-
-        // Include XML tags as top-level symbols
-        for xt in index.xml_tags() {
-            let range = crate::convert::to_lsp_range(xt.range);
-            #[allow(deprecated)]
-            symbols.push(DocumentSymbol {
-                name: format!("<{}>", xt.tag_name),
-                detail: None,
-                kind: SymbolKind::OBJECT,
-                tags: None,
-                deprecated: None,
-                range,
-                selection_range: range,
-                children: None,
-            });
-        }
+        symbols.extend(xml_tags_to_symbols(index.xml_tags()));
 
         if symbols.is_empty() {
             Ok(None)
@@ -668,4 +653,68 @@ fn outline_children_to_symbols(children: &[OutlineNode]) -> Vec<DocumentSymbol> 
             })
         })
         .collect()
+}
+
+#[derive(Debug)]
+struct XmlSymbolNode {
+    name: String,
+    range: CoreRange,
+    children: Vec<XmlSymbolNode>,
+}
+
+fn xml_tags_to_symbols(xml_tags: &[XmlTagEntry]) -> Vec<DocumentSymbol> {
+    let mut roots: Vec<XmlSymbolNode> = Vec::new();
+
+    for tag in xml_tags {
+        let node = XmlSymbolNode {
+            name: format!("<{}>", tag.tag_name),
+            range: tag.range,
+            children: Vec::new(),
+        };
+        insert_xml_node(&mut roots, node);
+    }
+
+    roots.into_iter().map(xml_node_to_document_symbol).collect()
+}
+
+fn insert_xml_node(nodes: &mut Vec<XmlSymbolNode>, node: XmlSymbolNode) {
+    for existing in nodes.iter_mut().rev() {
+        if core_range_strictly_contains(existing.range, node.range) {
+            insert_xml_node(&mut existing.children, node);
+            return;
+        }
+    }
+
+    nodes.push(node);
+}
+
+fn core_range_strictly_contains(parent: CoreRange, child: CoreRange) -> bool {
+    parent.start <= child.start
+        && child.end <= parent.end
+        && (parent.start < child.start || child.end < parent.end)
+}
+
+fn xml_node_to_document_symbol(node: XmlSymbolNode) -> DocumentSymbol {
+    let range = crate::convert::to_lsp_range(node.range);
+    let children: Vec<DocumentSymbol> = node
+        .children
+        .into_iter()
+        .map(xml_node_to_document_symbol)
+        .collect();
+
+    #[allow(deprecated)]
+    DocumentSymbol {
+        name: node.name,
+        detail: None,
+        kind: SymbolKind::OBJECT,
+        tags: None,
+        deprecated: None,
+        range,
+        selection_range: range,
+        children: if children.is_empty() {
+            None
+        } else {
+            Some(children)
+        },
+    }
 }
