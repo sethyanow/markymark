@@ -97,9 +97,72 @@ impl CoreEngine for RuntimeEngine {
 
                 CoreOperationResult::Symbols(matches)
             }
-            CoreOperation::FindReferences { .. } => {
-                CoreOperationResult::Error(CoreError::NotImplemented(
-                    "find-references is not wired into the MCP runtime yet".to_string(),
+            CoreOperation::FindReferences { uri, position } => {
+                let index = match self.realm.get_document(&uri) {
+                    Some(idx) => idx,
+                    None => {
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "document is not indexed: {}",
+                            uri.as_str()
+                        )));
+                    }
+                };
+
+                // Use the start of the position range as the cursor point.
+                let cursor = position.start;
+
+                // Identify the symbol at the cursor: headings and XML tags support references.
+                if let Some(heading) = index.headings().iter().find(|h| h.range.contains(cursor)) {
+                    let slug = &heading.slug;
+                    let mut locations = Vec::new();
+
+                    for (doc_uri, doc_index) in self.realm.iter_documents() {
+                        for wl in doc_index.wiki_links() {
+                            if wl.heading.as_deref() == Some(slug) {
+                                locations.push((doc_uri.clone(), wl.range));
+                            }
+                        }
+                        for ml in doc_index.markdown_links() {
+                            if ml.anchor.as_deref() == Some(slug) {
+                                locations.push((doc_uri.clone(), ml.range));
+                            }
+                        }
+                    }
+
+                    locations.sort_by(|(uri_a, range_a), (uri_b, range_b)| {
+                        uri_a
+                            .as_str()
+                            .cmp(uri_b.as_str())
+                            .then_with(|| compare_ranges(*range_a, *range_b))
+                    });
+
+                    return CoreOperationResult::Locations(locations);
+                }
+
+                if let Some(xml_tag) = index.xml_tags().iter().find(|x| x.range.contains(cursor)) {
+                    let tag_name = &xml_tag.tag_name;
+                    let mut locations = Vec::new();
+
+                    for (doc_uri, doc_index) in self.realm.iter_documents() {
+                        for xt in doc_index.xml_tags() {
+                            if xt.tag_name == *tag_name {
+                                locations.push((doc_uri.clone(), xt.range));
+                            }
+                        }
+                    }
+
+                    locations.sort_by(|(uri_a, range_a), (uri_b, range_b)| {
+                        uri_a
+                            .as_str()
+                            .cmp(uri_b.as_str())
+                            .then_with(|| compare_ranges(*range_a, *range_b))
+                    });
+
+                    return CoreOperationResult::Locations(locations);
+                }
+
+                CoreOperationResult::Error(CoreError::Message(
+                    "no referenceable symbol at position".to_string(),
                 ))
             }
             CoreOperation::Rename { .. } => CoreOperationResult::Error(CoreError::NotImplemented(
@@ -168,6 +231,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use markymark_core::engine::CoreOperation;
+    use markymark_core::Position;
 
     use super::*;
 
@@ -277,6 +341,161 @@ mod tests {
                 );
             }
             other => panic!("expected symbol matches, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn find_references_returns_wiki_link_refs_to_heading() {
+        let ws = TempWorkspace::new("find-refs-heading");
+        // a.md has a heading "## Setup" and a wiki link to it
+        let a = ws.root().join("a.md");
+        fs::write(&a, "# Title\n\n## Setup\n\nSee [[#setup]] for info.\n")
+            .expect("a.md should be created");
+        // b.md has a wiki link referencing the same heading slug
+        let b = ws.root().join("b.md");
+        fs::write(&b, "# Other\n\nCheck [[a#setup]] link.\n")
+            .expect("b.md should be created");
+
+        let engine =
+            RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+        // Position cursor on the "## Setup" heading (line 2, char 3 = within "Setup")
+        let result = engine.execute(CoreOperation::FindReferences {
+            uri: DocumentUri::from_file_path(&a),
+            position: Range::new(Position::new(2, 3), Position::new(2, 3)),
+        });
+
+        match result {
+            CoreOperationResult::Locations(locations) => {
+                // Should find at least the wiki link in a.md and the cross-file wiki link in b.md
+                assert!(
+                    locations.len() >= 2,
+                    "expected at least 2 references, got {}",
+                    locations.len()
+                );
+                // Verify deterministic ordering: sorted by URI then range
+                for window in locations.windows(2) {
+                    let (uri_a, range_a) = &window[0];
+                    let (uri_b, range_b) = &window[1];
+                    let ord = uri_a
+                        .as_str()
+                        .cmp(uri_b.as_str())
+                        .then_with(|| compare_ranges(*range_a, *range_b));
+                    assert!(
+                        ord != Ordering::Greater,
+                        "locations should be sorted, but {uri_a:?} > {uri_b:?}"
+                    );
+                }
+            }
+            other => panic!("expected Locations result, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn find_references_returns_markdown_link_refs_to_heading() {
+        let ws = TempWorkspace::new("find-refs-mdlink");
+        let a = ws.root().join("a.md");
+        // "## My Section" slug = "my-section"
+        // Markdown link [link](#my-section) references it
+        fs::write(
+            &a,
+            "# Title\n\n## My Section\n\nSee [link](#my-section) here.\n",
+        )
+        .expect("a.md should be created");
+
+        let engine =
+            RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+        // Position on the heading "## My Section" (line 2, char 4)
+        let result = engine.execute(CoreOperation::FindReferences {
+            uri: DocumentUri::from_file_path(&a),
+            position: Range::new(Position::new(2, 4), Position::new(2, 4)),
+        });
+
+        match result {
+            CoreOperationResult::Locations(locations) => {
+                assert!(
+                    !locations.is_empty(),
+                    "expected at least 1 markdown link reference"
+                );
+            }
+            other => panic!("expected Locations result, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn find_references_returns_xml_tag_refs_across_documents() {
+        let ws = TempWorkspace::new("find-refs-xml");
+        let a = ws.root().join("a.md");
+        fs::write(&a, "# Doc A\n\n<agent>content</agent>\n\n<agent>more</agent>\n")
+            .expect("a.md should be created");
+        let b = ws.root().join("b.md");
+        fs::write(&b, "# Doc B\n\n<agent>stuff</agent>\n")
+            .expect("b.md should be created");
+
+        let engine =
+            RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+        // Position on first <agent> tag in a.md (line 2, char 1 = within "agent")
+        let result = engine.execute(CoreOperation::FindReferences {
+            uri: DocumentUri::from_file_path(&a),
+            position: Range::new(Position::new(2, 1), Position::new(2, 1)),
+        });
+
+        match result {
+            CoreOperationResult::Locations(locations) => {
+                // 2 in a.md + 1 in b.md = 3 total references
+                assert_eq!(
+                    locations.len(),
+                    3,
+                    "expected 3 XML tag references, got {}",
+                    locations.len()
+                );
+            }
+            other => panic!("expected Locations result, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn find_references_returns_error_for_unknown_document() {
+        let ws = TempWorkspace::new("find-refs-unknown");
+        let a = ws.root().join("a.md");
+        fs::write(&a, "# Heading\n").expect("a.md should be created");
+
+        let engine =
+            RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+        let unknown = ws.root().join("nonexistent.md");
+        let result = engine.execute(CoreOperation::FindReferences {
+            uri: DocumentUri::from_file_path(&unknown),
+            position: Range::new(Position::new(0, 2), Position::new(0, 2)),
+        });
+
+        match result {
+            CoreOperationResult::Error(_) => { /* expected */ }
+            other => panic!("expected error for unknown document, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn find_references_returns_error_for_position_without_symbol() {
+        let ws = TempWorkspace::new("find-refs-nosymbol");
+        let a = ws.root().join("a.md");
+        // Line 0: "# Heading", Line 1: empty, Line 2: "Some text"
+        fs::write(&a, "# Heading\n\nSome text\n").expect("a.md should be created");
+
+        let engine =
+            RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+        // Position on "Some text" (line 2) - no heading or XML tag there
+        let result = engine.execute(CoreOperation::FindReferences {
+            uri: DocumentUri::from_file_path(&a),
+            position: Range::new(Position::new(2, 2), Position::new(2, 2)),
+        });
+
+        match result {
+            CoreOperationResult::Error(_) => { /* expected - no symbol at position */ }
+            other => panic!("expected error for no-symbol position, got: {other:?}"),
         }
     }
 
