@@ -881,7 +881,7 @@ fn export_index_returns_full_document_data() {
             assert_eq!(headings[0].1, 1); // level
             assert_eq!(headings[1].0, "Details");
             assert_eq!(headings[1].1, 2); // level
-            assert!(xml_tags.len() >= 1, "expected at least 1 XML tag");
+            assert!(!xml_tags.is_empty(), "expected at least 1 XML tag");
             assert_eq!(xml_tags[0].0, "agent");
             assert_eq!(wiki_links.len(), 1);
             assert_eq!(wiki_links[0].0, "other-page");
