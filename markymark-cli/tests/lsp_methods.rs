@@ -22,9 +22,7 @@ struct ChildGuard {
 
 impl ChildGuard {
     fn new(child: Child) -> Self {
-        Self {
-            child: Some(child),
-        }
+        Self { child: Some(child) }
     }
 
     fn child_mut(&mut self) -> &mut Child {
@@ -162,21 +160,14 @@ impl LspTestHarness {
             "initialize should return capabilities"
         );
 
-        harness.send_notification(
-            "initialized",
-            serde_json::json!({}),
-        );
+        harness.send_notification("initialized", serde_json::json!({}));
 
         harness
     }
 
     /// Send a JSON-RPC request, return the result value.
     /// Collects any interleaved notifications (like publishDiagnostics).
-    fn send_request(
-        &mut self,
-        method: &str,
-        params: serde_json::Value,
-    ) -> serde_json::Value {
+    fn send_request(&mut self, method: &str, params: serde_json::Value) -> serde_json::Value {
         let id = self.next_id;
         self.next_id += 1;
 
@@ -187,7 +178,9 @@ impl LspTestHarness {
             "params": params
         });
         let frame = lsp_frame(&msg.to_string());
-        self.stdin.write_all(&frame).expect("failed to write request");
+        self.stdin
+            .write_all(&frame)
+            .expect("failed to write request");
         self.stdin.flush().expect("failed to flush");
 
         // Read messages until we get a response with our id
@@ -318,9 +311,7 @@ impl LspTestHarness {
         drop(self.stdin);
 
         let child = self.guard.take();
-        let output = child
-            .wait_with_output()
-            .expect("failed to wait on child");
+        let output = child.wait_with_output().expect("failed to wait on child");
         output.status.code().unwrap_or(-1)
     }
 }
@@ -355,7 +346,13 @@ fn setup_workspace() -> LspTestHarness {
     let mut harness = LspTestHarness::spawn(&corpus);
 
     // Open the core corpus files the tests depend on
-    for file in &["basic.md", "links.md", "cross-refs.md", "edge-cases.md", "xml-tags.md"] {
+    for file in &[
+        "basic.md",
+        "links.md",
+        "cross-refs.md",
+        "edge-cases.md",
+        "xml-tags.md",
+    ] {
         harness.open_file(&corpus.join(file));
     }
 
@@ -438,18 +435,13 @@ fn e2e_references_heading_all_links() {
         );
 
         // Check that at least one reference is from cross-refs.md
-        let has_cross_ref = refs
-            .iter()
-            .any(|r| {
-                r.get("uri")
-                    .and_then(|u| u.as_str())
-                    .map(|u| u.contains("cross-refs.md"))
-                    .unwrap_or(false)
-            });
-        assert!(
-            has_cross_ref,
-            "should have references from cross-refs.md"
-        );
+        let has_cross_ref = refs.iter().any(|r| {
+            r.get("uri")
+                .and_then(|u| u.as_str())
+                .map(|u| u.contains("cross-refs.md"))
+                .unwrap_or(false)
+        });
+        assert!(has_cross_ref, "should have references from cross-refs.md");
 
         let exit = harness.shutdown_and_exit();
         assert_eq!(exit, 0);
@@ -485,10 +477,7 @@ fn e2e_hover_heading_shows_info() {
         };
 
         // Should mention the heading in some way
-        assert!(
-            !hover_text.is_empty(),
-            "hover content should not be empty"
-        );
+        assert!(!hover_text.is_empty(), "hover content should not be empty");
 
         let exit = harness.shutdown_and_exit();
         assert_eq!(exit, 0);
@@ -594,9 +583,7 @@ fn e2e_rename_heading_updates_all_links() {
             );
 
             // Check basic.md has an edit
-            let has_basic_edit = changes_map
-                .keys()
-                .any(|k| k.contains("basic.md"));
+            let has_basic_edit = changes_map.keys().any(|k| k.contains("basic.md"));
             assert!(
                 has_basic_edit,
                 "rename should edit basic.md (the heading source)"
@@ -632,7 +619,9 @@ fn e2e_document_symbol_nested_headings() {
             }),
         );
 
-        let symbols = result.as_array().expect("documentSymbol should return array");
+        let symbols = result
+            .as_array()
+            .expect("documentSymbol should return array");
 
         // basic.md has: Main Title > Section One > Subsection A > Level Four > ...
         assert!(
@@ -673,7 +662,9 @@ fn e2e_workspace_symbol_search_cross_file() {
             }),
         );
 
-        let symbols = result.as_array().expect("workspace/symbol should return array");
+        let symbols = result
+            .as_array()
+            .expect("workspace/symbol should return array");
 
         assert!(
             !symbols.is_empty(),
@@ -700,7 +691,10 @@ fn e2e_workspace_symbol_search_cross_file() {
                 .map(|u| u.contains("basic.md"))
                 .unwrap_or(false)
         });
-        assert!(has_basic, "workspace symbols should include results from basic.md");
+        assert!(
+            has_basic,
+            "workspace symbols should include results from basic.md"
+        );
 
         let exit = harness.shutdown_and_exit();
         assert_eq!(exit, 0);

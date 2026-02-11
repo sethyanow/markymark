@@ -23,9 +23,7 @@ struct ChildGuard {
 
 impl ChildGuard {
     fn new(child: Child) -> Self {
-        Self {
-            child: Some(child),
-        }
+        Self { child: Some(child) }
     }
 
     fn child_mut(&mut self) -> &mut Child {
@@ -152,11 +150,7 @@ impl McpTestHarness {
     }
 
     /// Send a JSON-RPC request, return the result value.
-    fn send_request(
-        &mut self,
-        method: &str,
-        params: serde_json::Value,
-    ) -> serde_json::Value {
+    fn send_request(&mut self, method: &str, params: serde_json::Value) -> serde_json::Value {
         let id = self.next_id;
         self.next_id += 1;
 
@@ -205,11 +199,7 @@ impl McpTestHarness {
 
     /// Call an MCP tool and return the structured content.
     /// Returns the parsed JSON from the first text content block.
-    fn call_tool(
-        &mut self,
-        tool_name: &str,
-        arguments: serde_json::Value,
-    ) -> serde_json::Value {
+    fn call_tool(&mut self, tool_name: &str, arguments: serde_json::Value) -> serde_json::Value {
         let result = self.send_request(
             "tools/call",
             serde_json::json!({
@@ -235,9 +225,7 @@ impl McpTestHarness {
             .get("text")
             .and_then(|t| t.as_str())
             .unwrap_or_else(|| {
-                panic!(
-                    "tool {tool_name} content[0] should have 'text' field, got: {first}"
-                )
+                panic!("tool {tool_name} content[0] should have 'text' field, got: {first}")
             });
 
         serde_json::from_str(text).unwrap_or_else(|e| {
@@ -249,9 +237,7 @@ impl McpTestHarness {
     fn shutdown(self) -> i32 {
         drop(self.stdin);
         let child = self.guard.take();
-        let output = child
-            .wait_with_output()
-            .expect("failed to wait on child");
+        let output = child.wait_with_output().expect("failed to wait on child");
         output.status.code().unwrap_or(-1)
     }
 }
@@ -286,10 +272,7 @@ fn e2e_mcp_get_outline_basic() {
         let mut harness = McpTestHarness::spawn(&corpus_dir());
 
         let basic_uri = path_to_uri(&corpus_dir().join("basic.md"));
-        let result = harness.call_tool(
-            "get-outline",
-            serde_json::json!({ "uri": basic_uri }),
-        );
+        let result = harness.call_tool("get-outline", serde_json::json!({ "uri": basic_uri }));
 
         // Should return headings array (Vec<String> of heading text)
         let headings = result
@@ -306,10 +289,11 @@ fn e2e_mcp_get_outline_basic() {
         );
 
         // First heading should be "Main Title" (headings are plain strings)
-        let first_text = headings[0]
-            .as_str()
-            .expect("heading should be a string");
-        assert_eq!(first_text, "Main Title", "first heading should be Main Title");
+        let first_text = headings[0].as_str().expect("heading should be a string");
+        assert_eq!(
+            first_text, "Main Title",
+            "first heading should be Main Title"
+        );
 
         let exit = harness.shutdown();
         assert_eq!(exit, 0, "server should exit cleanly");
@@ -321,10 +305,7 @@ fn e2e_mcp_search_symbols_headings() {
     run_with_timeout(|| {
         let mut harness = McpTestHarness::spawn(&corpus_dir());
 
-        let result = harness.call_tool(
-            "search-symbols",
-            serde_json::json!({ "query": "Section" }),
-        );
+        let result = harness.call_tool("search-symbols", serde_json::json!({ "query": "Section" }));
 
         let symbols = result
             .get("symbols")
@@ -358,10 +339,7 @@ fn e2e_mcp_search_symbols_cross_file() {
         let mut harness = McpTestHarness::spawn(&corpus_dir());
 
         // Search for "Tags" which matches "XML Tags Test" and sub-headings in xml-tags.md
-        let result = harness.call_tool(
-            "search-symbols",
-            serde_json::json!({ "query": "Tags" }),
-        );
+        let result = harness.call_tool("search-symbols", serde_json::json!({ "query": "Tags" }));
 
         let symbols = result
             .get("symbols")
@@ -497,10 +475,7 @@ fn e2e_mcp_export_index_basic() {
         let mut harness = McpTestHarness::spawn(&corpus_dir());
 
         let basic_uri = path_to_uri(&corpus_dir().join("basic.md"));
-        let result = harness.call_tool(
-            "export-index",
-            serde_json::json!({ "uri": basic_uri }),
-        );
+        let result = harness.call_tool("export-index", serde_json::json!({ "uri": basic_uri }));
 
         // Should have all four index categories
         let headings = result
@@ -517,10 +492,7 @@ fn e2e_mcp_export_index_basic() {
             .get("xml_tags")
             .and_then(|t| t.as_array())
             .expect("export-index should return 'xml_tags'");
-        assert!(
-            xml_tags.is_empty(),
-            "basic.md should have no XML tags"
-        );
+        assert!(xml_tags.is_empty(), "basic.md should have no XML tags");
 
         // Check wiki_links and markdown_links arrays exist
         assert!(
@@ -543,10 +515,7 @@ fn e2e_mcp_export_index_xml_tags() {
         let mut harness = McpTestHarness::spawn(&corpus_dir());
 
         let xml_uri = path_to_uri(&corpus_dir().join("xml-tags.md"));
-        let result = harness.call_tool(
-            "export-index",
-            serde_json::json!({ "uri": xml_uri }),
-        );
+        let result = harness.call_tool("export-index", serde_json::json!({ "uri": xml_uri }));
 
         let xml_tags = result
             .get("xml_tags")
@@ -587,10 +556,7 @@ fn e2e_mcp_realm_stats_default() {
     run_with_timeout(|| {
         let mut harness = McpTestHarness::spawn(&corpus_dir());
 
-        let result = harness.call_tool(
-            "realm-stats",
-            serde_json::json!({ "realm": "default" }),
-        );
+        let result = harness.call_tool("realm-stats", serde_json::json!({ "realm": "default" }));
 
         let doc_count = result
             .get("document_count")
@@ -608,10 +574,7 @@ fn e2e_mcp_realm_stats_default() {
             .get("heading_count")
             .and_then(|h| h.as_u64())
             .expect("realm-stats should return 'heading_count'");
-        assert!(
-            heading_count > 0,
-            "default realm should have headings"
-        );
+        assert!(heading_count > 0, "default realm should have headings");
 
         let exit = harness.shutdown();
         assert_eq!(exit, 0);
@@ -624,10 +587,8 @@ fn e2e_mcp_create_and_destroy_realm() {
         let mut harness = McpTestHarness::spawn(&corpus_dir());
 
         // Create a new realm
-        let create_result = harness.call_tool(
-            "create-realm",
-            serde_json::json!({ "name": "test-realm" }),
-        );
+        let create_result =
+            harness.call_tool("create-realm", serde_json::json!({ "name": "test-realm" }));
         let realm_name = create_result
             .get("name")
             .and_then(|n| n.as_str())
@@ -641,10 +602,8 @@ fn e2e_mcp_create_and_destroy_realm() {
         assert_eq!(doc_count, 0, "new realm should have 0 documents");
 
         // Destroy the realm
-        let destroy_result = harness.call_tool(
-            "destroy-realm",
-            serde_json::json!({ "name": "test-realm" }),
-        );
+        let destroy_result =
+            harness.call_tool("destroy-realm", serde_json::json!({ "name": "test-realm" }));
         let success = destroy_result
             .get("success")
             .and_then(|s| s.as_bool())
@@ -744,10 +703,7 @@ fn e2e_mcp_get_outline_empty_file() {
         let mut harness = McpTestHarness::spawn(&corpus_dir());
 
         let empty_uri = path_to_uri(&corpus_dir().join("empty.md"));
-        let result = harness.call_tool(
-            "get-outline",
-            serde_json::json!({ "uri": empty_uri }),
-        );
+        let result = harness.call_tool("get-outline", serde_json::json!({ "uri": empty_uri }));
 
         let headings = result
             .get("headings")
