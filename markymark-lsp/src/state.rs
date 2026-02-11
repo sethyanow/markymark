@@ -477,6 +477,18 @@ impl ServerState {
                 range: h.range,
                 placeholder: h.text.clone(),
             }),
+            SymbolAtPosition::XmlTag(xt) => {
+                // Tag name range: starts after '<', length of tag_name
+                let name_start = Position::new(xt.range.start.line, xt.range.start.character + 1);
+                let name_end = Position::new(
+                    xt.range.start.line,
+                    xt.range.start.character + 1 + xt.tag_name.len() as u32,
+                );
+                Some(PrepareRenameResult {
+                    range: Range::new(name_start, name_end),
+                    placeholder: xt.tag_name.clone(),
+                })
+            }
             // Wiki links and markdown links are not renameable themselves
             // (you rename the heading they point to, not the link)
             _ => None,
@@ -556,6 +568,38 @@ impl ServerState {
                 }
 
                 Some(edits)
+            }
+            SymbolAtPosition::XmlTag(xt) => {
+                let old_name = &xt.tag_name;
+                let mut edits = Vec::new();
+
+                // Find all XML tags with the same name across all documents
+                for (doc_uri, index) in self.realm.iter_documents() {
+                    for xml in index.xml_tags() {
+                        if xml.tag_name == *old_name {
+                            // Tag name range: starts after '<', length of tag_name
+                            let name_start = Position::new(
+                                xml.range.start.line,
+                                xml.range.start.character + 1,
+                            );
+                            let name_end = Position::new(
+                                xml.range.start.line,
+                                xml.range.start.character + 1 + xml.tag_name.len() as u32,
+                            );
+                            edits.push(RenameEdit {
+                                uri: doc_uri.clone(),
+                                range: Range::new(name_start, name_end),
+                                new_text: new_name.to_string(),
+                            });
+                        }
+                    }
+                }
+
+                if edits.is_empty() {
+                    None
+                } else {
+                    Some(edits)
+                }
             }
             _ => None,
         }
