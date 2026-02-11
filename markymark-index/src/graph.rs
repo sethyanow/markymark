@@ -24,8 +24,6 @@ pub enum RefKind {
     Embed,
     /// `#tag` reference.
     TagRef,
-    /// `<tag>` XML tag reference.
-    XmlTagRef,
 }
 
 /// An unresolved reference (target symbol not found in the graph).
@@ -50,10 +48,6 @@ enum SymbolData {
         uri: DocumentUri,
         slug: String,
         text: String,
-    },
-    XmlTag {
-        uri: DocumentUri,
-        tag_name: String,
     },
 }
 
@@ -92,17 +86,6 @@ impl ConnectionGraph {
             uri,
             slug: slug.to_string(),
             text: text.to_string(),
-        });
-        self.uri_to_nodes.entry(key).or_default().push(idx);
-        SymbolId(idx)
-    }
-
-    /// Add an XML tag symbol belonging to a document.
-    pub fn add_xml_tag(&mut self, uri: DocumentUri, tag_name: &str) -> SymbolId {
-        let key = uri.as_str().to_string();
-        let idx = self.graph.add_node(SymbolData::XmlTag {
-            uri,
-            tag_name: tag_name.to_string(),
         });
         self.uri_to_nodes.entry(key).or_default().push(idx);
         SymbolId(idx)
