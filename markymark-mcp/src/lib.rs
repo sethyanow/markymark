@@ -14,7 +14,7 @@ use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
         CallToolResult, ListResourceTemplatesResult, ReadResourceRequestParam, ReadResourceResult,
-        ServerCapabilities, ServerInfo,
+        ServerCapabilities, ServerInfo, SubscribeRequestParam, UnsubscribeRequestParam,
     },
     service::RequestContext,
     tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler, ServiceExt,
@@ -25,6 +25,7 @@ pub mod dto;
 mod rename_ops;
 mod resources;
 mod runtime_engine;
+mod subscriptions;
 
 pub use dto::*;
 pub use runtime_engine::RuntimeEngine;
@@ -39,9 +40,28 @@ impl ServerHandler for MarkymarkMcp {
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
                 .enable_resources()
+                .enable_resources_subscribe()
                 .build(),
             ..ServerInfo::default()
         }
+    }
+
+    fn subscribe(
+        &self,
+        request: SubscribeRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<(), McpError>> + Send + '_ {
+        self.subscriptions.subscribe(request.uri, context.peer);
+        std::future::ready(Ok(()))
+    }
+
+    fn unsubscribe(
+        &self,
+        request: UnsubscribeRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<(), McpError>> + Send + '_ {
+        self.subscriptions.untrack(&request.uri);
+        std::future::ready(Ok(()))
     }
 
     fn list_resource_templates(
@@ -74,6 +94,7 @@ impl ServerHandler for MarkymarkMcp {
 pub struct MarkymarkMcp {
     engine: Arc<dyn CoreEngine>,
     tool_router: ToolRouter<Self>,
+    subscriptions: subscriptions::SubscriptionTracker,
 }
 
 #[tool_router(router = tool_router)]
@@ -83,7 +104,28 @@ impl MarkymarkMcp {
         Self {
             engine,
             tool_router: Self::tool_router(),
+            subscriptions: subscriptions::SubscriptionTracker::new(),
         }
+    }
+
+    /// Record a resource URI as subscribed (without peer handle, for testing).
+    pub fn track_subscription(&self, uri: String) {
+        self.subscriptions.track(uri);
+    }
+
+    /// Remove a resource URI subscription. Returns `true` if it was subscribed.
+    pub fn untrack_subscription(&self, uri: &str) -> bool {
+        self.subscriptions.untrack(uri)
+    }
+
+    /// Check if a resource URI is currently subscribed.
+    pub fn is_subscribed(&self, uri: &str) -> bool {
+        self.subscriptions.is_subscribed(uri)
+    }
+
+    /// Return the count of active subscriptions.
+    pub fn subscription_count(&self) -> usize {
+        self.subscriptions.subscription_count()
     }
 
     /// Request a document outline from the core engine.
@@ -315,11 +357,14 @@ impl MarkymarkMcp {
                 name,
                 root_count,
                 document_count,
-            } => Ok(CallToolResult::structured(json!(RealmInfoResponse {
-                name,
-                root_count,
-                document_count,
-            }))),
+            } => {
+                self.subscriptions.notify_all().await;
+                Ok(CallToolResult::structured(json!(RealmInfoResponse {
+                    name,
+                    root_count,
+                    document_count,
+                })))
+            }
             CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
             other => Ok(unexpected_result_error("create-realm", &other)),
         }
@@ -344,6 +389,7 @@ impl MarkymarkMcp {
 
         match self.engine.execute(CoreOperation::DestroyRealm { name }) {
             CoreOperationResult::Ok => {
+                self.subscriptions.notify_all().await;
                 Ok(CallToolResult::structured(json!(DestroyRealmResponse {
                     success: true
                 })))
@@ -377,11 +423,14 @@ impl MarkymarkMcp {
                 name,
                 root_count,
                 document_count,
-            } => Ok(CallToolResult::structured(json!(RealmInfoResponse {
-                name,
-                root_count,
-                document_count,
-            }))),
+            } => {
+                self.subscriptions.notify_all().await;
+                Ok(CallToolResult::structured(json!(RealmInfoResponse {
+                    name,
+                    root_count,
+                    document_count,
+                })))
+            }
             CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
             other => Ok(unexpected_result_error("add-root", &other)),
         }
@@ -414,11 +463,14 @@ impl MarkymarkMcp {
                 name,
                 root_count,
                 document_count,
-            } => Ok(CallToolResult::structured(json!(RealmInfoResponse {
-                name,
-                root_count,
-                document_count,
-            }))),
+            } => {
+                self.subscriptions.notify_all().await;
+                Ok(CallToolResult::structured(json!(RealmInfoResponse {
+                    name,
+                    root_count,
+                    document_count,
+                })))
+            }
             CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
             other => Ok(unexpected_result_error("remove-root", &other)),
         }
