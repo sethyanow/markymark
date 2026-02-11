@@ -246,6 +246,7 @@ impl LanguageServer for Backend {
         let uri_str = &params.text_document_position.text_document.uri;
         let pos = params.text_document_position.position;
         let core_pos = crate::convert::from_lsp_position(pos);
+        let include_declaration = params.context.include_declaration;
 
         let state = self.state.read().await;
         let doc_uri = match crate::convert::from_lsp_uri(uri_str) {
@@ -286,6 +287,9 @@ impl LanguageServer for Backend {
                 // Search all documents for XML tags with the same name
                 for (uri, index) in iter_realm_documents(&state) {
                     for xml in index.xml_tags() {
+                        if !include_declaration && uri == &doc_uri && xml.range == xt.range {
+                            continue;
+                        }
                         if xml.tag_name == *tag_name {
                             if let Ok(loc) = crate::convert::to_lsp_location(uri, xml.range) {
                                 locations.push(loc);

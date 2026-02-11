@@ -259,20 +259,14 @@ async fn test_references_for_xml_tag_same_doc() {
     let result = backend.references(params).await.unwrap();
     assert!(
         result.is_some(),
-        "references for XML tag with multiple occurrences should return locations"
+        "references for XML tag with include_declaration=false should return non-declaration locations"
     );
     let locs = result.unwrap();
-    // a.md has <agent> on line 2 and line 8 -> at least 2 locations
-    assert!(
-        locs.len() >= 2,
-        "should find at least 2 <agent> references in a.md: found {}",
-        locs.len()
-    );
-    // All locations should be in a.md (and b.md has one too, so actually >= 3 total)
-    assert!(
-        locs.len() >= 3,
-        "should find at least 3 <agent> references across workspace: found {}",
-        locs.len()
+    // Workspace has 3 total <agent> occurrences; include_declaration=false excludes current one.
+    assert_eq!(
+        locs.len(),
+        2,
+        "should exclude declaration and keep the two non-declaration <agent> references"
     );
 }
 
@@ -299,14 +293,14 @@ async fn test_references_for_xml_tag_cross_doc() {
     let result = backend.references(params).await.unwrap();
     assert!(
         result.is_some(),
-        "references for XML tag should include cross-document matches"
+        "references for XML tag should include cross-document matches except declaration"
     );
     let locs = result.unwrap();
-    // b.md has 1 <agent>, a.md has 2 <agent> -> at least 3 total
-    assert!(
-        locs.len() >= 3,
-        "should find at least 3 <agent> references across workspace: found {}",
-        locs.len()
+    // b.md has 1 <agent>, a.md has 2 <agent>; include_declaration=false excludes current b.md one.
+    assert_eq!(
+        locs.len(),
+        2,
+        "should find exactly 2 non-declaration <agent> references across workspace"
     );
     // Verify at least one reference points to a.md
     assert!(
@@ -337,12 +331,40 @@ async fn test_references_for_xml_tag_unique_no_refs() {
     };
 
     let result = backend.references(params).await.unwrap();
-    // Only 1 <routing> tag in the whole workspace -> return that single location
-    // (find-references typically includes all occurrences, including the one under cursor)
+    // Only 1 <routing> tag in the whole workspace and include_declaration=false.
+    let is_empty = result.as_ref().is_none_or(|v| v.is_empty());
+    assert!(
+        is_empty,
+        "references for a unique XML tag should exclude declaration and return empty/None"
+    );
+}
+
+#[tokio::test]
+async fn test_references_for_xml_tag_include_declaration_true() {
+    // Cursor on unique <routing> in b.md with include_declaration=true should return itself.
+    let (service, _socket, _uri_a, uri_b) = setup_xml_workspace().await;
+    let backend = service.inner();
+
+    let params = ReferenceParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier {
+                uri: uri_b.clone(),
+            },
+            position: Position::new(6, 3), // on "<routing>" in b.md
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+        context: ReferenceContext {
+            include_declaration: true,
+        },
+    };
+
+    let result = backend.references(params).await.unwrap();
     assert!(
         result.is_some(),
-        "references for a unique XML tag should return at least itself"
+        "references for a unique XML tag should include declaration when requested"
     );
     let locs = result.unwrap();
-    assert_eq!(locs.len(), 1, "should find exactly 1 <routing> reference");
+    assert_eq!(locs.len(), 1, "should include exactly the declaration reference");
+    assert_eq!(locs[0].uri.as_str(), "file:///workspace/b.md");
 }
