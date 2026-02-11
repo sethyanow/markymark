@@ -384,6 +384,84 @@ impl CoreEngine for RuntimeEngine {
                     ))),
                 }
             }
+
+            // --- Query operations ---
+            CoreOperation::RealmStats { realm } => {
+                let state = self.state.read().expect("lock poisoned");
+                let realm_data = match state.get(&realm) {
+                    Some(data) => data,
+                    None => {
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "realm does not exist: {realm}"
+                        )));
+                    }
+                };
+
+                let mut heading_count = 0;
+                let mut xml_tag_count = 0;
+                let mut wiki_link_count = 0;
+                let mut markdown_link_count = 0;
+
+                for (_uri, index) in realm_data.index.iter_documents() {
+                    heading_count += index.headings().len();
+                    xml_tag_count += index.xml_tags().len();
+                    wiki_link_count += index.wiki_links().len();
+                    markdown_link_count += index.markdown_links().len();
+                }
+
+                CoreOperationResult::RealmStats {
+                    name: realm,
+                    root_count: realm_data.roots.len(),
+                    document_count: realm_data.index.document_count(),
+                    heading_count,
+                    xml_tag_count,
+                    wiki_link_count,
+                    markdown_link_count,
+                }
+            }
+            CoreOperation::ExportIndex { uri } => {
+                let state = self.state.read().expect("lock poisoned");
+                let realm = &state[DEFAULT_REALM].index;
+                match realm.get_document(&uri) {
+                    Some(index) => {
+                        let headings = index
+                            .headings()
+                            .iter()
+                            .map(|h| (h.text.clone(), h.level, h.range))
+                            .collect();
+
+                        let xml_tags = index
+                            .xml_tags()
+                            .iter()
+                            .map(|x| (x.tag_name.clone(), x.range))
+                            .collect();
+
+                        let wiki_links = index
+                            .wiki_links()
+                            .iter()
+                            .map(|wl| (wl.target.clone(), wl.heading.clone(), wl.range))
+                            .collect();
+
+                        let markdown_links = index
+                            .markdown_links()
+                            .iter()
+                            .map(|ml| (ml.text.clone(), ml.url.clone(), ml.range))
+                            .collect();
+
+                        CoreOperationResult::DocumentExport {
+                            uri,
+                            headings,
+                            xml_tags,
+                            wiki_links,
+                            markdown_links,
+                        }
+                    }
+                    None => CoreOperationResult::Error(CoreError::Message(format!(
+                        "document is not indexed: {}",
+                        uri.as_str()
+                    ))),
+                }
+            }
         }
     }
 }

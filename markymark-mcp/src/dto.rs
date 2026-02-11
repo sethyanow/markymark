@@ -185,6 +185,96 @@ pub struct DestroyRealmResponse {
     pub success: bool,
 }
 
+/// Request payload for `realm-stats`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RealmStatsRequest {
+    /// Realm name (e.g. "default").
+    pub realm: String,
+}
+
+/// Response payload for `realm-stats`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct RealmStatsResponse {
+    /// Realm name.
+    pub name: String,
+    /// Number of tracked workspace roots.
+    pub root_count: usize,
+    /// Number of indexed documents.
+    pub document_count: usize,
+    /// Total headings across all documents.
+    pub heading_count: usize,
+    /// Total XML tags across all documents.
+    pub xml_tag_count: usize,
+    /// Total wiki links across all documents.
+    pub wiki_link_count: usize,
+    /// Total markdown links across all documents.
+    pub markdown_link_count: usize,
+}
+
+/// Request payload for `export-index`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExportIndexRequest {
+    /// Document URI (`file://...`) to export.
+    pub uri: String,
+}
+
+/// A heading entry in an exported document index.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ExportedHeadingDto {
+    /// Heading text.
+    pub text: String,
+    /// Heading level (1-6).
+    pub level: u8,
+    /// Source range.
+    pub range: RangeDto,
+}
+
+/// An XML tag entry in an exported document index.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ExportedXmlTagDto {
+    /// Tag name.
+    pub tag_name: String,
+    /// Source range.
+    pub range: RangeDto,
+}
+
+/// A wiki link entry in an exported document index.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ExportedWikiLinkDto {
+    /// Target page name.
+    pub target: String,
+    /// Optional heading anchor.
+    pub heading: Option<String>,
+    /// Source range.
+    pub range: RangeDto,
+}
+
+/// A markdown link entry in an exported document index.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ExportedMarkdownLinkDto {
+    /// Link display text.
+    pub text: String,
+    /// Link URL.
+    pub url: String,
+    /// Source range.
+    pub range: RangeDto,
+}
+
+/// Response payload for `export-index`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ExportIndexResponse {
+    /// Document URI.
+    pub uri: String,
+    /// Headings in document order.
+    pub headings: Vec<ExportedHeadingDto>,
+    /// XML tags in document order.
+    pub xml_tags: Vec<ExportedXmlTagDto>,
+    /// Wiki links in document order.
+    pub wiki_links: Vec<ExportedWikiLinkDto>,
+    /// Markdown links in document order.
+    pub markdown_links: Vec<ExportedMarkdownLinkDto>,
+}
+
 /// Tool error envelope for consistent structured failures.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct ToolErrorEnvelope {

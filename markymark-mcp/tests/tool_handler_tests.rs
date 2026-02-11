@@ -79,6 +79,37 @@ impl CoreEngine for MockEngine {
                 root_count: 0,
                 document_count: 0,
             },
+            (_, CoreOperation::RealmStats { realm }) => CoreOperationResult::RealmStats {
+                name: realm,
+                root_count: 2,
+                document_count: 5,
+                heading_count: 12,
+                xml_tag_count: 3,
+                wiki_link_count: 8,
+                markdown_link_count: 4,
+            },
+            (_, CoreOperation::ExportIndex { uri }) => CoreOperationResult::DocumentExport {
+                uri: uri.clone(),
+                headings: vec![(
+                    "Introduction".to_string(),
+                    1,
+                    Range::new(Position::new(0, 0), Position::new(0, 16)),
+                )],
+                xml_tags: vec![(
+                    "agent".to_string(),
+                    Range::new(Position::new(2, 0), Position::new(4, 8)),
+                )],
+                wiki_links: vec![(
+                    "other-page".to_string(),
+                    Some("section".to_string()),
+                    Range::new(Position::new(6, 0), Position::new(6, 25)),
+                )],
+                markdown_links: vec![(
+                    "Click here".to_string(),
+                    "https://example.com".to_string(),
+                    Range::new(Position::new(8, 0), Position::new(8, 35)),
+                )],
+            },
         }
     }
 }
@@ -553,4 +584,138 @@ async fn remove_root_tool_rejects_empty_realm() {
     assert_eq!(result.is_error, Some(true));
     let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
     assert_eq!(payload.error.code, "invalid_name");
+}
+
+// --- realm-stats tool tests ---
+
+#[test]
+fn registers_realm_stats_and_export_index_tools() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let tools = mcp.list_tools();
+    let names: Vec<_> = tools.iter().map(|t| t.name.as_ref()).collect();
+    assert!(names.contains(&"realm-stats"), "missing realm-stats tool");
+    assert!(names.contains(&"export-index"), "missing export-index tool");
+}
+
+#[tokio::test]
+async fn realm_stats_tool_returns_structured_stats() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .realm_stats_tool(Parameters(RealmStatsRequest {
+            realm: "default".to_string(),
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: RealmStatsResponse = result.into_typed().expect("typed response");
+    assert_eq!(payload.name, "default");
+    assert_eq!(payload.root_count, 2);
+    assert_eq!(payload.document_count, 5);
+    assert_eq!(payload.heading_count, 12);
+    assert_eq!(payload.xml_tag_count, 3);
+    assert_eq!(payload.wiki_link_count, 8);
+    assert_eq!(payload.markdown_link_count, 4);
+}
+
+#[tokio::test]
+async fn realm_stats_tool_rejects_empty_realm() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .realm_stats_tool(Parameters(RealmStatsRequest {
+            realm: "   ".to_string(),
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "invalid_name");
+}
+
+#[tokio::test]
+async fn realm_stats_tool_maps_core_error() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::CoreError,
+    }));
+    let result = mcp
+        .realm_stats_tool(Parameters(RealmStatsRequest {
+            realm: "default".to_string(),
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "core_error");
+}
+
+// --- export-index tool tests ---
+
+#[tokio::test]
+async fn export_index_tool_returns_structured_document_export() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .export_index_tool(Parameters(ExportIndexRequest {
+            uri: "file:///vault/notes.md".to_string(),
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: ExportIndexResponse = result.into_typed().expect("typed response");
+    assert_eq!(payload.uri, "file:///vault/notes.md");
+    assert_eq!(payload.headings.len(), 1);
+    assert_eq!(payload.headings[0].text, "Introduction");
+    assert_eq!(payload.headings[0].level, 1);
+    assert_eq!(payload.xml_tags.len(), 1);
+    assert_eq!(payload.xml_tags[0].tag_name, "agent");
+    assert_eq!(payload.wiki_links.len(), 1);
+    assert_eq!(payload.wiki_links[0].target, "other-page");
+    assert_eq!(payload.wiki_links[0].heading, Some("section".to_string()));
+    assert_eq!(payload.markdown_links.len(), 1);
+    assert_eq!(payload.markdown_links[0].text, "Click here");
+    assert_eq!(payload.markdown_links[0].url, "https://example.com");
+}
+
+#[tokio::test]
+async fn export_index_tool_rejects_non_file_uri() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .export_index_tool(Parameters(ExportIndexRequest {
+            uri: "https://example.com/notes.md".to_string(),
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "non_file_uri");
+}
+
+#[tokio::test]
+async fn export_index_tool_maps_core_error() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::CoreError,
+    }));
+    let result = mcp
+        .export_index_tool(Parameters(ExportIndexRequest {
+            uri: "file:///vault/notes.md".to_string(),
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "core_error");
 }

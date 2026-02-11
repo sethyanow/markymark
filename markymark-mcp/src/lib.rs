@@ -393,6 +393,116 @@ impl MarkymarkMcp {
             other => Ok(unexpected_result_error("remove-root", &other)),
         }
     }
+
+    /// Get aggregate statistics for a realm.
+    #[tool(
+        name = "realm-stats",
+        description = "Get aggregate statistics (document, heading, tag, link counts) for a realm."
+    )]
+    pub async fn realm_stats_tool(
+        &self,
+        params: Parameters<RealmStatsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let realm = params.0.realm.trim().to_string();
+        if realm.is_empty() {
+            return Ok(tool_error(
+                "invalid_name",
+                "realm name must not be empty for realm-stats",
+            ));
+        }
+
+        match self.engine.execute(CoreOperation::RealmStats { realm }) {
+            CoreOperationResult::RealmStats {
+                name,
+                root_count,
+                document_count,
+                heading_count,
+                xml_tag_count,
+                wiki_link_count,
+                markdown_link_count,
+            } => Ok(CallToolResult::structured(json!(RealmStatsResponse {
+                name,
+                root_count,
+                document_count,
+                heading_count,
+                xml_tag_count,
+                wiki_link_count,
+                markdown_link_count,
+            }))),
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("realm-stats", &other)),
+        }
+    }
+
+    /// Export the full document index for a single document.
+    #[tool(
+        name = "export-index",
+        description = "Export headings, XML tags, wiki links, and markdown links for a document."
+    )]
+    pub async fn export_index_tool(
+        &self,
+        params: Parameters<ExportIndexRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let uri = match parse_file_uri(&params.0.uri) {
+            Ok(uri) => uri,
+            Err(err) => return Ok(tool_error(&err.code, err.message)),
+        };
+
+        match self.engine.execute(CoreOperation::ExportIndex { uri }) {
+            CoreOperationResult::DocumentExport {
+                uri,
+                headings,
+                xml_tags,
+                wiki_links,
+                markdown_links,
+            } => {
+                let headings: Vec<ExportedHeadingDto> = headings
+                    .into_iter()
+                    .map(|(text, level, range)| ExportedHeadingDto {
+                        text,
+                        level,
+                        range: range_to_dto(range),
+                    })
+                    .collect();
+
+                let xml_tags: Vec<ExportedXmlTagDto> = xml_tags
+                    .into_iter()
+                    .map(|(tag_name, range)| ExportedXmlTagDto {
+                        tag_name,
+                        range: range_to_dto(range),
+                    })
+                    .collect();
+
+                let wiki_links: Vec<ExportedWikiLinkDto> = wiki_links
+                    .into_iter()
+                    .map(|(target, heading, range)| ExportedWikiLinkDto {
+                        target,
+                        heading,
+                        range: range_to_dto(range),
+                    })
+                    .collect();
+
+                let markdown_links: Vec<ExportedMarkdownLinkDto> = markdown_links
+                    .into_iter()
+                    .map(|(text, url, range)| ExportedMarkdownLinkDto {
+                        text,
+                        url,
+                        range: range_to_dto(range),
+                    })
+                    .collect();
+
+                Ok(CallToolResult::structured(json!(ExportIndexResponse {
+                    uri: uri.as_str().to_string(),
+                    headings,
+                    xml_tags,
+                    wiki_links,
+                    markdown_links,
+                })))
+            }
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("export-index", &other)),
+        }
+    }
 }
 
 /// Run markymark MCP over stdio using the provided shared core engine.

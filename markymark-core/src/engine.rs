@@ -55,6 +55,16 @@ pub enum CoreOperation {
         /// Filesystem path to remove.
         root: std::path::PathBuf,
     },
+    /// Get aggregate statistics for a named realm.
+    RealmStats {
+        /// Realm name (e.g. "default").
+        realm: String,
+    },
+    /// Export the full document index for a single document.
+    ExportIndex {
+        /// Target document.
+        uri: DocumentUri,
+    },
 }
 
 /// Transport-agnostic interface for executing core operations.
@@ -85,6 +95,36 @@ pub enum CoreOperationResult {
         root_count: usize,
         /// Number of indexed documents.
         document_count: usize,
+    },
+    /// Realm statistics: aggregate counts across all indexed documents.
+    RealmStats {
+        /// Realm name.
+        name: String,
+        /// Number of tracked workspace roots.
+        root_count: usize,
+        /// Number of indexed documents.
+        document_count: usize,
+        /// Total headings across all documents.
+        heading_count: usize,
+        /// Total XML tags across all documents.
+        xml_tag_count: usize,
+        /// Total wiki links across all documents.
+        wiki_link_count: usize,
+        /// Total markdown links across all documents.
+        markdown_link_count: usize,
+    },
+    /// Exported document index: full structured data for a single document.
+    DocumentExport {
+        /// Document URI.
+        uri: DocumentUri,
+        /// Heading texts and levels.
+        headings: Vec<(String, u8, Range)>,
+        /// XML tag names with ranges.
+        xml_tags: Vec<(String, Range)>,
+        /// Wiki link targets with ranges.
+        wiki_links: Vec<(String, Option<String>, Range)>,
+        /// Markdown link URLs with ranges.
+        markdown_links: Vec<(String, String, Range)>,
     },
     /// Success with no payload.
     Ok,

@@ -748,3 +748,195 @@ fn skips_non_utf8_documents_without_failing_startup() {
         other => panic!("expected outline result, got: {other:?}"),
     }
 }
+
+// --- realm-stats integration tests ---
+
+#[test]
+fn realm_stats_returns_aggregate_counts_for_default_realm() {
+    let ws = TempWorkspace::new("realm-stats");
+    let doc1 = ws.root().join("notes.md");
+    let doc2 = ws.root().join("links.md");
+    fs::write(
+        &doc1,
+        "# Heading A\n\n## Heading B\n\n<agent>content</agent>\n",
+    )
+    .expect("doc1 should be created");
+    fs::write(
+        &doc2,
+        "# Another\n\n[[notes]]\n\n[Click](https://example.com)\n",
+    )
+    .expect("doc2 should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let result = engine.execute(CoreOperation::RealmStats {
+        realm: "default".to_string(),
+    });
+
+    match result {
+        CoreOperationResult::RealmStats {
+            name,
+            root_count,
+            document_count,
+            heading_count,
+            xml_tag_count,
+            wiki_link_count,
+            markdown_link_count,
+        } => {
+            assert_eq!(name, "default");
+            assert_eq!(root_count, 1);
+            assert_eq!(document_count, 2);
+            assert_eq!(heading_count, 3);
+            assert!(xml_tag_count >= 1, "expected at least 1 XML tag");
+            assert_eq!(wiki_link_count, 1);
+            assert_eq!(markdown_link_count, 1);
+        }
+        other => panic!("expected RealmStats result, got: {other:?}"),
+    }
+}
+
+#[test]
+fn realm_stats_errors_for_nonexistent_realm() {
+    let ws = TempWorkspace::new("realm-stats-missing");
+    fs::write(ws.root().join("a.md"), "# A\n").expect("doc should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let result = engine.execute(CoreOperation::RealmStats {
+        realm: "nonexistent".to_string(),
+    });
+
+    match result {
+        CoreOperationResult::Error(_) => {} // expected
+        other => panic!("expected Error result, got: {other:?}"),
+    }
+}
+
+#[test]
+fn realm_stats_works_for_empty_realm() {
+    let engine = RuntimeEngine::default();
+
+    // Create a new empty realm
+    engine.execute(CoreOperation::CreateRealm {
+        name: "empty-realm".to_string(),
+    });
+
+    let result = engine.execute(CoreOperation::RealmStats {
+        realm: "empty-realm".to_string(),
+    });
+
+    match result {
+        CoreOperationResult::RealmStats {
+            name,
+            root_count,
+            document_count,
+            heading_count,
+            xml_tag_count,
+            wiki_link_count,
+            markdown_link_count,
+        } => {
+            assert_eq!(name, "empty-realm");
+            assert_eq!(root_count, 0);
+            assert_eq!(document_count, 0);
+            assert_eq!(heading_count, 0);
+            assert_eq!(xml_tag_count, 0);
+            assert_eq!(wiki_link_count, 0);
+            assert_eq!(markdown_link_count, 0);
+        }
+        other => panic!("expected RealmStats result, got: {other:?}"),
+    }
+}
+
+// --- export-index integration tests ---
+
+#[test]
+fn export_index_returns_full_document_data() {
+    let ws = TempWorkspace::new("export-index");
+    let doc = ws.root().join("notes.md");
+    fs::write(
+        &doc,
+        "# Introduction\n\n## Details\n\n<agent>stuff</agent>\n\n[[other-page#section]]\n\n[Click](https://example.com)\n",
+    )
+    .expect("doc should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let uri = DocumentUri::from_file_path(&doc);
+    let result = engine.execute(CoreOperation::ExportIndex { uri: uri.clone() });
+
+    match result {
+        CoreOperationResult::DocumentExport {
+            uri: result_uri,
+            headings,
+            xml_tags,
+            wiki_links,
+            markdown_links,
+        } => {
+            assert_eq!(result_uri.as_str(), uri.as_str());
+            assert_eq!(headings.len(), 2);
+            assert_eq!(headings[0].0, "Introduction");
+            assert_eq!(headings[0].1, 1); // level
+            assert_eq!(headings[1].0, "Details");
+            assert_eq!(headings[1].1, 2); // level
+            assert!(xml_tags.len() >= 1, "expected at least 1 XML tag");
+            assert_eq!(xml_tags[0].0, "agent");
+            assert_eq!(wiki_links.len(), 1);
+            assert_eq!(wiki_links[0].0, "other-page");
+            assert_eq!(wiki_links[0].1, Some("section".to_string()));
+            assert_eq!(markdown_links.len(), 1);
+            assert_eq!(markdown_links[0].0, "Click");
+            assert_eq!(markdown_links[0].1, "https://example.com");
+        }
+        other => panic!("expected DocumentExport result, got: {other:?}"),
+    }
+}
+
+#[test]
+fn export_index_errors_for_unindexed_document() {
+    let ws = TempWorkspace::new("export-index-missing");
+    fs::write(ws.root().join("a.md"), "# A\n").expect("doc should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let result = engine.execute(CoreOperation::ExportIndex {
+        uri: DocumentUri::from_file_path(&ws.root().join("nonexistent.md")),
+    });
+
+    match result {
+        CoreOperationResult::Error(_) => {} // expected
+        other => panic!("expected Error result, got: {other:?}"),
+    }
+}
+
+#[test]
+fn export_index_returns_empty_lists_for_minimal_document() {
+    let ws = TempWorkspace::new("export-index-minimal");
+    let doc = ws.root().join("empty.md");
+    fs::write(&doc, "Just some text with no structure.\n").expect("doc should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let uri = DocumentUri::from_file_path(&doc);
+    let result = engine.execute(CoreOperation::ExportIndex { uri: uri.clone() });
+
+    match result {
+        CoreOperationResult::DocumentExport {
+            headings,
+            xml_tags,
+            wiki_links,
+            markdown_links,
+            ..
+        } => {
+            assert!(headings.is_empty());
+            assert!(xml_tags.is_empty());
+            assert!(wiki_links.is_empty());
+            assert!(markdown_links.is_empty());
+        }
+        other => panic!("expected DocumentExport result, got: {other:?}"),
+    }
+}
