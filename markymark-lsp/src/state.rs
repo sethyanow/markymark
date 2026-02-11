@@ -588,7 +588,7 @@ impl ServerState {
                 for (doc_uri, index) in self.realm.iter_documents() {
                     for xml in index.xml_tags() {
                         if xml.tag_name == *old_name {
-                            // Tag name range: starts after '<', length of tag_name
+                            // Opening tag name: starts after '<', length of tag_name
                             let name_start = Position::new(
                                 xml.range.start.line,
                                 xml.range.start.character + 1,
@@ -602,6 +602,23 @@ impl ServerState {
                                 range: Range::new(name_start, name_end),
                                 new_text: new_name.to_string(),
                             });
+
+                            // Closing tag name: ends just before '>' in </tagname>
+                            if !xml.is_self_closing && !xml.is_unclosed {
+                                let close_name_start = Position::new(
+                                    xml.range.end.line,
+                                    xml.range.end.character - 1 - xml.tag_name.len() as u32,
+                                );
+                                let close_name_end = Position::new(
+                                    xml.range.end.line,
+                                    xml.range.end.character - 1,
+                                );
+                                edits.push(RenameEdit {
+                                    uri: doc_uri.clone(),
+                                    range: Range::new(close_name_start, close_name_end),
+                                    new_text: new_name.to_string(),
+                                });
+                            }
                         }
                     }
                 }
