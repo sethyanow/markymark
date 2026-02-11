@@ -19,6 +19,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+mod rename_ops;
 mod runtime_engine;
 
 pub use runtime_engine::RuntimeEngine;
