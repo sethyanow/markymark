@@ -151,6 +151,56 @@ pub struct RenameResponse {
     pub changes: Vec<DocumentEditDto>,
 }
 
+/// Request payload for `create-realm`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateRealmRequest {
+    /// Unique name for the new realm.
+    pub name: String,
+}
+
+/// Request payload for `destroy-realm`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DestroyRealmRequest {
+    /// Name of the realm to destroy.
+    pub name: String,
+}
+
+/// Request payload for `add-root`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AddRootRequest {
+    /// Name of the realm to add the root to.
+    pub realm: String,
+    /// Filesystem path of the workspace root to add.
+    pub root: String,
+}
+
+/// Request payload for `remove-root`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RemoveRootRequest {
+    /// Name of the realm to remove the root from.
+    pub realm: String,
+    /// Filesystem path of the workspace root to remove.
+    pub root: String,
+}
+
+/// Response payload for realm operations that return realm info.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct RealmInfoResponse {
+    /// Realm name.
+    pub name: String,
+    /// Number of tracked workspace roots.
+    pub root_count: usize,
+    /// Number of indexed documents.
+    pub document_count: usize,
+}
+
+/// Response payload for `destroy-realm`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct DestroyRealmResponse {
+    /// Whether the realm was destroyed.
+    pub success: bool,
+}
+
 /// Tool error envelope for consistent structured failures.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct ToolErrorEnvelope {
@@ -400,6 +450,137 @@ impl MarkymarkMcp {
             other => Ok(unexpected_result_error("rename", &other)),
         }
     }
+
+    /// Create a new named realm.
+    #[tool(
+        name = "create-realm",
+        description = "Create a new named realm for isolated markdown workspace indexing."
+    )]
+    pub async fn create_realm_tool(
+        &self,
+        params: Parameters<CreateRealmRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let name = params.0.name.trim().to_string();
+        if name.is_empty() {
+            return Ok(tool_error(
+                "invalid_name",
+                "realm name must not be empty for create-realm",
+            ));
+        }
+
+        match self.engine.execute(CoreOperation::CreateRealm { name }) {
+            CoreOperationResult::RealmInfo {
+                name,
+                root_count,
+                document_count,
+            } => Ok(CallToolResult::structured(json!(RealmInfoResponse {
+                name,
+                root_count,
+                document_count,
+            }))),
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("create-realm", &other)),
+        }
+    }
+
+    /// Destroy a named realm and all its indexed documents.
+    #[tool(
+        name = "destroy-realm",
+        description = "Destroy a named realm and unindex all its documents."
+    )]
+    pub async fn destroy_realm_tool(
+        &self,
+        params: Parameters<DestroyRealmRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let name = params.0.name.trim().to_string();
+        if name.is_empty() {
+            return Ok(tool_error(
+                "invalid_name",
+                "realm name must not be empty for destroy-realm",
+            ));
+        }
+
+        match self.engine.execute(CoreOperation::DestroyRealm { name }) {
+            CoreOperationResult::Ok => {
+                Ok(CallToolResult::structured(json!(DestroyRealmResponse {
+                    success: true
+                })))
+            }
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("destroy-realm", &other)),
+        }
+    }
+
+    /// Add a workspace root to a realm and index its markdown files.
+    #[tool(
+        name = "add-root",
+        description = "Add a workspace root directory to a realm, indexing all markdown files."
+    )]
+    pub async fn add_root_tool(
+        &self,
+        params: Parameters<AddRootRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let realm = params.0.realm.trim().to_string();
+        if realm.is_empty() {
+            return Ok(tool_error(
+                "invalid_name",
+                "realm name must not be empty for add-root",
+            ));
+        }
+
+        let root = std::path::PathBuf::from(&params.0.root);
+
+        match self.engine.execute(CoreOperation::AddRoot { realm, root }) {
+            CoreOperationResult::RealmInfo {
+                name,
+                root_count,
+                document_count,
+            } => Ok(CallToolResult::structured(json!(RealmInfoResponse {
+                name,
+                root_count,
+                document_count,
+            }))),
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("add-root", &other)),
+        }
+    }
+
+    /// Remove a workspace root from a realm, unindexing its documents.
+    #[tool(
+        name = "remove-root",
+        description = "Remove a workspace root from a realm, unindexing all its documents."
+    )]
+    pub async fn remove_root_tool(
+        &self,
+        params: Parameters<RemoveRootRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let realm = params.0.realm.trim().to_string();
+        if realm.is_empty() {
+            return Ok(tool_error(
+                "invalid_name",
+                "realm name must not be empty for remove-root",
+            ));
+        }
+
+        let root = std::path::PathBuf::from(&params.0.root);
+
+        match self
+            .engine
+            .execute(CoreOperation::RemoveRoot { realm, root })
+        {
+            CoreOperationResult::RealmInfo {
+                name,
+                root_count,
+                document_count,
+            } => Ok(CallToolResult::structured(json!(RealmInfoResponse {
+                name,
+                root_count,
+                document_count,
+            }))),
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("remove-root", &other)),
+        }
+    }
 }
 
 /// Run markymark MCP over stdio using the provided shared core engine.
@@ -519,6 +700,22 @@ mod tests {
                         )],
                     )])
                 }
+                (_, CoreOperation::CreateRealm { name }) => CoreOperationResult::RealmInfo {
+                    name,
+                    root_count: 0,
+                    document_count: 0,
+                },
+                (_, CoreOperation::DestroyRealm { .. }) => CoreOperationResult::Ok,
+                (_, CoreOperation::AddRoot { realm, .. }) => CoreOperationResult::RealmInfo {
+                    name: realm,
+                    root_count: 1,
+                    document_count: 3,
+                },
+                (_, CoreOperation::RemoveRoot { realm, .. }) => CoreOperationResult::RealmInfo {
+                    name: realm,
+                    root_count: 0,
+                    document_count: 0,
+                },
             }
         }
     }
@@ -804,5 +1001,194 @@ mod tests {
         assert_eq!(result.is_error, Some(true));
         let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
         assert_eq!(payload.error.code, "core_error");
+    }
+
+    // --- realm tool registration ---
+
+    #[test]
+    fn registers_realm_management_tools() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::Happy,
+        }));
+        let tools = mcp.tool_router.list_all();
+        let names: Vec<_> = tools.iter().map(|t| t.name.as_ref()).collect();
+        assert!(names.contains(&"create-realm"), "missing create-realm tool");
+        assert!(
+            names.contains(&"destroy-realm"),
+            "missing destroy-realm tool"
+        );
+        assert!(names.contains(&"add-root"), "missing add-root tool");
+        assert!(names.contains(&"remove-root"), "missing remove-root tool");
+    }
+
+    // --- create-realm tool tests ---
+
+    #[tokio::test]
+    async fn create_realm_tool_returns_realm_info() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::Happy,
+        }));
+        let result = mcp
+            .create_realm_tool(Parameters(CreateRealmRequest {
+                name: "test-realm".to_string(),
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(false));
+        let payload: RealmInfoResponse = result.into_typed().expect("typed response");
+        assert_eq!(payload.name, "test-realm");
+        assert_eq!(payload.root_count, 0);
+        assert_eq!(payload.document_count, 0);
+    }
+
+    #[tokio::test]
+    async fn create_realm_tool_rejects_empty_name() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::Happy,
+        }));
+        let result = mcp
+            .create_realm_tool(Parameters(CreateRealmRequest {
+                name: "   ".to_string(),
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(true));
+        let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+        assert_eq!(payload.error.code, "invalid_name");
+    }
+
+    // --- destroy-realm tool tests ---
+
+    #[tokio::test]
+    async fn destroy_realm_tool_returns_success() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::Happy,
+        }));
+        let result = mcp
+            .destroy_realm_tool(Parameters(DestroyRealmRequest {
+                name: "old-realm".to_string(),
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(false));
+        let payload: DestroyRealmResponse = result.into_typed().expect("typed response");
+        assert!(payload.success);
+    }
+
+    #[tokio::test]
+    async fn destroy_realm_tool_rejects_empty_name() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::Happy,
+        }));
+        let result = mcp
+            .destroy_realm_tool(Parameters(DestroyRealmRequest {
+                name: "   ".to_string(),
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(true));
+        let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+        assert_eq!(payload.error.code, "invalid_name");
+    }
+
+    #[tokio::test]
+    async fn destroy_realm_tool_maps_core_error() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::CoreError,
+        }));
+        let result = mcp
+            .destroy_realm_tool(Parameters(DestroyRealmRequest {
+                name: "default".to_string(),
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(true));
+        let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+        assert_eq!(payload.error.code, "core_error");
+    }
+
+    // --- add-root tool tests ---
+
+    #[tokio::test]
+    async fn add_root_tool_returns_realm_info() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::Happy,
+        }));
+        let result = mcp
+            .add_root_tool(Parameters(AddRootRequest {
+                realm: "my-realm".to_string(),
+                root: "/vault/docs".to_string(),
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(false));
+        let payload: RealmInfoResponse = result.into_typed().expect("typed response");
+        assert_eq!(payload.name, "my-realm");
+        assert_eq!(payload.root_count, 1);
+        assert_eq!(payload.document_count, 3);
+    }
+
+    #[tokio::test]
+    async fn add_root_tool_rejects_empty_realm() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::Happy,
+        }));
+        let result = mcp
+            .add_root_tool(Parameters(AddRootRequest {
+                realm: "   ".to_string(),
+                root: "/vault/docs".to_string(),
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(true));
+        let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+        assert_eq!(payload.error.code, "invalid_name");
+    }
+
+    // --- remove-root tool tests ---
+
+    #[tokio::test]
+    async fn remove_root_tool_returns_realm_info() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::Happy,
+        }));
+        let result = mcp
+            .remove_root_tool(Parameters(RemoveRootRequest {
+                realm: "my-realm".to_string(),
+                root: "/vault/docs".to_string(),
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(false));
+        let payload: RealmInfoResponse = result.into_typed().expect("typed response");
+        assert_eq!(payload.name, "my-realm");
+        assert_eq!(payload.root_count, 0);
+        assert_eq!(payload.document_count, 0);
+    }
+
+    #[tokio::test]
+    async fn remove_root_tool_rejects_empty_realm() {
+        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+            mode: MockMode::Happy,
+        }));
+        let result = mcp
+            .remove_root_tool(Parameters(RemoveRootRequest {
+                realm: "   ".to_string(),
+                root: "/vault/docs".to_string(),
+            }))
+            .await
+            .expect("tool call should not return protocol error");
+
+        assert_eq!(result.is_error, Some(true));
+        let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+        assert_eq!(payload.error.code, "invalid_name");
     }
 }
