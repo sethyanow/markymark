@@ -35,6 +35,11 @@ pub enum CompletionContext {
         /// The partial text typed after `((`.
         partial: String,
     },
+    /// After `<` — complete XML tag names.
+    XmlTag {
+        /// The partial tag name typed after `<`.
+        partial: String,
+    },
 }
 
 /// A completion suggestion returned by [`ServerState::completion_at`].
@@ -59,6 +64,8 @@ pub enum CompletionCandidateKind {
     Tag,
     /// A block reference ID.
     BlockRef,
+    /// An XML tag name.
+    XmlTag,
 }
 
 /// Result from `prepare_rename_at`: the range and current text of the renameable symbol.
@@ -246,6 +253,22 @@ impl ServerState {
             }
         }
 
+        // Check for XML tag: < followed by alphanumeric/hyphen/underscore chars (not yet closed)
+        if let Some(lt_idx) = prefix.rfind('<') {
+            let after = &prefix[lt_idx + 1..];
+            // Not a closing tag (</), not already closed (contains >)
+            if !after.starts_with('/')
+                && !after.contains('>')
+                && after
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+            {
+                return Some(CompletionContext::XmlTag {
+                    partial: after.to_string(),
+                });
+            }
+        }
+
         None
     }
 
@@ -330,6 +353,25 @@ impl ServerState {
                             candidates.push(CompletionCandidate {
                                 label: block_id.to_string(),
                                 kind: CompletionCandidateKind::BlockRef,
+                                detail: None,
+                            });
+                        }
+                    }
+                }
+            }
+            CompletionContext::XmlTag { partial } => {
+                let partial_lower = partial.to_lowercase();
+                // Collect unique XML tag names across all documents
+                let mut seen = std::collections::HashSet::new();
+                for (_doc_uri, index) in self.realm.iter_documents() {
+                    for xt in index.xml_tags() {
+                        if seen.insert(xt.tag_name.clone())
+                            && (partial_lower.is_empty()
+                                || xt.tag_name.to_lowercase().contains(&partial_lower))
+                        {
+                            candidates.push(CompletionCandidate {
+                                label: xt.tag_name.clone(),
+                                kind: CompletionCandidateKind::XmlTag,
                                 detail: None,
                             });
                         }

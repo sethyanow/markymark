@@ -308,3 +308,80 @@ fn test_block_ref_completion_filters_by_partial() {
         labels
     );
 }
+
+#[test]
+fn test_xml_tag_completion_returns_tag_names() {
+    // Open documents with XML tags, complete `<` -> returns known tag names.
+    let mut state = ServerState::new();
+    let uri_source = DocumentUri::new("file:///test/source.md").unwrap();
+    let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
+
+    state.open_document(
+        uri_source,
+        "<agent>content</agent>\n\n<goal>win</goal>\n\n<routing>path</routing>\n".to_string(),
+    );
+    state.open_document(uri_editor.clone(), "New content <".to_string());
+
+    let candidates = state.completion_at(&uri_editor, Position::new(0, 13));
+    assert!(
+        !candidates.is_empty(),
+        "XML tag completion should return known tag names"
+    );
+
+    let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+    assert!(
+        labels.contains(&"agent"),
+        "should include 'agent'; got: {:?}",
+        labels
+    );
+    assert!(
+        labels.contains(&"goal"),
+        "should include 'goal'; got: {:?}",
+        labels
+    );
+    assert!(
+        labels.contains(&"routing"),
+        "should include 'routing'; got: {:?}",
+        labels
+    );
+
+    // All should be XmlTag kind
+    assert!(
+        candidates
+            .iter()
+            .all(|c| c.kind == CompletionCandidateKind::XmlTag),
+        "all XML tag completions should be XmlTag kind"
+    );
+}
+
+#[test]
+fn test_xml_tag_completion_filters_by_partial() {
+    // Complete `<ag` -> returns only matching tag names.
+    let mut state = ServerState::new();
+    let uri_source = DocumentUri::new("file:///test/source.md").unwrap();
+    let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
+
+    state.open_document(
+        uri_source,
+        "<agent>content</agent>\n\n<goal>win</goal>\n".to_string(),
+    );
+    state.open_document(uri_editor.clone(), "New <ag".to_string());
+
+    let candidates = state.completion_at(&uri_editor, Position::new(0, 7));
+    assert!(
+        !candidates.is_empty(),
+        "XML tag completion with partial 'ag' should return matches"
+    );
+
+    let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+    assert!(
+        labels.contains(&"agent"),
+        "should include 'agent'; got: {:?}",
+        labels
+    );
+    assert!(
+        !labels.contains(&"goal"),
+        "should NOT include 'goal'; got: {:?}",
+        labels
+    );
+}

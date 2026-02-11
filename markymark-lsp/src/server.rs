@@ -410,6 +410,7 @@ impl LanguageServer for Backend {
                     crate::state::CompletionCandidateKind::Heading => CompletionItemKind::REFERENCE,
                     crate::state::CompletionCandidateKind::Tag => CompletionItemKind::KEYWORD,
                     crate::state::CompletionCandidateKind::BlockRef => CompletionItemKind::SNIPPET,
+                    crate::state::CompletionCandidateKind::XmlTag => CompletionItemKind::CLASS,
                 }),
                 detail: c.detail,
                 ..Default::default()
