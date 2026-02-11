@@ -81,6 +81,19 @@ pub struct MarkdownLinkEntry {
     pub range: Range,
 }
 
+/// An XML tag entry stored in the index.
+#[derive(Debug, Clone)]
+pub struct XmlTagEntry {
+    /// Tag name (e.g. "agent", "goal", "task").
+    pub tag_name: String,
+    /// Tag attributes as key-value pairs.
+    pub attributes: HashMap<String, String>,
+    /// Whether this is a self-closing tag (e.g. `<br/>`).
+    pub is_self_closing: bool,
+    /// Source range of the entire tag.
+    pub range: Range,
+}
+
 /// Convert heading text to a URL-safe slug.
 pub fn slugify(text: &str) -> String {
     let lower = text.to_lowercase();
@@ -139,6 +152,7 @@ pub struct DocumentIndex {
     wiki_links: Vec<WikiLinkEntry>,
     tags: Vec<TagEntry>,
     markdown_links: Vec<MarkdownLinkEntry>,
+    xml_tags: Vec<XmlTagEntry>,
 }
 
 impl DocumentIndex {
@@ -223,6 +237,18 @@ impl DocumentIndex {
             })
             .collect();
 
+        // Extract XML tags
+        let xml_tags = ast
+            .extract_xml_tags()
+            .into_iter()
+            .map(|xt| XmlTagEntry {
+                tag_name: xt.tag_name().to_string(),
+                attributes: xt.attributes().clone(),
+                is_self_closing: xt.is_self_closing(),
+                range: xt.range(),
+            })
+            .collect();
+
         Self {
             headings,
             slug_to_heading,
@@ -232,6 +258,7 @@ impl DocumentIndex {
             wiki_links,
             tags,
             markdown_links,
+            xml_tags,
         }
     }
 
@@ -275,6 +302,11 @@ impl DocumentIndex {
     /// Get all indexed markdown links.
     pub fn markdown_links(&self) -> &[MarkdownLinkEntry] {
         &self.markdown_links
+    }
+
+    /// Get all indexed XML tags.
+    pub fn xml_tags(&self) -> &[XmlTagEntry] {
+        &self.xml_tags
     }
 
     /// Get all block IDs in this document.
