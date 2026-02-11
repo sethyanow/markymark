@@ -13,8 +13,10 @@ use markymark_core::{CoreError, DocumentUri, Position, Range};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
-        CallToolResult, ListResourceTemplatesResult, ReadResourceRequestParam, ReadResourceResult,
-        ServerCapabilities, ServerInfo, SubscribeRequestParam, UnsubscribeRequestParam,
+        CallToolResult, GetPromptRequestParam, GetPromptResult, ListPromptsResult,
+        ListResourceTemplatesResult, PaginatedRequestParam, ReadResourceRequestParam,
+        ReadResourceResult, ServerCapabilities, ServerInfo, SubscribeRequestParam,
+        UnsubscribeRequestParam,
     },
     service::RequestContext,
     tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler, ServiceExt,
@@ -22,6 +24,7 @@ use rmcp::{
 use serde_json::json;
 
 pub mod dto;
+mod prompts;
 mod rename_ops;
 mod resources;
 mod runtime_engine;
@@ -38,6 +41,7 @@ impl ServerHandler for MarkymarkMcp {
                 "markymark MCP tools and resources for markdown indexing".to_string(),
             ),
             capabilities: ServerCapabilities::builder()
+                .enable_prompts()
                 .enable_tools()
                 .enable_resources()
                 .enable_resources_subscribe()
@@ -62,6 +66,27 @@ impl ServerHandler for MarkymarkMcp {
     ) -> impl std::future::Future<Output = Result<(), McpError>> + Send + '_ {
         self.subscriptions.untrack(&request.uri);
         std::future::ready(Ok(()))
+    }
+
+    fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParam>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ListPromptsResult, McpError>> + Send + '_ {
+        std::future::ready(Ok(ListPromptsResult {
+            prompts: self.list_prompt_definitions(),
+            next_cursor: None,
+            meta: None,
+        }))
+    }
+
+    fn get_prompt(
+        &self,
+        request: GetPromptRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<GetPromptResult, McpError>> + Send + '_ {
+        let result = self.get_prompt_by_name(&request.name, request.arguments);
+        std::future::ready(result)
     }
 
     fn list_resource_templates(
