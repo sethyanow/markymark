@@ -244,9 +244,7 @@ async fn test_references_for_xml_tag_same_doc() {
 
     let params = ReferenceParams {
         text_document_position: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-                uri: uri_a.clone(),
-            },
+            text_document: TextDocumentIdentifier { uri: uri_a.clone() },
             position: Position::new(2, 2), // on "<agent>"
         },
         work_done_progress_params: Default::default(),
@@ -278,9 +276,7 @@ async fn test_references_for_xml_tag_cross_doc() {
 
     let params = ReferenceParams {
         text_document_position: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-                uri: uri_b.clone(),
-            },
+            text_document: TextDocumentIdentifier { uri: uri_b.clone() },
             position: Position::new(2, 2), // on "<agent>" in b.md
         },
         work_done_progress_params: Default::default(),
@@ -318,9 +314,7 @@ async fn test_references_for_xml_tag_unique_no_refs() {
 
     let params = ReferenceParams {
         text_document_position: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-                uri: uri_b.clone(),
-            },
+            text_document: TextDocumentIdentifier { uri: uri_b.clone() },
             position: Position::new(6, 3), // on "<routing>" in b.md
         },
         work_done_progress_params: Default::default(),
@@ -347,9 +341,7 @@ async fn test_references_for_xml_tag_include_declaration_true() {
 
     let params = ReferenceParams {
         text_document_position: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-                uri: uri_b.clone(),
-            },
+            text_document: TextDocumentIdentifier { uri: uri_b.clone() },
             position: Position::new(6, 3), // on "<routing>" in b.md
         },
         work_done_progress_params: Default::default(),
@@ -365,6 +357,10 @@ async fn test_references_for_xml_tag_include_declaration_true() {
         "references for a unique XML tag should include declaration when requested"
     );
     let locs = result.unwrap();
-    assert_eq!(locs.len(), 1, "should include exactly the declaration reference");
+    assert_eq!(
+        locs.len(),
+        1,
+        "should include exactly the declaration reference"
+    );
     assert_eq!(locs[0].uri.as_str(), "file:///workspace/b.md");
 }

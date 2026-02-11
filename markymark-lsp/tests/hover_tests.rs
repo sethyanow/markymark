@@ -289,7 +289,10 @@ async fn test_hover_on_xml_tag_shows_workspace_usage_stats() {
     };
 
     let result = backend.hover(params).await.unwrap();
-    assert!(result.is_some(), "hover on XML tag should return hover info");
+    assert!(
+        result.is_some(),
+        "hover on XML tag should return hover info"
+    );
     let hover = result.unwrap();
     match hover.contents {
         HoverContents::Markup(markup) => {
@@ -339,7 +342,10 @@ async fn test_hover_on_unclosed_xml_tag_shows_warning() {
     };
 
     let result = backend.hover(params).await.unwrap();
-    assert!(result.is_some(), "hover on XML tag should return hover info");
+    assert!(
+        result.is_some(),
+        "hover on XML tag should return hover info"
+    );
     let hover = result.unwrap();
     match hover.contents {
         HoverContents::Markup(markup) => {

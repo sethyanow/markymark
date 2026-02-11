@@ -226,7 +226,10 @@ fn test_markdown_links_indexed() {
 #[test]
 fn test_empty_document_has_no_xml_tags() {
     let idx = index_from("");
-    assert!(idx.xml_tags().is_empty(), "empty doc should have no XML tags");
+    assert!(
+        idx.xml_tags().is_empty(),
+        "empty doc should have no XML tags"
+    );
 }
 
 #[test]
@@ -253,7 +256,10 @@ fn test_xml_tag_with_attributes() {
     let xml = idx.xml_tags();
     assert_eq!(xml.len(), 1);
     assert_eq!(xml[0].tag_name, "goal");
-    assert_eq!(xml[0].attributes.get("priority").map(|s| s.as_str()), Some("high"));
+    assert_eq!(
+        xml[0].attributes.get("priority").map(|s| s.as_str()),
+        Some("high")
+    );
 }
 
 #[test]

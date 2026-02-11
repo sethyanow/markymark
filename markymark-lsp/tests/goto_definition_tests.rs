@@ -346,9 +346,7 @@ async fn test_goto_definition_xml_tag_jumps_to_first_occurrence() {
     // Place cursor on <agent> in b.md (line 0, inside the tag name)
     let params = GotoDefinitionParams {
         text_document_position_params: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-                uri: uri_b.clone(),
-            },
+            text_document: TextDocumentIdentifier { uri: uri_b.clone() },
             position: Position::new(0, 3), // inside "agent"
         },
         work_done_progress_params: Default::default(),

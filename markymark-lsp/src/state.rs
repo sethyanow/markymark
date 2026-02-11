@@ -5,8 +5,7 @@ use std::collections::HashMap;
 use markymark_core::{DocumentUri, Position, Range};
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link};
 use markymark_index::{
-    slugify, DocumentIndex, HeadingEntry, MarkdownLinkEntry, RealmIndex, WikiLinkEntry,
-    XmlTagEntry,
+    slugify, DocumentIndex, HeadingEntry, MarkdownLinkEntry, RealmIndex, WikiLinkEntry, XmlTagEntry,
 };
 use markymark_parser::Parser;
 
@@ -589,10 +588,8 @@ impl ServerState {
                     for xml in index.xml_tags() {
                         if xml.tag_name == *old_name {
                             // Opening tag name: starts after '<', length of tag_name
-                            let name_start = Position::new(
-                                xml.range.start.line,
-                                xml.range.start.character + 1,
-                            );
+                            let name_start =
+                                Position::new(xml.range.start.line, xml.range.start.character + 1);
                             let name_end = Position::new(
                                 xml.range.start.line,
                                 xml.range.start.character + 1 + xml.tag_name.len() as u32,
@@ -609,10 +606,8 @@ impl ServerState {
                                     xml.range.end.line,
                                     xml.range.end.character - 1 - xml.tag_name.len() as u32,
                                 );
-                                let close_name_end = Position::new(
-                                    xml.range.end.line,
-                                    xml.range.end.character - 1,
-                                );
+                                let close_name_end =
+                                    Position::new(xml.range.end.line, xml.range.end.character - 1);
                                 edits.push(RenameEdit {
                                     uri: doc_uri.clone(),
                                     range: Range::new(close_name_start, close_name_end),

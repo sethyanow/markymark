@@ -448,23 +448,23 @@ async fn setup_xml_rename_workspace() -> (
     let uri_b: Uri = "file:///workspace/b.md".parse().unwrap();
 
     let text_a = concat!(
-        "# Doc A\n",                    // line 0
-        "\n",                           // line 1
-        "<agent>\n",                    // line 2
-        "Agent content.\n",             // line 3
-        "</agent>\n",                   // line 4
-        "\n",                           // line 5
+        "# Doc A\n",                     // line 0
+        "\n",                            // line 1
+        "<agent>\n",                     // line 2
+        "Agent content.\n",              // line 3
+        "</agent>\n",                    // line 4
+        "\n",                            // line 5
         "<agent>Inline agent</agent>\n", // line 6
     );
 
     let text_b = concat!(
-        "# Doc B\n",                     // line 0
-        "\n",                            // line 1
-        "<agent>\n",                     // line 2
-        "Another agent.\n",              // line 3
-        "</agent>\n",                    // line 4
-        "\n",                            // line 5
-        "<routing>path</routing>\n",     // line 6
+        "# Doc B\n",                 // line 0
+        "\n",                        // line 1
+        "<agent>\n",                 // line 2
+        "Another agent.\n",          // line 3
+        "</agent>\n",                // line 4
+        "\n",                        // line 5
+        "<routing>path</routing>\n", // line 6
     );
 
     {
@@ -485,9 +485,7 @@ async fn test_prepare_rename_on_xml_tag() {
 
     // Cursor on <agent> at line 2
     let params = TextDocumentPositionParams {
-        text_document: TextDocumentIdentifier {
-            uri: uri_a.clone(),
-        },
+        text_document: TextDocumentIdentifier { uri: uri_a.clone() },
         position: Position::new(2, 2), // inside "agent"
     };
 
@@ -495,10 +493,7 @@ async fn test_prepare_rename_on_xml_tag() {
         .prepare_rename(params)
         .await
         .expect("prepare_rename should not error");
-    assert!(
-        result.is_some(),
-        "should be able to rename an XML tag"
-    );
+    assert!(result.is_some(), "should be able to rename an XML tag");
 
     match result.unwrap() {
         PrepareRenameResponse::RangeWithPlaceholder { placeholder, range } => {
@@ -517,9 +512,7 @@ async fn test_rename_xml_tag_updates_all_occurrences() {
     // Rename "agent" to "assistant" from a.md line 2
     let params = RenameParams {
         text_document_position: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-                uri: uri_a.clone(),
-            },
+            text_document: TextDocumentIdentifier { uri: uri_a.clone() },
             position: Position::new(2, 2),
         },
         new_name: "assistant".to_string(),
@@ -545,21 +538,19 @@ async fn test_rename_xml_tag_updates_all_occurrences() {
     );
 
     // Verify a.md has edits
-    let a_edits = changes
-        .get(&uri_a)
-        .expect("should have edits for a.md");
+    let a_edits = changes.get(&uri_a).expect("should have edits for a.md");
     assert_eq!(
-        a_edits.len(), 4,
+        a_edits.len(),
+        4,
         "a.md should have 4 edits (2 open + 2 close): got {}",
         a_edits.len()
     );
 
     // Verify b.md has edits
-    let b_edits = changes
-        .get(&uri_b)
-        .expect("should have edits for b.md");
+    let b_edits = changes.get(&uri_b).expect("should have edits for b.md");
     assert_eq!(
-        b_edits.len(), 2,
+        b_edits.len(),
+        2,
         "b.md should have 2 edits (1 open + 1 close): got {}",
         b_edits.len()
     );
@@ -583,9 +574,7 @@ async fn test_rename_xml_tag_does_not_affect_other_tags() {
     // Rename "routing" tag from b.md line 6
     let params = RenameParams {
         text_document_position: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-                uri: uri_b.clone(),
-            },
+            text_document: TextDocumentIdentifier { uri: uri_b.clone() },
             position: Position::new(6, 3),
         },
         new_name: "navigation".to_string(),
@@ -621,9 +610,7 @@ async fn test_rename_xml_tag_edits_both_open_and_close_tags() {
     // Rename "agent" to "assistant" from a.md line 2
     let params = RenameParams {
         text_document_position: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-                uri: uri_a.clone(),
-            },
+            text_document: TextDocumentIdentifier { uri: uri_a.clone() },
             position: Position::new(2, 2),
         },
         new_name: "assistant".to_string(),
@@ -682,9 +669,7 @@ async fn test_rename_xml_tag_unique_edits_open_and_close() {
     // Rename "routing" tag from b.md line 6 — <routing>path</routing> is all on one line
     let params = RenameParams {
         text_document_position: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-                uri: uri_b.clone(),
-            },
+            text_document: TextDocumentIdentifier { uri: uri_b.clone() },
             position: Position::new(6, 3),
         },
         new_name: "navigation".to_string(),

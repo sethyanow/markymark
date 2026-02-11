@@ -145,8 +145,5 @@ fn test_detect_completion_context_xml_tag_not_in_closed_tag() {
     state.open_document(uri.clone(), "<agent> text".to_string());
 
     let ctx = state.detect_completion_context(&uri, Position::new(0, 12));
-    assert_eq!(
-        ctx, None,
-        "closed XML tag should not trigger completion"
-    );
+    assert_eq!(ctx, None, "closed XML tag should not trigger completion");
 }

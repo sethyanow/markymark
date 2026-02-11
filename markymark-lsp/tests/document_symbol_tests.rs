@@ -268,10 +268,7 @@ async fn test_document_symbol_xml_only_document() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/xml-only.md").unwrap();
-        state.open_document(
-            core_uri,
-            "<agent>content</agent>\n<br/>\n".to_string(),
-        );
+        state.open_document(core_uri, "<agent>content</agent>\n<br/>\n".to_string());
     }
 
     let params = DocumentSymbolParams {
@@ -333,7 +330,10 @@ async fn test_document_symbol_nests_xml_tags_by_range() {
     };
 
     let result = backend.document_symbol(params).await.unwrap();
-    assert!(result.is_some(), "nested XML document should return symbols");
+    assert!(
+        result.is_some(),
+        "nested XML document should return symbols"
+    );
 
     let symbols = match result.unwrap() {
         DocumentSymbolResponse::Nested(symbols) => symbols,
