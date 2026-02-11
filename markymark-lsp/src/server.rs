@@ -193,7 +193,40 @@ impl LanguageServer for Backend {
                 };
                 resolve_markdown_link(state.realm(), &doc_uri, raw_url, ml.anchor.as_deref())
             }
-            SymbolAtPosition::Heading(_) | SymbolAtPosition::XmlTag(_) => return Ok(None),
+            SymbolAtPosition::Heading(_) => return Ok(None),
+            SymbolAtPosition::XmlTag(ref xt) => {
+                // Jump to the first occurrence of this tag name in the workspace.
+                // Sort documents by URI for deterministic ordering.
+                let tag_name = &xt.tag_name;
+                let mut first_uri: Option<DocumentUri> = None;
+                let mut first_range: Option<markymark_core::Range> = None;
+                let mut docs: Vec<_> = iter_realm_documents(&state).collect();
+                docs.sort_by_key(|(uri, _)| uri.as_str().to_string());
+                'outer: for (uri, index) in &docs {
+                    for xml in index.xml_tags() {
+                        if xml.tag_name == *tag_name {
+                            first_uri = Some((*uri).clone());
+                            first_range = Some(xml.range);
+                            break 'outer;
+                        }
+                    }
+                }
+                match (first_uri.as_ref(), first_range) {
+                    (Some(target_uri), Some(range)) => {
+                        // If first occurrence is at the cursor position, nothing to navigate to
+                        if *target_uri == doc_uri && range == xt.range {
+                            return Ok(None);
+                        }
+                        match crate::convert::to_lsp_location(target_uri, range) {
+                            Ok(loc) => {
+                                return Ok(Some(GotoDefinitionResponse::Scalar(loc)));
+                            }
+                            Err(_) => return Ok(None),
+                        }
+                    }
+                    _ => return Ok(None),
+                }
+            }
         };
 
         let resolved = match resolved {
