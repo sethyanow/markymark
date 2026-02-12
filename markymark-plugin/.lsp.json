@@ -1,0 +1,9 @@
+{
+  "name": "markymark-lsp",
+  "description": "Markdown language server providing go-to-definition, find-references, hover, completion, rename, diagnostics, and document symbols for Markdown and MDX files.",
+  "command": "${CLAUDE_PLUGIN_ROOT}/scripts/select-binary.sh",
+  "args": ["--lsp"],
+  "transport": "stdio",
+  "languages": ["markdown"],
+  "filePatterns": ["**/*.md", "**/*.mdx"]
+}
