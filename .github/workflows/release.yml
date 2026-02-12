@@ -1,0 +1,171 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  BINARY_NAME: markymark
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: markymark
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: true
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross (Linux ARM64)
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build release binary
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }} -p markymark-cli
+          else
+            cargo build --release --target ${{ matrix.target }} -p markymark-cli
+          fi
+        shell: bash
+
+      - name: Prepare binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }} \
+             ${{ env.BINARY_NAME }}-${{ matrix.target }}
+          chmod +x ${{ env.BINARY_NAME }}-${{ matrix.target }}
+        shell: bash
+
+      - name: Prepare binary (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}.exe `
+             ${{ env.BINARY_NAME }}-${{ matrix.target }}.exe
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BINARY_NAME }}-${{ matrix.target }}
+          path: markymark/${{ env.BINARY_NAME }}-${{ matrix.target }}${{ runner.os == 'Windows' && '.exe' || '' }}
+
+  package-plugin:
+    name: Package Plugin Archive
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Assemble plugin archive
+        run: |
+          # Copy plugin structure
+          cp -r markymark-plugin plugin-staging
+
+          # Copy binaries into plugin bin/
+          rm -f plugin-staging/bin/.gitkeep
+          for dir in artifacts/markymark-*/; do
+            cp "${dir}"markymark-* plugin-staging/bin/ 2>/dev/null || true
+          done
+
+          # Make all binaries executable
+          chmod +x plugin-staging/bin/markymark-* 2>/dev/null || true
+          chmod +x plugin-staging/scripts/*.sh
+
+          # Create archive (preserve top-level directory name for documented install flow)
+          TAG="${GITHUB_REF_NAME}"
+          mv plugin-staging markymark-plugin
+          tar -czf "markymark-plugin-${TAG}.tar.gz" markymark-plugin
+
+          # Create individual binary archives for cargo-free installs
+          for dir in artifacts/markymark-*/; do
+            target=$(basename "${dir}" | sed "s/^markymark-//")
+            for bin in "${dir}"markymark-*; do
+              if [ -f "${bin}" ]; then
+                tar -czf "markymark-${target}-${TAG}.tar.gz" -C "${dir}" "$(basename "${bin}")"
+              fi
+            done
+          done
+
+      - name: Upload plugin archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: markymark-plugin
+          path: markymark-plugin-*.tar.gz
+
+      - name: Upload binary archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-archives
+          path: markymark-*-v*.tar.gz
+
+  release:
+    name: Create GitHub Release
+    needs: package-plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download plugin archive
+        uses: actions/download-artifact@v4
+        with:
+          name: markymark-plugin
+          path: release-assets
+
+      - name: Download binary archives
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-archives
+          path: release-assets
+
+      - name: Download individual binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Copy individual binaries to release
+        run: |
+          for dir in artifacts/markymark-*/; do
+            cp "${dir}"markymark-* release-assets/ 2>/dev/null || true
+          done
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release-assets/*
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
