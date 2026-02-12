@@ -2,6 +2,6 @@
   "name": "markymark-mcp",
   "description": "Markdown intelligence MCP server providing outline, symbols, find-references, and rename tools for AI assistants working with Markdown workspaces.",
   "command": "${CLAUDE_PLUGIN_ROOT}/scripts/select-binary.sh",
-  "args": ["--mcp"],
+  "args": ["--mcp", "${WORKSPACE_ROOT}"],
   "transport": "stdio"
 }

@@ -151,6 +151,23 @@ Pre-built binaries provided for:
 
 The plugin includes platform detection that automatically selects the correct binary.
 
+### Windows Notes
+
+The default plugin configuration uses bash scripts. On Windows, you have two options:
+
+**Option 1: Git Bash / WSL (Recommended)**
+If you have Git for Windows or WSL installed, the bash scripts work automatically.
+
+**Option 2: Native PowerShell**
+Update your plugin configuration to use the PowerShell launcher:
+
+```json
+{
+  "command": "powershell",
+  "args": ["-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PLUGIN_ROOT}/scripts/select-binary.ps1", "--mcp", "${WORKSPACE_ROOT}"]
+}
+```
+
 ## Building from Source
 
 ```bash

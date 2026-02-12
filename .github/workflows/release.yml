@@ -104,9 +104,10 @@ jobs:
           chmod +x plugin-staging/bin/markymark-* 2>/dev/null || true
           chmod +x plugin-staging/scripts/*.sh
 
-          # Create archive
+          # Create archive (preserve top-level directory name for documented install flow)
           TAG="${GITHUB_REF_NAME}"
-          tar -czf "markymark-plugin-${TAG}.tar.gz" -C plugin-staging .
+          mv plugin-staging markymark-plugin
+          tar -czf "markymark-plugin-${TAG}.tar.gz" markymark-plugin
 
           # Create individual binary archives for cargo-free installs
           for dir in artifacts/markymark-*/; do
