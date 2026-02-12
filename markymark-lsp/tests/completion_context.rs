@@ -102,3 +102,48 @@ fn test_detect_completion_context_none() {
         "plain text should not trigger any completion context"
     );
 }
+
+#[test]
+fn test_detect_completion_context_xml_tag() {
+    // Text ending with `<ag` should detect XmlTag context with partial "ag".
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "Content <ag".to_string());
+
+    let ctx = state.detect_completion_context(&uri, Position::new(0, 11));
+    assert_eq!(
+        ctx,
+        Some(CompletionContext::XmlTag {
+            partial: "ag".to_string()
+        }),
+        "should detect XML tag context with partial 'ag'"
+    );
+}
+
+#[test]
+fn test_detect_completion_context_xml_tag_empty() {
+    // Text ending with `<` at a word boundary should detect XmlTag with empty partial.
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "Content <".to_string());
+
+    let ctx = state.detect_completion_context(&uri, Position::new(0, 9));
+    assert_eq!(
+        ctx,
+        Some(CompletionContext::XmlTag {
+            partial: String::new()
+        }),
+        "should detect XML tag context with empty partial"
+    );
+}
+
+#[test]
+fn test_detect_completion_context_xml_tag_not_in_closed_tag() {
+    // A closed tag `<agent>` should NOT trigger XML tag completion.
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "<agent> text".to_string());
+
+    let ctx = state.detect_completion_context(&uri, Position::new(0, 12));
+    assert_eq!(ctx, None, "closed XML tag should not trigger completion");
+}

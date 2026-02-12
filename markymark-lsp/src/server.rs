@@ -10,7 +10,7 @@ use tower_lsp_server::{Client, LanguageServer, LspService};
 use crate::state::{DiagnosticSeverity as MarkyDiagSeverity, ServerState, SymbolAtPosition};
 use markymark_core::{DocumentUri, Range as CoreRange};
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link, ResolvedTarget};
-use markymark_index::{DocumentIndex, OutlineNode};
+use markymark_index::{DocumentIndex, OutlineNode, XmlTagEntry};
 use std::collections::HashMap;
 
 /// The LSP server backend.
@@ -104,6 +104,7 @@ impl LanguageServer for Backend {
                         "[".to_string(),
                         "#".to_string(),
                         "(".to_string(),
+                        "<".to_string(),
                     ]),
                     ..Default::default()
                 }),
@@ -194,6 +195,39 @@ impl LanguageServer for Backend {
                 resolve_markdown_link(state.realm(), &doc_uri, raw_url, ml.anchor.as_deref())
             }
             SymbolAtPosition::Heading(_) => return Ok(None),
+            SymbolAtPosition::XmlTag(ref xt) => {
+                // Jump to the first occurrence of this tag name in the workspace.
+                // Sort documents by URI for deterministic ordering.
+                let tag_name = &xt.tag_name;
+                let mut first_uri: Option<DocumentUri> = None;
+                let mut first_range: Option<markymark_core::Range> = None;
+                let mut docs: Vec<_> = iter_realm_documents(&state).collect();
+                docs.sort_by_key(|(uri, _)| uri.as_str().to_string());
+                'outer: for (uri, index) in &docs {
+                    for xml in index.xml_tags() {
+                        if xml.tag_name == *tag_name {
+                            first_uri = Some((*uri).clone());
+                            first_range = Some(xml.range);
+                            break 'outer;
+                        }
+                    }
+                }
+                match (first_uri.as_ref(), first_range) {
+                    (Some(target_uri), Some(range)) => {
+                        // If first occurrence is at the cursor position, nothing to navigate to
+                        if *target_uri == doc_uri && range == xt.range {
+                            return Ok(None);
+                        }
+                        match crate::convert::to_lsp_location(target_uri, range) {
+                            Ok(loc) => {
+                                return Ok(Some(GotoDefinitionResponse::Scalar(loc)));
+                            }
+                            Err(_) => return Ok(None),
+                        }
+                    }
+                    _ => return Ok(None),
+                }
+            }
         };
 
         let resolved = match resolved {
@@ -212,6 +246,7 @@ impl LanguageServer for Backend {
         let uri_str = &params.text_document_position.text_document.uri;
         let pos = params.text_document_position.position;
         let core_pos = crate::convert::from_lsp_position(pos);
+        let include_declaration = params.context.include_declaration;
 
         let state = self.state.read().await;
         let doc_uri = match crate::convert::from_lsp_uri(uri_str) {
@@ -224,31 +259,46 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        // Only headings have "references" (incoming links)
-        let heading = match symbol {
-            SymbolAtPosition::Heading(h) => h,
-            _ => return Ok(None),
-        };
-
-        let slug = &heading.slug;
         let mut locations = Vec::new();
 
-        // Search all documents for wiki links and markdown links referencing this slug
-        for (uri, index) in iter_realm_documents(&state) {
-            for wl in index.wiki_links() {
-                if wl.heading.as_deref() == Some(slug) {
-                    if let Ok(loc) = crate::convert::to_lsp_location(uri, wl.range) {
-                        locations.push(loc);
+        match symbol {
+            SymbolAtPosition::Heading(ref heading) => {
+                let slug = &heading.slug;
+                // Search all documents for wiki links and markdown links referencing this slug
+                for (uri, index) in iter_realm_documents(&state) {
+                    for wl in index.wiki_links() {
+                        if wl.heading.as_deref() == Some(slug) {
+                            if let Ok(loc) = crate::convert::to_lsp_location(uri, wl.range) {
+                                locations.push(loc);
+                            }
+                        }
+                    }
+                    for ml in index.markdown_links() {
+                        if ml.anchor.as_deref() == Some(slug) {
+                            if let Ok(loc) = crate::convert::to_lsp_location(uri, ml.range) {
+                                locations.push(loc);
+                            }
+                        }
                     }
                 }
             }
-            for ml in index.markdown_links() {
-                if ml.anchor.as_deref() == Some(slug) {
-                    if let Ok(loc) = crate::convert::to_lsp_location(uri, ml.range) {
-                        locations.push(loc);
+            SymbolAtPosition::XmlTag(ref xt) => {
+                let tag_name = &xt.tag_name;
+                // Search all documents for XML tags with the same name
+                for (uri, index) in iter_realm_documents(&state) {
+                    for xml in index.xml_tags() {
+                        if !include_declaration && uri == &doc_uri && xml.range == xt.range {
+                            continue;
+                        }
+                        if xml.tag_name == *tag_name {
+                            if let Ok(loc) = crate::convert::to_lsp_location(uri, xml.range) {
+                                locations.push(loc);
+                            }
+                        }
                     }
                 }
             }
+            _ => return Ok(None),
         }
 
         if locations.is_empty() {
@@ -300,6 +350,50 @@ impl LanguageServer for Backend {
             SymbolAtPosition::MarkdownLink(ml) => {
                 format!("Markdown link: [{}]({})", ml.text, ml.url)
             }
+            SymbolAtPosition::XmlTag(xt) => {
+                let mut lines = vec![format!("**`<{}>`** XML tag", xt.tag_name)];
+                let stats = xml_hover_stats(&state, &xt.tag_name);
+                if !xt.attributes.is_empty() {
+                    let mut attrs: Vec<_> = xt.attributes.iter().collect();
+                    attrs.sort_by_key(|(k, _)| k.as_str());
+                    let attr_list: Vec<String> = attrs
+                        .iter()
+                        .map(|(k, v)| format!("- `{}` = `{}`", k, v))
+                        .collect();
+                    lines.push(String::new());
+                    lines.push("**Attributes:**".to_string());
+                    lines.extend(attr_list);
+                }
+                lines.push(String::new());
+                lines.push("**Workspace usage:**".to_string());
+                lines.push(format!(
+                    "- Occurrences in workspace: **{}**",
+                    stats.occurrences
+                ));
+                lines.push(format!(
+                    "- Documents with this tag: **{}**",
+                    stats.document_count
+                ));
+                if !stats.attribute_counts.is_empty() {
+                    lines.push(String::new());
+                    lines.push("**Common attributes:**".to_string());
+                    lines.extend(
+                        stats
+                            .attribute_counts
+                            .iter()
+                            .map(|(name, count)| format!("- `{}` ({})", name, count)),
+                    );
+                }
+                if xt.is_self_closing {
+                    lines.push(String::new());
+                    lines.push("*Self-closing tag*".to_string());
+                }
+                if xt.is_unclosed {
+                    lines.push(String::new());
+                    lines.push("**Warning: unclosed tag**".to_string());
+                }
+                lines.join("\n")
+            }
         };
 
         Ok(Some(Hover {
@@ -329,7 +423,8 @@ impl LanguageServer for Backend {
         };
 
         let outline = index.outline();
-        let symbols = outline_children_to_symbols(&outline.children);
+        let mut symbols = outline_children_to_symbols(&outline.children);
+        symbols.extend(xml_tags_to_symbols(index.xml_tags()));
 
         if symbols.is_empty() {
             Ok(None)
@@ -363,6 +458,7 @@ impl LanguageServer for Backend {
                     crate::state::CompletionCandidateKind::Heading => CompletionItemKind::REFERENCE,
                     crate::state::CompletionCandidateKind::Tag => CompletionItemKind::KEYWORD,
                     crate::state::CompletionCandidateKind::BlockRef => CompletionItemKind::SNIPPET,
+                    crate::state::CompletionCandidateKind::XmlTag => CompletionItemKind::CLASS,
                 }),
                 detail: c.detail,
                 ..Default::default()
@@ -489,6 +585,25 @@ impl LanguageServer for Backend {
                     });
                 }
             }
+
+            for xt in index.xml_tags() {
+                let xml_name = format!("<{}>", xt.tag_name);
+                if query.is_empty() || xml_name.to_lowercase().contains(&query) {
+                    let range = crate::convert::to_lsp_range(xt.range);
+                    #[allow(deprecated)]
+                    symbols.push(SymbolInformation {
+                        name: xml_name,
+                        kind: SymbolKind::OBJECT,
+                        tags: None,
+                        deprecated: None,
+                        location: Location {
+                            uri: lsp_uri.clone(),
+                            range,
+                        },
+                        container_name: None,
+                    });
+                }
+            }
         }
 
         if symbols.is_empty() {
@@ -563,4 +678,108 @@ fn outline_children_to_symbols(children: &[OutlineNode]) -> Vec<DocumentSymbol> 
             })
         })
         .collect()
+}
+
+#[derive(Debug)]
+struct XmlSymbolNode {
+    name: String,
+    range: CoreRange,
+    children: Vec<XmlSymbolNode>,
+}
+
+#[derive(Debug, Default)]
+struct XmlHoverStats {
+    occurrences: usize,
+    document_count: usize,
+    attribute_counts: Vec<(String, usize)>,
+}
+
+fn xml_hover_stats(state: &ServerState, tag_name: &str) -> XmlHoverStats {
+    let mut occurrences = 0usize;
+    let mut document_count = 0usize;
+    let mut attribute_counts: HashMap<String, usize> = HashMap::new();
+
+    for (_uri, index) in iter_realm_documents(state) {
+        let mut has_tag_in_document = false;
+        for tag in index.xml_tags() {
+            if tag.tag_name != tag_name {
+                continue;
+            }
+            has_tag_in_document = true;
+            occurrences += 1;
+            for attr_name in tag.attributes.keys() {
+                *attribute_counts.entry(attr_name.clone()).or_insert(0) += 1;
+            }
+        }
+
+        if has_tag_in_document {
+            document_count += 1;
+        }
+    }
+
+    let mut attribute_counts: Vec<(String, usize)> = attribute_counts.into_iter().collect();
+    attribute_counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+    XmlHoverStats {
+        occurrences,
+        document_count,
+        attribute_counts,
+    }
+}
+
+fn xml_tags_to_symbols(xml_tags: &[XmlTagEntry]) -> Vec<DocumentSymbol> {
+    let mut roots: Vec<XmlSymbolNode> = Vec::new();
+
+    for tag in xml_tags {
+        let node = XmlSymbolNode {
+            name: format!("<{}>", tag.tag_name),
+            range: tag.range,
+            children: Vec::new(),
+        };
+        insert_xml_node(&mut roots, node);
+    }
+
+    roots.into_iter().map(xml_node_to_document_symbol).collect()
+}
+
+fn insert_xml_node(nodes: &mut Vec<XmlSymbolNode>, node: XmlSymbolNode) {
+    for existing in nodes.iter_mut().rev() {
+        if core_range_strictly_contains(existing.range, node.range) {
+            insert_xml_node(&mut existing.children, node);
+            return;
+        }
+    }
+
+    nodes.push(node);
+}
+
+fn core_range_strictly_contains(parent: CoreRange, child: CoreRange) -> bool {
+    parent.start <= child.start
+        && child.end <= parent.end
+        && (parent.start < child.start || child.end < parent.end)
+}
+
+fn xml_node_to_document_symbol(node: XmlSymbolNode) -> DocumentSymbol {
+    let range = crate::convert::to_lsp_range(node.range);
+    let children: Vec<DocumentSymbol> = node
+        .children
+        .into_iter()
+        .map(xml_node_to_document_symbol)
+        .collect();
+
+    #[allow(deprecated)]
+    DocumentSymbol {
+        name: node.name,
+        detail: None,
+        kind: SymbolKind::OBJECT,
+        tags: None,
+        deprecated: None,
+        range,
+        selection_range: range,
+        children: if children.is_empty() {
+            None
+        } else {
+            Some(children)
+        },
+    }
 }

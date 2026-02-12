@@ -218,3 +218,73 @@ fn test_markdown_links_indexed() {
     assert_eq!(links[1].url, "./docs.md#section");
     assert_eq!(links[1].anchor.as_deref(), Some("section"));
 }
+
+// ---------------------------------------------------------------------------
+// XML tag indexing
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_empty_document_has_no_xml_tags() {
+    let idx = index_from("");
+    assert!(
+        idx.xml_tags().is_empty(),
+        "empty doc should have no XML tags"
+    );
+}
+
+#[test]
+fn test_single_xml_tag_indexed() {
+    let idx = index_from("<agent>some content</agent>");
+    let xml = idx.xml_tags();
+    assert_eq!(xml.len(), 1);
+    assert_eq!(xml[0].tag_name, "agent");
+    assert!(!xml[0].is_self_closing);
+}
+
+#[test]
+fn test_self_closing_xml_tag() {
+    let idx = index_from("<br/>");
+    let xml = idx.xml_tags();
+    assert_eq!(xml.len(), 1);
+    assert_eq!(xml[0].tag_name, "br");
+    assert!(xml[0].is_self_closing);
+}
+
+#[test]
+fn test_xml_tag_with_attributes() {
+    let idx = index_from("<goal priority=\"high\">win</goal>");
+    let xml = idx.xml_tags();
+    assert_eq!(xml.len(), 1);
+    assert_eq!(xml[0].tag_name, "goal");
+    assert_eq!(
+        xml[0].attributes.get("priority").map(|s| s.as_str()),
+        Some("high")
+    );
+}
+
+#[test]
+fn test_multiple_xml_tags() {
+    let idx = index_from("<agent>A</agent>\n<goal>B</goal>\n<task>C</task>");
+    let xml = idx.xml_tags();
+    assert_eq!(xml.len(), 3);
+    assert_eq!(xml[0].tag_name, "agent");
+    assert_eq!(xml[1].tag_name, "goal");
+    assert_eq!(xml[2].tag_name, "task");
+}
+
+#[test]
+fn test_xml_tags_mixed_with_markdown() {
+    let idx = index_from("# Heading\n\n<agent>content</agent>\n\nSome paragraph");
+    assert_eq!(idx.headings().len(), 1);
+    assert_eq!(idx.xml_tags().len(), 1);
+    assert_eq!(idx.xml_tags()[0].tag_name, "agent");
+}
+
+#[test]
+fn test_xml_tag_range_tracked() {
+    let idx = index_from("<agent>content</agent>");
+    let xml = idx.xml_tags();
+    assert_eq!(xml.len(), 1);
+    // Range should cover the tag — at minimum start at line 0
+    assert_eq!(xml[0].range.start.line, 0);
+}

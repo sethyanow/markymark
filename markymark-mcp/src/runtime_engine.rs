@@ -1,23 +1,57 @@
-use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 
 use anyhow::{anyhow, bail};
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
-use markymark_core::{CoreError, DocumentUri, Range};
+use markymark_core::{CoreError, DocumentUri};
 use markymark_index::{DocumentIndex, RealmIndex};
 use markymark_parser::Parser;
 
-/// Production core engine backed by an indexed set of markdown workspace roots.
-#[derive(Default)]
+use crate::rename_ops::{compare_ranges, rename_heading, rename_xml_tag};
+
+/// The name of the default realm created at startup.
+const DEFAULT_REALM: &str = "default";
+
+/// Per-realm state: index plus tracked workspace roots.
+struct RealmData {
+    index: RealmIndex,
+    roots: Vec<PathBuf>,
+}
+
+impl RealmData {
+    fn new() -> Self {
+        Self {
+            index: RealmIndex::new(),
+            roots: Vec::new(),
+        }
+    }
+}
+
+/// Production core engine backed by named realms of indexed markdown workspaces.
+///
+/// A "default" realm is always created at startup with the initial workspace roots.
+/// Additional realms can be created/destroyed dynamically via [`CoreOperation`].
 pub struct RuntimeEngine {
-    realm: RealmIndex,
+    state: RwLock<HashMap<String, RealmData>>,
+}
+
+impl Default for RuntimeEngine {
+    fn default() -> Self {
+        let mut realms = HashMap::new();
+        realms.insert(DEFAULT_REALM.to_string(), RealmData::new());
+        Self {
+            state: RwLock::new(realms),
+        }
+    }
 }
 
 impl RuntimeEngine {
     /// Build a runtime engine from workspace roots.
     ///
-    /// All markdown files (`*.md`, `*.markdown`) under the provided roots are indexed.
+    /// All markdown files (`*.md`, `*.markdown`) under the provided roots are indexed
+    /// into the "default" realm.
     /// Invalid roots fail startup. Individual document read/parse failures are skipped.
     pub fn from_workspace_roots(workspace_roots: Vec<PathBuf>) -> anyhow::Result<Self> {
         if workspace_roots.is_empty() {
@@ -25,62 +59,98 @@ impl RuntimeEngine {
         }
 
         let mut parser = Parser::new().map_err(|err| anyhow!(err.to_string()))?;
-        let mut realm = RealmIndex::new();
+        let mut default_realm = RealmData::new();
 
         for root in workspace_roots {
             validate_workspace_root(&root)?;
-            let markdown_files = collect_markdown_files(&root);
-
-            for path in markdown_files {
-                let source = match fs::read_to_string(&path) {
-                    Ok(source) => source,
-                    Err(_) => continue,
-                };
-
-                let ast = match parser.parse(&source) {
-                    Ok(ast) => ast,
-                    Err(_) => continue,
-                };
-
-                realm.add_document(
-                    DocumentUri::from_file_path(&path),
-                    DocumentIndex::from_ast(&ast),
-                );
-            }
+            index_root_into_realm(&mut parser, &root, &mut default_realm);
+            default_realm.roots.push(root);
         }
 
-        Ok(Self { realm })
+        let mut realms = HashMap::new();
+        realms.insert(DEFAULT_REALM.to_string(), default_realm);
+
+        Ok(Self {
+            state: RwLock::new(realms),
+        })
+    }
+}
+
+/// Index all markdown files under a root into a realm.
+fn index_root_into_realm(parser: &mut Parser, root: &Path, realm: &mut RealmData) {
+    let markdown_files = collect_markdown_files(root);
+
+    for path in markdown_files {
+        let source = match fs::read_to_string(&path) {
+            Ok(source) => source,
+            Err(_) => continue,
+        };
+
+        let ast = match parser.parse(&source) {
+            Ok(ast) => ast,
+            Err(_) => continue,
+        };
+
+        realm.index.add_document(
+            DocumentUri::from_file_path(&path),
+            DocumentIndex::from_ast(&ast),
+        );
+    }
+}
+
+/// Remove all documents under a root from a realm's index.
+fn unindex_root_from_realm(root: &Path, realm: &mut RealmData) {
+    let prefix = DocumentUri::from_file_path(root);
+    let prefix_str = prefix.as_str();
+
+    // Collect URIs to remove (cannot mutate while iterating).
+    let to_remove: Vec<DocumentUri> = realm
+        .index
+        .iter_documents()
+        .filter(|(uri, _)| uri.as_str().starts_with(prefix_str))
+        .map(|(uri, _)| uri.clone())
+        .collect();
+
+    for uri in to_remove {
+        realm.index.remove_document(&uri);
     }
 }
 
 impl CoreEngine for RuntimeEngine {
     fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
         match operation {
-            CoreOperation::GetOutline { uri } => match self.realm.get_document(&uri) {
-                Some(index) => CoreOperationResult::Outline(
-                    index
-                        .headings()
-                        .iter()
-                        .map(|heading| heading.text.clone())
-                        .collect(),
-                ),
-                None => CoreOperationResult::Error(CoreError::Message(format!(
-                    "document is not indexed: {}",
-                    uri.as_str()
-                ))),
-            },
+            // --- Document operations (read from default realm) ---
+            CoreOperation::GetOutline { uri } => {
+                let state = self.state.read().expect("lock poisoned");
+                let realm = &state[DEFAULT_REALM].index;
+                match realm.get_document(&uri) {
+                    Some(index) => CoreOperationResult::Outline(
+                        index
+                            .headings()
+                            .iter()
+                            .map(|heading| heading.text.clone())
+                            .collect(),
+                    ),
+                    None => CoreOperationResult::Error(CoreError::Message(format!(
+                        "document is not indexed: {}",
+                        uri.as_str()
+                    ))),
+                }
+            }
             CoreOperation::SearchSymbols { query } => {
-                let query = query.trim();
+                let query = query.trim().to_string();
                 if query.is_empty() {
                     return CoreOperationResult::Error(CoreError::Message(
                         "search query cannot be empty".to_string(),
                     ));
                 }
 
+                let state = self.state.read().expect("lock poisoned");
+                let realm = &state[DEFAULT_REALM].index;
                 let mut matches = Vec::new();
                 let query_lower = query.to_lowercase();
 
-                for (uri, index) in self.realm.iter_documents() {
+                for (uri, index) in realm.iter_documents() {
                     for heading in index.headings() {
                         if heading.text.to_lowercase().contains(&query_lower) {
                             matches.push((heading.text.clone(), uri.clone(), heading.range));
@@ -97,20 +167,324 @@ impl CoreEngine for RuntimeEngine {
 
                 CoreOperationResult::Symbols(matches)
             }
-            CoreOperation::FindReferences { .. } => {
-                CoreOperationResult::Error(CoreError::NotImplemented(
-                    "find-references is not wired into the MCP runtime yet".to_string(),
+            CoreOperation::FindReferences { uri, position } => {
+                let state = self.state.read().expect("lock poisoned");
+                let realm = &state[DEFAULT_REALM].index;
+                let index = match realm.get_document(&uri) {
+                    Some(idx) => idx,
+                    None => {
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "document is not indexed: {}",
+                            uri.as_str()
+                        )));
+                    }
+                };
+
+                let cursor = position.start;
+
+                if let Some(heading) = index.headings().iter().find(|h| h.range.contains(cursor)) {
+                    let slug = &heading.slug;
+                    let mut locations = Vec::new();
+
+                    for (doc_uri, doc_index) in realm.iter_documents() {
+                        for wl in doc_index.wiki_links() {
+                            if wl.heading.as_deref() == Some(slug) {
+                                locations.push((doc_uri.clone(), wl.range));
+                            }
+                        }
+                        for ml in doc_index.markdown_links() {
+                            if ml.anchor.as_deref() == Some(slug) {
+                                locations.push((doc_uri.clone(), ml.range));
+                            }
+                        }
+                    }
+
+                    locations.sort_by(|(uri_a, range_a), (uri_b, range_b)| {
+                        uri_a
+                            .as_str()
+                            .cmp(uri_b.as_str())
+                            .then_with(|| compare_ranges(*range_a, *range_b))
+                    });
+
+                    return CoreOperationResult::Locations(locations);
+                }
+
+                if let Some(xml_tag) = index.xml_tags().iter().find(|x| x.range.contains(cursor)) {
+                    let tag_name = &xml_tag.tag_name;
+                    let mut locations = Vec::new();
+
+                    for (doc_uri, doc_index) in realm.iter_documents() {
+                        for xt in doc_index.xml_tags() {
+                            if xt.tag_name == *tag_name {
+                                locations.push((doc_uri.clone(), xt.range));
+                            }
+                        }
+                    }
+
+                    locations.sort_by(|(uri_a, range_a), (uri_b, range_b)| {
+                        uri_a
+                            .as_str()
+                            .cmp(uri_b.as_str())
+                            .then_with(|| compare_ranges(*range_a, *range_b))
+                    });
+
+                    return CoreOperationResult::Locations(locations);
+                }
+
+                CoreOperationResult::Error(CoreError::Message(
+                    "no referenceable symbol at position".to_string(),
                 ))
             }
-            CoreOperation::Rename { .. } => CoreOperationResult::Error(CoreError::NotImplemented(
-                "rename is not wired into the MCP runtime yet".to_string(),
-            )),
+            CoreOperation::Rename {
+                uri,
+                position,
+                new_name,
+            } => {
+                let state = self.state.read().expect("lock poisoned");
+                let realm = &state[DEFAULT_REALM].index;
+                let index = match realm.get_document(&uri) {
+                    Some(idx) => idx,
+                    None => {
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "document is not indexed: {}",
+                            uri.as_str()
+                        )));
+                    }
+                };
+
+                let cursor = position.start;
+
+                if let Some(heading) = index.headings().iter().find(|h| h.range.contains(cursor)) {
+                    return rename_heading(realm, &uri, heading.clone(), &new_name);
+                }
+
+                if let Some(xml_tag) = index.xml_tags().iter().find(|x| x.range.contains(cursor)) {
+                    return rename_xml_tag(realm, &xml_tag.tag_name, &new_name);
+                }
+
+                CoreOperationResult::Error(CoreError::Message(
+                    "no renameable symbol at position".to_string(),
+                ))
+            }
+
+            // --- Realm management operations ---
+            CoreOperation::CreateRealm { name } => {
+                if name.is_empty() {
+                    return CoreOperationResult::Error(CoreError::Message(
+                        "realm name must not be empty".to_string(),
+                    ));
+                }
+
+                let mut state = self.state.write().expect("lock poisoned");
+                if state.contains_key(&name) {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm already exists: {name}"
+                    )));
+                }
+
+                state.insert(name.clone(), RealmData::new());
+                CoreOperationResult::RealmInfo {
+                    name,
+                    root_count: 0,
+                    document_count: 0,
+                }
+            }
+            CoreOperation::DestroyRealm { name } => {
+                if name == DEFAULT_REALM {
+                    return CoreOperationResult::Error(CoreError::Message(
+                        "cannot destroy the default realm".to_string(),
+                    ));
+                }
+
+                let mut state = self.state.write().expect("lock poisoned");
+                if state.remove(&name).is_none() {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {name}"
+                    )));
+                }
+
+                CoreOperationResult::Ok
+            }
+            CoreOperation::AddRoot { realm, root } => {
+                if let Err(msg) = validate_workspace_root(&root) {
+                    return CoreOperationResult::Error(CoreError::Message(msg.to_string()));
+                }
+
+                let mut state = self.state.write().expect("lock poisoned");
+                let realm_data = match state.get_mut(&realm) {
+                    Some(data) => data,
+                    None => {
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "realm does not exist: {realm}"
+                        )));
+                    }
+                };
+
+                // Check for duplicate root (canonicalize for comparison).
+                let canonical = root.canonicalize().unwrap_or_else(|_| root.clone());
+                for existing in &realm_data.roots {
+                    let existing_canonical =
+                        existing.canonicalize().unwrap_or_else(|_| existing.clone());
+                    if canonical == existing_canonical {
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "root already added to realm: {}",
+                            root.display()
+                        )));
+                    }
+                }
+
+                let mut parser = match Parser::new() {
+                    Ok(p) => p,
+                    Err(err) => {
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "failed to create parser: {err}"
+                        )));
+                    }
+                };
+
+                index_root_into_realm(&mut parser, &root, realm_data);
+                realm_data.roots.push(root);
+
+                CoreOperationResult::RealmInfo {
+                    name: realm.clone(),
+                    root_count: realm_data.roots.len(),
+                    document_count: realm_data.index.document_count(),
+                }
+            }
+            CoreOperation::RemoveRoot { realm, root } => {
+                let mut state = self.state.write().expect("lock poisoned");
+                let realm_data = match state.get_mut(&realm) {
+                    Some(data) => data,
+                    None => {
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "realm does not exist: {realm}"
+                        )));
+                    }
+                };
+
+                let canonical = root.canonicalize().unwrap_or_else(|_| root.clone());
+                let pos = realm_data.roots.iter().position(|existing| {
+                    existing.canonicalize().unwrap_or_else(|_| existing.clone()) == canonical
+                });
+
+                match pos {
+                    Some(idx) => {
+                        let removed = realm_data.roots.remove(idx);
+                        unindex_root_from_realm(&removed, realm_data);
+
+                        CoreOperationResult::RealmInfo {
+                            name: realm.clone(),
+                            root_count: realm_data.roots.len(),
+                            document_count: realm_data.index.document_count(),
+                        }
+                    }
+                    None => CoreOperationResult::Error(CoreError::Message(format!(
+                        "root is not tracked in realm: {}",
+                        root.display()
+                    ))),
+                }
+            }
+
+            // --- Query operations ---
+            CoreOperation::RealmStats { realm } => {
+                let state = self.state.read().expect("lock poisoned");
+                let realm_data = match state.get(&realm) {
+                    Some(data) => data,
+                    None => {
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "realm does not exist: {realm}"
+                        )));
+                    }
+                };
+
+                let mut heading_count = 0;
+                let mut xml_tag_count = 0;
+                let mut wiki_link_count = 0;
+                let mut markdown_link_count = 0;
+
+                for (_uri, index) in realm_data.index.iter_documents() {
+                    heading_count += index.headings().len();
+                    xml_tag_count += index.xml_tags().len();
+                    wiki_link_count += index.wiki_links().len();
+                    markdown_link_count += index.markdown_links().len();
+                }
+
+                CoreOperationResult::RealmStats {
+                    name: realm,
+                    root_count: realm_data.roots.len(),
+                    document_count: realm_data.index.document_count(),
+                    heading_count,
+                    xml_tag_count,
+                    wiki_link_count,
+                    markdown_link_count,
+                }
+            }
+            CoreOperation::DependencyGraph { realm, format } => {
+                let state = self.state.read().expect("lock poisoned");
+                let realm_data = match state.get(&realm) {
+                    Some(data) => data,
+                    None => {
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "realm does not exist: {realm}"
+                        )));
+                    }
+                };
+
+                let content = build_dependency_graph(&realm_data.index, &format);
+                match content {
+                    Ok(content) => CoreOperationResult::DependencyGraph {
+                        realm,
+                        format,
+                        content,
+                    },
+                    Err(msg) => CoreOperationResult::Error(CoreError::Message(msg)),
+                }
+            }
+            CoreOperation::ExportIndex { uri } => {
+                let state = self.state.read().expect("lock poisoned");
+                let realm = &state[DEFAULT_REALM].index;
+                match realm.get_document(&uri) {
+                    Some(index) => {
+                        let headings = index
+                            .headings()
+                            .iter()
+                            .map(|h| (h.text.clone(), h.level, h.range))
+                            .collect();
+
+                        let xml_tags = index
+                            .xml_tags()
+                            .iter()
+                            .map(|x| (x.tag_name.clone(), x.range))
+                            .collect();
+
+                        let wiki_links = index
+                            .wiki_links()
+                            .iter()
+                            .map(|wl| (wl.target.clone(), wl.heading.clone(), wl.range))
+                            .collect();
+
+                        let markdown_links = index
+                            .markdown_links()
+                            .iter()
+                            .map(|ml| (ml.text.clone(), ml.url.clone(), ml.range))
+                            .collect();
+
+                        CoreOperationResult::DocumentExport {
+                            uri,
+                            headings,
+                            xml_tags,
+                            wiki_links,
+                            markdown_links,
+                        }
+                    }
+                    None => CoreOperationResult::Error(CoreError::Message(format!(
+                        "document is not indexed: {}",
+                        uri.as_str()
+                    ))),
+                }
+            }
         }
     }
-}
-
-fn compare_ranges(a: Range, b: Range) -> Ordering {
-    a.start.cmp(&b.start).then_with(|| a.end.cmp(&b.end))
 }
 
 fn validate_workspace_root(root: &Path) -> anyhow::Result<()> {
@@ -162,141 +536,70 @@ fn is_markdown_path(path: &Path) -> bool {
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
+/// Build a dependency graph from the realm's indexed documents.
+///
+/// Returns the graph as either JSON or DOT format.
+fn build_dependency_graph(realm: &RealmIndex, format: &str) -> Result<String, String> {
+    use serde_json::json;
+    use std::collections::{BTreeMap, BTreeSet};
 
-    use markymark_core::engine::CoreOperation;
+    // Collect document URIs and outgoing links.
+    let mut nodes: BTreeSet<String> = BTreeSet::new();
+    let mut edges: Vec<(String, String, String)> = Vec::new();
 
-    use super::*;
+    for (uri, index) in realm.iter_documents() {
+        let from = uri.as_str().to_string();
+        nodes.insert(from.clone());
 
-    struct TempWorkspace {
-        root: PathBuf,
-    }
-
-    impl TempWorkspace {
-        fn new(name: &str) -> Self {
-            let nanos = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("clock should be after unix epoch")
-                .as_nanos();
-            let root = std::env::temp_dir().join(format!(
-                "markymark-mcp-runtime-{name}-{}-{nanos}",
-                std::process::id()
-            ));
-            fs::create_dir_all(&root).expect("temporary workspace directory should be created");
-            Self { root }
+        for wl in index.wiki_links() {
+            // Wiki links target page names, not full URIs.
+            // Record the target as-is for the graph.
+            let to = format!("wiki:{}", wl.target);
+            nodes.insert(to.clone());
+            edges.push((from.clone(), to, "wiki_link".to_string()));
         }
 
-        fn root(&self) -> PathBuf {
-            self.root.clone()
-        }
-    }
-
-    impl Drop for TempWorkspace {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.root);
-        }
-    }
-
-    #[test]
-    fn rejects_empty_workspace_roots() {
-        let err = match RuntimeEngine::from_workspace_roots(Vec::new()) {
-            Ok(_) => panic!("empty workspace roots should fail"),
-            Err(err) => err,
-        };
-        assert!(err
-            .to_string()
-            .contains("at least one workspace root is required"));
-    }
-
-    #[test]
-    fn rejects_missing_workspace_root() {
-        let missing = std::env::temp_dir().join("markymark-missing-workspace");
-        if missing.exists() {
-            fs::remove_dir_all(&missing).expect("stale missing-workspace path should be removable");
-        }
-
-        let err = match RuntimeEngine::from_workspace_roots(vec![missing.clone()]) {
-            Ok(_) => panic!("missing workspace root should fail"),
-            Err(err) => err,
-        };
-        assert!(err.to_string().contains(&format!(
-            "workspace root does not exist: {}",
-            missing.display()
-        )));
-    }
-
-    #[test]
-    fn rejects_workspace_root_file_path() {
-        let ws = TempWorkspace::new("root-file");
-        let file_path = ws.root().join("not-a-directory.md");
-        fs::write(&file_path, "# Heading").expect("test file should be created");
-
-        let err = match RuntimeEngine::from_workspace_roots(vec![file_path.clone()]) {
-            Ok(_) => panic!("workspace root file should fail"),
-            Err(err) => err,
-        };
-        assert!(err.to_string().contains(&format!(
-            "workspace root is not a directory: {}",
-            file_path.display()
-        )));
-    }
-
-    #[test]
-    fn indexes_markdown_and_returns_deterministic_symbols() {
-        let ws = TempWorkspace::new("indexed");
-        let first = ws.root().join("a.md");
-        let second = ws.root().join("b.md");
-        fs::write(&first, "# Zebra\n## Alpha\n").expect("first markdown should be created");
-        fs::write(&second, "# Beta\n").expect("second markdown should be created");
-
-        let engine =
-            RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
-
-        let outline = engine.execute(CoreOperation::GetOutline {
-            uri: DocumentUri::from_file_path(&first),
-        });
-        match outline {
-            CoreOperationResult::Outline(headings) => {
-                assert_eq!(headings, vec!["Zebra".to_string(), "Alpha".to_string()]);
+        for ml in index.markdown_links() {
+            if ml.url.starts_with("http://") || ml.url.starts_with("https://") {
+                continue; // Skip external URLs.
             }
-            other => panic!("expected outline result, got: {other:?}"),
-        }
-
-        let symbols = engine.execute(CoreOperation::SearchSymbols {
-            query: "a".to_string(),
-        });
-        match symbols {
-            CoreOperationResult::Symbols(matches) => {
-                let names: Vec<_> = matches.into_iter().map(|(name, _, _)| name).collect();
-                assert_eq!(
-                    names,
-                    vec!["Alpha".to_string(), "Beta".to_string(), "Zebra".to_string()]
-                );
-            }
-            other => panic!("expected symbol matches, got: {other:?}"),
+            let to = ml.url.clone();
+            nodes.insert(to.clone());
+            edges.push((from.clone(), to, "markdown_link".to_string()));
         }
     }
 
-    #[test]
-    fn skips_non_utf8_documents_without_failing_startup() {
-        let ws = TempWorkspace::new("invalid-utf8");
-        let good = ws.root().join("good.md");
-        let bad = ws.root().join("bad.md");
-        fs::write(&good, "# Intro\n").expect("valid markdown should be created");
-        fs::write(&bad, [0xFFu8, 0xFEu8, 0xFDu8]).expect("invalid utf8 markdown should be created");
-
-        let engine =
-            RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
-
-        let outline = engine.execute(CoreOperation::GetOutline {
-            uri: DocumentUri::from_file_path(&good),
-        });
-        match outline {
-            CoreOperationResult::Outline(headings) => assert_eq!(headings, vec!["Intro"]),
-            other => panic!("expected outline result, got: {other:?}"),
+    match format {
+        "json" => {
+            let nodes_json: Vec<_> = nodes.iter().map(|n| json!({ "id": n })).collect();
+            let edges_json: Vec<_> = edges
+                .iter()
+                .map(|(from, to, kind)| json!({ "from": from, "to": to, "kind": kind }))
+                .collect();
+            let graph = json!({ "nodes": nodes_json, "edges": edges_json });
+            serde_json::to_string_pretty(&graph).map_err(|e| e.to_string())
         }
+        "dot" => {
+            let mut out = String::from("digraph dependency_graph {\n");
+            // Assign short labels for readability.
+            let label_map: BTreeMap<&str, usize> = nodes
+                .iter()
+                .enumerate()
+                .map(|(i, n)| (n.as_str(), i))
+                .collect();
+            for (name, idx) in &label_map {
+                // Use the file stem or short name as label.
+                let label = name.rsplit('/').next().unwrap_or(name);
+                out.push_str(&format!("  n{idx} [label={label:?}];\n"));
+            }
+            for (from, to, kind) in &edges {
+                let from_idx = label_map[from.as_str()];
+                let to_idx = label_map[to.as_str()];
+                out.push_str(&format!("  n{from_idx} -> n{to_idx} [label={kind:?}];\n"));
+            }
+            out.push_str("}\n");
+            Ok(out)
+        }
+        other => Err(format!("unsupported dependency graph format: {other}")),
     }
 }

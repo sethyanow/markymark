@@ -14,3 +14,15 @@
 pub mod convert;
 pub mod server;
 pub mod state;
+
+/// Run the LSP server over stdio transport.
+///
+/// Creates an LSP service and runs it on stdin/stdout until shutdown.
+pub async fn run_stdio() {
+    let stdin = tokio::io::stdin();
+    let stdout = tokio::io::stdout();
+    let (service, socket) = server::create_service();
+    tower_lsp_server::Server::new(stdin, stdout, socket)
+        .serve(service)
+        .await;
+}

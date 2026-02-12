@@ -105,5 +105,5 @@ fn extract_obsidian_embed() {
 
     assert_eq!(embeds.len(), 1);
     assert_eq!(embeds[0].target(), "image.png");
-    assert_eq!(embeds[0].is_embed(), true);
+    assert!(embeds[0].is_embed());
 }

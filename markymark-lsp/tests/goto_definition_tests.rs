@@ -314,3 +314,142 @@ async fn test_goto_definition_wiki_link_nonexistent_target() {
         "goto_definition on a wiki link to nonexistent page should return None"
     );
 }
+
+// ── XML tag go-to-definition tests ───────────────────────────────────
+
+#[tokio::test]
+async fn test_goto_definition_xml_tag_jumps_to_first_occurrence() {
+    // When cursor is on a later occurrence of <agent>, jump to the first occurrence.
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+
+    let uri_a: Uri = "file:///workspace/a.md".parse().unwrap();
+    let uri_b: Uri = "file:///workspace/b.md".parse().unwrap();
+
+    // a.md has the first occurrence of <agent>
+    let text_a = "<agent>\nFirst agent content\n</agent>\n";
+    // b.md has a later occurrence
+    let text_b = "<agent>\nSecond agent content\n</agent>\n";
+
+    {
+        let mut state = backend.state().write().await;
+        state.open_document(
+            DocumentUri::new("file:///workspace/a.md").unwrap(),
+            text_a.to_string(),
+        );
+        state.open_document(
+            DocumentUri::new("file:///workspace/b.md").unwrap(),
+            text_b.to_string(),
+        );
+    }
+
+    // Place cursor on <agent> in b.md (line 0, inside the tag name)
+    let params = GotoDefinitionParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri_b.clone() },
+            position: Position::new(0, 3), // inside "agent"
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    };
+
+    let result = backend.goto_definition(params).await.unwrap();
+    assert!(
+        result.is_some(),
+        "goto_definition on XML tag should jump to first occurrence"
+    );
+    match result.unwrap() {
+        GotoDefinitionResponse::Scalar(loc) => {
+            assert_eq!(
+                loc.uri.as_str(),
+                uri_a.as_str(),
+                "should jump to a.md (first occurrence)"
+            );
+            assert_eq!(loc.range.start.line, 0, "should point to line 0 in a.md");
+        }
+        other => panic!("Expected Scalar response, got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_goto_definition_xml_tag_same_doc_first_occurrence() {
+    // When cursor is on a later occurrence within the same doc, jump to first.
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+
+    let uri: Uri = "file:///workspace/doc.md".parse().unwrap();
+    let text = concat!(
+        "<task>\nFirst task\n</task>\n",
+        "\n",
+        "Some text\n",
+        "\n",
+        "<task>\nSecond task\n</task>\n",
+    );
+
+    {
+        let mut state = backend.state().write().await;
+        state.open_document(
+            DocumentUri::new("file:///workspace/doc.md").unwrap(),
+            text.to_string(),
+        );
+    }
+
+    // Place cursor on the second <task> (line 6)
+    let params = GotoDefinitionParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position::new(6, 2), // inside "task"
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    };
+
+    let result = backend.goto_definition(params).await.unwrap();
+    assert!(
+        result.is_some(),
+        "goto_definition should jump to first occurrence in same doc"
+    );
+    match result.unwrap() {
+        GotoDefinitionResponse::Scalar(loc) => {
+            assert_eq!(loc.uri.as_str(), uri.as_str());
+            assert_eq!(
+                loc.range.start.line, 0,
+                "should point to line 0 (first <task>)"
+            );
+        }
+        other => panic!("Expected Scalar response, got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_goto_definition_xml_tag_already_on_first_returns_none() {
+    // When cursor is already on the first (and only) occurrence, return None.
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+
+    let uri: Uri = "file:///workspace/single.md".parse().unwrap();
+    let text = "<unique_tag>\nContent\n</unique_tag>\n";
+
+    {
+        let mut state = backend.state().write().await;
+        state.open_document(
+            DocumentUri::new("file:///workspace/single.md").unwrap(),
+            text.to_string(),
+        );
+    }
+
+    let params = GotoDefinitionParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position::new(0, 5), // inside "unique_tag"
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    };
+
+    let result = backend.goto_definition(params).await.unwrap();
+    assert!(
+        result.is_none(),
+        "goto_definition on the only occurrence should return None"
+    );
+}

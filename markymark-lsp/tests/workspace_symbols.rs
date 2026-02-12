@@ -406,3 +406,55 @@ async fn test_acceptance_changed_document_reflects_in_workspace_symbols() {
         names
     );
 }
+
+// =======================================================================
+// XML tag workspace symbol tests
+// =======================================================================
+
+#[tokio::test]
+async fn test_workspace_symbol_includes_xml_tags() {
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+
+    {
+        let mut state = backend.state().write().await;
+        state.open_document(
+            DocumentUri::new("file:///ws/agents.md").unwrap(),
+            "# Config\n\n<agent>content</agent>\n<goal>win</goal>\n".to_string(),
+        );
+    }
+
+    let result = backend.symbol(make_params("agent")).await.unwrap();
+    assert!(result.is_some(), "query 'agent' should match XML tag");
+
+    let names = symbol_names(result.as_ref().unwrap());
+    assert!(
+        names.iter().any(|n| n.contains("agent")),
+        "should include XML tag 'agent' in results; got: {:?}",
+        names
+    );
+}
+
+#[tokio::test]
+async fn test_workspace_symbol_xml_tags_in_empty_query() {
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+
+    {
+        let mut state = backend.state().write().await;
+        state.open_document(
+            DocumentUri::new("file:///ws/skills.md").unwrap(),
+            "<prompt>Hello</prompt>\n".to_string(),
+        );
+    }
+
+    let result = backend.symbol(make_params("")).await.unwrap();
+    assert!(result.is_some(), "empty query should return all symbols");
+
+    let names = symbol_names(result.as_ref().unwrap());
+    assert!(
+        names.iter().any(|n| n.contains("prompt")),
+        "empty query should include XML tags; got: {:?}",
+        names
+    );
+}

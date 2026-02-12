@@ -655,6 +655,7 @@ pub struct XmlTag {
     tag_name: String,
     attributes: HashMap<String, String>,
     is_self_closing: bool,
+    is_unclosed: bool,
     content: Option<String>,
     range: Range,
 }
@@ -672,7 +673,24 @@ impl XmlTag {
             tag_name,
             attributes,
             is_self_closing,
+            is_unclosed: false,
             content,
+            range,
+        }
+    }
+
+    /// Create an unclosed XML tag (opening tag with no matching close)
+    pub(crate) fn unclosed(
+        tag_name: String,
+        attributes: HashMap<String, String>,
+        range: Range,
+    ) -> Self {
+        Self {
+            tag_name,
+            attributes,
+            is_self_closing: false,
+            is_unclosed: true,
+            content: None,
             range,
         }
     }
@@ -690,6 +708,11 @@ impl XmlTag {
     /// Whether this is a self-closing tag (e.g. `<br/>`, `<img ...>`)
     pub fn is_self_closing(&self) -> bool {
         self.is_self_closing
+    }
+
+    /// Whether this tag has no matching closing tag
+    pub fn is_unclosed(&self) -> bool {
+        self.is_unclosed
     }
 
     /// Text content between opening and closing tags, if applicable

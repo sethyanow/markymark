@@ -625,6 +625,7 @@ dependencies = [
  "markymark-core",
  "markymark-lsp",
  "markymark-mcp",
+ "serde_json",
  "tokio",
 ]
 

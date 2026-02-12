@@ -12,104 +12,103 @@ use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_core::{CoreError, DocumentUri, Position, Range};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, ServerCapabilities, ServerInfo},
-    tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler, ServiceExt,
+    model::{
+        CallToolResult, GetPromptRequestParam, GetPromptResult, ListPromptsResult,
+        ListResourceTemplatesResult, PaginatedRequestParam, ReadResourceRequestParam,
+        ReadResourceResult, ServerCapabilities, ServerInfo, SubscribeRequestParam,
+        UnsubscribeRequestParam,
+    },
+    service::RequestContext,
+    tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler, ServiceExt,
 };
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+pub mod dto;
+mod prompts;
+mod rename_ops;
+mod resources;
 mod runtime_engine;
+mod subscriptions;
 
+pub use dto::*;
 pub use runtime_engine::RuntimeEngine;
-
-/// Request payload for `get-outline`.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct OutlineRequest {
-    /// Document URI (`file://...`) to inspect.
-    pub uri: String,
-}
-
-/// Response payload for `get-outline`.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct OutlineResponse {
-    /// Input document URI.
-    pub uri: String,
-    /// Heading outline entries.
-    pub headings: Vec<String>,
-}
-
-/// Request payload for `search-symbols`.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SearchSymbolsRequest {
-    /// Query text to match against symbols.
-    pub query: String,
-}
-
-/// Position payload in MCP responses.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PositionDto {
-    /// 0-based line.
-    pub line: u32,
-    /// 0-based character offset.
-    pub character: u32,
-}
-
-/// Range payload in MCP responses.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
-pub struct RangeDto {
-    /// Inclusive start.
-    pub start: PositionDto,
-    /// Exclusive end.
-    pub end: PositionDto,
-}
-
-/// Symbol match payload.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
-pub struct SymbolMatchDto {
-    /// Symbol text.
-    pub name: String,
-    /// Document URI where symbol appears.
-    pub uri: String,
-    /// Symbol location.
-    pub range: RangeDto,
-}
-
-/// Response payload for `search-symbols`.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct SearchSymbolsResponse {
-    /// Query text used for search.
-    pub query: String,
-    /// Deterministically ordered matches.
-    pub symbols: Vec<SymbolMatchDto>,
-}
-
-/// Tool error envelope for consistent structured failures.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct ToolErrorEnvelope {
-    /// Error body.
-    pub error: ToolErrorPayload,
-}
-
-/// Tool error payload.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct ToolErrorPayload {
-    /// Stable machine-readable error code.
-    pub code: String,
-    /// Human-readable error message.
-    pub message: String,
-}
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for MarkymarkMcp {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             instructions: Some(
-                "markymark MCP tools for markdown outline and symbol search".to_string(),
+                "markymark MCP tools and resources for markdown indexing".to_string(),
             ),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            capabilities: ServerCapabilities::builder()
+                .enable_prompts()
+                .enable_tools()
+                .enable_resources()
+                .enable_resources_subscribe()
+                .build(),
             ..ServerInfo::default()
         }
+    }
+
+    fn subscribe(
+        &self,
+        request: SubscribeRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<(), McpError>> + Send + '_ {
+        self.subscriptions.subscribe(request.uri, context.peer);
+        std::future::ready(Ok(()))
+    }
+
+    fn unsubscribe(
+        &self,
+        request: UnsubscribeRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<(), McpError>> + Send + '_ {
+        self.subscriptions.untrack(&request.uri);
+        std::future::ready(Ok(()))
+    }
+
+    fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParam>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ListPromptsResult, McpError>> + Send + '_ {
+        std::future::ready(Ok(ListPromptsResult {
+            prompts: self.list_prompt_definitions(),
+            next_cursor: None,
+            meta: None,
+        }))
+    }
+
+    fn get_prompt(
+        &self,
+        request: GetPromptRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<GetPromptResult, McpError>> + Send + '_ {
+        let result = self.get_prompt_by_name(&request.name, request.arguments);
+        std::future::ready(result)
+    }
+
+    fn list_resource_templates(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParam>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ListResourceTemplatesResult, McpError>> + Send + '_
+    {
+        std::future::ready(Ok(ListResourceTemplatesResult {
+            resource_templates: self.resource_templates(),
+            next_cursor: None,
+            meta: None,
+        }))
+    }
+
+    fn read_resource(
+        &self,
+        request: ReadResourceRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ReadResourceResult, McpError>> + Send + '_ {
+        let result = self.read_resource_sync(&request.uri);
+        std::future::ready(result.map(|contents| ReadResourceResult { contents }))
     }
 }
 
@@ -120,6 +119,7 @@ impl ServerHandler for MarkymarkMcp {
 pub struct MarkymarkMcp {
     engine: Arc<dyn CoreEngine>,
     tool_router: ToolRouter<Self>,
+    subscriptions: subscriptions::SubscriptionTracker,
 }
 
 #[tool_router(router = tool_router)]
@@ -129,7 +129,28 @@ impl MarkymarkMcp {
         Self {
             engine,
             tool_router: Self::tool_router(),
+            subscriptions: subscriptions::SubscriptionTracker::new(),
         }
+    }
+
+    /// Record a resource URI as subscribed (without peer handle, for testing).
+    pub fn track_subscription(&self, uri: String) {
+        self.subscriptions.track(uri);
+    }
+
+    /// Remove a resource URI subscription. Returns `true` if it was subscribed.
+    pub fn untrack_subscription(&self, uri: &str) -> bool {
+        self.subscriptions.untrack(uri)
+    }
+
+    /// Check if a resource URI is currently subscribed.
+    pub fn is_subscribed(&self, uri: &str) -> bool {
+        self.subscriptions.is_subscribed(uri)
+    }
+
+    /// Return the count of active subscriptions.
+    pub fn subscription_count(&self) -> usize {
+        self.subscriptions.subscription_count()
     }
 
     /// Request a document outline from the core engine.
@@ -160,6 +181,11 @@ impl MarkymarkMcp {
             position,
             new_name,
         })
+    }
+
+    /// List all registered tool definitions (for testing/introspection).
+    pub fn list_tools(&self) -> Vec<rmcp::model::Tool> {
+        self.tool_router.list_all()
     }
 
     /// Start an MCP server on stdio transport and block until shutdown.
@@ -240,6 +266,350 @@ impl MarkymarkMcp {
             other => Ok(unexpected_result_error("search-symbols", &other)),
         }
     }
+
+    /// Find all references to a symbol at the given position.
+    #[tool(
+        name = "find-references",
+        description = "Find all references to a heading or XML tag at a position."
+    )]
+    pub async fn find_references_tool(
+        &self,
+        params: Parameters<FindReferencesRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let uri = match parse_file_uri(&params.0.uri) {
+            Ok(uri) => uri,
+            Err(err) => return Ok(tool_error(&err.code, err.message)),
+        };
+
+        let position = Range::new(
+            Position::new(params.0.line, params.0.character),
+            Position::new(params.0.line, params.0.character),
+        );
+
+        match self.find_references(uri, position) {
+            CoreOperationResult::Locations(locations) => {
+                let mut mapped: Vec<LocationDto> = locations
+                    .into_iter()
+                    .map(|(uri, range)| LocationDto {
+                        uri: uri.as_str().to_string(),
+                        range: range_to_dto(range),
+                    })
+                    .collect();
+                mapped.sort();
+
+                Ok(CallToolResult::structured(json!(FindReferencesResponse {
+                    uri: params.0.uri,
+                    locations: mapped,
+                })))
+            }
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("find-references", &other)),
+        }
+    }
+
+    /// Rename a heading or XML tag and all its references.
+    #[tool(
+        name = "rename",
+        description = "Rename a heading or XML tag at a position, updating all references."
+    )]
+    pub async fn rename_tool(
+        &self,
+        params: Parameters<RenameRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let uri = match parse_file_uri(&params.0.uri) {
+            Ok(uri) => uri,
+            Err(err) => return Ok(tool_error(&err.code, err.message)),
+        };
+
+        let new_name = params.0.new_name.trim().to_string();
+        if new_name.is_empty() {
+            return Ok(tool_error(
+                "invalid_name",
+                "new_name must not be empty for rename",
+            ));
+        }
+
+        let position = Range::new(
+            Position::new(params.0.line, params.0.character),
+            Position::new(params.0.line, params.0.character),
+        );
+
+        match self.rename(uri, position, new_name) {
+            CoreOperationResult::WorkspaceEdit(edits) => {
+                let mut changes: Vec<DocumentEditDto> = edits
+                    .into_iter()
+                    .map(|(uri, text_edits)| DocumentEditDto {
+                        uri: uri.as_str().to_string(),
+                        edits: text_edits
+                            .into_iter()
+                            .map(|(range, new_text)| TextEditDto {
+                                range: range_to_dto(range),
+                                new_text,
+                            })
+                            .collect(),
+                    })
+                    .collect();
+                changes.sort();
+
+                Ok(CallToolResult::structured(json!(RenameResponse {
+                    changes
+                })))
+            }
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("rename", &other)),
+        }
+    }
+
+    /// Create a new named realm.
+    #[tool(
+        name = "create-realm",
+        description = "Create a new named realm for isolated markdown workspace indexing."
+    )]
+    pub async fn create_realm_tool(
+        &self,
+        params: Parameters<CreateRealmRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let name = params.0.name.trim().to_string();
+        if name.is_empty() {
+            return Ok(tool_error(
+                "invalid_name",
+                "realm name must not be empty for create-realm",
+            ));
+        }
+
+        match self.engine.execute(CoreOperation::CreateRealm { name }) {
+            CoreOperationResult::RealmInfo {
+                name,
+                root_count,
+                document_count,
+            } => {
+                self.subscriptions.notify_all().await;
+                Ok(CallToolResult::structured(json!(RealmInfoResponse {
+                    name,
+                    root_count,
+                    document_count,
+                })))
+            }
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("create-realm", &other)),
+        }
+    }
+
+    /// Destroy a named realm and all its indexed documents.
+    #[tool(
+        name = "destroy-realm",
+        description = "Destroy a named realm and unindex all its documents."
+    )]
+    pub async fn destroy_realm_tool(
+        &self,
+        params: Parameters<DestroyRealmRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let name = params.0.name.trim().to_string();
+        if name.is_empty() {
+            return Ok(tool_error(
+                "invalid_name",
+                "realm name must not be empty for destroy-realm",
+            ));
+        }
+
+        match self.engine.execute(CoreOperation::DestroyRealm { name }) {
+            CoreOperationResult::Ok => {
+                self.subscriptions.notify_all().await;
+                Ok(CallToolResult::structured(json!(DestroyRealmResponse {
+                    success: true
+                })))
+            }
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("destroy-realm", &other)),
+        }
+    }
+
+    /// Add a workspace root to a realm and index its markdown files.
+    #[tool(
+        name = "add-root",
+        description = "Add a workspace root directory to a realm, indexing all markdown files."
+    )]
+    pub async fn add_root_tool(
+        &self,
+        params: Parameters<AddRootRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let realm = params.0.realm.trim().to_string();
+        if realm.is_empty() {
+            return Ok(tool_error(
+                "invalid_name",
+                "realm name must not be empty for add-root",
+            ));
+        }
+
+        let root = std::path::PathBuf::from(&params.0.root);
+
+        match self.engine.execute(CoreOperation::AddRoot { realm, root }) {
+            CoreOperationResult::RealmInfo {
+                name,
+                root_count,
+                document_count,
+            } => {
+                self.subscriptions.notify_all().await;
+                Ok(CallToolResult::structured(json!(RealmInfoResponse {
+                    name,
+                    root_count,
+                    document_count,
+                })))
+            }
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("add-root", &other)),
+        }
+    }
+
+    /// Remove a workspace root from a realm, unindexing its documents.
+    #[tool(
+        name = "remove-root",
+        description = "Remove a workspace root from a realm, unindexing all its documents."
+    )]
+    pub async fn remove_root_tool(
+        &self,
+        params: Parameters<RemoveRootRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let realm = params.0.realm.trim().to_string();
+        if realm.is_empty() {
+            return Ok(tool_error(
+                "invalid_name",
+                "realm name must not be empty for remove-root",
+            ));
+        }
+
+        let root = std::path::PathBuf::from(&params.0.root);
+
+        match self
+            .engine
+            .execute(CoreOperation::RemoveRoot { realm, root })
+        {
+            CoreOperationResult::RealmInfo {
+                name,
+                root_count,
+                document_count,
+            } => {
+                self.subscriptions.notify_all().await;
+                Ok(CallToolResult::structured(json!(RealmInfoResponse {
+                    name,
+                    root_count,
+                    document_count,
+                })))
+            }
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("remove-root", &other)),
+        }
+    }
+
+    /// Get aggregate statistics for a realm.
+    #[tool(
+        name = "realm-stats",
+        description = "Get aggregate statistics (document, heading, tag, link counts) for a realm."
+    )]
+    pub async fn realm_stats_tool(
+        &self,
+        params: Parameters<RealmStatsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let realm = params.0.realm.trim().to_string();
+        if realm.is_empty() {
+            return Ok(tool_error(
+                "invalid_name",
+                "realm name must not be empty for realm-stats",
+            ));
+        }
+
+        match self.engine.execute(CoreOperation::RealmStats { realm }) {
+            CoreOperationResult::RealmStats {
+                name,
+                root_count,
+                document_count,
+                heading_count,
+                xml_tag_count,
+                wiki_link_count,
+                markdown_link_count,
+            } => Ok(CallToolResult::structured(json!(RealmStatsResponse {
+                name,
+                root_count,
+                document_count,
+                heading_count,
+                xml_tag_count,
+                wiki_link_count,
+                markdown_link_count,
+            }))),
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("realm-stats", &other)),
+        }
+    }
+
+    /// Export the full document index for a single document.
+    #[tool(
+        name = "export-index",
+        description = "Export headings, XML tags, wiki links, and markdown links for a document."
+    )]
+    pub async fn export_index_tool(
+        &self,
+        params: Parameters<ExportIndexRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let uri = match parse_file_uri(&params.0.uri) {
+            Ok(uri) => uri,
+            Err(err) => return Ok(tool_error(&err.code, err.message)),
+        };
+
+        match self.engine.execute(CoreOperation::ExportIndex { uri }) {
+            CoreOperationResult::DocumentExport {
+                uri,
+                headings,
+                xml_tags,
+                wiki_links,
+                markdown_links,
+            } => {
+                let headings: Vec<ExportedHeadingDto> = headings
+                    .into_iter()
+                    .map(|(text, level, range)| ExportedHeadingDto {
+                        text,
+                        level,
+                        range: range_to_dto(range),
+                    })
+                    .collect();
+
+                let xml_tags: Vec<ExportedXmlTagDto> = xml_tags
+                    .into_iter()
+                    .map(|(tag_name, range)| ExportedXmlTagDto {
+                        tag_name,
+                        range: range_to_dto(range),
+                    })
+                    .collect();
+
+                let wiki_links: Vec<ExportedWikiLinkDto> = wiki_links
+                    .into_iter()
+                    .map(|(target, heading, range)| ExportedWikiLinkDto {
+                        target,
+                        heading,
+                        range: range_to_dto(range),
+                    })
+                    .collect();
+
+                let markdown_links: Vec<ExportedMarkdownLinkDto> = markdown_links
+                    .into_iter()
+                    .map(|(text, url, range)| ExportedMarkdownLinkDto {
+                        text,
+                        url,
+                        range: range_to_dto(range),
+                    })
+                    .collect();
+
+                Ok(CallToolResult::structured(json!(ExportIndexResponse {
+                    uri: uri.as_str().to_string(),
+                    headings,
+                    xml_tags,
+                    wiki_links,
+                    markdown_links,
+                })))
+            }
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("export-index", &other)),
+        }
+    }
 }
 
 /// Run markymark MCP over stdio using the provided shared core engine.
@@ -282,215 +652,4 @@ fn unexpected_result_error(tool: &str, result: &CoreOperationResult) -> CallTool
         "unexpected_core_result",
         format!("tool {tool} received unsupported core result variant: {result:?}"),
     )
-}
-
-fn range_to_dto(range: Range) -> RangeDto {
-    RangeDto {
-        start: position_to_dto(range.start),
-        end: position_to_dto(range.end),
-    }
-}
-
-fn position_to_dto(position: Position) -> PositionDto {
-    PositionDto {
-        line: position.line,
-        character: position.character,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
-
-    use super::*;
-
-    struct MockEngine {
-        mode: MockMode,
-    }
-
-    enum MockMode {
-        Happy,
-        CoreError,
-        UnsortedSymbols,
-    }
-
-    impl CoreEngine for MockEngine {
-        fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
-            match (&self.mode, operation) {
-                (MockMode::CoreError, _) => {
-                    CoreOperationResult::Error(CoreError::Message("engine failed".to_string()))
-                }
-                (_, CoreOperation::GetOutline { .. }) => {
-                    CoreOperationResult::Outline(vec!["Heading".to_string()])
-                }
-                (MockMode::UnsortedSymbols, CoreOperation::SearchSymbols { .. }) => {
-                    CoreOperationResult::Symbols(vec![
-                        (
-                            "zeta".to_string(),
-                            DocumentUri::from_file_path(Path::new("/vault/b.md")),
-                            Range::new(Position::new(10, 1), Position::new(10, 5)),
-                        ),
-                        (
-                            "alpha".to_string(),
-                            DocumentUri::from_file_path(Path::new("/vault/a.md")),
-                            Range::new(Position::new(1, 0), Position::new(1, 4)),
-                        ),
-                    ])
-                }
-                (_, CoreOperation::SearchSymbols { query }) => {
-                    CoreOperationResult::Symbols(vec![(
-                        query,
-                        DocumentUri::from_file_path(Path::new("/vault/notes.md")),
-                        Range::new(Position::new(0, 0), Position::new(0, 7)),
-                    )])
-                }
-                (_, CoreOperation::FindReferences { .. }) => {
-                    CoreOperationResult::Locations(vec![(
-                        DocumentUri::from_file_path(Path::new("/vault/notes.md")),
-                        Range::new(Position::new(1, 0), Position::new(1, 5)),
-                    )])
-                }
-                (_, CoreOperation::Rename { new_name, .. }) => {
-                    CoreOperationResult::WorkspaceEdit(vec![(
-                        DocumentUri::from_file_path(Path::new("/vault/notes.md")),
-                        vec![(
-                            Range::new(Position::new(2, 0), Position::new(2, 7)),
-                            new_name,
-                        )],
-                    )])
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn forwards_get_outline_to_core_engine() {
-        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
-            mode: MockMode::Happy,
-        }));
-        let uri = DocumentUri::from_file_path(Path::new("/vault/notes.md"));
-        let result = mcp.get_outline(uri);
-
-        match result {
-            CoreOperationResult::Outline(items) => {
-                assert_eq!(items, vec!["Heading".to_string()]);
-            }
-            _ => panic!("expected outline result"),
-        }
-    }
-
-    #[test]
-    fn forwards_search_symbols_to_core_engine() {
-        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
-            mode: MockMode::Happy,
-        }));
-        let result = mcp.search_symbols("intro".to_string());
-
-        match result {
-            CoreOperationResult::Symbols(items) => {
-                assert_eq!(items.len(), 1);
-                assert_eq!(items[0].0, "intro");
-            }
-            _ => panic!("expected symbols result"),
-        }
-    }
-
-    #[test]
-    fn registers_expected_rmcp_tools() {
-        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
-            mode: MockMode::Happy,
-        }));
-        let tools = mcp.tool_router.list_all();
-        let names: Vec<_> = tools.iter().map(|t| t.name.as_ref()).collect();
-        assert!(names.contains(&"get-outline"));
-        assert!(names.contains(&"search-symbols"));
-    }
-
-    #[tokio::test]
-    async fn outline_tool_returns_structured_success() {
-        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
-            mode: MockMode::Happy,
-        }));
-        let result = mcp
-            .get_outline_tool(Parameters(OutlineRequest {
-                uri: "file:///vault/notes.md".to_string(),
-            }))
-            .await
-            .expect("tool call should not return protocol error");
-
-        assert_eq!(result.is_error, Some(false));
-        let payload: OutlineResponse = result.into_typed().expect("typed outline response");
-        assert_eq!(payload.uri, "file:///vault/notes.md");
-        assert_eq!(payload.headings, vec!["Heading".to_string()]);
-    }
-
-    #[tokio::test]
-    async fn outline_tool_rejects_non_file_uri() {
-        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
-            mode: MockMode::Happy,
-        }));
-        let result = mcp
-            .get_outline_tool(Parameters(OutlineRequest {
-                uri: "https://example.com/notes.md".to_string(),
-            }))
-            .await
-            .expect("tool call should not return protocol error");
-
-        assert_eq!(result.is_error, Some(true));
-        let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
-        assert_eq!(payload.error.code, "non_file_uri");
-    }
-
-    #[tokio::test]
-    async fn search_symbols_tool_rejects_empty_query() {
-        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
-            mode: MockMode::Happy,
-        }));
-        let result = mcp
-            .search_symbols_tool(Parameters(SearchSymbolsRequest {
-                query: "   ".to_string(),
-            }))
-            .await
-            .expect("tool call should not return protocol error");
-
-        assert_eq!(result.is_error, Some(true));
-        let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
-        assert_eq!(payload.error.code, "invalid_query");
-    }
-
-    #[tokio::test]
-    async fn search_symbols_tool_orders_results_deterministically() {
-        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
-            mode: MockMode::UnsortedSymbols,
-        }));
-        let result = mcp
-            .search_symbols_tool(Parameters(SearchSymbolsRequest {
-                query: "anything".to_string(),
-            }))
-            .await
-            .expect("tool call should not return protocol error");
-
-        assert_eq!(result.is_error, Some(false));
-        let payload: SearchSymbolsResponse = result.into_typed().expect("typed response");
-        assert_eq!(payload.symbols.len(), 2);
-        assert_eq!(payload.symbols[0].name, "alpha");
-        assert_eq!(payload.symbols[1].name, "zeta");
-    }
-
-    #[tokio::test]
-    async fn tool_errors_map_core_failures_consistently() {
-        let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
-            mode: MockMode::CoreError,
-        }));
-        let result = mcp
-            .search_symbols_tool(Parameters(SearchSymbolsRequest {
-                query: "intro".to_string(),
-            }))
-            .await
-            .expect("tool call should not return protocol error");
-
-        assert_eq!(result.is_error, Some(true));
-        let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
-        assert_eq!(payload.error.code, "core_error");
-    }
 }

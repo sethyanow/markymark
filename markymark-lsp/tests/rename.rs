@@ -431,6 +431,276 @@ async fn test_rename_on_wiki_link_returns_none() {
 }
 
 // =======================================================================
+// rename: XML tags
+// =======================================================================
+
+/// Helper: set up workspace with XML tags for rename tests.
+async fn setup_xml_rename_workspace() -> (
+    tower_lsp_server::LspService<markymark_lsp::server::Backend>,
+    tower_lsp_server::ClientSocket,
+    Uri,
+    Uri,
+) {
+    let (service, socket) = create_service();
+    let backend = service.inner();
+
+    let uri_a: Uri = "file:///workspace/a.md".parse().unwrap();
+    let uri_b: Uri = "file:///workspace/b.md".parse().unwrap();
+
+    let text_a = concat!(
+        "# Doc A\n",                     // line 0
+        "\n",                            // line 1
+        "<agent>\n",                     // line 2
+        "Agent content.\n",              // line 3
+        "</agent>\n",                    // line 4
+        "\n",                            // line 5
+        "<agent>Inline agent</agent>\n", // line 6
+    );
+
+    let text_b = concat!(
+        "# Doc B\n",                 // line 0
+        "\n",                        // line 1
+        "<agent>\n",                 // line 2
+        "Another agent.\n",          // line 3
+        "</agent>\n",                // line 4
+        "\n",                        // line 5
+        "<routing>path</routing>\n", // line 6
+    );
+
+    {
+        let mut state = backend.state().write().await;
+        let core_a = DocumentUri::new("file:///workspace/a.md").unwrap();
+        let core_b = DocumentUri::new("file:///workspace/b.md").unwrap();
+        state.open_document(core_a, text_a.to_string());
+        state.open_document(core_b, text_b.to_string());
+    }
+
+    (service, socket, uri_a, uri_b)
+}
+
+#[tokio::test]
+async fn test_prepare_rename_on_xml_tag() {
+    let (service, _socket, uri_a, _) = setup_xml_rename_workspace().await;
+    let backend = service.inner();
+
+    // Cursor on <agent> at line 2
+    let params = TextDocumentPositionParams {
+        text_document: TextDocumentIdentifier { uri: uri_a.clone() },
+        position: Position::new(2, 2), // inside "agent"
+    };
+
+    let result = backend
+        .prepare_rename(params)
+        .await
+        .expect("prepare_rename should not error");
+    assert!(result.is_some(), "should be able to rename an XML tag");
+
+    match result.unwrap() {
+        PrepareRenameResponse::RangeWithPlaceholder { placeholder, range } => {
+            assert_eq!(placeholder, "agent");
+            assert_eq!(range.start.line, 2);
+        }
+        other => panic!("expected RangeWithPlaceholder, got: {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_rename_xml_tag_updates_all_occurrences() {
+    let (service, _socket, uri_a, uri_b) = setup_xml_rename_workspace().await;
+    let backend = service.inner();
+
+    // Rename "agent" to "assistant" from a.md line 2
+    let params = RenameParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri_a.clone() },
+            position: Position::new(2, 2),
+        },
+        new_name: "assistant".to_string(),
+        work_done_progress_params: Default::default(),
+    };
+
+    let result = backend
+        .rename(params)
+        .await
+        .expect("rename should not error");
+    assert!(result.is_some(), "rename should produce edits");
+
+    let workspace_edit = result.unwrap();
+    let changes = workspace_edit.changes.expect("should have changes");
+
+    // a.md has 2 <agent>...</agent> tags -> 4 edits (2 open + 2 close)
+    // b.md has 1 <agent>...</agent> tag  -> 2 edits (1 open + 1 close)
+    let total_edits: usize = changes.values().map(|v| v.len()).sum();
+    assert_eq!(
+        total_edits, 6,
+        "should have 6 edits (open+close for 3 tags): got {}",
+        total_edits
+    );
+
+    // Verify a.md has edits
+    let a_edits = changes.get(&uri_a).expect("should have edits for a.md");
+    assert_eq!(
+        a_edits.len(),
+        4,
+        "a.md should have 4 edits (2 open + 2 close): got {}",
+        a_edits.len()
+    );
+
+    // Verify b.md has edits
+    let b_edits = changes.get(&uri_b).expect("should have edits for b.md");
+    assert_eq!(
+        b_edits.len(),
+        2,
+        "b.md should have 2 edits (1 open + 1 close): got {}",
+        b_edits.len()
+    );
+
+    // All edits should use "assistant" as new text
+    for edits in changes.values() {
+        for edit in edits {
+            assert_eq!(
+                edit.new_text, "assistant",
+                "all tag name edits should use the new name"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_rename_xml_tag_does_not_affect_other_tags() {
+    let (service, _socket, _uri_a, uri_b) = setup_xml_rename_workspace().await;
+    let backend = service.inner();
+
+    // Rename "routing" tag from b.md line 6
+    let params = RenameParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri_b.clone() },
+            position: Position::new(6, 3),
+        },
+        new_name: "navigation".to_string(),
+        work_done_progress_params: Default::default(),
+    };
+
+    let result = backend
+        .rename(params)
+        .await
+        .expect("rename should not error");
+    assert!(result.is_some(), "rename should produce edits");
+
+    let workspace_edit = result.unwrap();
+    let changes = workspace_edit.changes.expect("should have changes");
+
+    // Only 1 <routing>...</routing> tag in workspace -> 2 edits (open + close)
+    let total_edits: usize = changes.values().map(|v| v.len()).sum();
+    assert_eq!(
+        total_edits, 2,
+        "renaming unique tag should produce 2 edits (open + close)"
+    );
+}
+
+// =======================================================================
+// rename: XML tag closing tags
+// =======================================================================
+
+#[tokio::test]
+async fn test_rename_xml_tag_edits_both_open_and_close_tags() {
+    let (service, _socket, uri_a, uri_b) = setup_xml_rename_workspace().await;
+    let backend = service.inner();
+
+    // Rename "agent" to "assistant" from a.md line 2
+    let params = RenameParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri_a.clone() },
+            position: Position::new(2, 2),
+        },
+        new_name: "assistant".to_string(),
+        work_done_progress_params: Default::default(),
+    };
+
+    let result = backend
+        .rename(params)
+        .await
+        .expect("rename should not error");
+    let workspace_edit = result.unwrap();
+    let changes = workspace_edit.changes.expect("should have changes");
+
+    // a.md has 2 <agent>...</agent> tags -> 4 edits (2 open + 2 close)
+    // b.md has 1 <agent>...</agent> tag  -> 2 edits (1 open + 1 close)
+    // Total: 6 edits
+    let total_edits: usize = changes.values().map(|v| v.len()).sum();
+    assert_eq!(
+        total_edits, 6,
+        "should have 6 edits (open+close for each of 3 tags): got {}",
+        total_edits
+    );
+
+    // Verify a.md: first tag <agent> on line 2, </agent> on line 4
+    let a_edits = changes.get(&uri_a).expect("should have edits for a.md");
+
+    // Should have an edit on line 4 (closing </agent>)
+    let close_tag_edit = a_edits
+        .iter()
+        .find(|e| e.range.start.line == 4)
+        .expect("should have a closing tag edit on line 4 of a.md");
+    assert_eq!(
+        close_tag_edit.new_text, "assistant",
+        "closing tag name should be renamed"
+    );
+    // Closing tag </agent> — name starts at column 2 (after "</" )
+    assert_eq!(
+        close_tag_edit.range.start.character, 2,
+        "closing tag name should start after </"
+    );
+
+    // Verify b.md: closing </agent> on line 4
+    let b_edits = changes.get(&uri_b).expect("should have edits for b.md");
+    let b_close_edit = b_edits
+        .iter()
+        .find(|e| e.range.start.line == 4)
+        .expect("should have a closing tag edit on line 4 of b.md");
+    assert_eq!(b_close_edit.new_text, "assistant");
+}
+
+#[tokio::test]
+async fn test_rename_xml_tag_unique_edits_open_and_close() {
+    let (service, _socket, _uri_a, uri_b) = setup_xml_rename_workspace().await;
+    let backend = service.inner();
+
+    // Rename "routing" tag from b.md line 6 — <routing>path</routing> is all on one line
+    let params = RenameParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri_b.clone() },
+            position: Position::new(6, 3),
+        },
+        new_name: "navigation".to_string(),
+        work_done_progress_params: Default::default(),
+    };
+
+    let result = backend
+        .rename(params)
+        .await
+        .expect("rename should not error");
+    let workspace_edit = result.unwrap();
+    let changes = workspace_edit.changes.expect("should have changes");
+
+    // 1 tag with open+close -> 2 edits
+    let total_edits: usize = changes.values().map(|v| v.len()).sum();
+    assert_eq!(
+        total_edits, 2,
+        "renaming tag with close should produce 2 edits (open + close): got {}",
+        total_edits
+    );
+
+    let b_edits = changes.get(&uri_b).expect("should have edits for b.md");
+    // Both edits on line 6: one for <routing>, one for </routing>
+    assert_eq!(b_edits.len(), 2, "should have 2 edits on b.md");
+    for edit in b_edits {
+        assert_eq!(edit.new_text, "navigation");
+        assert_eq!(edit.range.start.line, 6);
+    }
+}
+
+// =======================================================================
 // rename: edit count validation
 // =======================================================================
 

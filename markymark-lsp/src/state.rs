@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use markymark_core::{DocumentUri, Position, Range};
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link};
 use markymark_index::{
-    slugify, DocumentIndex, HeadingEntry, MarkdownLinkEntry, RealmIndex, WikiLinkEntry,
+    slugify, DocumentIndex, HeadingEntry, MarkdownLinkEntry, RealmIndex, WikiLinkEntry, XmlTagEntry,
 };
 use markymark_parser::Parser;
 
@@ -34,6 +34,11 @@ pub enum CompletionContext {
         /// The partial text typed after `((`.
         partial: String,
     },
+    /// After `<` — complete XML tag names.
+    XmlTag {
+        /// The partial tag name typed after `<`.
+        partial: String,
+    },
 }
 
 /// A completion suggestion returned by [`ServerState::completion_at`].
@@ -58,6 +63,8 @@ pub enum CompletionCandidateKind {
     Tag,
     /// A block reference ID.
     BlockRef,
+    /// An XML tag name.
+    XmlTag,
 }
 
 /// Result from `prepare_rename_at`: the range and current text of the renameable symbol.
@@ -109,6 +116,8 @@ pub enum SymbolAtPosition {
     WikiLink(WikiLinkEntry),
     /// A markdown link.
     MarkdownLink(MarkdownLinkEntry),
+    /// An XML tag.
+    XmlTag(XmlTagEntry),
 }
 
 /// The internal state of the LSP server.
@@ -243,6 +252,22 @@ impl ServerState {
             }
         }
 
+        // Check for XML tag: < followed by alphanumeric/hyphen/underscore chars (not yet closed)
+        if let Some(lt_idx) = prefix.rfind('<') {
+            let after = &prefix[lt_idx + 1..];
+            // Not a closing tag (</), not already closed (contains >)
+            if !after.starts_with('/')
+                && !after.contains('>')
+                && after
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+            {
+                return Some(CompletionContext::XmlTag {
+                    partial: after.to_string(),
+                });
+            }
+        }
+
         None
     }
 
@@ -333,6 +358,25 @@ impl ServerState {
                     }
                 }
             }
+            CompletionContext::XmlTag { partial } => {
+                let partial_lower = partial.to_lowercase();
+                // Collect unique XML tag names across all documents
+                let mut seen = std::collections::HashSet::new();
+                for (_doc_uri, index) in self.realm.iter_documents() {
+                    for xt in index.xml_tags() {
+                        if seen.insert(xt.tag_name.clone())
+                            && (partial_lower.is_empty()
+                                || xt.tag_name.to_lowercase().contains(&partial_lower))
+                        {
+                            candidates.push(CompletionCandidate {
+                                label: xt.tag_name.clone(),
+                                kind: CompletionCandidateKind::XmlTag,
+                                detail: None,
+                            });
+                        }
+                    }
+                }
+            }
         }
 
         candidates
@@ -414,6 +458,17 @@ impl ServerState {
             }
         }
 
+        // 4. Check for unclosed XML tags
+        for xt in index.xml_tags() {
+            if xt.is_unclosed {
+                diagnostics.push(MarkyDiagnostic {
+                    range: xt.range,
+                    severity: DiagnosticSeverity::Warning,
+                    message: format!("Unclosed XML tag: <{}>", xt.tag_name),
+                });
+            }
+        }
+
         diagnostics
     }
 
@@ -432,6 +487,18 @@ impl ServerState {
                 range: h.range,
                 placeholder: h.text.clone(),
             }),
+            SymbolAtPosition::XmlTag(xt) => {
+                // Tag name range: starts after '<', length of tag_name
+                let name_start = Position::new(xt.range.start.line, xt.range.start.character + 1);
+                let name_end = Position::new(
+                    xt.range.start.line,
+                    xt.range.start.character + 1 + xt.tag_name.len() as u32,
+                );
+                Some(PrepareRenameResult {
+                    range: Range::new(name_start, name_end),
+                    placeholder: xt.tag_name.clone(),
+                })
+            }
             // Wiki links and markdown links are not renameable themselves
             // (you rename the heading they point to, not the link)
             _ => None,
@@ -512,6 +579,51 @@ impl ServerState {
 
                 Some(edits)
             }
+            SymbolAtPosition::XmlTag(xt) => {
+                let old_name = &xt.tag_name;
+                let mut edits = Vec::new();
+
+                // Find all XML tags with the same name across all documents
+                for (doc_uri, index) in self.realm.iter_documents() {
+                    for xml in index.xml_tags() {
+                        if xml.tag_name == *old_name {
+                            // Opening tag name: starts after '<', length of tag_name
+                            let name_start =
+                                Position::new(xml.range.start.line, xml.range.start.character + 1);
+                            let name_end = Position::new(
+                                xml.range.start.line,
+                                xml.range.start.character + 1 + xml.tag_name.len() as u32,
+                            );
+                            edits.push(RenameEdit {
+                                uri: doc_uri.clone(),
+                                range: Range::new(name_start, name_end),
+                                new_text: new_name.to_string(),
+                            });
+
+                            // Closing tag name: ends just before '>' in </tagname>
+                            if !xml.is_self_closing && !xml.is_unclosed {
+                                let close_name_start = Position::new(
+                                    xml.range.end.line,
+                                    xml.range.end.character - 1 - xml.tag_name.len() as u32,
+                                );
+                                let close_name_end =
+                                    Position::new(xml.range.end.line, xml.range.end.character - 1);
+                                edits.push(RenameEdit {
+                                    uri: doc_uri.clone(),
+                                    range: Range::new(close_name_start, close_name_end),
+                                    new_text: new_name.to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
+
+                if edits.is_empty() {
+                    None
+                } else {
+                    Some(edits)
+                }
+            }
             _ => None,
         }
     }
@@ -538,6 +650,13 @@ impl ServerState {
         for h in index.headings() {
             if h.range.contains(pos) {
                 return Some(SymbolAtPosition::Heading(h.clone()));
+            }
+        }
+
+        // Check XML tags
+        for xt in index.xml_tags() {
+            if xt.range.contains(pos) {
+                return Some(SymbolAtPosition::XmlTag(xt.clone()));
             }
         }
 
