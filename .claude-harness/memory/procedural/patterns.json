@@ -1,8 +1,20 @@
 {
   "version": 3,
   "patterns": {
-    "codePatterns": [],
-    "namingConventions": {},
-    "projectSpecificRules": []
+    "codePatterns": [
+      "Plugin hooks use hooks.json with {description, hooks: {EventName: [{matcher, hooks: [{type, command, timeout}]}]}} structure",
+      "Hook scripts receive JSON on stdin, output JSON to stdout, use exit 0 for no-op on non-matching files",
+      "Test files follow pass/fail counter pattern with colored output and exit 1 on any failure"
+    ],
+    "namingConventions": {
+      "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",
+      "testFiles": "test_<subject>.sh (e.g., test_hooks.sh, test_select_binary.sh)",
+      "hookConfig": "hooks.json in hooks/ directory"
+    },
+    "projectSpecificRules": [
+      "Plugin directory is markymark-plugin/ with .claude-plugin/plugin.json manifest",
+      "${CLAUDE_PLUGIN_ROOT} is the standard variable for plugin-relative paths in commands",
+      "Existing tests use set -euo pipefail - be aware this causes early abort on command failures in non-conditional contexts"
+    ]
   }
 }

@@ -1,14 +1,19 @@
 {
-  "lastUpdated": "2026-02-13T17:40:24Z",
+  "lastUpdated": "2026-02-13T21:15:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Initial harness setup (v3.0)",
-    "completedTasks": [],
-    "blockers": [],
-    "nextSteps": ["Review CLAUDE.md and customize", "Run /claude-harness:start to begin"]
+    "summary": "Integrated PreToolUse LSP-first hook into markymark-plugin (marky-1vb). Created hooks.json + suggest-lsp.sh in plugin hooks/ dir. Wrote 9-test suite (all passing). Filed bug marky-9dx for pre-existing test_select_binary.sh failures.",
+    "completedTasks": ["marky-1vb"],
+    "blockers": ["Pre-existing test_select_binary.sh failures (marky-9dx)", "Epic requires SessionStart hook but no task exists for it yet"],
+    "nextSteps": ["Execute marky-7u7: Add crates.io metadata to all workspace crates", "Execute marky-79z: Write RELEASING.md", "Execute marky-hoh: Tag and verify alpha release (blocked by 7u7 + 1vb)"]
   },
-  "recentChanges": [],
-  "knownIssues": [],
+  "recentChanges": [
+    "5c0f79e feat(plugin): integrate LSP-first PreToolUse hook"
+  ],
+  "knownIssues": [
+    "marky-9dx: test_select_binary.sh fails due to nested JSON structure mismatch",
+    "Epic requirement #1 mentions SessionStart context hook - not yet tasked"
+  ],
   "environmentState": {
     "devServerRunning": false,
     "lastSuccessfulBuild": null,

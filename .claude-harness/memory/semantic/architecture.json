@@ -5,19 +5,38 @@
     "framework": "rust",
     "language": "Rust",
     "database": "",
-    "testFramework": ""
+    "testFramework": "cargo test + bash test scripts for plugin"
   },
   "structure": {
-    "entryPoints": [],
-    "components": [],
+    "entryPoints": ["markymark-cli/src/main.rs"],
+    "components": [
+      "markymark-core (core types)",
+      "markymark-parser (tree-sitter markdown parsing)",
+      "markymark-index (document indexing)",
+      "markymark-lsp (LSP server via tower-lsp)",
+      "markymark-mcp (MCP server via rmcp)",
+      "markymark-cli (CLI entry point)"
+    ],
     "api": [],
-    "tests": []
+    "tests": [
+      "markymark-plugin/tests/test_select_binary.sh",
+      "markymark-plugin/tests/test_hooks.sh",
+      "examples/claude-code-plugin/tests/test_suggest_lsp.sh"
+    ]
   },
   "patterns": {
-    "naming": {},
-    "fileOrganization": {},
-    "codeStyle": {}
+    "naming": {
+      "crates": "markymark-<role> (e.g., markymark-core, markymark-parser)",
+      "plugin": "markymark-plugin/ with .claude-plugin/ manifest"
+    },
+    "fileOrganization": {
+      "plugin": "markymark-plugin/{.claude-plugin/,bin/,scripts/,hooks/,skills/,tests/}",
+      "examples": "examples/claude-code-plugin/ (reference implementations)"
+    },
+    "codeStyle": {
+      "bash": "set -euo pipefail, jq for JSON, case statements for file extension matching"
+    }
   },
   "discoveredAt": "2026-02-13T17:40:24Z",
-  "lastUpdated": "2026-02-13T17:40:24Z"
+  "lastUpdated": "2026-02-13T21:15:00Z"
 }
