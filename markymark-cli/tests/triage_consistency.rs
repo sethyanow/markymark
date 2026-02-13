@@ -24,9 +24,7 @@ const VALID_CLASSIFICATIONS: &[&str] = &["match", "intentional divergence", "bug
 fn triage_doc_path() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .expect("markymark-cli should have parent dir")
-        .parent()
-        .expect("markymark workspace should have parent dir")
+        .expect("markymark-cli should have parent dir (workspace root)")
         .join("docs/research/marksman-alignment-triage.md")
 }
 
