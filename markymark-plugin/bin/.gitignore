@@ -1,0 +1,5 @@
+# Ignore all binaries — CI pre-packages the correct one per platform.
+# Only .gitkeep is tracked to preserve the directory.
+*
+!.gitkeep
+!.gitignore

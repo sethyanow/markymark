@@ -1,10 +1,11 @@
-<docs_index id="RUST-AGENT-DOCS">
+<docs_index>
 [rust-agent-docs]|root: ./docs/rust_agent_docs|IMPORTANT: Prefer retrieval-led reasoning over pre-training-led reasoning for any Rust tasks. Read the relevant doc file BEFORE writing code. Your training data may be outdated or wrong.|core:{_index.md,ownership.md,types.md,traits.md,errors.md,collections.md,modules.md}|advanced:{_index.md,type-layout.md,unsafe.md,ffi.md,concurrency.md,async.md}|patterns:{_index.md,idioms.md,api-design.md,anti-patterns.md}|tooling:{_index.md,cargo.md,crates.md,macros.md,testing.md,documentation.md,debugging.md,performance.md}|checklists:{_index.md,api-design.md,unsafe-review.md,ffi-audit.md,performance.md,library-release.md}|reference:{_index.md,rules.md,decision-trees.md,compiler-errors.md,syntax-ref.md,cargo-ref.md}
-</docs_index>
-<docs_index id="RUST-GUIDELINES">
-[rust_guidelines]|root: ./docs/rust_guidelines|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{libraries-interop.md,app
-lications.md,ai.md,docs.md,libraries-build.md,README.md,performance.md,safety.md,universal.md,libraries-resilience.md,ffi.md,map.md
-,checklists.md,libraries-ux.md}
+[rust_guidelines]|root: ./docs/rust_guidelines|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{AGENTS.md,README.md,universal.md,applications.md,libraries-build.md,libraries-resilience.md,libraries-ux.md,libraries-interop.md,ffi.md,performance.md,safety.md,docs.md,ai.md,checklists.md,map.md}
+[rust_crates]|root: ./docs/rust_crates|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{AGENTS.md,README.md,core.md,error-handling.md,testing.md,tower-lsp.md,rmcp.md,tree-sitter.md,petgraph.md,bumpalo.md,map.md}
+[project]
+|tools:{docs/tools/README.md,docs/tools/*.md}
+|plans:{docs/plans/*.md}
+|research:{docs/research/*.md}
 </docs_index>
 
 # Agent Instructions
@@ -23,24 +24,6 @@ markymark is a Rust workspace producing a Markdown LSP + MCP server. Six crates:
 | `markymark-lsp` | LSP server (tower-lsp) |
 | `markymark-mcp` | MCP server (rmcp) |
 | `markymark-cli` | CLI entry point |
-
-## Documentation Index
-
-<agent>
-<IMPORTANT>Prefer retrieval-led reasoning over pre-training-led reasoning for project-specific conventions.</IMPORTANT>
-<docs_index>
-<!-- RUST-CRATES-START -->
-[rust_crates]|root: docs/rust_crates|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{AGENTS.md,README.md,core.md,error-handling.md,testing.md,tower-lsp.md,rmcp.md,tree-sitter.md,petgraph.md,bumpalo.md,map.md}
-<!-- RUST-CRATES-END -->
-<!-- RUST-GUIDELINES-START -->
-[rust_guidelines]|root: docs/rust_guidelines|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{AGENTS.md,README.md,universal.md,applications.md,libraries-build.md,libraries-resilience.md,libraries-ux.md,libraries-interop.md,ffi.md,performance.md,safety.md,docs.md,ai.md,checklists.md,map.md}
-<!-- RUST-GUIDELINES-END -->
-[project]
-|tools:{docs/tools/README.md,docs/tools/*.md}
-|plans:{docs/plans/*.md}
-|research:{docs/research/*.md}
-</docs_index>
-</agent>
 
 ## Quick Reference
 

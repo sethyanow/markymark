@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Tests for select-binary.sh platform detection and binary selection.
+# Tests for select-binary.sh — bundled binary model.
 #
 # Run: bash markymark-plugin/tests/test_select_binary.sh
 #
-# Tests use a mock binary approach: create fake binaries in a temp bin/
-# directory and verify that select-binary.sh picks the correct one.
+# In the bundled model, CI pre-packages per-platform plugin archives.
+# Each archive contains a single bin/markymark binary (already correct
+# for the platform). select-binary.sh just finds and runs it — no
+# platform-target naming, no download, no multi-binary detection.
 
 set -euo pipefail
 
@@ -55,86 +57,35 @@ test_script_exists() {
     fi
 }
 
-# ─── Test: Detects current platform correctly ────────────────────
-test_detects_current_platform() {
-    local os arch expected_target
-
-    os="$(uname -s)"
-    arch="$(uname -m)"
-
-    case "${os}" in
-        Darwin)
-            case "${arch}" in
-                arm64|aarch64) expected_target="aarch64-apple-darwin" ;;
-                x86_64)        expected_target="x86_64-apple-darwin" ;;
-                *)             fail "detects current platform" "known arch" "${arch}"; return ;;
-            esac
-            ;;
-        Linux)
-            case "${arch}" in
-                aarch64|arm64) expected_target="aarch64-unknown-linux-gnu" ;;
-                x86_64)        expected_target="x86_64-unknown-linux-gnu" ;;
-                *)             fail "detects current platform" "known arch" "${arch}"; return ;;
-            esac
-            ;;
-        *)
-            # Can't test on this platform
-            pass "detects current platform (skipped: unsupported test platform ${os})"
-            return
-            ;;
-    esac
-
+# ─── Test: Finds and executes bin/markymark (bundled binary) ─────
+# In the new model, each platform archive contains a single
+# bin/markymark binary. The script should look for bin/markymark
+# (not bin/markymark-{target}).
+test_bundled_binary() {
     setup_test_env
 
-    # Create a mock binary that just prints its name
-    local mock_binary="${TEST_DIR}/bin/markymark-${expected_target}"
-    printf '#!/usr/bin/env bash\necho "SELECTED: %s"\n' "${expected_target}" > "${mock_binary}"
+    # Create mock binary at bin/markymark (the bundled name)
+    local mock_binary="${TEST_DIR}/bin/markymark"
+    printf '#!/usr/bin/env bash\necho "BUNDLED"\n' > "${mock_binary}"
     chmod +x "${mock_binary}"
 
     local output
     output="$("${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
 
-    if [[ "${output}" == "SELECTED: ${expected_target}" ]]; then
-        pass "detects current platform → ${expected_target}"
+    if [[ "${output}" == "BUNDLED" ]]; then
+        pass "finds and executes bundled bin/markymark"
     else
-        fail "detects current platform → ${expected_target}" "SELECTED: ${expected_target}" "${output}"
+        fail "finds and executes bundled bin/markymark" "BUNDLED" "${output}"
     fi
 
     cleanup_test_env
 }
 
-# ─── Test: Forwards arguments to binary ──────────────────────────
+# ─── Test: Forwards arguments to bundled binary ──────────────────
 test_forwards_arguments() {
-    local os arch target
-
-    os="$(uname -s)"
-    arch="$(uname -m)"
-
-    case "${os}" in
-        Darwin)
-            case "${arch}" in
-                arm64|aarch64) target="aarch64-apple-darwin" ;;
-                x86_64)        target="x86_64-apple-darwin" ;;
-                *)             pass "forwards arguments (skipped)"; return ;;
-            esac
-            ;;
-        Linux)
-            case "${arch}" in
-                aarch64|arm64) target="aarch64-unknown-linux-gnu" ;;
-                x86_64)        target="x86_64-unknown-linux-gnu" ;;
-                *)             pass "forwards arguments (skipped)"; return ;;
-            esac
-            ;;
-        *)
-            pass "forwards arguments (skipped: unsupported test platform ${os})"
-            return
-            ;;
-    esac
-
     setup_test_env
 
-    # Create mock binary that echoes all arguments
-    local mock_binary="${TEST_DIR}/bin/markymark-${target}"
+    local mock_binary="${TEST_DIR}/bin/markymark"
     printf '#!/usr/bin/env bash\necho "ARGS: $*"\n' > "${mock_binary}"
     chmod +x "${mock_binary}"
 
@@ -142,9 +93,9 @@ test_forwards_arguments() {
     output="$("${TEST_DIR}/scripts/select-binary.sh" --lsp --foo bar 2>&1)" || true
 
     if [[ "${output}" == "ARGS: --lsp --foo bar" ]]; then
-        pass "forwards arguments to selected binary"
+        pass "forwards arguments to bundled binary"
     else
-        fail "forwards arguments to selected binary" "ARGS: --lsp --foo bar" "${output}"
+        fail "forwards arguments to bundled binary" "ARGS: --lsp --foo bar" "${output}"
     fi
 
     cleanup_test_env
@@ -167,17 +118,50 @@ test_missing_binary() {
     cleanup_test_env
 }
 
-# ─── Test: Error message includes hint ───────────────────────────
-test_error_includes_hint() {
+# ─── Test: Error suggests platform-specific archive download ─────
+# When the bundled binary is missing, the error should point the user
+# to the correct platform-specific archive on GitHub Releases.
+test_error_suggests_platform_archive() {
     setup_test_env
 
     local output
     output="$("${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
 
     if [[ "${output}" == *"GitHub Releases"* ]]; then
-        pass "error message includes GitHub Releases hint"
+        pass "error message mentions GitHub Releases"
     else
-        fail "error message includes GitHub Releases hint" "*GitHub Releases*" "${output}"
+        fail "error message mentions GitHub Releases" "*GitHub Releases*" "${output}"
+    fi
+
+    # Should also mention the platform-specific archive name
+    local os arch
+    os="$(uname -s)"
+    arch="$(uname -m)"
+    local expected_target=""
+
+    case "${os}" in
+        Darwin)
+            case "${arch}" in
+                arm64|aarch64) expected_target="aarch64-apple-darwin" ;;
+                x86_64)        expected_target="x86_64-apple-darwin" ;;
+            esac
+            ;;
+        Linux)
+            case "${arch}" in
+                aarch64|arm64) expected_target="aarch64-unknown-linux-gnu" ;;
+                x86_64)        expected_target="x86_64-unknown-linux-gnu" ;;
+            esac
+            ;;
+    esac
+
+    if [[ -n "${expected_target}" ]]; then
+        if [[ "${output}" == *"${expected_target}"* ]]; then
+            pass "error message includes platform target (${expected_target})"
+        else
+            fail "error message includes platform target" "*${expected_target}*" "${output}"
+        fi
+    else
+        pass "error message includes platform target (skipped: unknown platform)"
     fi
 
     cleanup_test_env
@@ -185,36 +169,10 @@ test_error_includes_hint() {
 
 # ─── Test: Makes binary executable if needed ─────────────────────
 test_makes_binary_executable() {
-    local os arch target
-
-    os="$(uname -s)"
-    arch="$(uname -m)"
-
-    case "${os}" in
-        Darwin)
-            case "${arch}" in
-                arm64|aarch64) target="aarch64-apple-darwin" ;;
-                x86_64)        target="x86_64-apple-darwin" ;;
-                *)             pass "makes binary executable (skipped)"; return ;;
-            esac
-            ;;
-        Linux)
-            case "${arch}" in
-                aarch64|arm64) target="aarch64-unknown-linux-gnu" ;;
-                x86_64)        target="x86_64-unknown-linux-gnu" ;;
-                *)             pass "makes binary executable (skipped)"; return ;;
-            esac
-            ;;
-        *)
-            pass "makes binary executable (skipped: unsupported test platform ${os})"
-            return
-            ;;
-    esac
-
     setup_test_env
 
     # Create mock binary WITHOUT execute permission
-    local mock_binary="${TEST_DIR}/bin/markymark-${target}"
+    local mock_binary="${TEST_DIR}/bin/markymark"
     printf '#!/usr/bin/env bash\necho "EXECUTED"\n' > "${mock_binary}"
     chmod -x "${mock_binary}"
 
@@ -225,6 +183,57 @@ test_makes_binary_executable() {
         pass "makes non-executable binary executable and runs it"
     else
         fail "makes non-executable binary executable and runs it" "EXECUTED" "${output}"
+    fi
+
+    cleanup_test_env
+}
+
+# ─── Test: Does NOT look for platform-specific binary names ──────
+# The old model used bin/markymark-{target}. The new model should
+# NOT find those — only bin/markymark.
+test_ignores_platform_specific_binaries() {
+    local os arch target
+
+    os="$(uname -s)"
+    arch="$(uname -m)"
+
+    case "${os}" in
+        Darwin)
+            case "${arch}" in
+                arm64|aarch64) target="aarch64-apple-darwin" ;;
+                x86_64)        target="x86_64-apple-darwin" ;;
+                *)             pass "ignores platform binaries (skipped)"; return ;;
+            esac
+            ;;
+        Linux)
+            case "${arch}" in
+                aarch64|arm64) target="aarch64-unknown-linux-gnu" ;;
+                x86_64)        target="x86_64-unknown-linux-gnu" ;;
+                *)             pass "ignores platform binaries (skipped)"; return ;;
+            esac
+            ;;
+        *)
+            pass "ignores platform binaries (skipped: unsupported ${os})"
+            return
+            ;;
+    esac
+
+    setup_test_env
+
+    # Create ONLY a platform-specific binary (old model)
+    local old_binary="${TEST_DIR}/bin/markymark-${target}"
+    printf '#!/usr/bin/env bash\necho "OLD MODEL"\n' > "${old_binary}"
+    chmod +x "${old_binary}"
+
+    # Do NOT create bin/markymark — only the old-style name exists
+
+    local output exit_code
+    output="$("${TEST_DIR}/scripts/select-binary.sh" 2>&1)" && exit_code=0 || exit_code=$?
+
+    if [[ ${exit_code} -ne 0 ]]; then
+        pass "ignores platform-specific binary (old model not found, exit ${exit_code})"
+    else
+        fail "ignores platform-specific binary" "non-zero exit (binary not found)" "exit=0, output=${output}"
     fi
 
     cleanup_test_env
@@ -314,7 +323,7 @@ test_mcp_json_uses_plugin_root() {
 }
 
 # ─── Run all tests ───────────────────────────────────────────────
-echo "=== markymark-plugin tests ==="
+echo "=== markymark-plugin tests (bundled binary model) ==="
 echo ""
 
 test_script_exists
@@ -322,11 +331,12 @@ test_plugin_structure
 test_plugin_json_valid
 test_lsp_json_uses_plugin_root
 test_mcp_json_uses_plugin_root
-test_detects_current_platform
+test_bundled_binary
 test_forwards_arguments
 test_missing_binary
-test_error_includes_hint
+test_error_suggests_platform_archive
 test_makes_binary_executable
+test_ignores_platform_specific_binaries
 
 echo ""
 echo "─────────────────────────────"
