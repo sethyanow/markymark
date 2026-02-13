@@ -237,6 +237,15 @@
       "rationale": "Marketplace install is git-clone based (no binary included). Auto-downloading from GitHub Releases /latest/download/ on first run bridges the gap with zero user friction. Falls back to manual instructions if download fails.",
       "alternatives": ["Require cargo install (needs Rust toolchain)", "Bundle binary in git (contradicts anti-pattern)", "Marketplace-only via self-hosted marketplace repo"],
       "impact": "markymark-plugin/scripts/select-binary.sh — download_binary() function added"
+    },
+    {
+      "id": "dec-009",
+      "timestamp": "2026-02-14T02:30:00Z",
+      "feature": "marky-v8e",
+      "decision": "Use git-cliff with conventional commits for automated changelog generation in release workflow",
+      "rationale": "Project already uses conventional commit format (feat:, fix:, chore:). git-cliff is the standard Rust ecosystem tool (git-chglog deprecated Jan 2026). Integrates via orhun/git-cliff-action@v4 in release CI.",
+      "alternatives": ["Manual CHANGELOG.md", "GitHub auto-generated release notes (less structured)", "keep-a-changelog (manual)"],
+      "impact": "cliff.toml config added, release.yml updated with fetch-depth:0 + changelog step"
     }
   ]
 }
