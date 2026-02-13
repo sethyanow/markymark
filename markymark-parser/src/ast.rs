@@ -144,14 +144,12 @@ fn try_logseq_heading(node: Node, source: &str) -> Option<Heading> {
 
     // Strip leading whitespace and list marker (`- `, `* `, `+ `)
     let trimmed = first_line.trim_start();
-    let after_marker = if trimmed.starts_with("- ")
-        || trimmed.starts_with("* ")
-        || trimmed.starts_with("+ ")
-    {
-        &trimmed[2..]
-    } else {
-        return None;
-    };
+    let after_marker =
+        if trimmed.starts_with("- ") || trimmed.starts_with("* ") || trimmed.starts_with("+ ") {
+            &trimmed[2..]
+        } else {
+            return None;
+        };
 
     // Must start with 1-6 `#` characters followed by a space
     if !after_marker.starts_with('#') {

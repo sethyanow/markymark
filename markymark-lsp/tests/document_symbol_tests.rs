@@ -404,10 +404,7 @@ async fn test_document_symbol_logseq_headings() {
     };
 
     let result = backend.document_symbol(params).await.unwrap();
-    assert!(
-        result.is_some(),
-        "logseq document should return symbols"
-    );
+    assert!(result.is_some(), "logseq document should return symbols");
 
     let symbols = match result.unwrap() {
         DocumentSymbolResponse::Nested(symbols) => symbols,
