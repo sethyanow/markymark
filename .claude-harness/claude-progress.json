@@ -1,28 +1,30 @@
 {
-  "lastUpdated": "2026-02-13T22:28:00Z",
+  "lastUpdated": "2026-02-13T23:40:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Fixed marky-9dx: test_select_binary.sh JSON path mismatch. Tests expected flat top-level 'command' key but .lsp.json nests under ['markdown'] and .mcp.json nests under ['mcpServers']['markymark']. 2-line fix, all 10 plugin tests and full cargo test suite pass.",
-    "completedTasks": ["marky-9dx"],
+    "summary": "Completed marky-hoh: tagged and verified first alpha release v0.1.0-alpha.1. Bumped all 7 Cargo.toml files + plugin.json to 0.1.0-alpha.1. All 396 tests pass. CI built 5 platforms successfully. GitHub Release published with plugin archive + 5 platform binaries. Closed marky-hoh + parent epic marky-peu, unblocking 9 issues.",
+    "completedTasks": ["marky-hoh", "marky-peu"],
     "blockers": [],
     "nextSteps": [
-      "Execute marky-hoh: Tag and verify alpha release (critical path — unblocks 15 issues)",
-      "After alpha: marky-8pt CI pre-packaging unlocks marketplace + docs",
-      "After alpha: marky-g9t arena allocation epic (7 tasks)"
+      "marky-8pt: Overhaul plugin binary distribution to CI pre-packaging (P1)",
+      "marky-v8e: v1.0 Product Launch epic (P1)",
+      "marky-g9t: Arena allocation epic (P2, 7 subtasks)",
+      "marky-agk: Polish plugin hooks, skills, configuration (P2)"
     ]
   },
   "recentChanges": [
-    "5c0400a fix: correct JSON paths in test_select_binary.sh (marky-9dx)",
-    "e218f8d chore: checkpoint — persist memory after marky-79z and arena brainstorm",
-    "59df0e7 Remove License section from README"
+    "336edd5 chore: add rule-006 — bump plugin.json version with workspace version",
+    "3e93174 chore: bump plugin.json version to 0.1.0-alpha.1",
+    "0dea694 chore: bump version to 0.1.0-alpha.1"
   ],
   "knownIssues": [
     "cargo publish --dry-run only validates core crate; other 5 fail because deps not on crates.io yet (expected)",
-    "Old markdown-mcp repo still has 3 open beads (i88, 6ia, 4h3) — superseded by marky-v8e epic"
+    "Old markdown-mcp repo still has 3 open beads (i88, 6ia, 4h3) — superseded by marky-v8e epic",
+    "GitHub Release marked as latest (not prerelease) — may want to edit to mark as pre-release"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-13T22:28:00Z",
+    "lastSuccessfulBuild": "2026-02-13T23:35:00Z",
     "lastTypeCheck": null
   }
 }
