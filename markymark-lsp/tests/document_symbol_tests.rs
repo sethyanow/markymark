@@ -366,3 +366,161 @@ async fn test_document_symbol_nests_xml_tags_by_range() {
         "<task> should include <step> as child"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Logseq-flavored markdown (headings inside list items: `- # Heading`)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_document_symbol_logseq_headings() {
+    // Logseq prefixes headings with list markers: `- # Heading`
+    // These should be detected as headings in the document symbol response.
+    let (service, _socket, _, _) = setup_workspace().await;
+    let backend = service.inner();
+
+    let logseq_uri: Uri = "file:///workspace/logseq.md".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let core_uri = DocumentUri::new("file:///workspace/logseq.md").unwrap();
+        state.open_document(
+            core_uri,
+            concat!(
+                "# Main Title\n",
+                "- ## Section A\n",
+                "\t- some content under A\n",
+                "- ## Section B\n",
+                "\t- content under B\n",
+            )
+            .to_string(),
+        );
+    }
+
+    let params = DocumentSymbolParams {
+        text_document: TextDocumentIdentifier {
+            uri: logseq_uri.clone(),
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    };
+
+    let result = backend.document_symbol(params).await.unwrap();
+    assert!(
+        result.is_some(),
+        "logseq document should return symbols"
+    );
+
+    let symbols = match result.unwrap() {
+        DocumentSymbolResponse::Nested(symbols) => symbols,
+        _ => panic!("expected nested response"),
+    };
+
+    // Should have "Main Title" as H1 at top level
+    assert!(
+        symbols.iter().any(|s| s.name == "Main Title"),
+        "should find standard H1 heading, got: {:?}",
+        symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+    );
+
+    // H1 should contain Logseq-style H2 children
+    let h1 = symbols.iter().find(|s| s.name == "Main Title").unwrap();
+    let children = h1
+        .children
+        .as_ref()
+        .expect("H1 should have children from Logseq-style headings");
+
+    let child_names: Vec<&str> = children.iter().map(|s| s.name.as_str()).collect();
+    assert!(
+        child_names.contains(&"Section A"),
+        "H1 should contain Logseq H2 'Section A', got: {:?}",
+        child_names
+    );
+    assert!(
+        child_names.contains(&"Section B"),
+        "H1 should contain Logseq H2 'Section B', got: {:?}",
+        child_names
+    );
+}
+
+#[tokio::test]
+async fn test_document_symbol_logseq_deep_nesting() {
+    // Test deeper Logseq heading nesting: H1 > H2 > H3
+    let (service, _socket, _, _) = setup_workspace().await;
+    let backend = service.inner();
+
+    let logseq_uri: Uri = "file:///workspace/logseq-deep.md".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let core_uri = DocumentUri::new("file:///workspace/logseq-deep.md").unwrap();
+        state.open_document(
+            core_uri,
+            concat!(
+                "- # WIP system\n",
+                "- ## Projects\n",
+                "- ### Active\n",
+                "\t- project details\n",
+                "- ### Backlog\n",
+                "\t- more stuff\n",
+                "- ## Done\n",
+            )
+            .to_string(),
+        );
+    }
+
+    let params = DocumentSymbolParams {
+        text_document: TextDocumentIdentifier {
+            uri: logseq_uri.clone(),
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    };
+
+    let result = backend.document_symbol(params).await.unwrap();
+    assert!(
+        result.is_some(),
+        "logseq deep-nesting document should return symbols"
+    );
+
+    let symbols = match result.unwrap() {
+        DocumentSymbolResponse::Nested(symbols) => symbols,
+        _ => panic!("expected nested response"),
+    };
+
+    // Top level: "WIP system" (H1)
+    assert_eq!(symbols.len(), 1, "should have 1 top-level H1");
+    assert_eq!(symbols[0].name, "WIP system");
+
+    // H1 children: "Projects" (H2), "Done" (H2)
+    let h1_children = symbols[0]
+        .children
+        .as_ref()
+        .expect("H1 should have H2 children");
+    let h1_child_names: Vec<&str> = h1_children.iter().map(|s| s.name.as_str()).collect();
+    assert!(
+        h1_child_names.contains(&"Projects"),
+        "H1 should contain 'Projects', got: {:?}",
+        h1_child_names
+    );
+    assert!(
+        h1_child_names.contains(&"Done"),
+        "H1 should contain 'Done', got: {:?}",
+        h1_child_names
+    );
+
+    // "Projects" H2 children: "Active" (H3), "Backlog" (H3)
+    let projects = h1_children.iter().find(|s| s.name == "Projects").unwrap();
+    let proj_children = projects
+        .children
+        .as_ref()
+        .expect("Projects should have H3 children");
+    let proj_child_names: Vec<&str> = proj_children.iter().map(|s| s.name.as_str()).collect();
+    assert!(
+        proj_child_names.contains(&"Active"),
+        "Projects should contain 'Active', got: {:?}",
+        proj_child_names
+    );
+    assert!(
+        proj_child_names.contains(&"Backlog"),
+        "Projects should contain 'Backlog', got: {:?}",
+        proj_child_names
+    );
+}

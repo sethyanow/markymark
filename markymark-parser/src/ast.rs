@@ -30,6 +30,11 @@ impl Ast {
                 if child.kind() == "tight_list" || child.kind() == "loose_list" {
                     let mut list_cursor = child.walk();
                     for list_child in child.children(&mut list_cursor) {
+                        // Logseq-style headings: list items starting with `- # Heading`
+                        if let Some(heading) = try_logseq_heading(list_child, source) {
+                            root_elements.push(Element::Heading(heading));
+                            continue;
+                        }
                         if let Some(element) = Element::from_node(list_child, source)? {
                             root_elements.push(element);
                         }
@@ -122,6 +127,62 @@ impl Ast {
     pub fn extract_xml_tags(&self) -> Vec<XmlTag> {
         crate::extract::extract_xml_tags(&self.root_elements, &self.source)
     }
+}
+
+/// Detect Logseq-style headings inside list items.
+///
+/// Logseq markdown prefixes headings with list markers: `- # Heading`, `- ## Sub`.
+/// Tree-sitter parses these as list items, not ATX headings. This function checks
+/// whether a list_item node contains a heading pattern and extracts it.
+fn try_logseq_heading(node: Node, source: &str) -> Option<Heading> {
+    if node.kind() != "list_item" {
+        return None;
+    }
+
+    let node_text = node.utf8_text(source.as_bytes()).ok()?;
+    let first_line = node_text.lines().next()?;
+
+    // Strip leading whitespace and list marker (`- `, `* `, `+ `)
+    let trimmed = first_line.trim_start();
+    let after_marker = if trimmed.starts_with("- ")
+        || trimmed.starts_with("* ")
+        || trimmed.starts_with("+ ")
+    {
+        &trimmed[2..]
+    } else {
+        return None;
+    };
+
+    // Must start with 1-6 `#` characters followed by a space
+    if !after_marker.starts_with('#') {
+        return None;
+    }
+    let level = after_marker.chars().take_while(|&c| c == '#').count();
+    if level == 0 || level > 6 {
+        return None;
+    }
+    let rest = &after_marker[level..];
+    if !rest.starts_with(' ') {
+        return None;
+    }
+
+    let heading_text = rest[1..].trim().to_string();
+    if heading_text.is_empty() {
+        return None;
+    }
+
+    // Range covers from the `#` markers to end of heading text.
+    // Calculate column offset: node start + whitespace + marker length.
+    let leading_ws = first_line.len() - trimmed.len();
+    let hash_col = node.start_position().column + leading_ws + 2; // +2 for "- "
+    let row = node.start_position().row as u32;
+
+    let range = Range::new(
+        Position::new(row, hash_col as u32),
+        Position::new(row, (hash_col + level + 1 + heading_text.len()) as u32),
+    );
+
+    Some(Heading::new(level as u8, heading_text, range))
 }
 
 fn collect_top_level_list_items<'a>(node: Node<'a>, source: &str, items: &mut Vec<ListItem>) {

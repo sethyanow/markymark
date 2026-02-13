@@ -115,6 +115,11 @@ impl Heading {
     pub fn range(&self) -> Range {
         self.range
     }
+
+    /// Create a heading directly (used for Logseq-style headings in list items).
+    pub(crate) fn new(level: u8, text: String, range: Range) -> Self {
+        Self { level, text, range }
+    }
 }
 
 /// A paragraph
