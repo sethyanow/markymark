@@ -8,5 +8,21 @@
   "license": "MIT OR Apache-2.0",
   "repository": "https://github.com/sethyanow/markdown-mcp",
   "homepage": "https://github.com/sethyanow/markdown-mcp",
-  "keywords": ["markdown", "lsp", "mcp", "language-server", "wiki-links", "obsidian", "logseq"]
+  "keywords": ["markdown", "lsp", "mcp", "language-server", "wiki-links", "obsidian", "logseq"],
+  "mcpServers": {
+    "markymark": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/select-binary.sh",
+      "args": ["--mcp"]
+    }
+  },
+  "lspServers": {
+    "markdown": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/select-binary.sh",
+      "args": ["--lsp"],
+      "extensionToLanguage": {
+        ".md": "markdown",
+        ".mdx": "markdown"
+      }
+    }
+  }
 }
