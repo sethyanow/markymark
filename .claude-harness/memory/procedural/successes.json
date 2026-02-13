@@ -80,6 +80,21 @@
       "type": "bugfix",
       "approach": "Reproduced test_select_binary.sh failure (set -e abort at test 4/10), identified JSON path mismatch (.lsp.json ['markdown']['command'], .mcp.json ['mcpServers']['markymark']['command'] vs flat ['command']), 2-line fix, verified 10/10 GREEN + full cargo test suite.",
       "files": ["markymark-plugin/tests/test_select_binary.sh"]
+    },
+    {
+      "id": "suc-009",
+      "timestamp": "2026-02-13T23:35:00Z",
+      "feature": "marky-hoh",
+      "type": "release",
+      "approach": "Alpha release workflow: run all quality gates in parallel (tests+clippy+fmt+plugin tests), bump workspace version + plugin.json, branch+PR+merge (hook blocks direct main push), tag main, push tag to trigger CI release workflow. All 5 platforms built, GitHub Release published with 11 assets.",
+      "files": ["Cargo.toml", "Cargo.lock", "markymark-*/Cargo.toml", "markymark-plugin/.claude-plugin/plugin.json"],
+      "patterns": [
+        "Cargo prerelease deps require =X.Y.Z-pre exact match (no semver range)",
+        "Hook blocks main push — use release/ branch + PR + merge + tag flow",
+        "Bump plugin.json version alongside workspace version (rule-006)",
+        "Run all quality gates in parallel before any version changes",
+        "Verify CLI --version output matches expected after bump"
+      ]
     }
   ]
 }
