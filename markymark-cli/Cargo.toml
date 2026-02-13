@@ -1,10 +1,13 @@
 [package]
 name = "markymark-cli"
+description = "High-performance Markdown LSP and MCP server for AI assistants and code editors"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+keywords = ["markdown", "lsp", "mcp", "language-server", "ai"]
+categories = ["development-tools", "text-editors"]
 
 [[bin]]
 name = "markymark"
