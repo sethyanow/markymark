@@ -1,4 +1,52 @@
 {
   "version": 3,
-  "entries": []
+  "entries": [
+    {
+      "id": "fail-tower-lsp-types",
+      "timestamp": "2026-02-09T20:41:00Z",
+      "feature": "feature-006",
+      "type": "implementation",
+      "approach": "Used lsp_types crate and #[tower_lsp_server::async_trait] for tower-lsp-server v0.23",
+      "errors": [
+        "tower-lsp-server v0.23 re-exports ls_types (not lsp_types). Use tower_lsp_server::ls_types::*",
+        "tower-lsp-server v0.23 uses native async traits (edition 2024), no #[async_trait] macro needed",
+        "ls_types::Uri uses fluent_uri (FromStr), not url::Url. Created via \"file:///path\".parse::<Uri>()",
+        "The docs/rust_crates/tower-lsp.md references outdated patterns (lsp_types, async_trait)"
+      ],
+      "rootCause": "tower-lsp-server v0.23 (community fork) migrated to ls-types crate and native async. Pre-training knowledge and project docs reference the old tower-lsp patterns.",
+      "files": ["markymark-lsp/src/server.rs", "markymark-lsp/src/convert.rs"],
+      "resolution": "Updated docs/rust_crates/tower-lsp.md with correct v0.23 patterns. Added migration table and CRITICAL pitfall sections.",
+      "ported_from": "markdown-mcp"
+    },
+    {
+      "id": "fail-schemars-version",
+      "timestamp": "2026-02-11T01:36:52Z",
+      "feature": "markdown-mcp-rr0",
+      "type": "implementation",
+      "approach": "Added schemars 0.8 for rmcp macro JsonSchema derives",
+      "errors": [
+        "rmcp expects JsonSchema from schemars 1.x in this dependency graph",
+        "Derive bounds failed with multiple schemars versions present"
+      ],
+      "rootCause": "Version mismatch between direct schemars dependency and rmcp-internal schemars expectation.",
+      "files": ["Cargo.toml", "markymark-mcp/src/lib.rs"],
+      "resolution": "Pinned workspace schemars to 1.2.",
+      "ported_from": "markdown-mcp"
+    },
+    {
+      "id": "fail-mcp-framing",
+      "timestamp": "2026-02-11T18:49:00Z",
+      "feature": "markdown-mcp-c3p",
+      "type": "implementation",
+      "approach": "Assumed MCP stdio transport uses Content-Length framing (like LSP)",
+      "errors": [
+        "rmcp stdio transport uses line-delimited JSON, NOT Content-Length framing",
+        "Test panicked with 'no Content-Length header found' when reading MCP response"
+      ],
+      "rootCause": "Both the bead design doc and earlier exploration incorrectly assumed MCP uses Content-Length framing because the architecture.md describes LSP framing. rmcp's transport-io feature uses newline-delimited JSON for stdio.",
+      "files": ["markymark-cli/tests/smoke_mcp.rs"],
+      "resolution": "Rewrote MCP smoke test to use line-delimited JSON (writeln! + read_line). LSP correctly uses Content-Length framing.",
+      "ported_from": "markdown-mcp"
+    }
+  ]
 }

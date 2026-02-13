@@ -1,27 +1,45 @@
 {
   "version": 3,
-  "projectType": "rust",
+  "projectType": "rust-workspace",
   "techStack": {
     "framework": "rust",
     "language": "Rust",
-    "database": "",
+    "lsp": "tower-lsp-server 0.23 (community fork, uses ls_types not lsp_types)",
+    "mcp": "rmcp 0.13 (official Rust MCP SDK, requires schemars 1.x)",
+    "parser": "tree-sitter 0.19.5 + tree-sitter-markdown 0.7",
+    "graph": "petgraph 0.7 (StableGraph)",
+    "allocator": "bumpalo 3.16",
     "testFramework": "cargo test + bash test scripts for plugin"
   },
   "structure": {
     "entryPoints": ["markymark-cli/src/main.rs"],
     "components": [
-      "markymark-core (core types)",
-      "markymark-parser (tree-sitter markdown parsing)",
-      "markymark-index (document indexing)",
-      "markymark-lsp (LSP server via tower-lsp)",
-      "markymark-mcp (MCP server via rmcp)",
-      "markymark-cli (CLI entry point)"
+      "markymark-core/src/engine.rs (CoreEngine trait, CoreOperation, CoreResult)",
+      "markymark-parser/src/ast.rs (tree-sitter AST construction)",
+      "markymark-parser/src/extract.rs (regex-based extraction: wiki links, XML tags, etc.)",
+      "markymark-parser/src/types.rs (element types and constructors)",
+      "markymark-index/src/document.rs (DocumentIndex, slugify, outline)",
+      "markymark-index/src/graph.rs (ConnectionGraph via petgraph)",
+      "markymark-index/src/realm.rs (RealmIndex: multi-document workspace)",
+      "markymark-index/src/resolution.rs (wiki link / markdown link resolution)",
+      "markymark-lsp/src/server.rs (tower-lsp LanguageServer impl, capability negotiation)",
+      "markymark-lsp/src/state.rs (ServerState: document management, diagnostics, rename, refs)",
+      "markymark-lsp/src/convert.rs (LSP type conversions)",
+      "markymark-mcp/src/lib.rs (rmcp tool_router/handlers, DTOs)",
+      "markymark-mcp/src/runtime_engine.rs (MCP RuntimeEngine: startup indexing, CoreEngine impl)",
+      "markymark-mcp/src/resources.rs (MCP resource handlers)",
+      "markymark-mcp/src/rename_ops.rs (MCP rename operations)",
+      "markymark-mcp/src/dto.rs (MCP data transfer objects)"
     ],
-    "api": [],
+    "api": ["markymark-parser/src/lib.rs", "markymark-core/src/engine.rs"],
     "tests": [
-      "markymark-plugin/tests/test_select_binary.sh",
-      "markymark-plugin/tests/test_hooks.sh",
-      "examples/claude-code-plugin/tests/test_suggest_lsp.sh"
+      "markymark-parser/tests/ (xml_extraction, frontmatter, tree_sitter_integration)",
+      "markymark-index/tests/ (document_index, connection_graph, realm_index, resolution)",
+      "markymark-core/tests/ (core_engine)",
+      "markymark-lsp/tests/ (11 files: capabilities, completion_*, diagnostics, hover, rename, etc.)",
+      "markymark-mcp/tests/ (runtime_engine_tests, runtime_tools, tool_handler_tests)",
+      "markymark-cli/tests/ (cli_args, smoke_lsp, smoke_mcp, lsp_methods, mcp_methods, alignment, bench)",
+      "markymark-plugin/tests/ (test_select_binary.sh, test_hooks.sh)"
     ]
   },
   "patterns": {
@@ -30,13 +48,33 @@
       "plugin": "markymark-plugin/ with .claude-plugin/ manifest"
     },
     "fileOrganization": {
+      "rustModules": [
+        "Element types and constructors in markymark-parser/src/types.rs",
+        "Parser AST construction in markymark-parser/src/ast.rs",
+        "Regex-based extraction in markymark-parser/src/extract.rs",
+        "LSP capability negotiation in markymark-lsp/src/server.rs",
+        "Document state management in markymark-lsp/src/state.rs",
+        "MCP DTOs in markymark-mcp/src/dto.rs, resources in src/resources.rs",
+        "MCP runtime adapter in markymark-mcp/src/runtime_engine.rs",
+        "Integration tests in crate tests/ dirs are standalone crates (no mod.rs needed)"
+      ],
       "plugin": "markymark-plugin/{.claude-plugin/,bin/,scripts/,hooks/,skills/,tests/}",
       "examples": "examples/claude-code-plugin/ (reference implementations)"
     },
     "codeStyle": {
+      "rust": [
+        "CoreEngine trait in core, transport crates are thin adapters",
+        "convert/state/server module separation in markymark-lsp",
+        "FULL text document sync (not INCREMENTAL)",
+        "Drop read lock before async calls (deadlock prevention)",
+        "Single-pass stack tokenizer for XML extraction",
+        "Deterministic sort by URI then range for stable output",
+        "Range containment for nested XML document symbols"
+      ],
       "bash": "set -euo pipefail, jq for JSON, case statements for file extension matching"
     }
   },
-  "discoveredAt": "2026-02-13T17:40:24Z",
-  "lastUpdated": "2026-02-13T21:15:00Z"
+  "discoveredAt": "2026-02-05T11:11:43Z",
+  "lastUpdated": "2026-02-13T21:40:00Z",
+  "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

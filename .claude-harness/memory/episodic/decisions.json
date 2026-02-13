@@ -37,6 +37,116 @@
       "rationale": "cargo publish --dry-run cannot resolve deps that aren't on crates.io yet. Core passing validates metadata format is correct. The actual sequential publish during release will validate the rest.",
       "alternatives": ["Attempt to publish core first to unblock dry-run for others"],
       "impact": "marky-hoh release task must do sequential publish validation"
+    },
+    {
+      "id": "dec-arch-001",
+      "timestamp": "2026-02-06T21:10:00Z",
+      "feature": "architecture",
+      "decision": "Dual-transport architecture: LSP and MCP as pluggable layers over shared core",
+      "rationale": "Enables both editor (LSP) and AI assistant (MCP) use cases from single codebase without duplication",
+      "alternatives": ["LSP-only", "MCP-only", "Separate projects"],
+      "impact": "6-crate workspace: core, parser, index, lsp, mcp, cli",
+      "ported_from": "markdown-mcp dec-20260206-003"
+    },
+    {
+      "id": "dec-arch-002",
+      "timestamp": "2026-02-06T21:23:00Z",
+      "feature": "architecture",
+      "decision": "CoreEngine trait lives in markymark-core, not a transport crate",
+      "rationale": "Transport abstraction (CoreOperation, CoreResult, CoreEngine) has no protocol-specific deps. Each transport crate converts protocol types internally.",
+      "alternatives": ["Separate markymark-transport crate", "Transport trait with protocol-aware enums"],
+      "impact": "6 crates instead of 7. No cross-protocol dependencies.",
+      "ported_from": "markdown-mcp dec-20260206-006"
+    },
+    {
+      "id": "dec-arch-003",
+      "timestamp": "2026-02-06T21:23:00Z",
+      "feature": "architecture",
+      "decision": "tower-lsp-server v0.23 (community fork) over stale tower-lsp v0.20",
+      "rationale": "Original hasn't been updated since Aug 2023. Fork is actively maintained (Biome, Oxc, Veryl use it), supports edition 2024.",
+      "alternatives": ["tower-lsp 0.20 (stale)", "Custom LSP from scratch"],
+      "impact": "Import paths use tower_lsp_server::, ls_types not lsp_types",
+      "ported_from": "markdown-mcp dec-20260206-005"
+    },
+    {
+      "id": "dec-arch-004",
+      "timestamp": "2026-02-06T21:23:00Z",
+      "feature": "architecture",
+      "decision": "rmcp (official Rust MCP SDK) over async-mcp",
+      "rationale": "rmcp is official from modelcontextprotocol org (v0.13.0), has #[tool] macros, multi-transport support. async-mcp was small community crate.",
+      "alternatives": ["async-mcp", "mcpx", "pmcp"],
+      "impact": "Workspace schemars pinned to 1.2 for rmcp compatibility",
+      "ported_from": "markdown-mcp dec-20260206-004"
+    },
+    {
+      "id": "dec-lsp-001",
+      "timestamp": "2026-02-09T21:00:00Z",
+      "feature": "feature-006",
+      "decision": "FULL text document sync mode (not INCREMENTAL) for v1 LSP server",
+      "rationale": "FULL sync is simpler — each change replaces entire document text. INCREMENTAL requires precise byte-offset/UTF-16 arithmetic. Can upgrade later if performance requires it.",
+      "alternatives": ["INCREMENTAL sync", "None sync"],
+      "impact": "did_change handler takes last content change. ServerState replaces entire text, re-parses, re-indexes.",
+      "ported_from": "markdown-mcp dec-2026-02-09-003"
+    },
+    {
+      "id": "dec-lsp-002",
+      "timestamp": "2026-02-09T21:00:00Z",
+      "feature": "feature-006",
+      "decision": "Separate markymark-lsp into convert/state/server modules",
+      "rationale": "Testing LanguageServer trait methods requires LSP service running. Separating state and conversions lets tests exercise core logic directly without transport.",
+      "alternatives": ["Monolithic lib.rs", "Test only through LSP protocol"],
+      "impact": "Tests exercise convert and state directly. Server module is thin adapter.",
+      "ported_from": "markdown-mcp dec-2026-02-09-004"
+    },
+    {
+      "id": "dec-lsp-003",
+      "timestamp": "2026-02-10T05:00:00Z",
+      "feature": "feature-011",
+      "decision": "Use slugify(heading.text) for duplicate slug detection, not heading.slug",
+      "rationale": "DocumentIndex pre-deduplicates slugs (details, details-1, details-2), so heading.slug is always unique by construction. Must compute base slug from raw text to detect duplicate heading text.",
+      "alternatives": ["Check heading.slug directly (broken)", "Compare heading.text directly (case-sensitive)"],
+      "impact": "markymark-lsp/src/state.rs compute_diagnostics()",
+      "ported_from": "markdown-mcp dec-2026-02-10-002"
+    },
+    {
+      "id": "dec-lsp-004",
+      "timestamp": "2026-02-10T05:00:00Z",
+      "feature": "feature-011",
+      "decision": "Drop read lock before async client.publish_diagnostics() call",
+      "rationale": "Holding RwLock read guard across await point causes deadlocks if didChange tries to acquire write lock concurrently. Scope the read lock, collect diagnostics into local Vec, then call async method after lock dropped.",
+      "alternatives": ["Hold lock across await (deadlock risk)", "Use try_write instead (fragile)"],
+      "impact": "Pattern used for all publish_diagnostics calls in didOpen, didChange, didClose.",
+      "ported_from": "markdown-mcp dec-2026-02-10-003"
+    },
+    {
+      "id": "dec-mcp-001",
+      "timestamp": "2026-02-11T01:08:09Z",
+      "feature": "markdown-mcp-rr0",
+      "decision": "CoreEngine trait in markymark-core, MCP routes through forwarding facade",
+      "rationale": "Shared operation trait codified in core de-risks transport divergence. Each transport is a thin adapter.",
+      "alternatives": ["Keep MCP placeholder", "Duplicate operation handling in mcp crate"],
+      "impact": "markymark-core/src/engine.rs, markymark-mcp/src/lib.rs",
+      "ported_from": "markdown-mcp dec-20260211010809-rr0-coreengine"
+    },
+    {
+      "id": "dec-mcp-002",
+      "timestamp": "2026-02-11T01:58:16Z",
+      "feature": "markdown-mcp-rr0",
+      "decision": "RuntimeEngine validates roots and indexes markdown at startup, skips unreadable files",
+      "rationale": "Startup-time indexing makes tools behavior-complete. Failure isolation ensures one bad doc can't crash the MCP service.",
+      "alternatives": ["Keep placeholder", "Move indexing into each tool call", "Fail on first unreadable"],
+      "impact": "markymark-mcp/src/runtime_engine.rs",
+      "ported_from": "markdown-mcp dec-20260211015816-rr0"
+    },
+    {
+      "id": "dec-parser-001",
+      "timestamp": "2026-02-09T08:30:00Z",
+      "feature": "feature-002",
+      "decision": "Rewrite extract_xml_tags as single-pass stack tokenizer instead of multi-regex",
+      "rationale": "Copilot review found 4 bugs in two-pass regex: quadratic perf, self-closing nesting bug, > in attribute values, unnecessary allocation. Stack tokenizer fixes all simultaneously.",
+      "alternatives": ["Patch individual bugs", "Use tree-sitter-xml", "Precompute events then resolve"],
+      "impact": "extract_xml_tags() is O(n) single-pass. Still uses regex only for attribute parsing within a tag.",
+      "ported_from": "markdown-mcp dec-2026-02-09-002"
     }
   ]
 }
