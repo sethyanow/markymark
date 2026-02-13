@@ -17,6 +17,12 @@
       "command": "bash /Volumes/code/markymark/markymark-plugin/tests/test_select_binary.sh 2>&1",
       "error": "Exit code 1\n=== markymark-plugin tests ===\n\n\u001b[0;32mPASS\u001b[0m: select-binary.sh exists and is executable\n\u001b[0;32mPASS\u001b[0m: plugin directory structure is complete\n\u001b[0;32mPASS\u001b[0m: plugin.json is valid JSON",
       "summary": "Failed: bash /Volumes/code/markymark/markymark-plugin/tests/test_select_binary.sh 2>&1"
+    },
+    {
+      "timestamp": "2026-02-13T21:59:58Z",
+      "command": "bash /Volumes/code/markymark/markymark-plugin/tests/test_select_binary.sh 2>&1",
+      "error": "Exit code 1\n=== markymark-plugin tests (bundled binary model) ===\n\n\u001b[0;32mPASS\u001b[0m: select-binary.sh exists and is executable\n\u001b[0;32mPASS\u001b[0m: plugin directory structure is complete\n\u001b[0;32mPASS\u001b[0m: plugin.json is valid JSON\n\u001b[0;32mPASS\u001b[0m: .lsp.json uses ${CLAUDE_PLUGIN_ROOT} in command\n\u001b[0;32mPASS\u001b[0m: .mcp.json uses ${CLAUDE_PLUGIN_ROOT} in command\n\u001b[0;31mFAIL\u001b[0m: finds and executes bundled bin/markymark\n  Expected: BUNDLED\n  Got:      error: binary not found: /var/folders/yw/t8nf3ljj2tqb4w",
+      "summary": "Failed: bash /Volumes/code/markymark/markymark-plugin/tests/test_select_binary.sh 2>&1"
     }
   ]
 }
