@@ -101,31 +101,145 @@ test_forwards_arguments() {
     cleanup_test_env
 }
 
-# ─── Test: Fails gracefully when binary is missing ───────────────
-test_missing_binary() {
+# ─── Test: Missing binary attempts download ──────────────────────
+# When binary is missing, script should attempt to download from
+# GitHub Releases before giving up. We mock curl to test this.
+test_missing_binary_attempts_download() {
     setup_test_env
 
-    # Don't create any mock binary — bin/ is empty
-    local output exit_code
-    output="$("${TEST_DIR}/scripts/select-binary.sh" 2>&1)" && exit_code=0 || exit_code=$?
+    # Create a mock curl that simulates a download failure
+    mkdir -p "${TEST_DIR}/mock-bin"
+    printf '#!/usr/bin/env bash\necho "mock-curl: $*" >&2\nexit 1\n' > "${TEST_DIR}/mock-bin/curl"
+    chmod +x "${TEST_DIR}/mock-bin/curl"
 
-    if [[ ${exit_code} -ne 0 ]] && [[ "${output}" == *"binary not found"* ]]; then
-        pass "fails gracefully when binary is missing (exit ${exit_code})"
+    local output exit_code
+    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" && exit_code=0 || exit_code=$?
+
+    # Should mention attempting download
+    if [[ "${output}" == *"downloading"* ]] || [[ "${output}" == *"Downloading"* ]]; then
+        pass "missing binary attempts download"
     else
-        fail "fails gracefully when binary is missing" "non-zero exit + 'binary not found'" "exit=${exit_code}, output=${output}"
+        fail "missing binary attempts download" "*downloading*" "${output}"
+    fi
+
+    cleanup_test_env
+}
+
+# ─── Test: Download failure falls back to manual instructions ─────
+test_download_failure_shows_manual_instructions() {
+    setup_test_env
+
+    # Create a mock curl that fails
+    mkdir -p "${TEST_DIR}/mock-bin"
+    printf '#!/usr/bin/env bash\nexit 1\n' > "${TEST_DIR}/mock-bin/curl"
+    chmod +x "${TEST_DIR}/mock-bin/curl"
+
+    local output exit_code
+    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" && exit_code=0 || exit_code=$?
+
+    if [[ ${exit_code} -ne 0 ]] && [[ "${output}" == *"GitHub Releases"* ]]; then
+        pass "download failure shows manual instructions (exit ${exit_code})"
+    else
+        fail "download failure shows manual instructions" "non-zero exit + 'GitHub Releases'" "exit=${exit_code}, output=${output}"
+    fi
+
+    cleanup_test_env
+}
+
+# ─── Test: Successful download places binary and executes ─────────
+test_successful_download_executes() {
+    setup_test_env
+
+    # Create a mock curl that "downloads" a fake binary
+    mkdir -p "${TEST_DIR}/mock-bin"
+    cat > "${TEST_DIR}/mock-bin/curl" << 'MOCK_CURL'
+#!/usr/bin/env bash
+# Simulate successful download by writing a mock binary to the -o path
+for i in $(seq 1 $#); do
+    if [[ "${!i}" == "-o" ]]; then
+        next=$((i + 1))
+        outfile="${!next}"
+        printf '#!/usr/bin/env bash\necho "DOWNLOADED"\n' > "${outfile}"
+        chmod +x "${outfile}"
+        exit 0
+    fi
+done
+exit 1
+MOCK_CURL
+    chmod +x "${TEST_DIR}/mock-bin/curl"
+
+    local output exit_code
+    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" && exit_code=0 || exit_code=$?
+
+    if [[ "${output}" == *"DOWNLOADED"* ]]; then
+        pass "successful download places binary and executes it"
+    else
+        fail "successful download places binary and executes it" "*DOWNLOADED*" "exit=${exit_code}, output=${output}"
+    fi
+
+    cleanup_test_env
+}
+
+# ─── Test: Download URL contains correct platform target ──────────
+test_download_url_has_correct_target() {
+    setup_test_env
+
+    # Create a mock curl that logs the URL it receives
+    mkdir -p "${TEST_DIR}/mock-bin"
+    printf '#!/usr/bin/env bash\necho "CURL_ARGS: $*" >&2\nexit 1\n' > "${TEST_DIR}/mock-bin/curl"
+    chmod +x "${TEST_DIR}/mock-bin/curl"
+
+    local output
+    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
+
+    local os arch expected_target
+    os="$(uname -s)"
+    arch="$(uname -m)"
+
+    case "${os}" in
+        Darwin)
+            case "${arch}" in
+                arm64|aarch64) expected_target="aarch64-apple-darwin" ;;
+                x86_64)        expected_target="x86_64-apple-darwin" ;;
+                *)             pass "download URL target (skipped: unknown arch)"; cleanup_test_env; return ;;
+            esac
+            ;;
+        Linux)
+            case "${arch}" in
+                aarch64|arm64) expected_target="aarch64-unknown-linux-gnu" ;;
+                x86_64)        expected_target="x86_64-unknown-linux-gnu" ;;
+                *)             pass "download URL target (skipped: unknown arch)"; cleanup_test_env; return ;;
+            esac
+            ;;
+        *)
+            pass "download URL target (skipped: unsupported ${os})"
+            cleanup_test_env
+            return
+            ;;
+    esac
+
+    if [[ "${output}" == *"${expected_target}"* ]]; then
+        pass "download URL contains correct platform target (${expected_target})"
+    else
+        fail "download URL contains correct platform target" "*${expected_target}*" "${output}"
     fi
 
     cleanup_test_env
 }
 
 # ─── Test: Error suggests platform-specific archive download ─────
-# When the bundled binary is missing, the error should point the user
-# to the correct platform-specific archive on GitHub Releases.
+# When download fails, the error should point the user to the correct
+# platform-specific archive on GitHub Releases.
 test_error_suggests_platform_archive() {
     setup_test_env
 
+    # Create a mock curl that fails (so we see the fallback error)
+    mkdir -p "${TEST_DIR}/mock-bin"
+    printf '#!/usr/bin/env bash\nexit 1\n' > "${TEST_DIR}/mock-bin/curl"
+    chmod +x "${TEST_DIR}/mock-bin/curl"
+
     local output
-    output="$("${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
+    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
 
     if [[ "${output}" == *"GitHub Releases"* ]]; then
         pass "error message mentions GitHub Releases"
@@ -227,8 +341,13 @@ test_ignores_platform_specific_binaries() {
 
     # Do NOT create bin/markymark — only the old-style name exists
 
+    # Mock curl to fail so download fallback doesn't mask the test
+    mkdir -p "${TEST_DIR}/mock-bin"
+    printf '#!/usr/bin/env bash\nexit 1\n' > "${TEST_DIR}/mock-bin/curl"
+    chmod +x "${TEST_DIR}/mock-bin/curl"
+
     local output exit_code
-    output="$("${TEST_DIR}/scripts/select-binary.sh" 2>&1)" && exit_code=0 || exit_code=$?
+    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" && exit_code=0 || exit_code=$?
 
     if [[ ${exit_code} -ne 0 ]]; then
         pass "ignores platform-specific binary (old model not found, exit ${exit_code})"
@@ -333,7 +452,10 @@ test_lsp_json_uses_plugin_root
 test_mcp_json_uses_plugin_root
 test_bundled_binary
 test_forwards_arguments
-test_missing_binary
+test_missing_binary_attempts_download
+test_download_failure_shows_manual_instructions
+test_successful_download_executes
+test_download_url_has_correct_target
 test_error_suggests_platform_archive
 test_makes_binary_executable
 test_ignores_platform_specific_binaries
