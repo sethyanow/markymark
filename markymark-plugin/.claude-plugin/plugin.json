@@ -17,7 +17,7 @@
   },
   "lspServers": {
     "markdown": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/select-binary.sh",
+      "command": "markymark",
       "args": ["--lsp"],
       "extensionToLanguage": {
         ".md": "markdown",
