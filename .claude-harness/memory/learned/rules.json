@@ -1,11 +1,11 @@
 {
   "version": 3,
-  "lastUpdated": "2026-02-13T21:15:00Z",
+  "lastUpdated": "2026-02-13T21:25:00Z",
   "metadata": {
-    "totalRules": 1,
+    "totalRules": 2,
     "projectSpecific": 1,
-    "general": 0,
-    "lastReflection": "2026-02-13T21:15:00Z"
+    "general": 1,
+    "lastReflection": "2026-02-13T21:25:00Z"
   },
   "rules": [
     {
@@ -16,6 +16,15 @@
       "confidence": 1.0,
       "learnedAt": "2026-02-13T21:15:00Z",
       "source": "direct-experience"
+    },
+    {
+      "id": "rule-002",
+      "title": "claude-harness v3+ tracks memory in git — do NOT gitignore it",
+      "description": "claude-harness v3 moved to session-scoped ephemeral state. Memory (episodic, semantic, procedural, learned), features, agents, loops, impact, prd, config.json, and claude-progress.json are all tracked in git. Only sessions/, memory/compaction-backups/, and memory/working/ are gitignored. The old pattern of ignoring .claude-harness/* except feature files is obsolete.",
+      "scope": "general",
+      "confidence": 1.0,
+      "learnedAt": "2026-02-13T21:25:00Z",
+      "source": "user-correction"
     }
   ]
 }
