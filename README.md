@@ -10,35 +10,30 @@ markymark is a Rust-based Language Server Protocol (LSP) and Model Context Proto
 
 - **Multi-tenant realm isolation** (shared vs isolated workspaces)
 - **Full Obsidian and Logseq flavor support** (wiki links, callouts, block IDs, page properties)
-- **Arena allocation** for O(1) cleanup
 - **Anchor link rename support** (updates heading references across workspace)
 - **Dual-transport architecture** (LSP + MCP over stdio)
 
 ## Installation
 
-### Cargo Install
+### From Source
+
+```bash
+cargo install --git https://github.com/sethyanow/markymark markymark-cli
+```
+
+### Cargo Install (after crates.io publish)
 
 ```bash
 cargo install markymark-cli
 ```
 
-### GitHub Releases
+### GitHub Releases (after first release)
 
-Download pre-built binaries from [Releases](https://github.com/sethyanow/markymark/releases):
-
-- macOS ARM64 (Apple Silicon)
-- macOS x86_64 (Intel)
-- Linux x86_64 / ARM64
-- Windows x86_64
+Pre-built binaries for macOS (ARM64/x86_64), Linux (x86_64/ARM64), and Windows (x86_64) will be available from [Releases](https://github.com/sethyanow/markymark/releases).
 
 ### Claude Code Plugin
 
-```bash
-# From Claude Code (when published to marketplace)
-/plugin install markymark
-```
-
-Or install manually from a release archive — see [markymark-plugin/README.md](markymark-plugin/README.md).
+See [markymark-plugin/README.md](markymark-plugin/README.md) for plugin installation.
 
 ## Usage
 
@@ -113,7 +108,7 @@ This project uses markymark for markdown LSP. ALWAYS prefer LSP over reading raw
 | `markymark-core` | Core types and abstractions |
 | `markymark-parser` | Tree-sitter based markdown parser |
 | `markymark-index` | Document indexing and symbol resolution |
-| `markymark-lsp` | LSP server (tower-lsp) |
+| `markymark-lsp` | LSP server (tower-lsp-server) |
 | `markymark-mcp` | MCP server (rmcp) |
 | `markymark-cli` | CLI entry point |
 
@@ -121,7 +116,7 @@ This project uses markymark for markdown LSP. ALWAYS prefer LSP over reading raw
 
 ### Requirements
 
-- Rust 1.85+ (Edition 2024)
+- Rust stable (Edition 2021)
 
 ### Building
 
