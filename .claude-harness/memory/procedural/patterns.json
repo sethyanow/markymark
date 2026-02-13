@@ -83,6 +83,18 @@
         "id": "pat-readme-audit",
         "pattern": "Audit README claims against actual implementation before release",
         "application": "Use Explore agent to verify features exist in source code. Check CLI --help for real flags. Cross-reference CI workflows. Remove aspirational claims or mark as upcoming."
+      },
+      {
+        "id": "pat-release-workflow",
+        "pattern": "Alpha/prerelease tagging workflow with CI pipeline",
+        "context": "Tagging a release to trigger GitHub Actions release.yml",
+        "application": "1) Quality gates in parallel, 2) Bump workspace + plugin.json versions, 3) Exact match (=) for prerelease cross-crate deps, 4) Branch + PR + merge (hooks block direct main push), 5) Tag main + push tag, 6) Monitor CI, 7) Verify release artifacts"
+      },
+      {
+        "id": "pat-version-sync",
+        "pattern": "Version sync across Cargo workspace and plugin manifest",
+        "context": "Bumping project version for any release",
+        "application": "Update root Cargo.toml [workspace.package] version, all subcrate path dep versions (use = prefix for prerelease), plugin.json version, and verify with cargo check + cargo run --version"
       }
     ]
   }

@@ -210,6 +210,24 @@
       "rationale": "Alpha release uses owned types. Arena is a performance optimization for v0.2.0. Publishing owned-type API first is acceptable since pre-1.0 allows breaking changes. Avoids blocking the release pipeline.",
       "alternatives": ["Pre-alpha (block release for correct types)", "Parallel feature branch (merge conflict risk across 3 crates)"],
       "impact": "Arena epic depends on marky-peu completion"
+    },
+    {
+      "id": "dec-release-001",
+      "timestamp": "2026-02-13T23:30:00Z",
+      "feature": "marky-hoh",
+      "decision": "Use =0.1.0-alpha.1 (exact match) for cross-crate prerelease dependency specs",
+      "rationale": "Cargo requires explicit prerelease version matching. Without the = prefix, 0.1.0-alpha.1 is not matched by the semver range '0.1.0'. Each subcrate's path dependency must use =0.1.0-alpha.1.",
+      "alternatives": ["Use workspace.dependencies for internal crates (not supported for path deps with version)", "Skip version field in path deps (breaks cargo publish)"],
+      "impact": "All 5 subcrate Cargo.toml files. Pattern needed for every future prerelease."
+    },
+    {
+      "id": "dec-release-002",
+      "timestamp": "2026-02-13T23:30:00Z",
+      "feature": "marky-hoh",
+      "decision": "Use branch + PR workflow for release commits instead of direct push to main",
+      "rationale": "PreToolUse hook blocks direct push to main/master. Created release/v0.1.0-alpha.1 branch, PR'd, merged, then tagged main separately.",
+      "alternatives": ["Disable hook temporarily", "Push directly to main"],
+      "impact": "All future releases must follow branch+PR+merge+tag flow"
     }
   ]
 }
