@@ -16,9 +16,6 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: markymark
     strategy:
       fail-fast: false
       matrix:
@@ -75,7 +72,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BINARY_NAME }}-${{ matrix.target }}
-          path: markymark/${{ env.BINARY_NAME }}-${{ matrix.target }}${{ runner.os == 'Windows' && '.exe' || '' }}
+          path: ${{ env.BINARY_NAME }}-${{ matrix.target }}${{ runner.os == 'Windows' && '.exe' || '' }}
 
   package-plugin:
     name: Package Plugin Archive
