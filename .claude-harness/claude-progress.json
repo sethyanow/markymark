@@ -1,19 +1,20 @@
 {
-  "lastUpdated": "2026-02-14T01:25:00Z",
+  "lastUpdated": "2026-02-14T02:14:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-8pt: Overhauled plugin binary distribution from 'binaries in git' to CI per-platform pre-packaging. Each platform gets its own archive with bundled bin/markymark. Updated select-binary.sh/ps1, release.yml, gitignored binaries, updated tests (12/12 passing). 401 Rust tests + 12 plugin tests green.",
-    "completedTasks": ["marky-8pt"],
+    "summary": "Completed marky-cfj code work: Added download-on-first-run fallback to select-binary.sh for marketplace git-clone installs. Auto-downloads platform binary from GitHub Releases when bundled binary is missing. Merged PR #2 (marky-8pt). 374 Rust tests + 15 plugin tests green. Assessed marky-agk and found most items already resolved.",
+    "completedTasks": ["marky-cfj"],
     "blockers": [],
     "nextSteps": [
-      "marky-cfj: Fix and submit Claude marketplace listing (P2, unblocked)",
+      "Submit to Claude marketplace form (manual step): https://clau.de/plugin-directory-submission",
+      "marky-agk: Polish plugin hooks/skills — mostly done, needs manual testing in real Claude Code session",
       "marky-7cl: Polish README and installation documentation (P2, unblocked)",
-      "marky-agk: Polish plugin hooks, skills, configuration (P2)",
       "marky-7pw: Roadmap Research epic (P3, 3 tracks)"
     ]
   },
   "recentChanges": [
-    "69f7473 feat: overhaul plugin binary dist to CI per-platform pre-packaging (marky-8pt)"
+    "5b06a7b feat: add download-on-first-run fallback for marketplace installs",
+    "1da49f6 feat: overhaul plugin binary dist to CI per-platform pre-packaging (#2)"
   ],
   "knownIssues": [
     "cargo publish --dry-run only validates core crate; other 5 fail because deps not on crates.io yet (expected)",
@@ -22,7 +23,7 @@
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-14T01:20:00Z",
+    "lastSuccessfulBuild": "2026-02-14T02:10:00Z",
     "lastTypeCheck": null
   }
 }

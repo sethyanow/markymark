@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# select-binary.sh — Execute the bundled markymark binary.
+# select-binary.sh — Execute the markymark binary.
 #
 # In the CI pre-packaged model, each per-platform plugin archive
 # contains a single bin/markymark binary already built for the
-# target platform. This script simply finds and executes it.
+# target platform. This script finds and executes it.
 #
-# If the binary is missing (e.g. dev checkout without a build),
-# the error message includes the platform-specific archive name
-# so the user can download the correct one from GitHub Releases.
+# If the binary is missing (e.g. marketplace git-clone install),
+# the script auto-downloads the correct platform binary from
+# GitHub Releases. If download fails, it shows manual instructions.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="${SCRIPT_DIR}/../bin"
+REPO="sethyanow/markymark"
 
 detect_target() {
     local os arch target
@@ -49,16 +50,40 @@ detect_target() {
     echo "${target}"
 }
 
+download_binary() {
+    local target="$1"
+    local dest="$2"
+    local asset_name="markymark-${target}"
+    local url="https://github.com/${REPO}/releases/latest/download/${asset_name}"
+
+    echo "Downloading markymark for ${target}..." >&2
+
+    mkdir -p "$(dirname "${dest}")"
+
+    if curl -fsSL --retry 2 --retry-delay 1 -o "${dest}" "${url}"; then
+        chmod +x "${dest}"
+        echo "Downloaded successfully." >&2
+        return 0
+    else
+        rm -f "${dest}"
+        return 1
+    fi
+}
+
 main() {
     local binary="${BIN_DIR}/markymark"
 
     if [[ ! -f "${binary}" ]]; then
         local target
         target="$(detect_target)"
-        echo "error: binary not found: ${binary}" >&2
-        echo "hint: download markymark-plugin-${target}.tar.gz from GitHub Releases" >&2
-        echo "      https://github.com/sethyanow/markymark/releases" >&2
-        exit 1
+
+        # Attempt auto-download from GitHub Releases
+        if ! download_binary "${target}" "${binary}"; then
+            echo "error: download failed and binary not found: ${binary}" >&2
+            echo "hint: download markymark-plugin-${target}.tar.gz from GitHub Releases" >&2
+            echo "      https://github.com/${REPO}/releases" >&2
+            exit 1
+        fi
     fi
 
     if [[ ! -x "${binary}" ]]; then

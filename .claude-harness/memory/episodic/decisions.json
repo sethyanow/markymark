@@ -228,6 +228,15 @@
       "rationale": "PreToolUse hook blocks direct push to main/master. Created release/v0.1.0-alpha.1 branch, PR'd, merged, then tagged main separately.",
       "alternatives": ["Disable hook temporarily", "Push directly to main"],
       "impact": "All future releases must follow branch+PR+merge+tag flow"
+    },
+    {
+      "id": "dec-008",
+      "timestamp": "2026-02-14T02:14:00Z",
+      "feature": "marky-cfj",
+      "decision": "Download-on-first-run fallback for marketplace installs instead of requiring pre-bundled binary",
+      "rationale": "Marketplace install is git-clone based (no binary included). Auto-downloading from GitHub Releases /latest/download/ on first run bridges the gap with zero user friction. Falls back to manual instructions if download fails.",
+      "alternatives": ["Require cargo install (needs Rust toolchain)", "Bundle binary in git (contradicts anti-pattern)", "Marketplace-only via self-hosted marketplace repo"],
+      "impact": "markymark-plugin/scripts/select-binary.sh — download_binary() function added"
     }
   ]
 }
