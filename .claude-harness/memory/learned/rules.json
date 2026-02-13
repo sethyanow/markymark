@@ -1,11 +1,11 @@
 {
   "version": 3,
-  "lastUpdated": "2026-02-13T21:40:00Z",
+  "lastUpdated": "2026-02-13T22:45:00Z",
   "metadata": {
-    "totalRules": 5,
-    "projectSpecific": 2,
+    "totalRules": 6,
+    "projectSpecific": 3,
     "general": 3,
-    "lastReflection": "2026-02-13T21:40:00Z"
+    "lastReflection": "2026-02-13T22:45:00Z"
   },
   "rules": [
     {
@@ -73,6 +73,21 @@
       "learnedAt": "2026-02-05T21:00:00Z",
       "source": "user-guidance",
       "ported_from": "markdown-mcp rule-002"
+    },
+    {
+      "id": "rule-006",
+      "title": "Bump plugin.json version alongside Cargo workspace version",
+      "description": "When bumping the workspace version in Cargo.toml, also update markymark-plugin/.claude-plugin/plugin.json version field. The plugin manifest has its own version string that is NOT derived from Cargo.toml — it must be updated manually. Missed during marky-hoh alpha release prep; user caught it.",
+      "scope": "project",
+      "confidence": 1.0,
+      "active": true,
+      "applicability": {
+        "always": false,
+        "features": [],
+        "filePatterns": ["Cargo.toml", "markymark-plugin/.claude-plugin/plugin.json"]
+      },
+      "learnedAt": "2026-02-13T22:45:00Z",
+      "source": "user-correction"
     }
   ]
 }
