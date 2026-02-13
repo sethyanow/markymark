@@ -89,6 +89,8 @@ LSP workspaceSymbol "query"
 
 ### CLAUDE.md Rule (Copy-Paste)
 
+> Note: Claude loves to hype itself up - this is not ideal until future features are implemented. YMMV.
+
 Add this to your project's `CLAUDE.md` to encourage LSP-first markdown reading:
 
 ```markdown
