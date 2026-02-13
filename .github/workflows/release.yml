@@ -53,7 +53,7 @@ jobs:
           fi
         shell: bash
 
-      - name: Prepare binary (Unix)
+      - name: Prepare standalone binary (Unix)
         if: runner.os != 'Windows'
         run: |
           cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }} \
@@ -61,21 +61,79 @@ jobs:
           chmod +x ${{ env.BINARY_NAME }}-${{ matrix.target }}
         shell: bash
 
-      - name: Prepare binary (Windows)
+      - name: Prepare standalone binary (Windows)
         if: runner.os == 'Windows'
         run: |
           cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}.exe `
              ${{ env.BINARY_NAME }}-${{ matrix.target }}.exe
         shell: pwsh
 
-      - name: Upload artifact
+      - name: Package per-platform plugin archive (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+
+          # Create staging directory with plugin contents
+          mkdir -p staging/markymark-plugin/bin
+          cp -r markymark-plugin/.claude-plugin staging/markymark-plugin/
+          cp -r markymark-plugin/hooks staging/markymark-plugin/
+          cp -r markymark-plugin/skills staging/markymark-plugin/
+          cp -r markymark-plugin/scripts staging/markymark-plugin/
+          cp markymark-plugin/.lsp.json staging/markymark-plugin/
+          cp markymark-plugin/.mcp.json staging/markymark-plugin/
+          cp markymark-plugin/README.md staging/markymark-plugin/ 2>/dev/null || true
+
+          # Copy the platform binary as bin/markymark (bundled name)
+          cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }} \
+             staging/markymark-plugin/bin/markymark
+          chmod +x staging/markymark-plugin/bin/markymark
+          chmod +x staging/markymark-plugin/scripts/*.sh
+
+          # Create per-platform plugin archive
+          tar -czf "markymark-plugin-${{ matrix.target }}-${TAG}.tar.gz" \
+              -C staging markymark-plugin
+        shell: bash
+
+      - name: Package per-platform plugin archive (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $Tag = $env:GITHUB_REF_NAME
+
+          # Create staging directory with plugin contents
+          New-Item -ItemType Directory -Force -Path staging/markymark-plugin/bin
+          Copy-Item -Recurse markymark-plugin/.claude-plugin staging/markymark-plugin/
+          Copy-Item -Recurse markymark-plugin/hooks staging/markymark-plugin/
+          Copy-Item -Recurse markymark-plugin/skills staging/markymark-plugin/
+          Copy-Item -Recurse markymark-plugin/scripts staging/markymark-plugin/
+          Copy-Item markymark-plugin/.lsp.json staging/markymark-plugin/
+          Copy-Item markymark-plugin/.mcp.json staging/markymark-plugin/
+          if (Test-Path markymark-plugin/README.md) {
+            Copy-Item markymark-plugin/README.md staging/markymark-plugin/
+          }
+
+          # Copy the platform binary as bin/markymark.exe (bundled name)
+          Copy-Item "target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}.exe" `
+                    staging/markymark-plugin/bin/markymark.exe
+
+          # Create per-platform plugin archive (zip for Windows)
+          Compress-Archive -Path staging/markymark-plugin -DestinationPath `
+              "markymark-plugin-${{ matrix.target }}-${Tag}.zip"
+        shell: pwsh
+
+      - name: Upload standalone binary
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.BINARY_NAME }}-${{ matrix.target }}
+          name: binary-${{ matrix.target }}
           path: ${{ env.BINARY_NAME }}-${{ matrix.target }}${{ runner.os == 'Windows' && '.exe' || '' }}
 
-  package-plugin:
-    name: Package Plugin Archive
+      - name: Upload plugin archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-${{ matrix.target }}
+          path: markymark-plugin-${{ matrix.target }}-*
+
+  release:
+    name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -86,73 +144,22 @@ jobs:
         with:
           path: artifacts
 
-      - name: Assemble plugin archive
+      - name: Collect release assets
         run: |
-          # Copy binaries into existing plugin bin/
-          rm -f markymark-plugin/bin/.gitkeep
-          for dir in artifacts/markymark-*/; do
-            cp "${dir}"markymark-* markymark-plugin/bin/ 2>/dev/null || true
+          mkdir -p release-assets
+
+          # Standalone binaries
+          for dir in artifacts/binary-*/; do
+            cp "${dir}"* release-assets/ 2>/dev/null || true
           done
 
-          # Make all binaries executable
-          chmod +x markymark-plugin/bin/markymark-* 2>/dev/null || true
-          chmod +x markymark-plugin/scripts/*.sh
-
-          # Create archive (preserve top-level directory name for documented install flow)
-          TAG="${GITHUB_REF_NAME}"
-          tar -czf "markymark-plugin-${TAG}.tar.gz" markymark-plugin
-
-          # Create individual binary archives for cargo-free installs
-          for dir in artifacts/markymark-*/; do
-            target=$(basename "${dir}" | sed "s/^markymark-//")
-            for bin in "${dir}"markymark-*; do
-              if [ -f "${bin}" ]; then
-                tar -czf "markymark-${target}-${TAG}.tar.gz" -C "${dir}" "$(basename "${bin}")"
-              fi
-            done
+          # Per-platform plugin archives
+          for dir in artifacts/plugin-*/; do
+            cp "${dir}"* release-assets/ 2>/dev/null || true
           done
 
-      - name: Upload plugin archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: markymark-plugin
-          path: markymark-plugin-*.tar.gz
-
-      - name: Upload binary archives
-        uses: actions/upload-artifact@v4
-        with:
-          name: binary-archives
-          path: markymark-*-v*.tar.gz
-
-  release:
-    name: Create GitHub Release
-    needs: package-plugin
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download plugin archive
-        uses: actions/download-artifact@v4
-        with:
-          name: markymark-plugin
-          path: release-assets
-
-      - name: Download binary archives
-        uses: actions/download-artifact@v4
-        with:
-          name: binary-archives
-          path: release-assets
-
-      - name: Download individual binaries
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Copy individual binaries to release
-        run: |
-          for dir in artifacts/markymark-*/; do
-            cp "${dir}"markymark-* release-assets/ 2>/dev/null || true
-          done
+          echo "Release assets:"
+          ls -lh release-assets/
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
-# select-binary.sh — Platform detection and binary selection for markymark.
+# select-binary.sh — Execute the bundled markymark binary.
 #
-# Detects the host OS and CPU architecture, then executes the correct
-# pre-built markymark binary from the plugin's bin/ directory.
+# In the CI pre-packaged model, each per-platform plugin archive
+# contains a single bin/markymark binary already built for the
+# target platform. This script simply finds and executes it.
 #
-# Supported platforms:
-#   macOS  ARM64  → markymark-aarch64-apple-darwin
-#   macOS  x86_64 → markymark-x86_64-apple-darwin
-#   Linux  x86_64 → markymark-x86_64-unknown-linux-gnu
-#   Linux  ARM64  → markymark-aarch64-unknown-linux-gnu
-#   Windows x86_64 → markymark-x86_64-pc-windows-msvc.exe
+# If the binary is missing (e.g. dev checkout without a build),
+# the error message includes the platform-specific archive name
+# so the user can download the correct one from GitHub Releases.
 
 set -euo pipefail
 
@@ -27,25 +25,24 @@ detect_target() {
             case "${arch}" in
                 arm64|aarch64) target="aarch64-apple-darwin" ;;
                 x86_64)        target="x86_64-apple-darwin" ;;
-                *)             echo "error: unsupported macOS architecture: ${arch}" >&2; exit 1 ;;
+                *)             target="unknown-${os}-${arch}" ;;
             esac
             ;;
         Linux)
             case "${arch}" in
                 aarch64|arm64) target="aarch64-unknown-linux-gnu" ;;
                 x86_64)        target="x86_64-unknown-linux-gnu" ;;
-                *)             echo "error: unsupported Linux architecture: ${arch}" >&2; exit 1 ;;
+                *)             target="unknown-${os}-${arch}" ;;
             esac
             ;;
         MINGW*|MSYS*|CYGWIN*|Windows_NT)
             case "${arch}" in
                 x86_64|AMD64) target="x86_64-pc-windows-msvc" ;;
-                *)            echo "error: unsupported Windows architecture: ${arch}" >&2; exit 1 ;;
+                *)            target="unknown-${os}-${arch}" ;;
             esac
             ;;
         *)
-            echo "error: unsupported operating system: ${os}" >&2
-            exit 1
+            target="unknown-${os}-${arch}"
             ;;
     esac
 
@@ -53,19 +50,14 @@ detect_target() {
 }
 
 main() {
-    local target binary
-
-    target="$(detect_target)"
-    binary="${BIN_DIR}/markymark-${target}"
-
-    # Windows binaries have .exe extension
-    if [[ "${target}" == *windows* ]]; then
-        binary="${binary}.exe"
-    fi
+    local binary="${BIN_DIR}/markymark"
 
     if [[ ! -f "${binary}" ]]; then
+        local target
+        target="$(detect_target)"
         echo "error: binary not found: ${binary}" >&2
-        echo "hint: run the release build or download from GitHub Releases" >&2
+        echo "hint: download markymark-plugin-${target}.tar.gz from GitHub Releases" >&2
+        echo "      https://github.com/sethyanow/markymark/releases" >&2
         exit 1
     fi
 
