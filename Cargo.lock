@@ -618,7 +618,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-cli"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-core"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "insta",
@@ -643,7 +643,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-index"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "bumpalo",
  "insta",
@@ -658,7 +658,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-lsp"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "insta",
@@ -675,7 +675,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-mcp"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "insta",
@@ -692,7 +692,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-parser"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "insta",
  "markymark-core",
