@@ -104,11 +104,11 @@ See [link text](./path/to/doc.md)
 
 ## Implementation Details
 
-This tool uses the `textDocument/hover` LSP method. Marksman returns a preview of the linked content, typically the first few hundred characters.
+This tool uses the `textDocument/hover` LSP method. markymark returns a preview of the linked content, typically the first few hundred characters.
 
 ## Limitations
 
-- Preview length is determined by Marksman (typically first ~500 chars)
+- Preview length is determined by markymark (typically first ~500 chars)
 - Binary files (images) may show metadata only
 - Broken links return empty hover
 

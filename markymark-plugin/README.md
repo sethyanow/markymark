@@ -36,7 +36,7 @@ Markdown intelligence for AI assistants and code editors. LSP and MCP server sup
 **Manual Installation**:
 ```bash
 # Download latest release
-gh release download --repo sethyanow/markdown-mcp --pattern 'markymark-plugin-*.tar.gz'
+gh release download --repo sethyanow/markymark --pattern 'markymark-plugin-*.tar.gz'
 
 # Extract and install
 tar -xzf markymark-plugin-*.tar.gz
@@ -67,7 +67,7 @@ markymark --mcp
 
 Download pre-built binaries for your platform:
 
-1. Go to [Releases](https://github.com/sethyanow/markdown-mcp/releases)
+1. Go to [Releases](https://github.com/sethyanow/markymark/releases)
 2. Download the binary for your platform:
    - macOS ARM: `markymark-aarch64-apple-darwin`
    - macOS Intel: `markymark-x86_64-apple-darwin`
@@ -172,8 +172,8 @@ Update your plugin configuration to use the PowerShell launcher:
 
 ```bash
 # Clone repo
-git clone https://github.com/sethyanow/markdown-mcp.git
-cd markdown-mcp/markymark
+git clone https://github.com/sethyanow/markymark.git
+cd markymark
 
 # Build
 cargo build --release
@@ -189,7 +189,7 @@ cargo build --release
 
 ## Development
 
-See the main repo [README](https://github.com/sethyanow/markdown-mcp) for development setup.
+See the main repo [README](https://github.com/sethyanow/markymark) for development setup.
 
 ## License
 
@@ -197,6 +197,6 @@ MIT OR Apache-2.0
 
 ## Links
 
-- [GitHub Repository](https://github.com/sethyanow/markdown-mcp)
-- [Issue Tracker](https://github.com/sethyanow/markdown-mcp/issues)
-- [Documentation](https://github.com/sethyanow/markdown-mcp/tree/main/docs)
+- [GitHub Repository](https://github.com/sethyanow/markymark)
+- [Issue Tracker](https://github.com/sethyanow/markymark/issues)
+- [Documentation](https://github.com/sethyanow/markymark/tree/main/docs)

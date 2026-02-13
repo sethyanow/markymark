@@ -91,7 +91,7 @@ Use the outline to programmatically generate a TOC.
 
 ## Implementation Details
 
-This tool uses the `textDocument/documentSymbol` LSP method. Marksman returns `DocumentSymbol` objects which are converted to a simplified heading hierarchy.
+This tool uses the `textDocument/documentSymbol` LSP method. markymark returns `DocumentSymbol` objects which are converted to a simplified heading hierarchy.
 
 ## Related
 

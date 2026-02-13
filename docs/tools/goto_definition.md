@@ -97,7 +97,7 @@ Trace the path through interconnected documents.
 
 - **Broken link**: Returns empty `locations` array
 - **Multiple definitions**: Returns all matching locations
-- **Ambiguous reference**: Returns best match based on Marksman's resolution
+- **Ambiguous reference**: Returns best match based on markymark's resolution
 
 ## Implementation Details
 

@@ -102,14 +102,13 @@ In Obsidian-style vaults with hundreds of files, quickly locate content.
 
 ## Workspace Detection
 
-If `workspace_path` is not provided, Marksman uses:
-1. The directory containing `.marksman.toml`
-2. The Git repository root
-3. The directory of the opened file
+If `workspace_path` is not provided, markymark uses:
+1. The Git repository root
+2. The directory of the opened file
 
 ## Implementation Details
 
-This tool uses the `workspace/symbol` LSP method. The query is passed directly to Marksman's fuzzy matcher.
+This tool uses the `workspace/symbol` LSP method. The query is passed directly to markymark's fuzzy matcher.
 
 ## Related
 

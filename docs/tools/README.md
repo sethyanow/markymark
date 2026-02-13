@@ -1,6 +1,6 @@
 # MCP Tools
 
-markdown-mcp provides 8 MCP tools for working with markdown files. These tools leverage Marksman LSP to provide intelligent navigation and refactoring.
+markymark provides 8 MCP tools for working with markdown files. These tools leverage the markymark LSP to provide intelligent navigation and refactoring.
 
 ## Quick Reference
 

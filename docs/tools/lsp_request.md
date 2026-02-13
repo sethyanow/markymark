@@ -1,6 +1,6 @@
 # lsp_request
 
-Send a raw LSP request to Marksman (escape hatch for advanced use).
+Send a raw LSP request to markymark (escape hatch for advanced use).
 
 ## Parameters
 
@@ -11,7 +11,7 @@ Send a raw LSP request to Marksman (escape hatch for advanced use).
 
 ## Returns
 
-The raw response from Marksman LSP. Structure depends on the method called.
+The raw response from markymark LSP. Structure depends on the method called.
 
 ## Example
 
@@ -82,7 +82,7 @@ lsp_request(method: "textDocument/completion", params: {...})
 
 ### Debug LSP Behavior
 
-Understand exactly what Marksman returns:
+Understand exactly what markymark returns:
 
 ```
 lsp_request(method: "textDocument/documentSymbol", params: {...})
@@ -94,11 +94,11 @@ Build workflows using raw LSP capabilities.
 
 ### Future Compatibility
 
-As Marksman adds features, access them before high-level tools are added.
+As markymark adds features, access them before high-level tools are added.
 
 ## URI Format
 
-Marksman expects file URIs in standard format:
+markymark expects file URIs in standard format:
 
 ```
 file:///absolute/path/to/file.md     # Unix
@@ -172,5 +172,4 @@ Common error codes:
 ## Related
 
 - [LSP Specification](https://microsoft.github.io/language-server-protocol/specifications/specification-current/)
-- [Marksman GitHub](https://github.com/artempyanykh/marksman)
-- [[../architecture]] - How LSP communication works
+- [markymark GitHub](https://github.com/sethyanow/markymark)

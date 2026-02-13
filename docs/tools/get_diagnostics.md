@@ -21,7 +21,7 @@ At least one parameter should be provided.
       range: {...};       // Location of the issue
       message: string;    // Description of the problem
       severity: number;   // 1=Error, 2=Warning, 3=Info, 4=Hint
-      source: string;     // "marksman"
+      source: string;     // "markymark"
     }>;
   }>;
 }
@@ -45,7 +45,7 @@ get_diagnostics(workspace_path: "/path/to/docs")
           "range": {"start": {"line": 5, "character": 4}, "end": {"line": 5, "character": 25}},
           "message": "Link target not found: deleted-page.md",
           "severity": 1,
-          "source": "marksman"
+          "source": "markymark"
         }
       ]
     },
@@ -56,7 +56,7 @@ get_diagnostics(workspace_path: "/path/to/docs")
           "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 12}},
           "message": "Duplicate heading: # Overview",
           "severity": 2,
-          "source": "marksman"
+          "source": "markymark"
         }
       ]
     }
