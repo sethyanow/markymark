@@ -1,0 +1,17 @@
+{
+  "description": "Suggests LSP-first workflow when reading markdown files",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/suggest-lsp.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
