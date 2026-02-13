@@ -73,6 +73,16 @@
         "id": "pat-doc-blockers",
         "pattern": "Documentation blockers for unfamiliar crates",
         "application": "Create blocking beads issue, document APIs/patterns/pitfalls first, prefer retrieval-led reasoning"
+      },
+      {
+        "id": "pat-arena-hybrid",
+        "pattern": "Hybrid arena ownership for LSP/MCP dual-transport",
+        "application": "Per-document Bump for parsed content (re-parse = swap arena). Realm-level owned storage for cross-doc index lookups. hashbrown with bumpalo allocator for HashMap fields."
+      },
+      {
+        "id": "pat-readme-audit",
+        "pattern": "Audit README claims against actual implementation before release",
+        "application": "Use Explore agent to verify features exist in source code. Check CLI --help for real flags. Cross-reference CI workflows. Remove aspirational claims or mark as upcoming."
       }
     ]
   }
