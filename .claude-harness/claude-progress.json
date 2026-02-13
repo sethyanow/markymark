@@ -1,22 +1,25 @@
 {
-  "lastUpdated": "2026-02-13T21:15:00Z",
+  "lastUpdated": "2026-02-13T21:35:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Integrated PreToolUse LSP-first hook into markymark-plugin (marky-1vb). Created hooks.json + suggest-lsp.sh in plugin hooks/ dir. Wrote 9-test suite (all passing). Filed bug marky-9dx for pre-existing test_select_binary.sh failures.",
-    "completedTasks": ["marky-1vb"],
-    "blockers": ["Pre-existing test_select_binary.sh failures (marky-9dx)", "Epic requires SessionStart hook but no task exists for it yet"],
-    "nextSteps": ["Execute marky-7u7: Add crates.io metadata to all workspace crates", "Execute marky-79z: Write RELEASING.md", "Execute marky-hoh: Tag and verify alpha release (blocked by 7u7 + 1vb)"]
+    "summary": "Completed marky-7u7: Added crates.io metadata (description, keywords, categories) to all 6 workspace crates. Added version = '0.1.0' alongside path for all 10 internal dependency references. 365 tests pass, clippy clean. Dry-run validates core metadata; full sequential publish deferred to marky-hoh.",
+    "completedTasks": ["marky-1vb", "marky-7u7"],
+    "blockers": ["Pre-existing test_select_binary.sh failures (marky-9dx)"],
+    "nextSteps": ["Execute marky-79z: Write RELEASING.md", "Execute marky-hoh: Tag and verify alpha release (now unblocked)"]
   },
   "recentChanges": [
+    "f24cca6 chore: update harness learned rules",
+    "275399b chore: add crates.io metadata to all workspace crates",
     "5c0f79e feat(plugin): integrate LSP-first PreToolUse hook"
   ],
   "knownIssues": [
     "marky-9dx: test_select_binary.sh fails due to nested JSON structure mismatch",
-    "Epic requirement #1 mentions SessionStart context hook - not yet tasked"
+    "Epic requirement #1 mentions SessionStart context hook - not yet tasked",
+    "cargo publish --dry-run only validates core crate; other 5 fail because deps not on crates.io yet (expected)"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": null,
+    "lastSuccessfulBuild": "2026-02-13T21:30:00Z",
     "lastTypeCheck": null
   }
 }

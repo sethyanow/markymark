@@ -28,6 +28,15 @@
       "rationale": "Out of scope for marky-1vb task. Test failures are structural (JSON path mismatch), not related to hook integration",
       "alternatives": ["Fix tests inline during hook work"],
       "impact": "markymark-plugin/tests/test_select_binary.sh"
+    },
+    {
+      "id": "dec-004",
+      "timestamp": "2026-02-13T21:35:00Z",
+      "feature": "marky-7u7",
+      "decision": "Accept partial dry-run validation (only core passes) and defer full sequential publish validation to marky-hoh",
+      "rationale": "cargo publish --dry-run cannot resolve deps that aren't on crates.io yet. Core passing validates metadata format is correct. The actual sequential publish during release will validate the rest.",
+      "alternatives": ["Attempt to publish core first to unblock dry-run for others"],
+      "impact": "marky-hoh release task must do sequential publish validation"
     }
   ]
 }
