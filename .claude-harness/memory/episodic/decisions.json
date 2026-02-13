@@ -147,6 +147,69 @@
       "alternatives": ["Patch individual bugs", "Use tree-sitter-xml", "Precompute events then resolve"],
       "impact": "extract_xml_tags() is O(n) single-pass. Still uses regex only for attribute parsing within a tag.",
       "ported_from": "markdown-mcp dec-2026-02-09-002"
+    },
+    {
+      "id": "dec-005",
+      "timestamp": "2026-02-13T22:00:00Z",
+      "feature": "marky-v8e",
+      "decision": "CI pre-packages per-platform plugin archives instead of committing binaries to git or downloading at runtime",
+      "rationale": "Binaries in git bloats repo. Runtime download requires internet and error handling. CI pre-packaging gives each platform a self-contained archive with zero friction.",
+      "alternatives": ["Binaries in git (bloat)", "First-run download (requires internet)", "Both paths (complexity)"],
+      "impact": "marky-8pt task, release CI workflow, select-binary.sh"
+    },
+    {
+      "id": "dec-006",
+      "timestamp": "2026-02-13T22:00:00Z",
+      "feature": "marky-v8e",
+      "decision": "Unified v1.0 epic with roadmap research as a separate child epic, not blocking shipping work",
+      "rationale": "Research (Track A/B/C) can proceed in parallel with shipping (CI, marketplace, docs). Making research block shipping would delay the product launch unnecessarily.",
+      "alternatives": ["Research as tasks in main epic (sequential)", "Research as independent epic (unlinked)"],
+      "impact": "marky-7pw child epic with 3 research tasks, all blocked only by marky-peu"
+    },
+    {
+      "id": "dec-007",
+      "timestamp": "2026-02-13T22:00:00Z",
+      "feature": "memory-port",
+      "decision": "Port high-value memories from markdown-mcp, filter out TypeScript/Marksman/maestro entries, update paths",
+      "rationale": "Old repo has 8+ days of accumulated knowledge (40+ successes, 6 failures, 43 decisions). Markymark repo had almost none after extraction. Filtering keeps signal high.",
+      "alternatives": ["Full dump (too much noise)", "Rules + failures only (misses architectural decisions)", "Start fresh (loses hard-won knowledge)"],
+      "impact": "All harness memory files enriched: 5 rules, 3 failures, 15 decisions, 14+ patterns, architecture map"
+    },
+    {
+      "id": "dec-arena-001",
+      "timestamp": "2026-02-13T22:15:00Z",
+      "feature": "arena-allocation",
+      "decision": "Hybrid arena ownership: per-document Bump for parsed content, realm-level owned storage for cross-doc index data",
+      "rationale": "Per-document arenas allow O(1) cleanup on re-parse (drop old arena, create new). Per-realm would require full reparse on any edit or accept monotonic growth. Realm-level index keeps owned copies of key lookup strings (slugs, tag names) for cross-doc queries.",
+      "alternatives": ["Per-realm (O(1) realm destroy but monotonic growth on edits)", "Per-document only (no realm-level arena)", "Per-realm with periodic compaction"],
+      "impact": "All parser types get 'arena lifetime. DocumentIndex borrows from doc arena. RealmIndex keeps owned copies for cross-doc lookups."
+    },
+    {
+      "id": "dec-arena-002",
+      "timestamp": "2026-02-13T22:15:00Z",
+      "feature": "arena-allocation",
+      "decision": "Full migration depth: parser types (19 types) AND index types (8 types) in one epic",
+      "rationale": "Index types currently copy strings from parser output. With arena, index can borrow directly from parser arena, eliminating ~28 additional String allocations per document. Doing parser-only would leave the copy overhead.",
+      "alternatives": ["Parser only (~800 lines, incremental)", "Index only (pragmatic but less savings)"],
+      "impact": "~2000+ lines across markymark-parser, markymark-index, markymark-core"
+    },
+    {
+      "id": "dec-arena-003",
+      "timestamp": "2026-02-13T22:15:00Z",
+      "feature": "arena-allocation",
+      "decision": "Use hashbrown with bumpalo as custom allocator for HashMap fields",
+      "rationale": "bumpalo doesn't provide HashMap. hashbrown supports custom allocators via Allocator trait. This arena-allocates Frontmatter, Properties, and XmlTag attributes data alongside all other parsed content.",
+      "alternatives": ["Keep HashMap<String,T> owned (pragmatic but inconsistent)", "Replace with sorted BumpVec (O(log n) lookup)"],
+      "impact": "New dep: hashbrown. Affects Frontmatter, Properties, XmlTag, ListItem types."
+    },
+    {
+      "id": "dec-arena-004",
+      "timestamp": "2026-02-13T22:15:00Z",
+      "feature": "arena-allocation",
+      "decision": "Arena migration is post-alpha (does not block marky-peu/marky-hoh release)",
+      "rationale": "Alpha release uses owned types. Arena is a performance optimization for v0.2.0. Publishing owned-type API first is acceptable since pre-1.0 allows breaking changes. Avoids blocking the release pipeline.",
+      "alternatives": ["Pre-alpha (block release for correct types)", "Parallel feature branch (merge conflict risk across 3 crates)"],
+      "impact": "Arena epic depends on marky-peu completion"
     }
   ]
 }
