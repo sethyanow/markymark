@@ -91,22 +91,18 @@ jobs:
 
       - name: Assemble plugin archive
         run: |
-          # Copy plugin structure
-          cp -r markymark-plugin plugin-staging
-
-          # Copy binaries into plugin bin/
-          rm -f plugin-staging/bin/.gitkeep
+          # Copy binaries into existing plugin bin/
+          rm -f markymark-plugin/bin/.gitkeep
           for dir in artifacts/markymark-*/; do
-            cp "${dir}"markymark-* plugin-staging/bin/ 2>/dev/null || true
+            cp "${dir}"markymark-* markymark-plugin/bin/ 2>/dev/null || true
           done
 
           # Make all binaries executable
-          chmod +x plugin-staging/bin/markymark-* 2>/dev/null || true
-          chmod +x plugin-staging/scripts/*.sh
+          chmod +x markymark-plugin/bin/markymark-* 2>/dev/null || true
+          chmod +x markymark-plugin/scripts/*.sh
 
           # Create archive (preserve top-level directory name for documented install flow)
           TAG="${GITHUB_REF_NAME}"
-          mv plugin-staging markymark-plugin
           tar -czf "markymark-plugin-${TAG}.tar.gz" markymark-plugin
 
           # Create individual binary archives for cargo-free installs
