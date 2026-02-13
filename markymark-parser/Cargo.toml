@@ -10,7 +10,7 @@ keywords = ["markdown", "parser", "tree-sitter", "obsidian"]
 categories = ["parsing", "text-processing"]
 
 [dependencies]
-markymark-core = { version = "=0.1.0-alpha.1", path = "../markymark-core" }
+markymark-core = { version = "=0.1.0-alpha.2", path = "../markymark-core" }
 tree-sitter = { workspace = true }
 tree-sitter-markdown = { workspace = true }
 tree-sitter-xml = { workspace = true }
