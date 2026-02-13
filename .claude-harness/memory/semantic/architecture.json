@@ -1,0 +1,23 @@
+{
+  "version": 3,
+  "projectType": "rust",
+  "techStack": {
+    "framework": "rust",
+    "language": "Rust",
+    "database": "",
+    "testFramework": ""
+  },
+  "structure": {
+    "entryPoints": [],
+    "components": [],
+    "api": [],
+    "tests": []
+  },
+  "patterns": {
+    "naming": {},
+    "fileOrganization": {},
+    "codeStyle": {}
+  },
+  "discoveredAt": "2026-02-13T17:40:24Z",
+  "lastUpdated": "2026-02-13T17:40:24Z"
+}

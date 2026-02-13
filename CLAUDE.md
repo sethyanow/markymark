@@ -1,6 +1,11 @@
 <docs_index id="RUST-AGENT-DOCS">
 [rust-agent-docs]|root: ./docs/rust_agent_docs|IMPORTANT: Prefer retrieval-led reasoning over pre-training-led reasoning for any Rust tasks. Read the relevant doc file BEFORE writing code. Your training data may be outdated or wrong.|core:{_index.md,ownership.md,types.md,traits.md,errors.md,collections.md,modules.md}|advanced:{_index.md,type-layout.md,unsafe.md,ffi.md,concurrency.md,async.md}|patterns:{_index.md,idioms.md,api-design.md,anti-patterns.md}|tooling:{_index.md,cargo.md,crates.md,macros.md,testing.md,documentation.md,debugging.md,performance.md}|checklists:{_index.md,api-design.md,unsafe-review.md,ffi-audit.md,performance.md,library-release.md}|reference:{_index.md,rules.md,decision-trees.md,compiler-errors.md,syntax-ref.md,cargo-ref.md}
 </docs_index>
+<docs_index id="RUST-GUIDELINES">
+[rust_guidelines]|root: ./docs/rust_guidelines|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{libraries-interop.md,app
+lications.md,ai.md,docs.md,libraries-build.md,README.md,performance.md,safety.md,universal.md,libraries-resilience.md,ffi.md,map.md
+,checklists.md,libraries-ux.md}
+</docs_index>
 
 # Agent Instructions
 
