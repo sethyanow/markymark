@@ -1,0 +1,17 @@
+{
+  "description": "markymark LSP-first workflow hooks",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/suggest-lsp.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
