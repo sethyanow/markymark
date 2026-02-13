@@ -5,11 +5,14 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "MCP server for markdown intelligence in AI assistants"
+keywords = ["markdown", "mcp", "ai", "language-server"]
+categories = ["development-tools", "text-processing"]
 
 [dependencies]
-markymark-core = { path = "../markymark-core" }
-markymark-parser = { path = "../markymark-parser" }
-markymark-index = { path = "../markymark-index" }
+markymark-core = { version = "0.1.0", path = "../markymark-core" }
+markymark-parser = { version = "0.1.0", path = "../markymark-parser" }
+markymark-index = { version = "0.1.0", path = "../markymark-index" }
 rmcp = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

@@ -5,10 +5,13 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Document indexing and cross-reference resolution for markdown workspaces"
+keywords = ["markdown", "index", "cross-reference", "workspace"]
+categories = ["development-tools", "text-processing"]
 
 [dependencies]
-markymark-core = { path = "../markymark-core" }
-markymark-parser = { path = "../markymark-parser" }
+markymark-core = { version = "0.1.0", path = "../markymark-core" }
+markymark-parser = { version = "0.1.0", path = "../markymark-parser" }
 petgraph = { workspace = true }
 bumpalo = { workspace = true }
 serde = { workspace = true }

@@ -5,11 +5,14 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "LSP server for markdown with go-to-definition, references, hover, and diagnostics"
+keywords = ["markdown", "lsp", "language-server", "editor"]
+categories = ["development-tools", "text-editors"]
 
 [dependencies]
-markymark-core = { path = "../markymark-core" }
-markymark-parser = { path = "../markymark-parser" }
-markymark-index = { path = "../markymark-index" }
+markymark-core = { version = "0.1.0", path = "../markymark-core" }
+markymark-parser = { version = "0.1.0", path = "../markymark-parser" }
+markymark-index = { version = "0.1.0", path = "../markymark-index" }
 tower-lsp-server = { workspace = true }
 lsp-types = { workspace = true }
 tokio = { workspace = true }

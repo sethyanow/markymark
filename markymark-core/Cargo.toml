@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Core types and traits for the markymark markdown LSP and MCP server"
+keywords = ["markdown", "lsp", "parser", "types"]
+categories = ["development-tools", "text-processing"]
 
 [dependencies]
 serde = { workspace = true }
