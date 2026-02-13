@@ -95,6 +95,19 @@
         "Run all quality gates in parallel before any version changes",
         "Verify CLI --version output matches expected after bump"
       ]
+    },
+    {
+      "id": "suc-010",
+      "timestamp": "2026-02-14T02:14:00Z",
+      "feature": "marky-cfj",
+      "type": "implementation",
+      "approach": "TDD for download fallback: wrote 4 new tests (mock curl via PATH injection), then implemented download_binary() in select-binary.sh. Mock curl approach isolates network from tests cleanly.",
+      "files": ["markymark-plugin/scripts/select-binary.sh", "markymark-plugin/tests/test_select_binary.sh"],
+      "patterns": [
+        "Mock curl by prepending mock-bin dir to PATH — isolates network calls in bash tests",
+        "GitHub /releases/latest/download/{asset} URL pattern for auto-download",
+        "When adding download fallback, update existing tests that relied on immediate failure (e.g. ignores_platform_specific test needed mock curl too)"
+      ]
     }
   ]
 }
