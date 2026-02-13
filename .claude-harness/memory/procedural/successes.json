@@ -24,6 +24,54 @@
       "type": "implementation",
       "approach": "Bulk Cargo.toml editing: read all 7 Cargo.toml files in parallel, then applied all 6 edits in parallel (metadata + version in single edit per file). Clean and efficient.",
       "files": ["markymark-core/Cargo.toml", "markymark-parser/Cargo.toml", "markymark-index/Cargo.toml", "markymark-lsp/Cargo.toml", "markymark-mcp/Cargo.toml", "markymark-cli/Cargo.toml"]
+    },
+    {
+      "id": "suc-004",
+      "timestamp": "2026-02-13T22:00:00Z",
+      "feature": "memory-port",
+      "type": "workflow",
+      "approach": "Bulk memory port from old repo: read all memory files in parallel, filter by relevance (Rust-only, skip TS/maestro), update paths (markymark/markymark-* to markymark-*), merge with existing entries preserving originals, tag ported entries with ported_from field for traceability.",
+      "files": [".claude-harness/memory/learned/rules.json", ".claude-harness/memory/procedural/failures.json", ".claude-harness/memory/episodic/decisions.json", ".claude-harness/memory/procedural/patterns.json", ".claude-harness/memory/semantic/architecture.json"],
+      "patterns": [
+        "Read source and target memory files in parallel to minimize round-trips",
+        "Tag ported entries with ported_from for provenance tracking",
+        "Filter aggressively: TypeScript, orchestration meta-entries, and old project structure add noise",
+        "Update file paths when porting across repo extractions"
+      ]
+    },
+    {
+      "id": "suc-005",
+      "timestamp": "2026-02-13T22:10:00Z",
+      "feature": "marky-v8e",
+      "type": "planning",
+      "approach": "Brainstorming skill to refine 3 old repo work streams into a unified epic. Socratic method surfaced key decisions (CI pre-packaging vs binaries in git, research parallelism, 5-platform scope) before creating any beads. Dependency graph designed to maximize parallelism while respecting real blocking relationships.",
+      "files": [],
+      "patterns": [
+        "Ask scope/distribution/platform questions before creating beads — prevents rework",
+        "Research epics should depend on codebase stability (alpha), not on shipping tasks",
+        "Fix circular deps immediately: child epic depending on parent epic creates deadlock"
+      ]
+    },
+    {
+      "id": "suc-006",
+      "timestamp": "2026-02-13T22:15:00Z",
+      "feature": "marky-79z",
+      "type": "documentation",
+      "approach": "Audited README against actual codebase state using Explore agent for feature verification, CLI --help for real flags, CI workflows for release pipeline. Fixed 4 stale claims: removed false arena allocation feature, corrected edition, fixed crate name, updated installation for pre-release reality.",
+      "files": ["RELEASING.md", "README.md"]
+    },
+    {
+      "id": "suc-007",
+      "timestamp": "2026-02-13T22:20:00Z",
+      "feature": "marky-g9t",
+      "type": "planning",
+      "approach": "Brainstorming skill with Socratic questions to design arena allocation architecture. Three key design axes surfaced: arena ownership (hybrid won over per-realm/per-doc), migration depth (full won over incremental), HashMap strategy (hashbrown won over owned/sorted-vec). Explained per-realm vs per-document tradeoffs in concrete terms before asking user to choose.",
+      "files": [],
+      "patterns": [
+        "Explain tradeoffs with concrete code examples before asking for design decisions",
+        "Break multi-axis design decisions into separate questions",
+        "Wire epic dependencies to existing roadmap (arena blocked by alpha release)"
+      ]
     }
   ]
 }

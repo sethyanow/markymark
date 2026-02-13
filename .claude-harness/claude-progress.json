@@ -1,25 +1,30 @@
 {
-  "lastUpdated": "2026-02-13T21:35:00Z",
+  "lastUpdated": "2026-02-13T22:20:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-7u7: Added crates.io metadata (description, keywords, categories) to all 6 workspace crates. Added version = '0.1.0' alongside path for all 10 internal dependency references. 365 tests pass, clippy clean. Dry-run validates core metadata; full sequential publish deferred to marky-hoh.",
-    "completedTasks": ["marky-1vb", "marky-7u7"],
+    "summary": "Completed marky-79z (RELEASING.md + README fixes). Brainstormed and designed arena allocation epic (marky-g9t) with 7 tasks: hybrid per-document/realm-level model, hashbrown with bumpalo allocator, full parser+index migration. Recorded 4 architectural decisions. Closed marky-7du (bumpalo dep removal superseded).",
+    "completedTasks": ["marky-79z"],
     "blockers": ["Pre-existing test_select_binary.sh failures (marky-9dx)"],
-    "nextSteps": ["Execute marky-79z: Write RELEASING.md", "Execute marky-hoh: Tag and verify alpha release (now unblocked)"]
+    "nextSteps": [
+      "Execute marky-hoh: Tag and verify alpha release",
+      "Fix marky-9dx: test_select_binary.sh failures",
+      "After alpha: marky-8pt CI pre-packaging unlocks marketplace + docs",
+      "After alpha: marky-g9t arena allocation epic (7 tasks)"
+    ]
   },
   "recentChanges": [
-    "f24cca6 chore: update harness learned rules",
-    "275399b chore: add crates.io metadata to all workspace crates",
-    "5c0f79e feat(plugin): integrate LSP-first PreToolUse hook"
+    "cc11d82 chore: record arena allocation design decisions",
+    "66af899 docs: add RELEASING.md and update README to reflect reality",
+    "fee5e0d chore: port high-value memories from markdown-mcp to markymark"
   ],
   "knownIssues": [
     "marky-9dx: test_select_binary.sh fails due to nested JSON structure mismatch",
-    "Epic requirement #1 mentions SessionStart context hook - not yet tasked",
-    "cargo publish --dry-run only validates core crate; other 5 fail because deps not on crates.io yet (expected)"
+    "cargo publish --dry-run only validates core crate; other 5 fail because deps not on crates.io yet (expected)",
+    "Old markdown-mcp repo still has 3 open beads (i88, 6ia, 4h3) — superseded by marky-v8e epic"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-13T21:30:00Z",
+    "lastSuccessfulBuild": "2026-02-13T22:15:00Z",
     "lastTypeCheck": null
   }
 }
