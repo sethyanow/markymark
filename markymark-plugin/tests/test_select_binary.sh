@@ -287,7 +287,7 @@ test_plugin_json_valid() {
 test_lsp_json_uses_plugin_root() {
     if command -v python3 &>/dev/null; then
         local cmd
-        cmd=$(python3 -c "import json; print(json.load(open('${PLUGIN_DIR}/.lsp.json'))['command'])" 2>/dev/null)
+        cmd=$(python3 -c "import json; print(json.load(open('${PLUGIN_DIR}/.lsp.json'))['markdown']['command'])" 2>/dev/null)
         if [[ "${cmd}" == *'${CLAUDE_PLUGIN_ROOT}'* ]]; then
             pass ".lsp.json uses \${CLAUDE_PLUGIN_ROOT} in command"
         else
@@ -302,7 +302,7 @@ test_lsp_json_uses_plugin_root() {
 test_mcp_json_uses_plugin_root() {
     if command -v python3 &>/dev/null; then
         local cmd
-        cmd=$(python3 -c "import json; print(json.load(open('${PLUGIN_DIR}/.mcp.json'))['command'])" 2>/dev/null)
+        cmd=$(python3 -c "import json; print(json.load(open('${PLUGIN_DIR}/.mcp.json'))['mcpServers']['markymark']['command'])" 2>/dev/null)
         if [[ "${cmd}" == *'${CLAUDE_PLUGIN_ROOT}'* ]]; then
             pass ".mcp.json uses \${CLAUDE_PLUGIN_ROOT} in command"
         else
