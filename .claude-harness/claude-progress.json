@@ -1,30 +1,28 @@
 {
-  "lastUpdated": "2026-02-13T22:20:00Z",
+  "lastUpdated": "2026-02-13T22:28:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-79z (RELEASING.md + README fixes). Brainstormed and designed arena allocation epic (marky-g9t) with 7 tasks: hybrid per-document/realm-level model, hashbrown with bumpalo allocator, full parser+index migration. Recorded 4 architectural decisions. Closed marky-7du (bumpalo dep removal superseded).",
-    "completedTasks": ["marky-79z"],
-    "blockers": ["Pre-existing test_select_binary.sh failures (marky-9dx)"],
+    "summary": "Fixed marky-9dx: test_select_binary.sh JSON path mismatch. Tests expected flat top-level 'command' key but .lsp.json nests under ['markdown'] and .mcp.json nests under ['mcpServers']['markymark']. 2-line fix, all 10 plugin tests and full cargo test suite pass.",
+    "completedTasks": ["marky-9dx"],
+    "blockers": [],
     "nextSteps": [
-      "Execute marky-hoh: Tag and verify alpha release",
-      "Fix marky-9dx: test_select_binary.sh failures",
+      "Execute marky-hoh: Tag and verify alpha release (critical path — unblocks 15 issues)",
       "After alpha: marky-8pt CI pre-packaging unlocks marketplace + docs",
       "After alpha: marky-g9t arena allocation epic (7 tasks)"
     ]
   },
   "recentChanges": [
-    "cc11d82 chore: record arena allocation design decisions",
-    "66af899 docs: add RELEASING.md and update README to reflect reality",
-    "fee5e0d chore: port high-value memories from markdown-mcp to markymark"
+    "5c0400a fix: correct JSON paths in test_select_binary.sh (marky-9dx)",
+    "e218f8d chore: checkpoint — persist memory after marky-79z and arena brainstorm",
+    "59df0e7 Remove License section from README"
   ],
   "knownIssues": [
-    "marky-9dx: test_select_binary.sh fails due to nested JSON structure mismatch",
     "cargo publish --dry-run only validates core crate; other 5 fail because deps not on crates.io yet (expected)",
     "Old markdown-mcp repo still has 3 open beads (i88, 6ia, 4h3) — superseded by marky-v8e epic"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-13T22:15:00Z",
+    "lastSuccessfulBuild": "2026-02-13T22:28:00Z",
     "lastTypeCheck": null
   }
 }

@@ -72,6 +72,14 @@
         "Break multi-axis design decisions into separate questions",
         "Wire epic dependencies to existing roadmap (arena blocked by alpha release)"
       ]
+    },
+    {
+      "id": "suc-008",
+      "timestamp": "2026-02-13T22:28:00Z",
+      "feature": "marky-9dx",
+      "type": "bugfix",
+      "approach": "Reproduced test_select_binary.sh failure (set -e abort at test 4/10), identified JSON path mismatch (.lsp.json ['markdown']['command'], .mcp.json ['mcpServers']['markymark']['command'] vs flat ['command']), 2-line fix, verified 10/10 GREEN + full cargo test suite.",
+      "files": ["markymark-plugin/tests/test_select_binary.sh"]
     }
   ]
 }
