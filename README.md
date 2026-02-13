@@ -2,6 +2,8 @@
 
 High-performance Markdown LSP + MCP server in Rust.
 
+> **Alpha Software**: markymark is in active development and not yet ready for production use. APIs, configuration, and behavior may change without notice.
+
 ## Overview
 
 markymark is a Rust-based Language Server Protocol (LSP) and Model Context Protocol (MCP) server for Markdown, featuring:
