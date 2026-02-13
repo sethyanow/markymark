@@ -150,6 +150,3 @@ cargo clippy --workspace --all-targets
 - **Obsidian**: Wiki links `[[page]]`, callouts, block IDs `^id`, embeds `![[file]]`
 - **Logseq**: Nested lists, block UUIDs, page properties
 
-## License
-
-MIT OR Apache-2.0
