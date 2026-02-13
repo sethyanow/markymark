@@ -10,9 +10,9 @@ keywords = ["markdown", "mcp", "ai", "language-server"]
 categories = ["development-tools", "text-processing"]
 
 [dependencies]
-markymark-core = { version = "0.1.0", path = "../markymark-core" }
-markymark-parser = { version = "0.1.0", path = "../markymark-parser" }
-markymark-index = { version = "0.1.0", path = "../markymark-index" }
+markymark-core = { version = "=0.1.0-alpha.1", path = "../markymark-core" }
+markymark-parser = { version = "=0.1.0-alpha.1", path = "../markymark-parser" }
+markymark-index = { version = "=0.1.0-alpha.1", path = "../markymark-index" }
 rmcp = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
