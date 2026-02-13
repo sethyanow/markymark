@@ -3,6 +3,9 @@
 //! Provides LspProcess (single server wrapper), response normalization,
 //! comparison logic, and report generation types.
 
+// Test infrastructure code - allow unused items for future test expansion
+#![allow(dead_code)]
+
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt;
