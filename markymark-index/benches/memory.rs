@@ -58,9 +58,14 @@ More content here.
     )
 }
 
-/// Path to real corpus fixture (epstein_20250227_all_in_one.md, ~492KB).
-/// Resolves relative to workspace root (parent of markymark-index).
+/// Path to epstein fixture. Set MARKYMARK_BENCH_EPSTEIN or use workspace/epstein_20250227_all_in_one.md.
 fn real_corpus_path() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("MARKYMARK_BENCH_EPSTEIN") {
+        let path = PathBuf::from(p);
+        if path.exists() {
+            return Some(path);
+        }
+    }
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let workspace = manifest.ancestors().nth(1)?;
     let path = workspace.join("epstein_20250227_all_in_one.md");

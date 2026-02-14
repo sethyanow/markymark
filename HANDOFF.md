@@ -79,7 +79,7 @@ More content here.
 ### Running Baseline
 
 ```bash
-git checkout baseline/pre-arena
+git checkout pre-arena              # tag at 476795e; or baseline/pre-arena (branch with benches)
 cargo bench -p markymark-index -- --nocapture
 ```
 
@@ -95,15 +95,15 @@ See `docs/benchmarks/baseline-pre-arena.md` for full results and reproducibility
 | concurrent 8×100    | ~104 ms          | ~101 ms     | −3%     |
 | Resident / peak RSS | 23 MiB / 24 MB   | 638 MiB (criterion bloat) | —       |
 
-### Real Corpus (current only — baseline has no real-corpus bench)
+### Real Corpus (epstein 480 KB, gigapowers 918 files / 5.9 MB)
 
-| Benchmark              | Corpus                       | Result    |
-|------------------------|------------------------------|-----------|
-| reparse_real_large_doc | epstein 480 KB (1 doc)       | ~162 ms   |
-| index_real_corpus      | epstein 343 sections         | ~249 ms   |
-| index_docs_dir         | gigapowers 918 files, 5.9 MB | ~1.67 s  |
+| Benchmark              | Pre-arena | Arena   | Delta  |
+|------------------------|-----------|---------|--------|
+| reparse_real_large_doc | 166.7 ms  | 163.6 ms | −2%   |
+| index_real_corpus (343 sections) | 251.4 ms | 247.8 ms | −1.5% |
+| index_docs_dir         | 1.60 s    | 1.64 s   | +2.5% (noise) |
 
-Use `MARKYMARK_BENCH_CORPUS_DIR` or default `/Volumes/code/gigapowers`. Includes `.rust_docs` and `.zig_docs`.
+Use `MARKYMARK_BENCH_EPSTEIN` for epstein path; `MARKYMARK_BENCH_CORPUS_DIR` or default `/Volumes/code/gigapowers`.
 
 ---
 
