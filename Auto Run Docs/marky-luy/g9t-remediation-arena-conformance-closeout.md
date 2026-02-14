@@ -7,7 +7,7 @@ For the first unchecked task below:
 
 1. `/claude-harness:start`
 2. `/hyperpowers:execute-plan` targeting the task's bead ID
-3. `/coderabbit:review` — apply all recommendations
+3. `/coderabbit-review` — apply all recommendations
 4. `/claude-harness:checkpoint`
 5. Mark task `- [x]`, append any discovered tasks as `- [ ]`
 </instructions>
