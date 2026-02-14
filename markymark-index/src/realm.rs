@@ -123,8 +123,7 @@ impl RealmIndex {
             .for_each(|v| v.retain(|(u, _)| u.as_str() != key));
         self.slug_to_headings.retain(|_, v| !v.is_empty());
 
-        self.block_to_location
-            .retain(|_, (u, _)| u.as_str() != key);
+        self.block_to_location.retain(|_, (u, _)| u.as_str() != key);
 
         self.tag_to_docs
             .values_mut()
@@ -140,10 +139,7 @@ impl RealmIndex {
     /// Look up a heading by slug across all documents.
     /// Returns owned [`ResolvedHeading`] copies from the cross-doc index.
     pub fn lookup_heading(&self, slug: &str) -> Vec<(DocumentUri, ResolvedHeading)> {
-        self.slug_to_headings
-            .get(slug)
-            .cloned()
-            .unwrap_or_default()
+        self.slug_to_headings.get(slug).cloned().unwrap_or_default()
     }
 
     /// Look up a block by ID across all documents.
