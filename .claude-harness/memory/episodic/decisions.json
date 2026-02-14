@@ -309,6 +309,15 @@
       "rationale": "allocator_api requires nightly Rust; allocator-api2 implements allocator_api2::Allocator on stable, enabling ArenaHashMap with arena-allocated buckets per dec-arena-003.",
       "alternatives": ["Use nightly rust-toolchain.toml", "Fall back to HashMap with default allocator (keys/values only in arena)"],
       "impact": "Cargo.toml bumpalo features, markymark-core/src/arena.rs"
+    },
+    {
+      "id": "dec-017",
+      "timestamp": "2026-02-14T20:30:00Z",
+      "feature": "feature-001",
+      "decision": "Remove dead extract::extract_list_items; Ast uses collect_top_level_list_items with arena for list extraction",
+      "rationale": "extract_list_items was unused (Ast never called it). collect_top_level_list_items already takes arena and uses ListItem::list_items_from_list_node. Removing dead code ensures extraction API is consistently arena-driven.",
+      "alternatives": ["Update extract_list_items to take arena", "Keep for future use"],
+      "impact": "markymark-parser/src/extract.rs"
     }
   ]
 }

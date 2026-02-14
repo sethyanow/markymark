@@ -308,17 +308,6 @@ pub fn extract_embeds<'a>(
     embeds
 }
 
-/// Extract list items
-pub fn extract_list_items<'a>(elements: &[Element<'a>], _source: &str) -> Vec<ListItem<'a>> {
-    elements
-        .iter()
-        .filter_map(|e| match e {
-            Element::ListItem(item) => Some(item.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
 /// Extract tasks
 pub fn extract_tasks<'a>(
     _elements: &[Element<'a>],
