@@ -441,6 +441,100 @@ test_mcp_json_uses_plugin_root() {
     fi
 }
 
+# ─── Test: marketplace.json exists and is valid ───────────────────
+REPO_ROOT="${PLUGIN_DIR}/.."
+test_marketplace_json_valid() {
+    local mktplace="${REPO_ROOT}/.claude-plugin/marketplace.json"
+    if [[ ! -f "${mktplace}" ]]; then
+        fail "marketplace.json exists" "file present" "missing at ${mktplace}"
+        return
+    fi
+
+    if command -v python3 &>/dev/null; then
+        if python3 -c "import json; json.load(open('${mktplace}'))" 2>/dev/null; then
+            pass "marketplace.json is valid JSON"
+        else
+            fail "marketplace.json is valid JSON" "valid JSON" "parse error"
+            return
+        fi
+    elif command -v jq &>/dev/null; then
+        if jq . "${mktplace}" >/dev/null 2>&1; then
+            pass "marketplace.json is valid JSON"
+        else
+            fail "marketplace.json is valid JSON" "valid JSON" "parse error"
+            return
+        fi
+    else
+        pass "marketplace.json is valid JSON (skipped: no json parser available)"
+        return
+    fi
+}
+
+# ─── Test: marketplace.json has required fields ───────────────────
+test_marketplace_json_fields() {
+    local mktplace="${REPO_ROOT}/.claude-plugin/marketplace.json"
+    if [[ ! -f "${mktplace}" ]]; then
+        fail "marketplace.json fields" "file present" "missing"
+        return
+    fi
+
+    if ! command -v python3 &>/dev/null; then
+        pass "marketplace.json fields (skipped: no python3)"
+        return
+    fi
+
+    local result
+    result=$(python3 -c "
+import json, sys
+m = json.load(open('${mktplace}'))
+errors = []
+if 'name' not in m: errors.append('missing name')
+if 'owner' not in m: errors.append('missing owner')
+if 'plugins' not in m: errors.append('missing plugins')
+elif not m['plugins']: errors.append('plugins array is empty')
+else:
+    p = m['plugins'][0]
+    if 'name' not in p: errors.append('plugin missing name')
+    if 'source' not in p: errors.append('plugin missing source')
+if errors:
+    print('ERRORS: ' + ', '.join(errors))
+    sys.exit(1)
+else:
+    print('OK')
+" 2>&1) || true
+
+    if [[ "${result}" == "OK" ]]; then
+        pass "marketplace.json has required fields (name, owner, plugins with source)"
+    else
+        fail "marketplace.json has required fields" "OK" "${result}"
+    fi
+}
+
+# ─── Test: marketplace.json plugin source path exists ─────────────
+test_marketplace_plugin_source_exists() {
+    local mktplace="${REPO_ROOT}/.claude-plugin/marketplace.json"
+    if [[ ! -f "${mktplace}" ]]; then
+        fail "marketplace plugin source" "file present" "marketplace.json missing"
+        return
+    fi
+
+    if ! command -v python3 &>/dev/null; then
+        pass "marketplace plugin source exists (skipped: no python3)"
+        return
+    fi
+
+    local source_path
+    source_path=$(python3 -c "import json; print(json.load(open('${mktplace}'))['plugins'][0]['source'])" 2>/dev/null)
+
+    # Resolve relative path from repo root
+    local resolved="${REPO_ROOT}/${source_path}"
+    if [[ -d "${resolved}" ]]; then
+        pass "marketplace plugin source path exists (${source_path})"
+    else
+        fail "marketplace plugin source path exists" "${source_path} is a directory" "not found at ${resolved}"
+    fi
+}
+
 # ─── Run all tests ───────────────────────────────────────────────
 echo "=== markymark-plugin tests (bundled binary model) ==="
 echo ""
@@ -448,6 +542,9 @@ echo ""
 test_script_exists
 test_plugin_structure
 test_plugin_json_valid
+test_marketplace_json_valid
+test_marketplace_json_fields
+test_marketplace_plugin_source_exists
 test_lsp_json_uses_plugin_root
 test_mcp_json_uses_plugin_root
 test_bundled_binary

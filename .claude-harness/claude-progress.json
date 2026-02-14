@@ -1,32 +1,33 @@
 {
-  "lastUpdated": "2026-02-14T02:30:00Z",
+  "lastUpdated": "2026-02-14T02:45:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-cfj (download-on-first-run fallback for marketplace installs). Merged PRs #2 (marky-8pt) and #3 (marky-cfj). Bumped version to 0.1.0-alpha.2, added git-cliff changelog workflow, merged PR #4 (release), tagged v0.1.0-alpha.2 to trigger CI release with changelog. Assessed marky-agk — mostly already complete. 340 Rust + 15 plugin + 9 hook tests GREEN.",
-    "completedTasks": ["marky-cfj", "v0.1.0-alpha.2 release"],
+    "summary": "Resumed marky-v8e (v1.0 Product Launch) epic. Merged PR #2 (marky-8pt). Created marketplace.json at repo root for self-hosted marketplace distribution. Added 3 marketplace validation tests (18/18 plugin tests GREEN). Ran /markymark:markdown-check on rust_guidelines docs — found 5 broken image links, filed gigapowers-ctb. Assessed marky-agk — mostly done already. Created local feat/benchmarks-wip branch for stashed criterion work.",
+    "completedTasks": ["marketplace.json setup", "rust_guidelines markdown audit"],
     "blockers": [],
     "nextSteps": [
-      "Submit to Claude marketplace form (manual): https://clau.de/plugin-directory-submission",
-      "marky-agk: Close as mostly done (tests pass, configs correct) or add PostToolUse hooks",
+      "Commit marketplace.json + test updates on feat/marky-cfj-marketplace branch",
+      "marky-agk: Close or do final polish (tests pass, configs correct)",
       "marky-7cl: Polish README and installation documentation (P2, unblocked)",
-      "marky-7pw: Roadmap Research epic (P3, 3 tracks)",
-      "Test download fallback: clone repo, run select-binary.sh without bundled binary"
+      "Submit to Claude marketplace form (manual): https://clau.de/plugin-directory-submission",
+      "marky-7pw: Roadmap Research epic (P3, 3 tracks)"
     ]
   },
   "recentChanges": [
-    "v0.1.0-alpha.2 tagged — CI release with git-cliff changelog",
-    "PR #4: chore(release): bump to v0.1.0-alpha.2, add changelog workflow",
-    "PR #3: feat: add download-on-first-run fallback for marketplace installs",
-    "PR #2: feat: overhaul plugin binary dist to CI per-platform pre-packaging"
+    "Created .claude-plugin/marketplace.json for self-hosted marketplace",
+    "Added 3 marketplace validation tests to test_select_binary.sh (18 total)",
+    "Marketplace add via local path works: /plugin marketplace add /Volumes/code/markymark",
+    "Filed gigapowers-ctb: 5 broken image links in rust_guidelines docs",
+    "v0.1.0-alpha.2 tagged — CI release with git-cliff changelog"
   ],
   "knownIssues": [
     "cargo publish --dry-run only validates core crate; other 5 fail because deps not on crates.io yet (expected)",
     "Write tool blocked by security_reminder_hook on .github/workflows/*.yml — use Bash heredoc instead",
-    "Edit tool also blocked for workflow YAML — same hook triggers on any workflow file modification"
+    "5 broken PNG image links in docs/rust_guidelines/ (filed as gigapowers-ctb)"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-14T02:25:00Z",
+    "lastSuccessfulBuild": "2026-02-14T02:40:00Z",
     "lastTypeCheck": null
   }
 }
