@@ -215,7 +215,7 @@ pub fn extract_link_definitions<'a>(
     defs
 }
 
-/// Extract block IDs
+/// Extract block IDs with source ranges for go-to-definition.
 pub fn extract_block_ids<'a>(
     _elements: &[Element<'a>],
     source: &str,
@@ -227,8 +227,21 @@ pub fn extract_block_ids<'a>(
     let re = Regex::new(r"(?m)\^([a-zA-Z0-9_-]+)\s*$").unwrap();
 
     for captures in re.captures_iter(source) {
-        if let Some(id_match) = captures.get(1) {
-            blocks.push(BlockId::new(arena_alloc_str(arena, id_match.as_str())));
+        if let (Some(id_match), Some(full_match)) = (captures.get(1), captures.get(0)) {
+            let start = full_match.start();
+            let end = full_match.end();
+            let line = source[..start].matches('\n').count() as u32;
+            let line_start = source[..start].rfind('\n').map(|pos| pos + 1).unwrap_or(0);
+            let start_char = (start - line_start) as u32;
+            let end_char = (end - line_start) as u32;
+            let range = Range::new(
+                Position::new(line, start_char),
+                Position::new(line, end_char),
+            );
+            blocks.push(BlockId::new(
+                arena_alloc_str(arena, id_match.as_str()),
+                range,
+            ));
         }
     }
 

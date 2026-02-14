@@ -212,7 +212,7 @@ impl DocumentIndex {
 
         let headings = headings_builder.into_bump_slice();
 
-        // Extract block IDs: borrow from AST
+        // Extract block IDs: borrow from AST, propagate source range for go-to-definition
         let mut blocks = HashMap::new();
         for block_id in ast.extract_block_ids() {
             let id = block_id.id(); // borrow from parser arena
@@ -220,7 +220,7 @@ impl DocumentIndex {
                 id,
                 BlockEntry {
                     id,
-                    range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+                    range: block_id.range(),
                 },
             );
         }
