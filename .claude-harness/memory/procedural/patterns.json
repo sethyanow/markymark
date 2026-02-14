@@ -2,22 +2,28 @@
   "version": 3,
   "patterns": {
     "codePatterns": [
-      "Plugin hooks use hooks.json with {description, hooks: {EventName: [{matcher, hooks: [{type, command, timeout}]}]}} structure",
-      "Hook scripts receive JSON on stdin, output JSON to stdout, use exit 0 for no-op on non-matching files",
-      "Test files follow pass/fail counter pattern with colored output and exit 1 on any failure",
-      "CoreEngine trait in core, transport crates are thin adapters",
-      "convert/state/server module separation in markymark-lsp for testability",
-      "FULL text document sync (not INCREMENTAL) for v1 LSP",
-      "Drop read lock before async publish_diagnostics (deadlock prevention)",
-      "Use slugify(heading.text) for duplicate detection, not heading.slug",
-      "Single-pass stack tokenizer for XML extraction (not multi-regex)",
       "ChildGuard RAII for process cleanup in integration tests",
-      "rmcp CallToolResult::structured and structured_error for MCP payloads",
+      "CoreEngine trait in core, transport crates are thin adapters",
+      "Custom Semgrep rules can be verified with deterministic fixture scans + expected finding counts when semgrep test mode is constrained by CLI version",
       "Deterministic sort by URI then range for stable output",
-      "Range containment for nested XML document symbols",
+      "Drop read lock before async publish_diagnostics (deadlock prevention)",
+      "FULL text document sync (not INCREMENTAL) for v1 LSP",
+      "For gitleaks staged negative testing, use a synthetic token that matches built-in regex exactly (e.g., ghp_ + 36 chars)",
+      "Hook scripts receive JSON on stdin, output JSON to stdout, use exit 0 for no-op on non-matching files",
+      "Keep Semgrep rule scope high-signal by excluding tests/** and validating with repo-wide scan excluding dedicated fixtures",
       "LSP Content-Length framing vs MCP line-delimited JSON — NEVER mix them",
-      "Arena migration works best as phased TDD: infrastructure -> parser types -> parser GREEN tests -> index types -> index GREEN tests",
-      "When teammate implementer crashes, reassign narrow-scope blocker to test-writer to preserve momentum"
+      "Plugin hooks use hooks.json with {description, hooks: {EventName: [{matcher, hooks: [{type, command, timeout}]}]}} structure",
+      "Range containment for nested XML document symbols",
+      "Run local SAST baseline (cargo audit, cargo deny, semgrep) before enabling new CI workflow to establish signal baseline",
+      "Security CI for this repo is advisory-only with continue-on-error on each scan job",
+      "Single-pass stack tokenizer for XML extraction (not multi-regex)",
+      "Test files follow pass/fail counter pattern with colored output and exit 1 on any failure",
+      "Use slugify(heading.text) for duplicate detection, not heading.slug",
+      "When cargo-deny config fails, validate against installed tool version schema before assuming policy error",
+      "When writing bd --design content with markdown backticks, use heredoc file + bd update to avoid shell command substitution",
+      "convert/state/server module separation in markymark-lsp for testability",
+      "lefthook command values containing colons/braces must be YAML-quoted to avoid parse errors",
+      "rmcp CallToolResult::structured and structured_error for MCP payloads"
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",
@@ -26,13 +32,14 @@
       "crates": "markymark-<role> (e.g., markymark-core, markymark-parser)"
     },
     "projectSpecificRules": [
-      "Plugin directory is markymark-plugin/ with .claude-plugin/plugin.json manifest",
       "${CLAUDE_PLUGIN_ROOT} is the standard variable for plugin-relative paths in commands",
+      "Checkpoint updates must include claude-progress, working-context, and memory layer persistence",
       "Existing tests use set -euo pipefail - be aware this causes early abort on command failures in non-conditional contexts",
+      "Plugin directory is markymark-plugin/ with .claude-plugin/plugin.json manifest",
       "Rust integration tests in tests/ are standalone crates — each file gets its own imports, no mod.rs needed",
       "Shared test helpers must be duplicated in tests/ files (pub(crate) not accessible from integration tests)",
-      "require_marksman! macro for graceful test skip when marksman unavailable in CI",
-      "Use exact count assertions (assert_eq!) not >= in rename/edit tests — >= masked a closing-tag rename bug"
+      "Use exact count assertions (assert_eq!) not >= in rename/edit tests — >= masked a closing-tag rename bug",
+      "require_marksman! macro for graceful test skip when marksman unavailable in CI"
     ],
     "rustPatterns": [
       {
@@ -97,12 +104,6 @@
         "pattern": "Version sync across Cargo workspace and plugin manifest",
         "context": "Bumping project version for any release",
         "application": "Update root Cargo.toml [workspace.package] version, all subcrate path dep versions (use = prefix for prerelease), plugin.json version, and verify with cargo check + cargo run --version"
-      },
-      {
-        "id": "pat-arena-ref-helper",
-        "pattern": "Extract duplicated unsafe arena transmute into a single helper",
-        "context": "Self-referential arena-backed AST methods",
-        "application": "Use one arena_ref() helper with clear SAFETY comment instead of repeating unsafe blocks in each extract_* method"
       }
     ]
   }
