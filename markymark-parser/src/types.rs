@@ -252,6 +252,8 @@ impl<'arena> ListItem<'arena> {
         Ok(items.into_bump_slice())
     }
 
+    // TODO: Used for nested list extraction in future enhancements
+    #[allow(dead_code)]
     fn find_first_list_descendant(node: Node) -> Option<Node> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
