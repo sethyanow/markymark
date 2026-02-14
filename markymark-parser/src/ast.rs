@@ -27,7 +27,16 @@ pub struct Ast {
 // is valid for the struct's lifetime. This is a common pattern for
 // self-referential structs with arenas.
 impl Ast {
-    /// Get a 'static reference to the arena for allocations.
+    /// Get a reference to the arena for allocations.
+    ///
+    /// Callers (e.g. DocumentIndex) use this to allocate into the parser's arena
+    /// and then take ownership via [`into_arena`](Self::into_arena).
+    #[inline]
+    pub fn arena(&self) -> &bumpalo::Bump {
+        &self.arena
+    }
+
+    /// Get a 'static reference to the arena for internal allocations.
     ///
     /// # Safety
     /// The returned reference has 'static lifetime, but it is only valid
@@ -36,6 +45,21 @@ impl Ast {
     fn arena_ref(&self) -> &'static bumpalo::Bump {
         // SAFETY: The arena is owned by Self, so the reference is valid for Self's lifetime
         unsafe { &*(&self.arena as *const bumpalo::Bump) }
+    }
+
+    /// Consume the AST and return its arena.
+    ///
+    /// Used by DocumentIndex to take ownership of the arena after borrowing
+    /// from it during index construction, avoiding string reallocation.
+    pub fn into_arena(self) -> bumpalo::Bump {
+        self.arena
+    }
+
+    /// Raw pointer to the arena for extraction when the borrow checker
+    /// prevents using [`into_arena`](Self::into_arena).
+    #[inline]
+    pub fn arena_ptr(&self) -> *const bumpalo::Bump {
+        &self.arena as *const bumpalo::Bump
     }
 
     /// Create AST from tree-sitter tree

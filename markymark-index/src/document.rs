@@ -177,24 +177,26 @@ pub struct DocumentIndex {
 
 impl DocumentIndex {
     /// Build a document index from a parsed AST.
-    pub fn from_ast(ast: &Ast) -> Self {
-        let arena = Bump::new();
-
-        // SAFETY: The arena is owned by `Self`, so this reference is valid
-        // for the lifetime of `Self`.
-        let arena_ref: &'static Bump = unsafe { &*(&arena as *const Bump) };
+    ///
+    /// Borrows strings from the parser's arena instead of reallocating,
+    /// then takes ownership of the arena. Callers pass `ast` by value;
+    /// the AST is consumed and its arena is moved into the index.
+    pub fn from_ast(ast: Ast) -> Self {
+        // Use raw pointer to avoid borrow conflict with ptr::read + forget below
+        let arena_ptr = ast.arena_ptr();
+        let arena_ref = unsafe { &*arena_ptr };
 
         let mut headings_builder: BumpVec<'static, HeadingEntry<'static>> =
             BumpVec::new_in(arena_ref);
         let mut slug_to_heading = HashMap::new();
         let mut slug_counts: StdHashMap<String, usize> = StdHashMap::new();
 
-        // Extract headings
+        // Extract headings: borrow text from AST, allocate only slug (computed)
         for element in ast.root_elements() {
             if let Some(h) = element.as_heading() {
                 let base_slug = slugify(h.text());
                 let slug_owned = dedup_slug(&base_slug, &mut slug_counts);
-                let text = arena_alloc_str(arena_ref, h.text());
+                let text = h.text(); // borrow from parser arena
                 let slug = arena_alloc_str(arena_ref, &slug_owned);
                 let idx = headings_builder.len();
 
@@ -210,10 +212,10 @@ impl DocumentIndex {
 
         let headings = headings_builder.into_bump_slice();
 
-        // Extract block IDs
+        // Extract block IDs: borrow from AST
         let mut blocks = HashMap::new();
         for block_id in ast.extract_block_ids() {
-            let id = arena_alloc_str(arena_ref, block_id.id());
+            let id = block_id.id(); // borrow from parser arena
             blocks.insert(
                 id,
                 BlockEntry {
@@ -227,7 +229,7 @@ impl DocumentIndex {
         let toc = build_toc(arena_ref, headings);
         let outline = build_outline(arena_ref, headings);
 
-        // Extract wiki links
+        // Extract wiki links: borrow from AST
         let mut wiki_links_builder: BumpVec<'static, WikiLinkEntry<'static>> =
             BumpVec::new_in(arena_ref);
         for wl in ast.extract_wiki_links() {
@@ -239,56 +241,52 @@ impl DocumentIndex {
                 continue;
             }
             wiki_links_builder.push(WikiLinkEntry {
-                target: arena_alloc_str(
-                    arena_ref,
-                    wl.target_page().unwrap_or(""), // "" = current page for heading-only links
-                ),
-                alias: wl.alias().map(|s| arena_alloc_str(arena_ref, s)),
-                heading: wl.target_heading().map(|s| arena_alloc_str(arena_ref, s)),
+                target: wl.target_page().unwrap_or(""), // "" = current page for heading-only links
+                alias: wl.alias(),
+                heading: wl.target_heading(),
                 range: wl.range(),
             });
         }
         let wiki_links = wiki_links_builder.into_bump_slice();
 
-        // Extract tags
+        // Extract tags: borrow from AST
         let mut tags_builder: BumpVec<'static, TagEntry<'static>> = BumpVec::new_in(arena_ref);
         for t in ast.extract_tags() {
-            tags_builder.push(TagEntry {
-                name: arena_alloc_str(arena_ref, t.name()),
-            });
+            tags_builder.push(TagEntry { name: t.name() });
         }
         let tags = tags_builder.into_bump_slice();
 
-        // Extract markdown links
+        // Extract markdown links: borrow from AST, allocate concatenated url when anchor present
         let mut markdown_links_builder: BumpVec<'static, MarkdownLinkEntry<'static>> =
             BumpVec::new_in(arena_ref);
         for ml in ast.extract_markdown_links() {
-            let anchor = ml.anchor().map(|s| arena_alloc_str(arena_ref, s));
-            let url_owned = match ml.anchor() {
-                Some(raw_anchor) => format!("{}#{}", ml.url(), raw_anchor),
-                None => ml.url().to_string(),
+            let (url, anchor) = match ml.anchor() {
+                Some(a) => (
+                    arena_alloc_str(arena_ref, &format!("{}#{}", ml.url(), a)),
+                    Some(a),
+                ),
+                None => (ml.url(), None),
             };
-
             markdown_links_builder.push(MarkdownLinkEntry {
-                text: arena_alloc_str(arena_ref, ml.text()),
-                url: arena_alloc_str(arena_ref, &url_owned),
+                text: ml.text(),
+                url,
                 anchor,
                 range: ml.range(),
             });
         }
         let markdown_links = markdown_links_builder.into_bump_slice();
 
-        // Extract XML tags
+        // Extract XML tags: borrow from AST
         let mut xml_tags_builder: BumpVec<'static, XmlTagEntry<'static>> =
             BumpVec::new_in(arena_ref);
         for xt in ast.extract_xml_tags() {
             let mut attributes = HashMap::new();
             for (k, v) in xt.attributes() {
-                attributes.insert(arena_alloc_str(arena_ref, k), arena_alloc_str(arena_ref, v));
+                attributes.insert(*k, *v); // borrow from parser arena
             }
 
             xml_tags_builder.push(XmlTagEntry {
-                tag_name: arena_alloc_str(arena_ref, xt.tag_name()),
+                tag_name: xt.tag_name(),
                 attributes,
                 is_self_closing: xt.is_self_closing(),
                 is_unclosed: xt.is_unclosed(),
@@ -296,6 +294,13 @@ impl DocumentIndex {
             });
         }
         let xml_tags = xml_tags_builder.into_bump_slice();
+
+        // Take ownership of the arena from the consumed AST.
+        // SAFETY: arena_ptr was obtained at the start. All index data points into the
+        // arena's allocations; we move the arena into Self so those references remain
+        // valid. We forget ast to avoid double-free of the arena.
+        let arena = unsafe { std::ptr::read(arena_ptr) };
+        std::mem::forget(ast);
 
         Self {
             _arena: Mutex::new(arena),
@@ -478,7 +483,7 @@ mod arena_allocation_tests {
     fn build_index(source: &str) -> DocumentIndex {
         let mut parser = Parser::new().unwrap();
         let ast = parser.parse(source).unwrap();
-        DocumentIndex::from_ast(&ast)
+        DocumentIndex::from_ast(ast)
     }
 
     #[test]
@@ -650,7 +655,7 @@ mod arena_allocation_tests {
     fn from_ast_propagates_arena_lifetime() {
         let mut parser = Parser::new().unwrap();
         let ast = parser.parse("# Arena\n").unwrap();
-        let index = DocumentIndex::from_ast(&ast);
+        let index = DocumentIndex::from_ast(ast);
 
         let heading: &HeadingEntry<'static> = &index.headings()[0];
         assert_eq!(heading.text, "Arena");
