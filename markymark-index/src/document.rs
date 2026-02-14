@@ -407,6 +407,7 @@ fn insert_into_outline(root: &mut OutlineNode, stack: &[(u8, usize)], node: Outl
 // ============================================================================
 
 #[cfg(test)]
+#[allow(unused_variables)] // RED phase: arena variables are placeholders until types are migrated
 mod arena_allocation_tests {
     use super::*;
     use bumpalo::Bump;
