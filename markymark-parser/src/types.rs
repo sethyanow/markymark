@@ -762,14 +762,11 @@ impl<'arena> XmlTag<'arena> {
 }
 
 // ============================================================================
-// ARENA ALLOCATION TESTS
-// These tests define the expected behavior for arena-allocated types.
-// All tests should FAIL until arena allocation is implemented (RED phase).
+// ARENA ALLOCATION TESTS (GREEN phase)
+// Tests verify arena-allocated types work correctly with 'arena lifetime.
 // ============================================================================
 
 #[cfg(test)]
-#[allow(unused_variables)] // RED phase: arena variables are placeholders until types are migrated
-#[allow(clippy::items_after_test_module)] // impl blocks exist after test module - will be fixed in refactor
 mod arena_allocation_tests {
     use super::*;
     use bumpalo::Bump;
@@ -778,277 +775,280 @@ mod arena_allocation_tests {
     // PARSER TYPES: Arena Lifetime Tests
     // ========================================================================
 
-    /// Heading should be arena-allocated with 'arena lifetime
+    /// Heading uses arena-allocated text
     #[test]
     fn heading_uses_arena_lifetime() {
         let arena = Bump::new();
-
-        // After migration, Heading has lifetime parameter
-        let _heading: Heading = Heading {
+        let heading = Heading {
             level: 1,
-            text: arena.alloc_str("Test"),
-            range: Range::new(Position::new(0, 0), Position::new(0, 4)),
+            text: arena.alloc_str("Test Heading"),
+            range: Range::new(Position::new(0, 0), Position::new(0, 12)),
         };
 
-        // Arena-allocated heading borrows from arena
-        panic!("RED: Heading needs 'arena lifetime parameter");
+        assert_eq!(heading.level(), 1);
+        assert_eq!(heading.text(), "Test Heading");
     }
 
-    /// Paragraph should be arena-allocated with 'arena lifetime
+    /// Paragraph uses arena-allocated text
     #[test]
     fn paragraph_uses_arena_lifetime() {
         let arena = Bump::new();
-
-        // After migration, Paragraph has lifetime parameter
-        let _paragraph: Paragraph = Paragraph {
-            text: arena.alloc_str("Test paragraph"),
-            range: Range::new(Position::new(0, 0), Position::new(0, 14)),
+        let paragraph = Paragraph {
+            text: arena.alloc_str("Test paragraph content"),
+            range: Range::new(Position::new(0, 0), Position::new(0, 21)),
         };
 
-        panic!("RED: Paragraph needs 'arena lifetime parameter");
+        assert_eq!(paragraph.text(), "Test paragraph content");
     }
 
-    /// ListItem should be arena-allocated with 'arena lifetime
+    /// ListItem uses arena-allocated text and properties map
     #[test]
     fn list_item_uses_arena_lifetime() {
         let arena = Bump::new();
+        let mut props: HashMap<&str, &str> = HashMap::new();
+        props.insert(arena.alloc_str("key"), arena.alloc_str("value"));
 
-        // After migration, ListItem has lifetime parameter
-        let _item: ListItem = ListItem {
+        let item = ListItem {
             text: arena.alloc_str("- test item"),
-            properties_map: HashMap::new(),
+            properties_map: props,
             children_list: &[],
         };
 
-        panic!("RED: ListItem needs 'arena lifetime parameter");
+        assert_eq!(item.text, "- test item");
+        assert_eq!(item.properties().get("key"), Some(&"value"));
     }
 
-    /// WikiLink should be arena-allocated with 'arena lifetime
+    /// WikiLink uses arena-allocated strings
     #[test]
     fn wiki_link_uses_arena_lifetime() {
         let arena = Bump::new();
-
-        // After migration, WikiLink has lifetime parameter
-        let _link: WikiLink = WikiLink::new(
-            arena.alloc_str("target"),
+        let link = WikiLink::new(
+            arena.alloc_str("target-page"),
+            Some(arena.alloc_str("alias")),
+            Some(arena.alloc_str("section")),
             None,
-            None,
-            None,
-            Range::new(Position::new(0, 0), Position::new(0, 6)),
+            Range::new(Position::new(0, 0), Position::new(0, 12)),
         );
 
-        panic!("RED: WikiLink needs 'arena lifetime parameter");
+        assert_eq!(link.target_page(), Some("target-page"));
+        assert_eq!(link.alias(), Some("alias"));
+        assert_eq!(link.target_heading(), Some("section"));
     }
 
-    /// MarkdownLink should be arena-allocated with 'arena lifetime
+    /// MarkdownLink uses arena-allocated strings
     #[test]
     fn markdown_link_uses_arena_lifetime() {
         let arena = Bump::new();
-
-        // After migration, MarkdownLink has lifetime parameter
-        let _link: MarkdownLink = MarkdownLink::new(
-            arena.alloc_str("text"),
-            arena.alloc_str("url"),
+        let link = MarkdownLink::new(
+            arena.alloc_str("link text"),
+            arena.alloc_str("https://example.com"),
+            Some(arena.alloc_str("anchor")),
             None,
-            None,
-            Range::new(Position::new(0, 0), Position::new(0, 4)),
+            Range::new(Position::new(0, 0), Position::new(0, 9)),
         );
 
-        panic!("RED: MarkdownLink needs 'arena lifetime parameter");
+        assert_eq!(link.text(), "link text");
+        assert_eq!(link.url(), "https://example.com");
+        assert_eq!(link.anchor(), Some("anchor"));
     }
 
-    /// LinkDefinition should be arena-allocated with 'arena lifetime
+    /// LinkDefinition uses arena-allocated strings
     #[test]
     fn link_definition_uses_arena_lifetime() {
         let arena = Bump::new();
-
-        // After migration, LinkDefinition has lifetime parameter
-        let _def: LinkDefinition = LinkDefinition::new(
-            arena.alloc_str("label"),
-            arena.alloc_str("url"),
-            None,
+        let def = LinkDefinition::new(
+            arena.alloc_str("ref-label"),
+            arena.alloc_str("https://example.com"),
+            Some(arena.alloc_str("Title")),
         );
 
-        panic!("RED: LinkDefinition needs 'arena lifetime parameter");
+        assert_eq!(def.label(), "ref-label");
+        assert_eq!(def.url(), "https://example.com");
+        assert_eq!(def.title(), Some("Title"));
     }
 
-    /// BlockId should be arena-allocated with 'arena lifetime
+    /// BlockId uses arena-allocated id
     #[test]
     fn block_id_uses_arena_lifetime() {
         let arena = Bump::new();
+        let id = BlockId::new(arena.alloc_str("abc123"));
 
-        // After migration, BlockId has lifetime parameter
-        let _id: BlockId = BlockId::new(arena.alloc_str("abc123"));
-
-        panic!("RED: BlockId needs 'arena lifetime parameter");
+        assert_eq!(id.id(), "abc123");
     }
 
-    /// BlockRef should be arena-allocated with 'arena lifetime
+    /// BlockRef uses arena-allocated uuid
     #[test]
     fn block_ref_uses_arena_lifetime() {
         let arena = Bump::new();
+        let block_ref = BlockRef::new(arena.alloc_str("uuid-1234-5678"));
 
-        // After migration, BlockRef has lifetime parameter
-        let _ref: BlockRef = BlockRef::new(arena.alloc_str("uuid-1234"));
-
-        panic!("RED: BlockRef needs 'arena lifetime parameter");
+        assert_eq!(block_ref.uuid(), "uuid-1234-5678");
     }
 
-    /// Tag should be arena-allocated with 'arena lifetime
+    /// Tag uses arena-allocated name
     #[test]
     fn tag_uses_arena_lifetime() {
         let arena = Bump::new();
+        let tag = Tag::new(arena.alloc_str("project/feature"));
 
-        // After migration, Tag has lifetime parameter
-        let _tag: Tag = Tag::new(arena.alloc_str("project/feature"));
-
-        panic!("RED: Tag needs 'arena lifetime parameter");
+        assert_eq!(tag.name(), "project/feature");
+        assert_eq!(tag.segments(), vec!["project", "feature"]);
     }
 
-    /// Embed should be arena-allocated with 'arena lifetime
+    /// Embed uses arena-allocated target
     #[test]
     fn embed_uses_arena_lifetime() {
         let arena = Bump::new();
+        let embed = Embed::new(arena.alloc_str("embedded-page"));
 
-        // After migration, Embed has lifetime parameter
-        let _embed: Embed = Embed::new(arena.alloc_str("embedded-page"));
-
-        panic!("RED: Embed needs 'arena lifetime parameter");
+        assert_eq!(embed.target(), "embedded-page");
+        assert!(embed.is_embed());
     }
 
-    /// Task should be arena-allocated with 'arena lifetime
+    /// Task and TaskState use arena-allocated strings
     #[test]
     fn task_uses_arena_lifetime() {
         let arena = Bump::new();
+        let task = Task::new(TaskState::new(arena.alloc_str("TODO")));
 
-        // After migration, Task has lifetime parameter
-        let _task: Task = Task::new(TaskState::new(arena.alloc_str("TODO")));
-
-        panic!("RED: Task needs 'arena lifetime parameter");
+        assert_eq!(task.state().as_str(), "TODO");
     }
 
-    /// Callout should be arena-allocated with 'arena lifetime
+    /// Callout uses arena-allocated strings
     #[test]
     fn callout_uses_arena_lifetime() {
         let arena = Bump::new();
+        let callout = Callout::new(
+            arena.alloc_str("note"),
+            Some(arena.alloc_str("Pro Tip")),
+        );
 
-        // After migration, Callout has lifetime parameter
-        let _callout: Callout = Callout::new(arena.alloc_str("note"), Some(arena.alloc_str("Tip")));
-
-        panic!("RED: Callout needs 'arena lifetime parameter");
+        assert_eq!(callout.callout_type(), "note");
+        assert_eq!(callout.title(), Some("Pro Tip"));
     }
 
-    /// QueryBlock should be arena-allocated with 'arena lifetime
+    /// QueryBlock uses arena-allocated query
     #[test]
     fn query_block_uses_arena_lifetime() {
         let arena = Bump::new();
+        let query = QueryBlock::new(arena.alloc_str("{{query todo}}"));
 
-        // After migration, QueryBlock has lifetime parameter
-        let _query: QueryBlock = QueryBlock::new(arena.alloc_str("{{query todo}}"));
-
-        panic!("RED: QueryBlock needs 'arena lifetime parameter");
+        assert_eq!(query.query_text(), "{{query todo}}");
     }
 
-    /// Frontmatter should be arena-allocated with 'arena lifetime
+    /// Frontmatter uses arena-allocated HashMap
     #[test]
     fn frontmatter_uses_arena_lifetime() {
         let arena = Bump::new();
+        let mut data: HashMap<&str, FrontmatterValue> = HashMap::new();
+        data.insert(arena.alloc_str("title"), FrontmatterValue::String(arena.alloc_str("My Page")));
 
-        // After migration, Frontmatter has lifetime parameter
-        let _fm: Frontmatter = Frontmatter::new(HashMap::new());
+        let fm = Frontmatter::new(data);
 
-        panic!("RED: Frontmatter needs 'arena lifetime parameter");
+        assert_eq!(fm.get_string("title"), Some("My Page"));
     }
 
-    /// Properties should be arena-allocated with 'arena lifetime
+    /// Properties uses arena-allocated HashMap
     #[test]
     fn properties_uses_arena_lifetime() {
         let arena = Bump::new();
+        let mut data: HashMap<&str, PropertyValue> = HashMap::new();
+        data.insert(arena.alloc_str("type"), PropertyValue::String(arena.alloc_str("project")));
 
-        // After migration, Properties has lifetime parameter
-        let _props: Properties = Properties::new(HashMap::new());
+        let props = Properties::new(data);
 
-        panic!("RED: Properties needs 'arena lifetime parameter");
+        assert_eq!(props.get("type").unwrap().as_str(), "project");
     }
 
-    /// XmlTag should be arena-allocated with 'arena lifetime
+    /// XmlTag uses arena-allocated strings and HashMap
     #[test]
     fn xml_tag_uses_arena_lifetime() {
         let arena = Bump::new();
+        let mut attrs: HashMap<&str, &str> = HashMap::new();
+        attrs.insert(arena.alloc_str("id"), arena.alloc_str("main"));
 
-        // After migration, XmlTag has lifetime parameter
-        let _tag: XmlTag = XmlTag::new(
+        let tag = XmlTag::new(
             arena.alloc_str("agent"),
-            HashMap::new(),
+            attrs,
             false,
             Some(arena.alloc_str("content")),
             Range::new(Position::new(0, 0), Position::new(0, 10)),
         );
 
-        panic!("RED: XmlTag needs 'arena lifetime parameter");
+        assert_eq!(tag.tag_name(), "agent");
+        assert_eq!(tag.attributes().get("id"), Some(&"main"));
+        assert_eq!(tag.content(), Some("content"));
+        assert!(!tag.is_self_closing());
     }
 
-    /// Element enum should be arena-allocated with 'arena lifetime
+    /// Element enum variants contain arena-allocated types
     #[test]
     fn element_uses_arena_lifetime() {
         let arena = Bump::new();
 
-        // After migration, Element has lifetime parameter
-        let _element: Element = Element::Other;
+        let heading = Heading {
+            level: 2,
+            text: arena.alloc_str("Section"),
+            range: Range::new(Position::new(0, 0), Position::new(0, 7)),
+        };
+        let element = Element::Heading(heading);
 
-        panic!("RED: Element needs 'arena lifetime parameter");
+        assert!(matches!(element, Element::Heading(_)));
+        assert_eq!(element.as_heading().unwrap().text(), "Section");
     }
 
     // ========================================================================
     // ARENA STRING STORAGE TESTS
     // ========================================================================
 
-    /// Heading text should be &str borrowed from arena, not String
+    /// Heading text is &str borrowed from arena
     #[test]
     fn heading_text_is_arena_str() {
         let arena = Bump::new();
-
-        // After migration:
-        // struct Heading<'arena> {
-        //     text: &'arena str,  // NOT String
-        //     ...
-        // }
         let text: &str = arena.alloc_str("Test Heading");
-        let _heading = Heading {
+        let heading = Heading {
             level: 1,
-            text, // Now &'arena str
+            text,
             range: Range::new(Position::new(0, 0), Position::new(0, 12)),
         };
 
-        panic!("RED: Heading::text should be &'arena str, not String");
+        // Verify text is borrowed from arena (same pointer)
+        assert_eq!(heading.text.as_ptr(), text.as_ptr());
     }
 
-    /// ListItem properties should use arena-allocated HashMap
+    /// ListItem properties use arena-allocated HashMap
     #[test]
     fn list_item_properties_arena_map() {
         let arena = Bump::new();
 
-        // After migration, HashMap uses arena-allocated keys/values
         let mut map: HashMap<&str, &str> = HashMap::new();
-        map.insert(arena.alloc_str("key"), arena.alloc_str("value"));
+        let key = arena.alloc_str("property");
+        let value = arena.alloc_str("value");
+        map.insert(key, value);
 
-        // Now using arena-allocated HashMap
-        panic!("RED: ListItem::properties_map should use HashMap<&'arena str, &'arena str>");
+        let item = ListItem {
+            text: arena.alloc_str("test"),
+            properties_map: map,
+            children_list: &[],
+        };
+
+        assert_eq!(item.properties().get("property"), Some(&"value"));
     }
 
-    /// Vec fields should be arena slices
+    /// Vec fields are arena slices
     #[test]
     fn vec_fields_become_arena_slices() {
         let arena = Bump::new();
 
-        // After migration:
-        // children_list: &'arena [ListItem<'arena>]
-        let _item = ListItem {
-            text: arena.alloc_str("test"),
+        let item = ListItem {
+            text: arena.alloc_str("parent"),
             properties_map: HashMap::new(),
-            children_list: &[], // Now &'arena [ListItem<'arena>]
+            children_list: &[], // Empty arena slice
         };
 
-        panic!("RED: Vec fields should be &'arena [T] slices");
+        assert!(item.children_list.is_empty());
+        // children() returns None for empty slice
+        let children = item.children();
+        assert!(children.is_none() || children.unwrap().is_empty());
     }
 }
