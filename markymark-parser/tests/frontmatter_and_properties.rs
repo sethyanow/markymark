@@ -56,8 +56,8 @@ fn extract_inline_properties() {
     let item = &list_items[0];
 
     let props = item.properties();
-    assert_eq!(props.get("status").unwrap().as_str(), "done");
-    assert_eq!(props.get("priority").unwrap().as_str(), "high");
+    assert_eq!(*props.get("status").unwrap(), "done");
+    assert_eq!(*props.get("priority").unwrap(), "high");
 }
 
 #[test]
