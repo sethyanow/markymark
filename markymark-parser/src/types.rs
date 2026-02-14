@@ -673,6 +673,7 @@ pub struct XmlTag {
 
 #[cfg(test)]
 #[allow(unused_variables)] // RED phase: arena variables are placeholders until types are migrated
+#[allow(clippy::items_after_test_module)] // impl blocks exist after test module - will be fixed in refactor
 mod arena_allocation_tests {
     use super::*;
     use bumpalo::Bump;
