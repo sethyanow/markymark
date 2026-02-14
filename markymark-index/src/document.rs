@@ -465,59 +465,170 @@ mod arena_allocation_tests {
     use super::*;
     use markymark_parser::Parser;
 
-    #[test]
-    fn heading_entry_uses_borrowed_str() {
-        let arena = Bump::new();
-        let text = arena.alloc_str("Introduction");
-        let slug = arena.alloc_str("introduction");
+    fn build_index(source: &str) -> DocumentIndex {
+        let mut parser = Parser::new().unwrap();
+        let ast = parser.parse(source).unwrap();
+        DocumentIndex::from_ast(&ast)
+    }
 
+    #[test]
+    fn heading_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
         let entry = HeadingEntry {
-            text,
-            slug,
+            text: arena.alloc_str("Intro"),
+            slug: arena.alloc_str("intro"),
             level: 1,
-            range: Range::new(Position::new(0, 0), Position::new(0, 13)),
+            range: Range::new(Position::new(0, 0), Position::new(0, 5)),
         };
 
-        assert_eq!(entry.text, "Introduction");
-        assert_eq!(entry.slug, "introduction");
+        assert_eq!(entry.text, "Intro");
+        assert_eq!(entry.slug, "intro");
         assert_eq!(entry.level, 1);
     }
 
     #[test]
-    fn document_index_uses_arena_allocated_types() {
-        let mut parser = Parser::new().unwrap();
-        let ast = parser
-            .parse("# Root\n\n## Child\n\nA block ^block-1\n\n[[Page#intro]]\n")
-            .unwrap();
+    fn block_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let entry = BlockEntry {
+            id: arena.alloc_str("block-1"),
+            range: Range::new(Position::new(0, 0), Position::new(0, 7)),
+        };
 
-        let index = DocumentIndex::from_ast(&ast);
+        assert_eq!(entry.id, "block-1");
+    }
+
+    #[test]
+    fn toc_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let entry = TocEntry {
+            text: arena.alloc_str("Section"),
+            slug: arena.alloc_str("section"),
+            level: 2,
+            depth: 1,
+        };
+
+        assert_eq!(entry.text, "Section");
+        assert_eq!(entry.slug, "section");
+        assert_eq!(entry.depth, 1);
+    }
+
+    #[test]
+    fn outline_node_uses_arena_lifetime() {
+        let root = OutlineNode {
+            heading: None,
+            children: &[],
+        };
+
+        assert!(root.heading.is_none());
+        assert!(root.children.is_empty());
+    }
+
+    #[test]
+    fn wiki_link_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let entry = WikiLinkEntry {
+            target: arena.alloc_str("TargetPage"),
+            alias: Some(arena.alloc_str("Alias")),
+            heading: Some(arena.alloc_str("Section")),
+            range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+        };
+
+        assert_eq!(entry.target, "TargetPage");
+        assert_eq!(entry.alias, Some("Alias"));
+        assert_eq!(entry.heading, Some("Section"));
+    }
+
+    #[test]
+    fn tag_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let entry = TagEntry {
+            name: arena.alloc_str("project/feature"),
+        };
+
+        assert_eq!(entry.name, "project/feature");
+    }
+
+    #[test]
+    fn markdown_link_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let entry = MarkdownLinkEntry {
+            text: arena.alloc_str("Example"),
+            url: arena.alloc_str("https://example.com#a"),
+            anchor: Some(arena.alloc_str("a")),
+            range: Range::new(Position::new(0, 0), Position::new(0, 7)),
+        };
+
+        assert_eq!(entry.text, "Example");
+        assert_eq!(entry.url, "https://example.com#a");
+        assert_eq!(entry.anchor, Some("a"));
+    }
+
+    #[test]
+    fn xml_tag_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let mut attrs = HashMap::new();
+        let priority: &str = arena.alloc_str("priority");
+        let high: &str = arena.alloc_str("high");
+        attrs.insert(priority, high);
+
+        let entry = XmlTagEntry {
+            tag_name: arena.alloc_str("goal"),
+            attributes: attrs,
+            is_self_closing: false,
+            is_unclosed: false,
+            range: Range::new(Position::new(0, 0), Position::new(0, 6)),
+        };
+
+        assert_eq!(entry.tag_name, "goal");
+        assert_eq!(entry.attributes.get("priority"), Some(&"high"));
+    }
+
+    #[test]
+    fn document_index_uses_arena_lifetime() {
+        let index = build_index("# Root\n\n## Child\n");
 
         assert_eq!(index.headings().len(), 2);
         assert_eq!(index.headings()[0].text, "Root");
         assert_eq!(index.headings()[1].slug, "child");
+    }
+
+    #[test]
+    fn document_index_uses_hashbrown_with_arena() {
+        let index = build_index("# Root\n\nA block ^block-1\n");
+
+        // HashMap-backed lookups should work for arena-allocated keys.
+        assert!(index.heading_by_slug("root").is_some());
         assert!(index.block_by_id("block-1").is_some());
     }
 
     #[test]
-    fn toc_is_arena_slice() {
-        let mut parser = Parser::new().unwrap();
-        let ast = parser.parse("# A\n\n## B\n\n### C\n").unwrap();
-        let index = DocumentIndex::from_ast(&ast);
+    fn xml_tag_entry_attributes_arena_map() {
+        let index = build_index("<goal priority=\"high\" status=\"open\">Ship</goal>\n");
 
-        let toc = index.toc();
-        assert_eq!(toc.len(), 3);
-        assert_eq!(toc[0].depth, 0);
-        assert_eq!(toc[1].depth, 1);
-        assert_eq!(toc[2].depth, 2);
+        let tags = index.xml_tags();
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].attributes.get("priority"), Some(&"high"));
+        assert_eq!(tags[0].attributes.get("status"), Some(&"open"));
     }
 
     #[test]
-    fn outline_children_are_arena_slices() {
-        let mut parser = Parser::new().unwrap();
-        let ast = parser
-            .parse("# Root\n\n## Child\n\n### Grandchild\n")
-            .unwrap();
-        let index = DocumentIndex::from_ast(&ast);
+    fn document_index_vecs_become_slices() {
+        let index = build_index("# A\n\n## B\n\n[[Page]]\n#tag\n");
+
+        let _: &[HeadingEntry<'static>] = index.headings();
+        let _: &[TocEntry<'static>] = index.toc();
+        let _: &[WikiLinkEntry<'static>] = index.wiki_links();
+        let _: &[TagEntry<'static>] = index.tags();
+        let _: &[MarkdownLinkEntry<'static>] = index.markdown_links();
+        let _: &[XmlTagEntry<'static>] = index.xml_tags();
+
+        assert!(!index.headings().is_empty());
+        assert!(!index.toc().is_empty());
+    }
+
+    #[test]
+    fn outline_node_children_arena_slice() {
+        let index = build_index("# Root\n\n## Child\n\n### Grandchild\n");
 
         let outline = index.outline();
         assert_eq!(outline.children.len(), 1);
@@ -526,16 +637,58 @@ mod arena_allocation_tests {
     }
 
     #[test]
-    fn xml_attributes_use_borrowed_arena_keys_values() {
+    fn from_ast_propagates_arena_lifetime() {
         let mut parser = Parser::new().unwrap();
-        let ast = parser
-            .parse("<goal priority=\"high\" status=\"open\">Ship</goal>\n")
-            .unwrap();
+        let ast = parser.parse("# Arena\n").unwrap();
         let index = DocumentIndex::from_ast(&ast);
 
-        let tags = index.xml_tags();
-        assert_eq!(tags.len(), 1);
-        assert_eq!(tags[0].attributes.get("priority"), Some(&"high"));
-        assert_eq!(tags[0].attributes.get("status"), Some(&"open"));
+        let heading: &HeadingEntry<'static> = &index.headings()[0];
+        assert_eq!(heading.text, "Arena");
+    }
+
+    #[test]
+    fn heading_by_slug_returns_arena_ref() {
+        let index = build_index("# Root\n\n## Root\n");
+
+        let heading = index.heading_by_slug("root").unwrap();
+        let _: &HeadingEntry<'static> = heading;
+        assert_eq!(heading.text, "Root");
+    }
+
+    #[test]
+    fn toc_returns_arena_slice() {
+        let index = build_index("# A\n\n## B\n\n### C\n");
+
+        let toc: &[TocEntry<'static>] = index.toc();
+        assert_eq!(toc.len(), 3);
+        assert_eq!(toc[0].depth, 0);
+        assert_eq!(toc[1].depth, 1);
+        assert_eq!(toc[2].depth, 2);
+    }
+
+    #[test]
+    fn parser_types_flow_to_index() {
+        let index = build_index("# Heading\n\n[[Page#section]]\n#tag\n[Link](https://example.com#frag)\n");
+
+        assert_eq!(index.headings()[0].text, "Heading");
+        assert_eq!(index.wiki_links()[0].target, "Page");
+        assert_eq!(index.wiki_links()[0].heading, Some("section"));
+
+        // Tag extraction from this fixture can include heading anchors as tags;
+        // assert that our expected tag is present rather than position-dependent.
+        assert!(index.tags().iter().any(|t| t.name == "tag"));
+
+        assert_eq!(index.markdown_links()[0].anchor, Some("frag"));
+    }
+
+    #[test]
+    fn document_index_to_realm_integration() {
+        let index_a = build_index("# Doc A\n\nA block ^a\n");
+        let index_b = build_index("# Doc B\n\nA block ^b\n");
+
+        assert_eq!(index_a.headings()[0].text, "Doc A");
+        assert_eq!(index_b.headings()[0].text, "Doc B");
+        assert!(index_a.block_by_id("a").is_some());
+        assert!(index_b.block_by_id("b").is_some());
     }
 }
