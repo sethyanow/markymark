@@ -23,6 +23,12 @@
       "command": "bash /Volumes/code/markymark/markymark-plugin/tests/test_select_binary.sh 2>&1",
       "error": "Exit code 1\n=== markymark-plugin tests (bundled binary model) ===\n\n\u001b[0;32mPASS\u001b[0m: select-binary.sh exists and is executable\n\u001b[0;32mPASS\u001b[0m: plugin directory structure is complete\n\u001b[0;32mPASS\u001b[0m: plugin.json is valid JSON\n\u001b[0;32mPASS\u001b[0m: .lsp.json uses ${CLAUDE_PLUGIN_ROOT} in command\n\u001b[0;32mPASS\u001b[0m: .mcp.json uses ${CLAUDE_PLUGIN_ROOT} in command\n\u001b[0;31mFAIL\u001b[0m: finds and executes bundled bin/markymark\n  Expected: BUNDLED\n  Got:      error: binary not found: /var/folders/yw/t8nf3ljj2tqb4w",
       "summary": "Failed: bash /Volumes/code/markymark/markymark-plugin/tests/test_select_binary.sh 2>&1"
+    },
+    {
+      "timestamp": "2026-02-14T03:05:13Z",
+      "command": "cargo test --package markymark-index --lib",
+      "error": "Exit code 101\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s\n     Running unittests src/lib.rs (target/debug/deps/markymark_index-0f55946a544f5b92)\nerror: test failed, to rerun pass `-p markymark-index --lib`\n\n\nrunning 18 tests\ntest document::arena_allocation_tests::heading_by_slug_returns_arena_ref ... FAILED\ntest document::arena_allocation_tests::document_index_to_realm_integration ... FAILED\ntest document::arena_allocation_tests::markdown_link_entry_uses_arena_lifeti",
+      "summary": "Failed: cargo test --package markymark-index --lib"
     }
   ]
 }
