@@ -5,6 +5,7 @@
       "id": "feature-001",
       "name": "Arena allocation: bumpalo migration for parser + index types",
       "status": "in_progress",
+      "passes": false,
       "description": "Migrate markymark-parser and markymark-index types from owned String/Vec/HashMap to arena-allocated equivalents using bumpalo. Hybrid ownership model: per-document Bump for parsed content, realm-level owned storage for cross-doc index lookups.",
       "github": {
         "issueNumber": 6,

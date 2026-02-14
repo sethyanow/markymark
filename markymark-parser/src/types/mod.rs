@@ -73,11 +73,7 @@ mod arena_allocation_tests {
         let mut props: HashMap<&str, &str> = HashMap::new();
         props.insert(arena.alloc_str("key"), arena.alloc_str("value"));
 
-        let item = ListItem::new(
-            arena.alloc_str("- test item"),
-            props,
-            &[],
-        );
+        let item = ListItem::new(arena.alloc_str("- test item"), props, &[]);
 
         assert_eq!(item.text(), "- test item");
         assert_eq!(item.properties().get("key"), Some(&"value"));

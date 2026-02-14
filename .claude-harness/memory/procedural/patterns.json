@@ -17,7 +17,9 @@
       "Range containment for nested XML document symbols",
       "LSP Content-Length framing vs MCP line-delimited JSON — NEVER mix them",
       "Arena migration works best as phased TDD: infrastructure -> parser types -> parser GREEN tests -> index types -> index GREEN tests",
-      "When teammate implementer crashes, reassign narrow-scope blocker to test-writer to preserve momentum"
+      "When teammate implementer crashes, reassign narrow-scope blocker to test-writer to preserve momentum",
+      "When harness active/archive state drifts from beads reality, reconcile by restoring in-progress feature to active.json and clearing premature archive entry before continuing implementation",
+      "For cross-agent handoff, attach full CodeRabbit plain review (including codegen prompts) as beads comments on the owning task"
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",

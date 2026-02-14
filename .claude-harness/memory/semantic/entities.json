@@ -18,6 +18,12 @@
       "type": "feature",
       "location": ".claude-harness/features/active.json",
       "relationships": ["beads epic marky-g9t", "touches parser/index/lsp/mcp", "blocked by parser regressions"]
+    },
+    {
+      "name": "marky-luy-remediation-epic",
+      "type": "feature-epic",
+      "location": "beads:marky-luy",
+      "relationships": ["child remediation epic for marky-g9t", "phases B-E drive g9t.1-g9t.7 closeout", "hard-gated by marky-bjj completion"]
     }
   ]
 }

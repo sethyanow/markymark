@@ -273,6 +273,33 @@
       "rationale": "Returning empty string for List masked bugs; callers should explicitly handle the non-string case",
       "alternatives": ["Keep returning \"\" (hides bugs)", "Panic on List (strict but may break callers)"],
       "impact": "markymark-parser/src/types/frontmatter.rs, types/mod.rs, frontmatter_and_properties.rs"
+    },
+    {
+      "id": "dec-013",
+      "timestamp": "2026-02-14T10:05:36Z",
+      "feature": "feature-001",
+      "decision": "Reopen feature-001 in harness active state and remove premature archive entry",
+      "rationale": "Beads epics/tasks show g9t remediation still in progress; keeping feature archived would hide unresolved acceptance criteria and break state alignment.",
+      "alternatives": ["Keep feature archived despite open remediation work", "Track remediation only in beads and ignore harness drift"],
+      "impact": ".claude-harness/features/active.json, .claude-harness/features/archive.json"
+    },
+    {
+      "id": "dec-014",
+      "timestamp": "2026-02-14T10:05:36Z",
+      "feature": "feature-001",
+      "decision": "Use child remediation epic marky-luy to execute unresolved g9t conformance criteria",
+      "rationale": "A focused remediation epic reduces scope creep while preserving marky-g9t as parent state anchor and existing decision history.",
+      "alternatives": ["Expand original g9t plan directly", "Create a brand-new unrelated feature epic"],
+      "impact": "beads issues marky-luy, marky-g9t, and g9t.* child tasks"
+    },
+    {
+      "id": "dec-015",
+      "timestamp": "2026-02-14T10:05:36Z",
+      "feature": "marky-bjj",
+      "decision": "Post full CodeRabbit review output (including codegen prompts) to marky-bjj for agent handoff",
+      "rationale": "Keeping review findings centralized in beads comments gives the next implementer complete context without re-running review.",
+      "alternatives": ["Post only summary bullets", "Keep review in local temp file only"],
+      "impact": "marky-bjj comments and /private/tmp/marky-bjj-coderabbit-review-full.md"
     }
   ]
 }
