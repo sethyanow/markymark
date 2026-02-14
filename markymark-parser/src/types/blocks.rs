@@ -1,20 +1,29 @@
 //! List and task structures: BlockId, BlockRef, Tag, Embed, Task, TaskState, Callout, QueryBlock.
 
+use markymark_core::prelude::*;
+
 /// Block ID (Obsidian)
 #[derive(Debug, Clone)]
 pub struct BlockId<'arena> {
     id: &'arena str,
+    /// Source range of the block ID occurrence (covers `^block-id` in source).
+    range: Range,
 }
 
 impl<'arena> BlockId<'arena> {
-    /// Create a new block ID
-    pub(crate) fn new(id: &'arena str) -> Self {
-        Self { id }
+    /// Create a new block ID with its source range.
+    pub(crate) fn new(id: &'arena str, range: Range) -> Self {
+        Self { id, range }
     }
 
     /// Get ID
     pub fn id(&self) -> &'arena str {
         self.id
+    }
+
+    /// Get the source range of this block ID.
+    pub fn range(&self) -> Range {
+        self.range
     }
 }
 

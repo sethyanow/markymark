@@ -24,6 +24,12 @@
       "type": "feature-epic",
       "location": "beads:marky-luy",
       "relationships": ["child remediation epic for marky-g9t", "phases B-E drive g9t.1-g9t.7 closeout", "hard-gated by marky-bjj completion"]
+    },
+    {
+      "name": "CountingAllocator",
+      "type": "bench-helper",
+      "location": "markymark-index/benches/memory.rs",
+      "relationships": ["wraps System allocator", "counts heap allocations for arena benchmark metrics"]
     }
   ]
 }

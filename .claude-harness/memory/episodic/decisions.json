@@ -336,6 +336,42 @@
       "rationale": "Per dec-arena-001, realm-level owned storage for cross-doc lookups. Arena-backed refs from removed docs would dangle. Owned copies survive doc removal.",
       "alternatives": ["Keep iterating docs and returning refs - breaks on doc remove", "Separate realm arena for cross-doc - adds complexity"],
       "impact": "markymark-index/src/realm.rs, lookup_heading/block/tag_counts API change"
+    },
+    {
+      "id": "dec-020",
+      "timestamp": "2026-02-15T00:15:00Z",
+      "feature": "marky-g9t.7",
+      "decision": "extract_list_items returns Vec<&ListItem> instead of Vec<ListItem> to avoid ArenaHashMap::clone",
+      "rationale": "Cloning ListItem clones its ArenaHashMap. hashbrown HashMap with bumpalo allocator triggers SIGSEGV on clone. Returning references to arena-allocated items avoids clone entirely.",
+      "alternatives": ["Fix ArenaHashMap::clone (investigate hashbrown/bumpalo)", "Use Vec<(key,value)> instead of HashMap for properties"],
+      "impact": "markymark-parser ast.rs extract_list_items, collect_top_level_list_items"
+    },
+    {
+      "id": "dec-021",
+      "timestamp": "2026-02-15T00:15:00Z",
+      "feature": "marky-0gl",
+      "decision": "Use arena-allocated empty slice for ListItem children_list instead of &[]",
+      "rationale": "Literal &[] creates reference to stack-local temporary; returning it causes use-after-free when ListItem outlives the function. bumpalo::collections::Vec::new_in(arena).into_bump_slice() gives valid &'arena [ListItem].",
+      "alternatives": ["static EMPTY: &[ListItem] (requires const-constructible ListItem)", "Allocate empty array in arena upfront"],
+      "impact": "markymark-parser types/elements.rs ListItem::from_node"
+    },
+    {
+      "id": "dec-022",
+      "timestamp": "2026-02-15T00:15:00Z",
+      "feature": "marky-g9t.7",
+      "decision": "Custom CountingAllocator in benchmark binary for heap allocation metrics",
+      "rationale": "Task required allocation count via global allocator counter. Wrapping System allocator with atomic counter gives per-iteration alloc count. Note: bumpalo uses its own allocation so count includes arena chunk growth.",
+      "alternatives": ["alloc_counter crate (older, potential compat issues)", "dhat heap profiler"],
+      "impact": "markymark-index benches/memory.rs"
+    },
+    {
+      "id": "dec-023",
+      "timestamp": "2026-02-15T01:00:00Z",
+      "feature": "feature-001",
+      "decision": "Extend BlockId with source Range; compute from regex full match in extract_block_ids",
+      "rationale": "BlockEntry used hardcoded Range(0,0,0,0), causing go-to-definition for ^block-id to always jump to file start. Regex-extracted types should carry source position for LSP navigation.",
+      "alternatives": ["Return separate struct with id+range", "Compute range only in index layer"],
+      "impact": "markymark-parser types/blocks.rs BlockId, extract.rs extract_block_ids, markymark-index document.rs BlockEntry"
     }
   ]
 }

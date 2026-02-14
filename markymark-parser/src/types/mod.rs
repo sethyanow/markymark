@@ -131,13 +131,15 @@ mod arena_allocation_tests {
         assert_eq!(def.title(), Some("Title"));
     }
 
-    /// BlockId uses arena-allocated id
+    /// BlockId uses arena-allocated id and carries source range
     #[test]
     fn block_id_uses_arena_lifetime() {
         let arena = Bump::new();
-        let id = BlockId::new(arena.alloc_str("abc123"));
+        let range = Range::new(Position::new(0, 0), Position::new(0, 7));
+        let id = BlockId::new(arena.alloc_str("abc123"), range);
 
         assert_eq!(id.id(), "abc123");
+        assert_eq!(id.range().start.line, 0);
     }
 
     /// BlockRef uses arena-allocated uuid
