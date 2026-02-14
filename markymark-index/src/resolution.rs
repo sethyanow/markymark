@@ -107,7 +107,7 @@ pub fn resolve_markdown_link(
 pub fn resolve_block_ref(realm: &RealmIndex, id: &str) -> Option<ResolvedTarget> {
     let (uri, block) = realm.lookup_block(id)?;
     Some(ResolvedTarget::Block {
-        uri: uri.clone(),
-        id: block.id.to_string(),
+        uri,
+        id: block.id,
     })
 }
