@@ -24,6 +24,7 @@ insta = { workspace = true }
 proptest = { workspace = true }
 criterion = { workspace = true }
 memory-stats = "1.2"
+libc = "0.2.182"
 
 [[bench]]
 name = "memory"
