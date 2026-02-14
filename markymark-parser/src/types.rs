@@ -672,6 +672,7 @@ pub struct XmlTag {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(unused_variables)] // RED phase: arena variables are placeholders until types are migrated
 mod arena_allocation_tests {
     use super::*;
     use bumpalo::Bump;
