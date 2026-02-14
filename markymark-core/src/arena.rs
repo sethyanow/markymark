@@ -28,8 +28,7 @@ pub type ArenaSlice<'a, T> = &'a [T];
 ///
 /// Keys, values, and internal buckets are allocated in the arena.
 /// Use [`new_arena_hashmap`] to construct.
-pub type ArenaHashMap<'a, K, V> =
-    HashMap<K, V, hashbrown::DefaultHashBuilder, &'a Bump>;
+pub type ArenaHashMap<'a, K, V> = HashMap<K, V, hashbrown::DefaultHashBuilder, &'a Bump>;
 
 /// Create an arena-allocated HashMap.
 ///
