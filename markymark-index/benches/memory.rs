@@ -1,11 +1,12 @@
 //! Memory and performance benchmarks for arena allocation.
 //!
-//! Measures: indexing N documents (time, peak RSS), allocation count, re-parse time.
-//! Arena allocation reduces heap allocations; bumpalo uses per-document bump allocation.
+//! Measures: indexing N documents (time, peak RSS), allocation count, re-parse time,
+//! memory footprint, and concurrent indexing throughput.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
 
 /// Counting allocator: wraps System and increments a counter on each alloc.
 /// Note: Bumpalo uses its own allocation, so this counts only non-arena heap allocations
@@ -36,7 +37,10 @@ static A: CountingAllocator = CountingAllocator;
 use markymark_core::DocumentUri;
 use markymark_index::{DocumentIndex, RealmIndex};
 use markymark_parser::Parser;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// Directories to exclude when collecting .md files.
+const EXCLUDE_DIRS: &[&str] = &["node_modules"];
 
 fn sample_doc(n: usize) -> String {
     format!(
@@ -52,6 +56,55 @@ More content here.
 "#,
         n, n
     )
+}
+
+/// Path to real corpus fixture (epstein_20250227_all_in_one.md, ~492KB).
+/// Resolves relative to workspace root (parent of markymark-index).
+fn real_corpus_path() -> Option<PathBuf> {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workspace = manifest.ancestors().nth(1)?;
+    let path = workspace.join("epstein_20250227_all_in_one.md");
+    path.exists().then_some(path)
+}
+
+/// Path to docs corpus directory. Set MARKYMARK_BENCH_CORPUS_DIR or use default /Volumes/code/gigapowers.
+fn docs_corpus_dir() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("MARKYMARK_BENCH_CORPUS_DIR") {
+        let p = PathBuf::from(dir);
+        if p.is_dir() {
+            return Some(p);
+        }
+    }
+    let default = PathBuf::from("/Volumes/code/gigapowers");
+    default.is_dir().then_some(default)
+}
+
+/// Recursively collect .md file paths, excluding EXCLUDE_DIRS. Caps at max_files.
+fn collect_md_files(dir: &Path, max_files: usize) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>, max_files: usize) {
+        if out.len() >= max_files {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if EXCLUDE_DIRS.contains(&name) {
+                    continue;
+                }
+                walk(&path, out, max_files);
+            } else if path.extension().map_or(false, |e| e == "md") {
+                out.push(path);
+                if out.len() >= max_files {
+                    return;
+                }
+            }
+        }
+    }
+    walk(dir, &mut out, max_files);
+    out
 }
 
 fn index_n_documents(n: usize) -> RealmIndex {
@@ -103,16 +156,179 @@ fn bench_reparse_single_doc(c: &mut Criterion) {
     });
 }
 
-/// Peak RSS / workload for indexing N documents.
-fn bench_peak_rss_indexing(c: &mut Criterion) {
-    let mut group = c.benchmark_group("memory");
-    group.sample_size(10);
-    group.bench_function("peak_rss_after_index_100", |b| {
+/// Parse + index real large markdown corpus (~492KB). Skips if fixture missing.
+fn bench_reparse_real_large_doc(c: &mut Criterion) {
+    let path = match real_corpus_path() {
+        Some(p) => p,
+        None => {
+            eprintln!("  [memory] Skipping reparse_real_large_doc: epstein_20250227_all_in_one.md not found");
+            return;
+        }
+    };
+    let content = std::fs::read_to_string(&path).expect("read fixture");
+    let size_kb = content.len() / 1024;
+    eprintln!("  [memory] reparse_real_large_doc: fixture {} KB", size_kb);
+
+    let mut group = c.benchmark_group("real_corpus");
+    group.sample_size(20);
+    group.bench_function("reparse_real_large_doc", |b| {
         b.iter(|| {
-            let realm = index_n_documents(100);
-            black_box(realm.document_count());
+            let index = reparse_single_document(&content);
+            black_box(index.headings().len())
         })
     });
+}
+
+/// Index real corpus split into sections (by ## headings). Each section = 1 doc.
+fn bench_index_real_corpus(c: &mut Criterion) {
+    let path = match real_corpus_path() {
+        Some(p) => p,
+        None => {
+            eprintln!("  [memory] Skipping index_real_corpus: epstein_20250227_all_in_one.md not found");
+            return;
+        }
+    };
+    let content = std::fs::read_to_string(&path).expect("read fixture");
+    // Split on "## " to get sections; first segment may be preamble (e.g. "# Data...")
+    let sections: Vec<String> = content
+        .split("\n## ")
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| {
+            if s.starts_with('#') {
+                s.to_string()
+            } else {
+                format!("## {}", s)
+            }
+        })
+        .collect();
+    let n = sections.len();
+    eprintln!("  [memory] index_real_corpus: {} sections from fixture", n);
+
+    let mut group = c.benchmark_group("real_corpus");
+    group.sample_size(20);
+    group.bench_function("index_real_corpus", |b| {
+        b.iter(|| {
+            let realm = index_documents_from_slices(&sections);
+            black_box(realm.document_count())
+        })
+    });
+}
+
+fn index_documents_from_slices(sections: &[String]) -> RealmIndex {
+    let mut parser = Parser::new().expect("parser init");
+    let mut realm = RealmIndex::new();
+
+    for (i, content) in sections.iter().enumerate() {
+        let uri = DocumentUri::from_file_path(&PathBuf::from(format!("/real/doc{}.md", i)));
+        let ast = parser.parse(content).expect("parse");
+        let index = DocumentIndex::from_ast(ast);
+        realm.add_document(uri, index);
+    }
+
+    realm
+}
+
+/// Index documents from file paths. Content loaded once at init.
+fn index_documents_from_paths(paths: &[PathBuf], contents: &[String]) -> RealmIndex {
+    let mut parser = Parser::new().expect("parser init");
+    let mut realm = RealmIndex::new();
+
+    for (path, content) in paths.iter().zip(contents.iter()) {
+        let uri = DocumentUri::from_file_path(path);
+        let ast = parser.parse(content).expect("parse");
+        let index = DocumentIndex::from_ast(ast);
+        realm.add_document(uri, index);
+    }
+
+    realm
+}
+
+/// Index .md files from a directory (e.g. gigapowers). Skips if dir missing.
+/// Use MARKYMARK_BENCH_CORPUS_DIR or defaults to /Volumes/code/gigapowers.
+fn bench_index_docs_dir(c: &mut Criterion) {
+    let dir = match docs_corpus_dir() {
+        Some(d) => d,
+        None => {
+            eprintln!(
+                "  [memory] Skipping index_docs_dir: set MARKYMARK_BENCH_CORPUS_DIR or add /Volumes/code/gigapowers"
+            );
+            return;
+        }
+    };
+
+    let paths = collect_md_files(&dir, 1000);
+    if paths.is_empty() {
+        eprintln!("  [memory] Skipping index_docs_dir: no .md files found in {:?}", dir);
+        return;
+    }
+
+    let pairs: Vec<(PathBuf, String)> = paths
+        .into_iter()
+        .filter_map(|p| std::fs::read_to_string(&p).ok().map(|c| (p, c)))
+        .collect();
+    let n = pairs.len();
+    if n == 0 {
+        eprintln!("  [memory] Skipping index_docs_dir: no readable .md files");
+        return;
+    }
+    let (paths, contents): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
+    let total_kb = contents.iter().map(|s| s.len()).sum::<usize>() / 1024;
+    eprintln!(
+        "  [memory] index_docs_dir: {} files, {} KB total from {:?}",
+        n, total_kb, dir
+    );
+
+    let mut group = c.benchmark_group("real_corpus");
+    group.sample_size(10);
+    group.bench_function("index_docs_dir", |b| {
+        b.iter(|| {
+            let realm = index_documents_from_paths(&paths, &contents);
+            black_box(realm.document_count())
+        })
+    });
+}
+
+/// Peak RSS and resident memory after indexing 100 documents.
+fn bench_memory_footprint(c: &mut Criterion) {
+    static REPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let mut group = c.benchmark_group("memory");
+    group.sample_size(10);
+    group.bench_function("memory_after_index_100", |b| {
+        b.iter(|| {
+            let realm = index_n_documents(100);
+            let resident_mb = memory_stats::memory_stats()
+                .map(|m| m.physical_mem / (1024 * 1024))
+                .unwrap_or(0);
+            let peak_rss_kb = get_maxrss_kb();
+            if !REPORTED.swap(true, Ordering::Relaxed) {
+                eprintln!(
+                    "  [memory] memory_after_index_100: {} MiB resident, {} KB peak RSS",
+                    resident_mb, peak_rss_kb
+                );
+            }
+            black_box(realm);
+            black_box((resident_mb, peak_rss_kb))
+        })
+    });
+}
+
+/// Peak RSS (max resident set size) in KB. Unix only.
+fn get_maxrss_kb() -> u64 {
+    #[cfg(unix)]
+    {
+        let mut usage = std::mem::MaybeUninit::uninit();
+        if unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) } == 0 {
+            let usage = unsafe { usage.assume_init() };
+            // macOS: bytes; Linux: KB
+            #[cfg(target_os = "macos")]
+            return (usage.ru_maxrss as u64) / 1024;
+            #[cfg(not(target_os = "macos"))]
+            return usage.ru_maxrss as u64;
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = ();
+    0
 }
 
 /// Allocation count for indexing 100 documents.
@@ -135,12 +351,52 @@ fn bench_allocation_count_index_100(c: &mut Criterion) {
     });
 }
 
+/// Concurrent indexing: N threads each building a realm with 100 docs.
+fn bench_concurrent_index_4_threads(c: &mut Criterion) {
+    c.bench_function("concurrent_index_4x100_docs", |b| {
+        b.iter(|| {
+            let handles: Vec<_> = (0..4)
+                .map(|_| {
+                    thread::spawn(|| {
+                        let realm = index_n_documents(100);
+                        black_box(realm.document_count())
+                    })
+                })
+                .collect();
+            let counts: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+            black_box(counts)
+        })
+    });
+}
+
+fn bench_concurrent_index_8_threads(c: &mut Criterion) {
+    c.bench_function("concurrent_index_8x100_docs", |b| {
+        b.iter(|| {
+            let handles: Vec<_> = (0..8)
+                .map(|_| {
+                    thread::spawn(|| {
+                        let realm = index_n_documents(100);
+                        black_box(realm.document_count())
+                    })
+                })
+                .collect();
+            let counts: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+            black_box(counts)
+        })
+    });
+}
+
 criterion_group!(
     benches,
     bench_index_10_docs,
     bench_index_100_docs,
     bench_reparse_single_doc,
-    bench_peak_rss_indexing,
+    bench_reparse_real_large_doc,
+    bench_index_real_corpus,
+    bench_index_docs_dir,
+    bench_memory_footprint,
     bench_allocation_count_index_100,
+    bench_concurrent_index_4_threads,
+    bench_concurrent_index_8_threads,
 );
 criterion_main!(benches);
