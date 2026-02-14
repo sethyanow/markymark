@@ -2,20 +2,22 @@
   "version": 3,
   "patterns": {
     "codePatterns": [
-      "Plugin hooks use hooks.json with {description, hooks: {EventName: [{matcher, hooks: [{type, command, timeout}]}]}} structure",
-      "Hook scripts receive JSON on stdin, output JSON to stdout, use exit 0 for no-op on non-matching files",
-      "Test files follow pass/fail counter pattern with colored output and exit 1 on any failure",
-      "CoreEngine trait in core, transport crates are thin adapters",
-      "convert/state/server module separation in markymark-lsp for testability",
-      "FULL text document sync (not INCREMENTAL) for v1 LSP",
-      "Drop read lock before async publish_diagnostics (deadlock prevention)",
-      "Use slugify(heading.text) for duplicate detection, not heading.slug",
-      "Single-pass stack tokenizer for XML extraction (not multi-regex)",
       "ChildGuard RAII for process cleanup in integration tests",
-      "rmcp CallToolResult::structured and structured_error for MCP payloads",
+      "CoreEngine trait in core, transport crates are thin adapters",
       "Deterministic sort by URI then range for stable output",
+      "Drop read lock before async publish_diagnostics (deadlock prevention)",
+      "FULL text document sync (not INCREMENTAL) for v1 LSP",
+      "Hook scripts receive JSON on stdin, output JSON to stdout, use exit 0 for no-op on non-matching files",
+      "LSP Content-Length framing vs MCP line-delimited JSON — NEVER mix them",
+      "Plugin hooks use hooks.json with {description, hooks: {EventName: [{matcher, hooks: [{type, command, timeout}]}]}} structure",
       "Range containment for nested XML document symbols",
-      "LSP Content-Length framing vs MCP line-delimited JSON — NEVER mix them"
+      "Run local SAST baseline (cargo audit, cargo deny, semgrep) before enabling new CI workflow to establish signal baseline",
+      "Single-pass stack tokenizer for XML extraction (not multi-regex)",
+      "Test files follow pass/fail counter pattern with colored output and exit 1 on any failure",
+      "Use slugify(heading.text) for duplicate detection, not heading.slug",
+      "When cargo-deny config fails, validate against installed tool version schema before assuming policy error",
+      "convert/state/server module separation in markymark-lsp for testability",
+      "rmcp CallToolResult::structured and structured_error for MCP payloads"
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",
@@ -24,13 +26,14 @@
       "crates": "markymark-<role> (e.g., markymark-core, markymark-parser)"
     },
     "projectSpecificRules": [
-      "Plugin directory is markymark-plugin/ with .claude-plugin/plugin.json manifest",
       "${CLAUDE_PLUGIN_ROOT} is the standard variable for plugin-relative paths in commands",
+      "Checkpoint updates must include claude-progress, working-context, and memory layer persistence",
       "Existing tests use set -euo pipefail - be aware this causes early abort on command failures in non-conditional contexts",
+      "Plugin directory is markymark-plugin/ with .claude-plugin/plugin.json manifest",
       "Rust integration tests in tests/ are standalone crates — each file gets its own imports, no mod.rs needed",
       "Shared test helpers must be duplicated in tests/ files (pub(crate) not accessible from integration tests)",
-      "require_marksman! macro for graceful test skip when marksman unavailable in CI",
-      "Use exact count assertions (assert_eq!) not >= in rename/edit tests — >= masked a closing-tag rename bug"
+      "Use exact count assertions (assert_eq!) not >= in rename/edit tests — >= masked a closing-tag rename bug",
+      "require_marksman! macro for graceful test skip when marksman unavailable in CI"
     ],
     "rustPatterns": [
       {
