@@ -36,9 +36,9 @@ impl<'arena> Element<'arena> {
         arena: &'arena bumpalo::Bump,
     ) -> CoreResult<Option<Self>> {
         match node.kind() {
-            "atx_heading" | "setext_heading" => {
-                Ok(Some(Element::Heading(Heading::from_node(node, source, arena)?)))
-            }
+            "atx_heading" | "setext_heading" => Ok(Some(Element::Heading(Heading::from_node(
+                node, source, arena,
+            )?))),
             "paragraph" => Ok(Some(Element::Paragraph(Paragraph::from_node(
                 node, source, arena,
             )?))),
@@ -200,10 +200,7 @@ impl<'arena> ListItem<'arena> {
         source: &str,
         arena: &'arena bumpalo::Bump,
     ) -> CoreResult<Self> {
-        let text = node
-            .utf8_text(source.as_bytes())
-            .unwrap_or("")
-            .trim();
+        let text = node.utf8_text(source.as_bytes()).unwrap_or("").trim();
 
         let mut properties_map = HashMap::new();
         for line in text.lines() {
@@ -223,10 +220,16 @@ impl<'arena> ListItem<'arena> {
             properties_map.insert(arena_alloc_str(arena, key), arena_alloc_str(arena, value));
         }
 
+        let children_list = if let Some(child_list) = Self::find_first_list_descendant(node) {
+            Self::list_items_from_list_node(child_list, source, arena)?
+        } else {
+            &[]
+        };
+
         Ok(Self {
             text: arena_alloc_str(arena, text),
             properties_map,
-            children_list: &[],
+            children_list,
         })
     }
 
@@ -252,8 +255,6 @@ impl<'arena> ListItem<'arena> {
         Ok(items.into_bump_slice())
     }
 
-    // TODO: Used for nested list extraction in future enhancements
-    #[allow(dead_code)]
     fn find_first_list_descendant(node: Node) -> Option<Node> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -920,10 +921,7 @@ mod arena_allocation_tests {
     #[test]
     fn callout_uses_arena_lifetime() {
         let arena = Bump::new();
-        let callout = Callout::new(
-            arena.alloc_str("note"),
-            Some(arena.alloc_str("Pro Tip")),
-        );
+        let callout = Callout::new(arena.alloc_str("note"), Some(arena.alloc_str("Pro Tip")));
 
         assert_eq!(callout.callout_type(), "note");
         assert_eq!(callout.title(), Some("Pro Tip"));
@@ -943,7 +941,10 @@ mod arena_allocation_tests {
     fn frontmatter_uses_arena_lifetime() {
         let arena = Bump::new();
         let mut data: HashMap<&str, FrontmatterValue> = HashMap::new();
-        data.insert(arena.alloc_str("title"), FrontmatterValue::String(arena.alloc_str("My Page")));
+        data.insert(
+            arena.alloc_str("title"),
+            FrontmatterValue::String(arena.alloc_str("My Page")),
+        );
 
         let fm = Frontmatter::new(data);
 
@@ -955,7 +956,10 @@ mod arena_allocation_tests {
     fn properties_uses_arena_lifetime() {
         let arena = Bump::new();
         let mut data: HashMap<&str, PropertyValue> = HashMap::new();
-        data.insert(arena.alloc_str("type"), PropertyValue::String(arena.alloc_str("project")));
+        data.insert(
+            arena.alloc_str("type"),
+            PropertyValue::String(arena.alloc_str("project")),
+        );
 
         let props = Properties::new(data);
 

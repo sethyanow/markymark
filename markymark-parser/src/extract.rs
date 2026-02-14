@@ -207,7 +207,8 @@ pub fn extract_link_definitions<'a>(
         if let (Some(label_match), Some(url_match)) = (captures.get(1), captures.get(2)) {
             let label = arena_alloc_str(arena, label_match.as_str());
             let url = arena_alloc_str(arena, url_match.as_str());
-            let title: Option<&'a str> = captures.get(3).map(|m| arena_alloc_str(arena, m.as_str()));
+            let title: Option<&'a str> =
+                captures.get(3).map(|m| arena_alloc_str(arena, m.as_str()));
             defs.push(LinkDefinition::new(label, url, title));
         }
     }
@@ -348,7 +349,8 @@ pub fn extract_tasks<'a>(
     // Extract marker tasks
     for captures in marker_re.captures_iter(source) {
         if let Some(marker_match) = captures.get(1) {
-            tasks.push(Task::new(TaskState::new(arena_alloc_str(arena, 
+            tasks.push(Task::new(TaskState::new(arena_alloc_str(
+                arena,
                 &marker_match.as_str().to_lowercase(),
             ))));
         }
@@ -371,7 +373,8 @@ pub fn extract_callouts<'a>(
     for captures in re.captures_iter(source) {
         if let (Some(type_match), title_match) = (captures.get(1), captures.get(2)) {
             let callout_type = arena_alloc_str(arena, type_match.as_str());
-            let title: Option<&'a str> = title_match.map(|m| arena_alloc_str(arena, m.as_str().trim()));
+            let title: Option<&'a str> =
+                title_match.map(|m| arena_alloc_str(arena, m.as_str().trim()));
             callouts.push(Callout::new(callout_type, title));
         }
     }
@@ -392,7 +395,10 @@ pub fn extract_query_blocks<'a>(
 
     for captures in re.captures_iter(source) {
         if let Some(query_match) = captures.get(1) {
-            queries.push(QueryBlock::new(arena_alloc_str(arena, query_match.as_str().trim())));
+            queries.push(QueryBlock::new(arena_alloc_str(
+                arena,
+                query_match.as_str().trim(),
+            )));
         }
     }
 
@@ -445,18 +451,27 @@ pub fn extract_page_properties<'a>(
             let value = if value_str.contains("[[") {
                 // Check if it's multiple page refs (list)
                 if value_str.matches("[[").count() > 1 {
-                    // Multiple page refs - it's a list
-                    // Note: We can't allocate a slice in arena for this easily
-                    // For now, use empty list - this needs more complex handling
-                    PropertyValue::List(&[])
+                    let mut values = bumpalo::collections::Vec::new_in(arena);
+                    for item in value_str.split(',') {
+                        let trimmed = item.trim();
+                        if !trimmed.is_empty() {
+                            values.push(arena_alloc_str(arena, trimmed));
+                        }
+                    }
+                    PropertyValue::List(values.into_bump_slice())
                 } else {
                     // Single page reference
                     PropertyValue::PageRef(arena_alloc_str(arena, value_str))
                 }
             } else if value_str.contains(',') {
-                // List - allocate in arena
-                // Can't easily convert Vec to arena slice here without more allocation
-                PropertyValue::List(&[])
+                let mut values = bumpalo::collections::Vec::new_in(arena);
+                for item in value_str.split(',') {
+                    let trimmed = item.trim();
+                    if !trimmed.is_empty() {
+                        values.push(arena_alloc_str(arena, trimmed));
+                    }
+                }
+                PropertyValue::List(values.into_bump_slice())
             } else {
                 // String
                 PropertyValue::String(arena_alloc_str(arena, value_str))
@@ -683,8 +698,15 @@ fn parse_simple_yaml<'a>(content: &str, arena: &'a bumpalo::Bump) -> Frontmatter
             let value_str = line[colon_pos + 1..].trim();
 
             let value = if value_str.starts_with('[') && value_str.ends_with(']') {
-                // List value - for now use empty slice, would need more complex arena allocation
-                FrontmatterValue::List(&[])
+                let inner = &value_str[1..value_str.len() - 1];
+                let mut items = bumpalo::collections::Vec::new_in(arena);
+                for item in inner.split(',') {
+                    let trimmed = item.trim();
+                    if !trimmed.is_empty() {
+                        items.push(arena_alloc_str(arena, trimmed));
+                    }
+                }
+                FrontmatterValue::List(items.into_bump_slice())
             } else {
                 // String value
                 FrontmatterValue::String(arena_alloc_str(arena, value_str))

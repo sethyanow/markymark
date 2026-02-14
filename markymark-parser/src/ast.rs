@@ -45,9 +45,7 @@ impl Ast {
 
         // Transmute arena reference to 'static for storage
         // SAFETY: The arena is owned by Self, so the reference is valid for Self's lifetime
-        let arena_ref: &'static bumpalo::Bump = unsafe {
-            &*(&arena as *const bumpalo::Bump)
-        };
+        let arena_ref: &'static bumpalo::Bump = unsafe { &*(&arena as *const bumpalo::Bump) };
 
         let mut root_elements = Vec::new();
 
@@ -101,7 +99,11 @@ impl Ast {
 
     /// Extract all link definitions
     pub fn extract_link_definitions(&self) -> Vec<LinkDefinition<'static>> {
-        crate::extract::extract_link_definitions(&self.root_elements, &self.source, self.arena_ref())
+        crate::extract::extract_link_definitions(
+            &self.root_elements,
+            &self.source,
+            self.arena_ref(),
+        )
     }
 
     /// Extract all block IDs (Obsidian)
