@@ -47,6 +47,9 @@ hashbrown = "0.15"
 insta = { version = "1.42", features = ["yaml"] }
 proptest = "1.5"
 
+# Benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
 # Error handling
 thiserror = "2.0"
 anyhow = "1.0"
