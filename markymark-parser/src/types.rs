@@ -1,36 +1,56 @@
+//! Parser types for arena-allocated markdown AST.
+//!
+//! All types use `'arena` lifetime for borrowed data, enabling efficient
+//! bulk deallocation via bumpalo arenas.
+
 use markymark_core::prelude::*;
 use std::collections::HashMap;
 use tree_sitter::Node;
 
+/// Allocate a string in the arena and return it as `&'arena str`.
+/// This helper is needed because `Bump::alloc_str` returns `&mut str`,
+/// which doesn't automatically coerce in all contexts.
+#[inline]
+fn arena_alloc_str<'a>(arena: &'a bumpalo::Bump, s: &str) -> &'a str {
+    let allocated: &mut str = arena.alloc_str(s);
+    allocated
+}
+
 /// An element in the markdown AST
 #[derive(Debug, Clone)]
-pub enum Element {
+pub enum Element<'arena> {
     /// Heading element
-    Heading(Heading),
+    Heading(Heading<'arena>),
     /// Paragraph element
-    Paragraph(Paragraph),
+    Paragraph(Paragraph<'arena>),
     /// List item
-    ListItem(ListItem),
+    ListItem(ListItem<'arena>),
     /// Other elements (placeholder for now)
     Other,
 }
 
-impl Element {
-    pub(crate) fn from_node(node: Node, source: &str) -> CoreResult<Option<Self>> {
+impl<'arena> Element<'arena> {
+    pub(crate) fn from_node(
+        node: Node,
+        source: &str,
+        arena: &'arena bumpalo::Bump,
+    ) -> CoreResult<Option<Self>> {
         match node.kind() {
-            "atx_heading" | "setext_heading" => {
-                Ok(Some(Element::Heading(Heading::from_node(node, source)?)))
-            }
-            "paragraph" => Ok(Some(Element::Paragraph(Paragraph::from_node(
-                node, source,
+            "atx_heading" | "setext_heading" => Ok(Some(Element::Heading(Heading::from_node(
+                node, source, arena,
             )?))),
-            "list_item" => Ok(Some(Element::ListItem(ListItem::from_node(node, source)?))),
+            "paragraph" => Ok(Some(Element::Paragraph(Paragraph::from_node(
+                node, source, arena,
+            )?))),
+            "list_item" => Ok(Some(Element::ListItem(ListItem::from_node(
+                node, source, arena,
+            )?))),
             _ => Ok(None), // Skip unknown node types for now
         }
     }
 
     /// Try to get as heading
-    pub fn as_heading(&self) -> Option<&Heading> {
+    pub fn as_heading(&self) -> Option<&Heading<'arena>> {
         match self {
             Element::Heading(h) => Some(h),
             _ => None,
@@ -38,7 +58,7 @@ impl Element {
     }
 
     /// Try to get as paragraph
-    pub fn as_paragraph(&self) -> Option<&Paragraph> {
+    pub fn as_paragraph(&self) -> Option<&Paragraph<'arena>> {
         match self {
             Element::Paragraph(p) => Some(p),
             _ => None,
@@ -48,14 +68,14 @@ impl Element {
 
 /// A heading
 #[derive(Debug, Clone)]
-pub struct Heading {
+pub struct Heading<'arena> {
     level: u8,
-    text: String,
+    text: &'arena str,
     range: Range,
 }
 
-impl Heading {
-    fn from_node(node: Node, source: &str) -> CoreResult<Self> {
+impl<'arena> Heading<'arena> {
+    fn from_node(node: Node, source: &str, arena: &'arena bumpalo::Bump) -> CoreResult<Self> {
         let level = match node.kind() {
             "atx_heading" => {
                 // Count # symbols
@@ -98,6 +118,9 @@ impl Heading {
             ),
         );
 
+        // Allocate text in arena
+        let text = arena_alloc_str(arena, &text);
+
         Ok(Self { level, text, range })
     }
 
@@ -107,8 +130,8 @@ impl Heading {
     }
 
     /// Get heading text
-    pub fn text(&self) -> &str {
-        &self.text
+    pub fn text(&self) -> &'arena str {
+        self.text
     }
 
     /// Get range
@@ -117,26 +140,25 @@ impl Heading {
     }
 
     /// Create a heading directly (used for Logseq-style headings in list items).
-    pub(crate) fn new(level: u8, text: String, range: Range) -> Self {
+    pub(crate) fn new(level: u8, text: &'arena str, range: Range) -> Self {
         Self { level, text, range }
     }
 }
 
 /// A paragraph
 #[derive(Debug, Clone)]
-pub struct Paragraph {
-    text: String,
+pub struct Paragraph<'arena> {
+    text: &'arena str,
     #[allow(dead_code)]
     range: Range,
 }
 
-impl Paragraph {
-    fn from_node(node: Node, source: &str) -> CoreResult<Self> {
+impl<'arena> Paragraph<'arena> {
+    fn from_node(node: Node, source: &str, arena: &'arena bumpalo::Bump) -> CoreResult<Self> {
         let text = node
             .utf8_text(source.as_bytes())
             .map_err(|e| CoreError::Message(format!("UTF-8 error: {}", e)))?
-            .trim()
-            .to_string();
+            .trim();
 
         let range = Range::new(
             Position::new(
@@ -149,35 +171,36 @@ impl Paragraph {
             ),
         );
 
+        // Allocate text in arena
+        let text = arena_alloc_str(arena, text);
+
         Ok(Self { text, range })
     }
 
     /// Get paragraph text
-    pub fn text(&self) -> &str {
-        &self.text
+    pub fn text(&self) -> &'arena str {
+        self.text
     }
 }
 
 /// A list item
 #[derive(Debug, Clone)]
-pub struct ListItem {
+pub struct ListItem<'arena> {
     #[allow(dead_code)]
-    text: String,
+    text: &'arena str,
     #[allow(dead_code)]
-    properties_map: std::collections::HashMap<String, String>,
+    properties_map: HashMap<&'arena str, &'arena str>,
     #[allow(dead_code)]
-    children_list: Vec<ListItem>,
+    children_list: &'arena [ListItem<'arena>],
 }
 
-impl ListItem {
-    pub(crate) fn from_node(node: Node, source: &str) -> CoreResult<Self> {
-        use std::collections::HashMap;
-
-        let text = node
-            .utf8_text(source.as_bytes())
-            .unwrap_or("")
-            .trim()
-            .to_string();
+impl<'arena> ListItem<'arena> {
+    pub(crate) fn from_node(
+        node: Node,
+        source: &str,
+        arena: &'arena bumpalo::Bump,
+    ) -> CoreResult<Self> {
+        let text = node.utf8_text(source.as_bytes()).unwrap_or("").trim();
 
         let mut properties_map = HashMap::new();
         for line in text.lines() {
@@ -193,33 +216,43 @@ impl ListItem {
                 continue;
             }
 
-            properties_map.insert(key.to_string(), value.to_string());
+            // Allocate key and value in arena
+            properties_map.insert(arena_alloc_str(arena, key), arena_alloc_str(arena, value));
         }
 
+        let children_list = if let Some(child_list) = Self::find_first_list_descendant(node) {
+            Self::list_items_from_list_node(child_list, source, arena)?
+        } else {
+            &[]
+        };
+
         Ok(Self {
-            text,
+            text: arena_alloc_str(arena, text),
             properties_map,
-            children_list: Vec::new(),
+            children_list,
         })
     }
 
-    pub(crate) fn list_items_from_list_node(node: Node, source: &str) -> CoreResult<Vec<ListItem>> {
-        let mut items = Vec::new();
+    pub(crate) fn list_items_from_list_node(
+        node: Node,
+        source: &str,
+        arena: &'arena bumpalo::Bump,
+    ) -> CoreResult<&'arena [ListItem<'arena>]> {
+        let mut items = bumpalo::collections::Vec::new_in(arena);
 
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "list_item" {
-                let mut item = Self::from_node(child, source)?;
+                let item = Self::from_node(child, source, arena)?;
 
-                if let Some(sublist) = Self::find_first_list_descendant(child) {
-                    item.children_list = Self::list_items_from_list_node(sublist, source)?;
-                }
+                // Note: children_list population would require recursive arena allocation
+                // For now, we leave it empty - this can be enhanced later
 
                 items.push(item);
             }
         }
 
-        Ok(items)
+        Ok(items.into_bump_slice())
     }
 
     fn find_first_list_descendant(node: Node) -> Option<Node> {
@@ -238,39 +271,39 @@ impl ListItem {
     }
 
     /// Get list item properties
-    pub fn properties(&self) -> &std::collections::HashMap<String, String> {
+    pub fn properties(&self) -> &HashMap<&'arena str, &'arena str> {
         &self.properties_map
     }
 
     /// Get child list items
-    pub fn children(&self) -> Option<&[ListItem]> {
+    pub fn children(&self) -> Option<&'arena [ListItem<'arena>]> {
         if self.children_list.is_empty() {
             None
         } else {
-            Some(&self.children_list)
+            Some(self.children_list)
         }
     }
 }
 
-// Placeholder types for extraction (minimal implementations)
+// Extraction types (created via `new()` functions, used by extract module)
 
 /// A wiki link
 #[derive(Debug, Clone)]
-pub struct WikiLink {
-    target: String,
-    alias: Option<String>,
-    heading: Option<String>,
-    block_id: Option<String>,
+pub struct WikiLink<'arena> {
+    target: &'arena str,
+    alias: Option<&'arena str>,
+    heading: Option<&'arena str>,
+    block_id: Option<&'arena str>,
     range: Range,
 }
 
-impl WikiLink {
+impl<'arena> WikiLink<'arena> {
     /// Create a new wiki link
     pub(crate) fn new(
-        target: String,
-        alias: Option<String>,
-        heading: Option<String>,
-        block_id: Option<String>,
+        target: &'arena str,
+        alias: Option<&'arena str>,
+        heading: Option<&'arena str>,
+        block_id: Option<&'arena str>,
         range: Range,
     ) -> Self {
         Self {
@@ -283,27 +316,27 @@ impl WikiLink {
     }
 
     /// Get target page
-    pub fn target_page(&self) -> Option<&str> {
+    pub fn target_page(&self) -> Option<&'arena str> {
         if self.target.is_empty() {
             None
         } else {
-            Some(&self.target)
+            Some(self.target)
         }
     }
 
     /// Get alias
-    pub fn alias(&self) -> Option<&str> {
-        self.alias.as_deref()
+    pub fn alias(&self) -> Option<&'arena str> {
+        self.alias
     }
 
     /// Get target heading
-    pub fn target_heading(&self) -> Option<&str> {
-        self.heading.as_deref()
+    pub fn target_heading(&self) -> Option<&'arena str> {
+        self.heading
     }
 
     /// Get target block ID
-    pub fn target_block_id(&self) -> Option<&str> {
-        self.block_id.as_deref()
+    pub fn target_block_id(&self) -> Option<&'arena str> {
+        self.block_id
     }
 
     /// Get range
@@ -314,21 +347,21 @@ impl WikiLink {
 
 /// A markdown link
 #[derive(Debug, Clone)]
-pub struct MarkdownLink {
-    text: String,
-    url: String,
-    anchor: Option<String>,
-    reference: Option<String>,
+pub struct MarkdownLink<'arena> {
+    text: &'arena str,
+    url: &'arena str,
+    anchor: Option<&'arena str>,
+    reference: Option<&'arena str>,
     range: Range,
 }
 
-impl MarkdownLink {
+impl<'arena> MarkdownLink<'arena> {
     /// Create a new markdown link
     pub(crate) fn new(
-        text: String,
-        url: String,
-        anchor: Option<String>,
-        reference: Option<String>,
+        text: &'arena str,
+        url: &'arena str,
+        anchor: Option<&'arena str>,
+        reference: Option<&'arena str>,
         range: Range,
     ) -> Self {
         Self {
@@ -341,23 +374,23 @@ impl MarkdownLink {
     }
 
     /// Get link text
-    pub fn text(&self) -> &str {
-        &self.text
+    pub fn text(&self) -> &'arena str {
+        self.text
     }
 
     /// Get URL
-    pub fn url(&self) -> &str {
-        &self.url
+    pub fn url(&self) -> &'arena str {
+        self.url
     }
 
     /// Get anchor
-    pub fn anchor(&self) -> Option<&str> {
-        self.anchor.as_deref()
+    pub fn anchor(&self) -> Option<&'arena str> {
+        self.anchor
     }
 
     /// Get reference
-    pub fn reference(&self) -> Option<&str> {
-        self.reference.as_deref()
+    pub fn reference(&self) -> Option<&'arena str> {
+        self.reference
     }
 
     /// Get range
@@ -368,108 +401,108 @@ impl MarkdownLink {
 
 /// A link definition
 #[derive(Debug, Clone)]
-pub struct LinkDefinition {
-    label: String,
-    url: String,
-    title: Option<String>,
+pub struct LinkDefinition<'arena> {
+    label: &'arena str,
+    url: &'arena str,
+    title: Option<&'arena str>,
 }
 
-impl LinkDefinition {
+impl<'arena> LinkDefinition<'arena> {
     /// Create a new link definition
-    pub(crate) fn new(label: String, url: String, title: Option<String>) -> Self {
+    pub(crate) fn new(label: &'arena str, url: &'arena str, title: Option<&'arena str>) -> Self {
         Self { label, url, title }
     }
 
     /// Get label
-    pub fn label(&self) -> &str {
-        &self.label
+    pub fn label(&self) -> &'arena str {
+        self.label
     }
 
     /// Get URL
-    pub fn url(&self) -> &str {
-        &self.url
+    pub fn url(&self) -> &'arena str {
+        self.url
     }
 
     /// Get title
-    pub fn title(&self) -> Option<&str> {
-        self.title.as_deref()
+    pub fn title(&self) -> Option<&'arena str> {
+        self.title
     }
 }
 
 /// Block ID (Obsidian)
 #[derive(Debug, Clone)]
-pub struct BlockId {
-    id: String,
+pub struct BlockId<'arena> {
+    id: &'arena str,
 }
 
-impl BlockId {
+impl<'arena> BlockId<'arena> {
     /// Create a new block ID
-    pub(crate) fn new(id: String) -> Self {
+    pub(crate) fn new(id: &'arena str) -> Self {
         Self { id }
     }
 
     /// Get ID
-    pub fn id(&self) -> &str {
-        &self.id
+    pub fn id(&self) -> &'arena str {
+        self.id
     }
 }
 
 /// Block reference (Logseq)
 #[derive(Debug, Clone)]
-pub struct BlockRef {
-    uuid: String,
+pub struct BlockRef<'arena> {
+    uuid: &'arena str,
 }
 
-impl BlockRef {
+impl<'arena> BlockRef<'arena> {
     /// Create a new block reference
-    pub(crate) fn new(uuid: String) -> Self {
+    pub(crate) fn new(uuid: &'arena str) -> Self {
         Self { uuid }
     }
 
     /// Get UUID
-    pub fn uuid(&self) -> &str {
-        &self.uuid
+    pub fn uuid(&self) -> &'arena str {
+        self.uuid
     }
 }
 
 /// A tag
 #[derive(Debug, Clone)]
-pub struct Tag {
-    name: String,
+pub struct Tag<'arena> {
+    name: &'arena str,
 }
 
-impl Tag {
+impl<'arena> Tag<'arena> {
     /// Create a new tag
-    pub(crate) fn new(name: String) -> Self {
+    pub(crate) fn new(name: &'arena str) -> Self {
         Self { name }
     }
 
     /// Get tag name
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn name(&self) -> &'arena str {
+        self.name
     }
 
     /// Get tag segments (for nested tags like #project/feature/bug)
-    pub fn segments(&self) -> Vec<&str> {
+    pub fn segments(&self) -> Vec<&'arena str> {
         self.name.split('/').collect()
     }
 }
 
 /// An embed
 #[derive(Debug, Clone)]
-pub struct Embed {
-    target: String,
+pub struct Embed<'arena> {
+    target: &'arena str,
 }
 
-impl Embed {
+impl<'arena> Embed<'arena> {
     /// Create a new embed
-    pub(crate) fn new(target: String) -> Self {
+    pub(crate) fn new(target: &'arena str) -> Self {
         Self { target }
     }
 
     /// Get target
-    pub fn target(&self) -> &str {
-        &self.target
+    pub fn target(&self) -> &'arena str {
+        self.target
     }
 
     /// Check if this is an embed
@@ -480,50 +513,50 @@ impl Embed {
 
 /// A task
 #[derive(Debug, Clone)]
-pub struct Task {
-    state: TaskState,
+pub struct Task<'arena> {
+    state: TaskState<'arena>,
 }
 
-impl Task {
+impl<'arena> Task<'arena> {
     /// Create a new task
-    pub(crate) fn new(state: TaskState) -> Self {
+    pub(crate) fn new(state: TaskState<'arena>) -> Self {
         Self { state }
     }
 
     /// Get task state
-    pub fn state(&self) -> &TaskState {
+    pub fn state(&self) -> &TaskState<'arena> {
         &self.state
     }
 }
 
 /// Task state
 #[derive(Debug, Clone)]
-pub struct TaskState {
-    name: String,
+pub struct TaskState<'arena> {
+    name: &'arena str,
 }
 
-impl TaskState {
+impl<'arena> TaskState<'arena> {
     /// Create a new task state
-    pub(crate) fn new(name: String) -> Self {
+    pub(crate) fn new(name: &'arena str) -> Self {
         Self { name }
     }
 
     /// Get state as string
-    pub fn as_str(&self) -> &str {
-        &self.name
+    pub fn as_str(&self) -> &'arena str {
+        self.name
     }
 }
 
 /// Callout (Obsidian)
 #[derive(Debug, Clone)]
-pub struct Callout {
-    callout_type: String,
-    title: Option<String>,
+pub struct Callout<'arena> {
+    callout_type: &'arena str,
+    title: Option<&'arena str>,
 }
 
-impl Callout {
+impl<'arena> Callout<'arena> {
     /// Create a new callout
-    pub(crate) fn new(callout_type: String, title: Option<String>) -> Self {
+    pub(crate) fn new(callout_type: &'arena str, title: Option<&'arena str>) -> Self {
         Self {
             callout_type,
             title,
@@ -531,74 +564,74 @@ impl Callout {
     }
 
     /// Get callout type
-    pub fn callout_type(&self) -> &str {
-        &self.callout_type
+    pub fn callout_type(&self) -> &'arena str {
+        self.callout_type
     }
 
     /// Get title
-    pub fn title(&self) -> Option<&str> {
-        self.title.as_deref()
+    pub fn title(&self) -> Option<&'arena str> {
+        self.title
     }
 }
 
 /// Query block (Logseq)
 #[derive(Debug, Clone)]
-pub struct QueryBlock {
-    query: String,
+pub struct QueryBlock<'arena> {
+    query: &'arena str,
 }
 
-impl QueryBlock {
+impl<'arena> QueryBlock<'arena> {
     /// Create a new query block
-    pub(crate) fn new(query: String) -> Self {
+    pub(crate) fn new(query: &'arena str) -> Self {
         Self { query }
     }
 
     /// Get query text
-    pub fn query_text(&self) -> &str {
-        &self.query
+    pub fn query_text(&self) -> &'arena str {
+        self.query
     }
 }
 
 /// Frontmatter
 #[derive(Debug, Clone)]
-pub struct Frontmatter {
-    data: std::collections::HashMap<String, FrontmatterValue>,
+pub struct Frontmatter<'arena> {
+    data: HashMap<&'arena str, FrontmatterValue<'arena>>,
 }
 
-impl Frontmatter {
+impl<'arena> Frontmatter<'arena> {
     /// Create new frontmatter
-    pub(crate) fn new(data: std::collections::HashMap<String, FrontmatterValue>) -> Self {
+    pub(crate) fn new(data: HashMap<&'arena str, FrontmatterValue<'arena>>) -> Self {
         Self { data }
     }
 
     /// Get string value
-    pub fn get_string(&self, key: &str) -> Option<&str> {
+    pub fn get_string(&self, key: &str) -> Option<&'arena str> {
         self.data.get(key).and_then(|v| v.as_string())
     }
 
     /// Get list value
-    pub fn get_list(&self, key: &str) -> Option<Vec<&str>> {
+    pub fn get_list(&self, key: &str) -> Option<Vec<&'arena str>> {
         self.data.get(key).and_then(|v| v.as_list())
     }
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum FrontmatterValue {
-    String(String),
-    List(Vec<String>),
+pub(crate) enum FrontmatterValue<'arena> {
+    String(&'arena str),
+    List(&'arena [&'arena str]),
 }
 
-impl FrontmatterValue {
-    fn as_string(&self) -> Option<&str> {
+impl<'arena> FrontmatterValue<'arena> {
+    fn as_string(&self) -> Option<&'arena str> {
         match self {
             FrontmatterValue::String(s) => Some(s),
             _ => None,
         }
     }
 
-    fn as_list(&self) -> Option<Vec<&str>> {
+    fn as_list(&self) -> Option<Vec<&'arena str>> {
         match self {
-            FrontmatterValue::List(list) => Some(list.iter().map(|s| s.as_str()).collect()),
+            FrontmatterValue::List(list) => Some(list.to_vec()),
             _ => None,
         }
     }
@@ -606,36 +639,36 @@ impl FrontmatterValue {
 
 /// Properties (Logseq)
 #[derive(Debug, Clone)]
-pub struct Properties {
-    data: std::collections::HashMap<String, PropertyValue>,
+pub struct Properties<'arena> {
+    data: HashMap<&'arena str, PropertyValue<'arena>>,
 }
 
-impl Properties {
+impl<'arena> Properties<'arena> {
     /// Create new properties
-    pub(crate) fn new(data: std::collections::HashMap<String, PropertyValue>) -> Self {
+    pub(crate) fn new(data: HashMap<&'arena str, PropertyValue<'arena>>) -> Self {
         Self { data }
     }
 
     /// Get property
-    pub fn get(&self, key: &str) -> Option<&PropertyValue> {
+    pub fn get(&self, key: &str) -> Option<&PropertyValue<'arena>> {
         self.data.get(key)
     }
 }
 
 /// A property value (Logseq)
 #[derive(Debug, Clone)]
-pub enum PropertyValue {
+pub enum PropertyValue<'arena> {
     /// String value
-    String(String),
+    String(&'arena str),
     /// List of values
-    List(Vec<String>),
+    List(&'arena [&'arena str]),
     /// Page reference
-    PageRef(String),
+    PageRef(&'arena str),
 }
 
-impl PropertyValue {
+impl<'arena> PropertyValue<'arena> {
     /// Get as string
-    pub fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &'arena str {
         match self {
             PropertyValue::String(s) => s,
             PropertyValue::PageRef(s) => s,
@@ -656,22 +689,22 @@ impl PropertyValue {
 
 /// An XML/HTML tag element extracted from markdown
 #[derive(Debug, Clone)]
-pub struct XmlTag {
-    tag_name: String,
-    attributes: HashMap<String, String>,
+pub struct XmlTag<'arena> {
+    tag_name: &'arena str,
+    attributes: HashMap<&'arena str, &'arena str>,
     is_self_closing: bool,
     is_unclosed: bool,
-    content: Option<String>,
+    content: Option<&'arena str>,
     range: Range,
 }
 
-impl XmlTag {
+impl<'arena> XmlTag<'arena> {
     /// Create a new XML tag
     pub(crate) fn new(
-        tag_name: String,
-        attributes: HashMap<String, String>,
+        tag_name: &'arena str,
+        attributes: HashMap<&'arena str, &'arena str>,
         is_self_closing: bool,
-        content: Option<String>,
+        content: Option<&'arena str>,
         range: Range,
     ) -> Self {
         Self {
@@ -686,8 +719,8 @@ impl XmlTag {
 
     /// Create an unclosed XML tag (opening tag with no matching close)
     pub(crate) fn unclosed(
-        tag_name: String,
-        attributes: HashMap<String, String>,
+        tag_name: &'arena str,
+        attributes: HashMap<&'arena str, &'arena str>,
         range: Range,
     ) -> Self {
         Self {
@@ -701,12 +734,12 @@ impl XmlTag {
     }
 
     /// Get tag name (e.g. "div", "agent", "br")
-    pub fn tag_name(&self) -> &str {
-        &self.tag_name
+    pub fn tag_name(&self) -> &'arena str {
+        self.tag_name
     }
 
     /// Get attributes as key-value pairs
-    pub fn attributes(&self) -> &HashMap<String, String> {
+    pub fn attributes(&self) -> &HashMap<&'arena str, &'arena str> {
         &self.attributes
     }
 
@@ -721,12 +754,307 @@ impl XmlTag {
     }
 
     /// Text content between opening and closing tags, if applicable
-    pub fn content(&self) -> Option<&str> {
-        self.content.as_deref()
+    pub fn content(&self) -> Option<&'arena str> {
+        self.content
     }
 
     /// Get range in source document
     pub fn range(&self) -> Range {
         self.range
+    }
+}
+
+// ============================================================================
+// ARENA ALLOCATION TESTS (GREEN phase)
+// Tests verify arena-allocated types work correctly with 'arena lifetime.
+// ============================================================================
+
+#[cfg(test)]
+mod arena_allocation_tests {
+    use super::*;
+    use bumpalo::Bump;
+
+    // ========================================================================
+    // PARSER TYPES: Arena Lifetime Tests
+    // ========================================================================
+
+    /// Heading uses arena-allocated text
+    #[test]
+    fn heading_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let heading = Heading {
+            level: 1,
+            text: arena.alloc_str("Test Heading"),
+            range: Range::new(Position::new(0, 0), Position::new(0, 12)),
+        };
+
+        assert_eq!(heading.level(), 1);
+        assert_eq!(heading.text(), "Test Heading");
+    }
+
+    /// Paragraph uses arena-allocated text
+    #[test]
+    fn paragraph_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let paragraph = Paragraph {
+            text: arena.alloc_str("Test paragraph content"),
+            range: Range::new(Position::new(0, 0), Position::new(0, 21)),
+        };
+
+        assert_eq!(paragraph.text(), "Test paragraph content");
+    }
+
+    /// ListItem uses arena-allocated text and properties map
+    #[test]
+    fn list_item_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let mut props: HashMap<&str, &str> = HashMap::new();
+        props.insert(arena.alloc_str("key"), arena.alloc_str("value"));
+
+        let item = ListItem {
+            text: arena.alloc_str("- test item"),
+            properties_map: props,
+            children_list: &[],
+        };
+
+        assert_eq!(item.text, "- test item");
+        assert_eq!(item.properties().get("key"), Some(&"value"));
+    }
+
+    /// WikiLink uses arena-allocated strings
+    #[test]
+    fn wiki_link_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let link = WikiLink::new(
+            arena.alloc_str("target-page"),
+            Some(arena.alloc_str("alias")),
+            Some(arena.alloc_str("section")),
+            None,
+            Range::new(Position::new(0, 0), Position::new(0, 12)),
+        );
+
+        assert_eq!(link.target_page(), Some("target-page"));
+        assert_eq!(link.alias(), Some("alias"));
+        assert_eq!(link.target_heading(), Some("section"));
+    }
+
+    /// MarkdownLink uses arena-allocated strings
+    #[test]
+    fn markdown_link_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let link = MarkdownLink::new(
+            arena.alloc_str("link text"),
+            arena.alloc_str("https://example.com"),
+            Some(arena.alloc_str("anchor")),
+            None,
+            Range::new(Position::new(0, 0), Position::new(0, 9)),
+        );
+
+        assert_eq!(link.text(), "link text");
+        assert_eq!(link.url(), "https://example.com");
+        assert_eq!(link.anchor(), Some("anchor"));
+    }
+
+    /// LinkDefinition uses arena-allocated strings
+    #[test]
+    fn link_definition_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let def = LinkDefinition::new(
+            arena.alloc_str("ref-label"),
+            arena.alloc_str("https://example.com"),
+            Some(arena.alloc_str("Title")),
+        );
+
+        assert_eq!(def.label(), "ref-label");
+        assert_eq!(def.url(), "https://example.com");
+        assert_eq!(def.title(), Some("Title"));
+    }
+
+    /// BlockId uses arena-allocated id
+    #[test]
+    fn block_id_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let id = BlockId::new(arena.alloc_str("abc123"));
+
+        assert_eq!(id.id(), "abc123");
+    }
+
+    /// BlockRef uses arena-allocated uuid
+    #[test]
+    fn block_ref_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let block_ref = BlockRef::new(arena.alloc_str("uuid-1234-5678"));
+
+        assert_eq!(block_ref.uuid(), "uuid-1234-5678");
+    }
+
+    /// Tag uses arena-allocated name
+    #[test]
+    fn tag_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let tag = Tag::new(arena.alloc_str("project/feature"));
+
+        assert_eq!(tag.name(), "project/feature");
+        assert_eq!(tag.segments(), vec!["project", "feature"]);
+    }
+
+    /// Embed uses arena-allocated target
+    #[test]
+    fn embed_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let embed = Embed::new(arena.alloc_str("embedded-page"));
+
+        assert_eq!(embed.target(), "embedded-page");
+        assert!(embed.is_embed());
+    }
+
+    /// Task and TaskState use arena-allocated strings
+    #[test]
+    fn task_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let task = Task::new(TaskState::new(arena.alloc_str("TODO")));
+
+        assert_eq!(task.state().as_str(), "TODO");
+    }
+
+    /// Callout uses arena-allocated strings
+    #[test]
+    fn callout_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let callout = Callout::new(arena.alloc_str("note"), Some(arena.alloc_str("Pro Tip")));
+
+        assert_eq!(callout.callout_type(), "note");
+        assert_eq!(callout.title(), Some("Pro Tip"));
+    }
+
+    /// QueryBlock uses arena-allocated query
+    #[test]
+    fn query_block_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let query = QueryBlock::new(arena.alloc_str("{{query todo}}"));
+
+        assert_eq!(query.query_text(), "{{query todo}}");
+    }
+
+    /// Frontmatter uses arena-allocated HashMap
+    #[test]
+    fn frontmatter_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let mut data: HashMap<&str, FrontmatterValue> = HashMap::new();
+        data.insert(
+            arena.alloc_str("title"),
+            FrontmatterValue::String(arena.alloc_str("My Page")),
+        );
+
+        let fm = Frontmatter::new(data);
+
+        assert_eq!(fm.get_string("title"), Some("My Page"));
+    }
+
+    /// Properties uses arena-allocated HashMap
+    #[test]
+    fn properties_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let mut data: HashMap<&str, PropertyValue> = HashMap::new();
+        data.insert(
+            arena.alloc_str("type"),
+            PropertyValue::String(arena.alloc_str("project")),
+        );
+
+        let props = Properties::new(data);
+
+        assert_eq!(props.get("type").unwrap().as_str(), "project");
+    }
+
+    /// XmlTag uses arena-allocated strings and HashMap
+    #[test]
+    fn xml_tag_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let mut attrs: HashMap<&str, &str> = HashMap::new();
+        attrs.insert(arena.alloc_str("id"), arena.alloc_str("main"));
+
+        let tag = XmlTag::new(
+            arena.alloc_str("agent"),
+            attrs,
+            false,
+            Some(arena.alloc_str("content")),
+            Range::new(Position::new(0, 0), Position::new(0, 10)),
+        );
+
+        assert_eq!(tag.tag_name(), "agent");
+        assert_eq!(tag.attributes().get("id"), Some(&"main"));
+        assert_eq!(tag.content(), Some("content"));
+        assert!(!tag.is_self_closing());
+    }
+
+    /// Element enum variants contain arena-allocated types
+    #[test]
+    fn element_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        let heading = Heading {
+            level: 2,
+            text: arena.alloc_str("Section"),
+            range: Range::new(Position::new(0, 0), Position::new(0, 7)),
+        };
+        let element = Element::Heading(heading);
+
+        assert!(matches!(element, Element::Heading(_)));
+        assert_eq!(element.as_heading().unwrap().text(), "Section");
+    }
+
+    // ========================================================================
+    // ARENA STRING STORAGE TESTS
+    // ========================================================================
+
+    /// Heading text is &str borrowed from arena
+    #[test]
+    fn heading_text_is_arena_str() {
+        let arena = Bump::new();
+        let text: &str = arena.alloc_str("Test Heading");
+        let heading = Heading {
+            level: 1,
+            text,
+            range: Range::new(Position::new(0, 0), Position::new(0, 12)),
+        };
+
+        // Verify text is borrowed from arena (same pointer)
+        assert_eq!(heading.text.as_ptr(), text.as_ptr());
+    }
+
+    /// ListItem properties use arena-allocated HashMap
+    #[test]
+    fn list_item_properties_arena_map() {
+        let arena = Bump::new();
+
+        let mut map: HashMap<&str, &str> = HashMap::new();
+        let key = arena.alloc_str("property");
+        let value = arena.alloc_str("value");
+        map.insert(key, value);
+
+        let item = ListItem {
+            text: arena.alloc_str("test"),
+            properties_map: map,
+            children_list: &[],
+        };
+
+        assert_eq!(item.properties().get("property"), Some(&"value"));
+    }
+
+    /// Vec fields are arena slices
+    #[test]
+    fn vec_fields_become_arena_slices() {
+        let arena = Bump::new();
+
+        let item = ListItem {
+            text: arena.alloc_str("parent"),
+            properties_map: HashMap::new(),
+            children_list: &[], // Empty arena slice
+        };
+
+        assert!(item.children_list.is_empty());
+        // children() returns None for empty slice
+        let children = item.children();
+        assert!(children.is_none() || children.unwrap().is_empty());
     }
 }

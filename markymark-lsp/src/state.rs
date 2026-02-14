@@ -111,13 +111,13 @@ pub struct MarkyDiagnostic {
 #[derive(Debug, Clone)]
 pub enum SymbolAtPosition {
     /// A heading line.
-    Heading(HeadingEntry),
+    Heading(HeadingEntry<'static>),
     /// A wiki link.
-    WikiLink(WikiLinkEntry),
+    WikiLink(WikiLinkEntry<'static>),
     /// A markdown link.
-    MarkdownLink(MarkdownLinkEntry),
+    MarkdownLink(MarkdownLinkEntry<'static>),
     /// An XML tag.
-    XmlTag(XmlTagEntry),
+    XmlTag(XmlTagEntry<'static>),
 }
 
 /// The internal state of the LSP server.
@@ -317,7 +317,7 @@ impl ServerState {
                                         || heading.text.to_lowercase().contains(&partial_lower)
                                     {
                                         candidates.push(CompletionCandidate {
-                                            label: heading.text.clone(),
+                                            label: heading.text.to_string(),
                                             kind: CompletionCandidateKind::Heading,
                                             detail: Some(format!("H{}", heading.level)),
                                         });
@@ -364,12 +364,12 @@ impl ServerState {
                 let mut seen = std::collections::HashSet::new();
                 for (_doc_uri, index) in self.realm.iter_documents() {
                     for xt in index.xml_tags() {
-                        if seen.insert(xt.tag_name.clone())
+                        if seen.insert(xt.tag_name.to_string())
                             && (partial_lower.is_empty()
                                 || xt.tag_name.to_lowercase().contains(&partial_lower))
                         {
                             candidates.push(CompletionCandidate {
-                                label: xt.tag_name.clone(),
+                                label: xt.tag_name.to_string(),
                                 kind: CompletionCandidateKind::XmlTag,
                                 detail: None,
                             });
@@ -398,11 +398,11 @@ impl ServerState {
 
         // 1. Check wiki links for broken references
         for wl in index.wiki_links() {
-            let resolved = resolve_wiki_link(&self.realm, uri, &wl.target, wl.heading.as_deref());
+            let resolved = resolve_wiki_link(&self.realm, uri, wl.target, wl.heading);
             if resolved.is_none() {
                 let target_desc = match &wl.heading {
                     Some(h) => format!("{}#{}", wl.target, h),
-                    None => wl.target.clone(),
+                    None => wl.target.to_string(),
                 };
                 diagnostics.push(MarkyDiagnostic {
                     range: wl.range,
@@ -419,9 +419,8 @@ impl ServerState {
                 let raw_url = ml
                     .url
                     .strip_suffix(&format!("#{}", anchor))
-                    .unwrap_or(&ml.url);
-                let resolved =
-                    resolve_markdown_link(&self.realm, uri, raw_url, Some(anchor.as_str()));
+                    .unwrap_or(ml.url);
+                let resolved = resolve_markdown_link(&self.realm, uri, raw_url, Some(*anchor));
                 if resolved.is_none() {
                     diagnostics.push(MarkyDiagnostic {
                         range: ml.range,
@@ -439,7 +438,7 @@ impl ServerState {
         // (the indexer already appends `-1`, `-2`, etc. to avoid collisions).
         let mut slug_counts: HashMap<String, Vec<Range>> = HashMap::new();
         for h in index.headings() {
-            let base_slug = slugify(&h.text);
+            let base_slug = slugify(h.text);
             slug_counts.entry(base_slug).or_default().push(h.range);
         }
         for (slug, ranges) in &slug_counts {
@@ -485,7 +484,7 @@ impl ServerState {
         match symbol {
             SymbolAtPosition::Heading(h) => Some(PrepareRenameResult {
                 range: h.range,
-                placeholder: h.text.clone(),
+                placeholder: h.text.to_string(),
             }),
             SymbolAtPosition::XmlTag(xt) => {
                 // Tag name range: starts after '<', length of tag_name
@@ -496,7 +495,7 @@ impl ServerState {
                 );
                 Some(PrepareRenameResult {
                     range: Range::new(name_start, name_end),
-                    placeholder: xt.tag_name.clone(),
+                    placeholder: xt.tag_name.to_string(),
                 })
             }
             // Wiki links and markdown links are not renameable themselves
@@ -520,7 +519,7 @@ impl ServerState {
         let symbol = self.symbol_at_position(uri, pos)?;
         match symbol {
             SymbolAtPosition::Heading(h) => {
-                let old_slug = h.slug.clone();
+                let old_slug = h.slug;
                 let new_slug = slugify(new_name);
                 let mut edits = Vec::new();
 
@@ -543,13 +542,13 @@ impl ServerState {
                 // 2. Search all documents for wiki links referencing the old slug
                 for (doc_uri, index) in self.realm.iter_documents() {
                     for wl in index.wiki_links() {
-                        if wl.heading.as_deref() == Some(&old_slug) {
+                        if wl.heading == Some(old_slug) {
                             // Compute the range of just the heading part in the wiki link.
                             // Wiki link format: [[target#heading]] or [[#heading]]
                             // We need to replace just the heading text after #.
                             let doc_text = self.get_document_text(doc_uri);
                             if let Some(anchor_range) =
-                                find_wiki_link_heading_range(doc_text, wl, &old_slug)
+                                find_wiki_link_heading_range(doc_text, wl, old_slug)
                             {
                                 edits.push(RenameEdit {
                                     uri: doc_uri.clone(),
@@ -562,10 +561,10 @@ impl ServerState {
 
                     // 3. Update markdown link anchors: [text](#old-slug) → [text](#new-slug)
                     for ml in index.markdown_links() {
-                        if ml.anchor.as_deref() == Some(&old_slug) {
+                        if ml.anchor == Some(old_slug) {
                             let doc_text = self.get_document_text(doc_uri);
                             if let Some(anchor_range) =
-                                find_markdown_link_anchor_range(doc_text, ml, &old_slug)
+                                find_markdown_link_anchor_range(doc_text, ml, old_slug)
                             {
                                 edits.push(RenameEdit {
                                     uri: doc_uri.clone(),

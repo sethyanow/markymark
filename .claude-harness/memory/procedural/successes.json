@@ -121,6 +121,19 @@
         "Bash heredoc required for workflow YAML — both Write and Edit blocked by security_reminder_hook",
         "git-cliff: fetch-depth:0 required, --latest --strip header for release body content"
       ]
+    },
+    {
+      "id": "suc-012",
+      "timestamp": "2026-02-14T08:55:00Z",
+      "feature": "feature-001",
+      "type": "bugfix",
+      "approach": "Resolved arena migration regressions by replacing placeholder empty slices with arena-allocated list slices in frontmatter/properties parsing and wiring recursive list child extraction via find_first_list_descendant + list_items_from_list_node.",
+      "files": ["markymark-parser/src/extract.rs", "markymark-parser/src/types.rs"],
+      "patterns": [
+        "For arena list fields (&'arena [&'arena str]), build bumpalo::collections::Vec and finish with into_bump_slice()",
+        "Keep RED tests targeted (frontmatter_and_properties) before full workspace verification",
+        "After parser fixes, run full gate sequence: fmt --check, clippy workspace, test workspace"
+      ]
     }
   ]
 }

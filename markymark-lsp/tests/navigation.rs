@@ -122,7 +122,7 @@ fn test_references_heading_found_by_wiki_links() {
     let wiki_links = index.wiki_links();
     let heading_refs: Vec<_> = wiki_links
         .iter()
-        .filter(|wl| wl.heading.as_deref() == Some("introduction"))
+        .filter(|wl| wl.heading == Some("introduction"))
         .collect();
     assert_eq!(
         heading_refs.len(),

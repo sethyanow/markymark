@@ -8,17 +8,18 @@
     "mcp": "rmcp 0.13 (official Rust MCP SDK, requires schemars 1.x)",
     "parser": "tree-sitter 0.19.5 + tree-sitter-markdown 0.7",
     "graph": "petgraph 0.7 (StableGraph)",
-    "allocator": "bumpalo 3.16",
+    "allocator": "bumpalo 3.16 + hashbrown 0.15",
     "testFramework": "cargo test + bash test scripts for plugin"
   },
   "structure": {
     "entryPoints": ["markymark-cli/src/main.rs"],
     "components": [
       "markymark-core/src/engine.rs (CoreEngine trait, CoreOperation, CoreResult)",
-      "markymark-parser/src/ast.rs (tree-sitter AST construction)",
-      "markymark-parser/src/extract.rs (regex-based extraction: wiki links, XML tags, etc.)",
-      "markymark-parser/src/types.rs (element types and constructors)",
-      "markymark-index/src/document.rs (DocumentIndex, slugify, outline)",
+      "markymark-core/src/arena.rs (arena helpers, allocation wrappers)",
+      "markymark-parser/src/ast.rs (tree-sitter AST construction, arena ownership)",
+      "markymark-parser/src/extract.rs (regex-based extraction updated for arena-backed outputs)",
+      "markymark-parser/src/types.rs (arena-backed element types and constructors)",
+      "markymark-index/src/document.rs (DocumentIndex arena-backed entries, slugify, outline)",
       "markymark-index/src/graph.rs (ConnectionGraph via petgraph)",
       "markymark-index/src/realm.rs (RealmIndex: multi-document workspace)",
       "markymark-index/src/resolution.rs (wiki link / markdown link resolution)",
@@ -49,8 +50,9 @@
     },
     "fileOrganization": {
       "rustModules": [
+        "Arena helpers in markymark-core/src/arena.rs for cross-crate shared allocator behavior",
         "Element types and constructors in markymark-parser/src/types.rs",
-        "Parser AST construction in markymark-parser/src/ast.rs",
+        "Parser AST construction and arena ownership in markymark-parser/src/ast.rs",
         "Regex-based extraction in markymark-parser/src/extract.rs",
         "LSP capability negotiation in markymark-lsp/src/server.rs",
         "Document state management in markymark-lsp/src/state.rs",
@@ -69,12 +71,14 @@
         "Drop read lock before async calls (deadlock prevention)",
         "Single-pass stack tokenizer for XML extraction",
         "Deterministic sort by URI then range for stable output",
-        "Range containment for nested XML document symbols"
+        "Range containment for nested XML document symbols",
+        "Arena migration uses phased commits (infrastructure/parser/index/tests)",
+        "Use arena_ref() helper to avoid duplicated unsafe transmute logic"
       ],
       "bash": "set -euo pipefail, jq for JSON, case statements for file extension matching"
     }
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-13T21:40:00Z",
+  "lastUpdated": "2026-02-14T04:31:40Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

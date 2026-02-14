@@ -1,28 +1,59 @@
+//! Abstract Syntax Tree for arena-allocated markdown parsing.
+
 use markymark_core::prelude::*;
 use tree_sitter::Tree;
 
 use crate::types::*;
 use tree_sitter::Node;
 
-/// Abstract Syntax Tree representing a parsed markdown document
+/// Abstract Syntax Tree representing a parsed markdown document.
+///
+/// The AST owns a bumpalo arena that all parsed data is allocated into,
+/// enabling efficient bulk deallocation when the AST is dropped.
 pub struct Ast {
+    /// Source text (owned, kept for extract functions)
     source: String,
+    /// Bump arena for all allocated data
+    arena: bumpalo::Bump,
+    /// Tree-sitter parse tree
     #[allow(dead_code)]
     tree: Tree,
-    root_elements: Vec<Element>,
+    /// Root-level elements, allocated in arena
+    root_elements: Vec<Element<'static>>, // 'static is a lie - actually 'arena, but Self owns arena
 }
 
+// SAFETY: The 'static lifetime on root_elements is a workaround.
+// The Ast struct owns both the arena and the elements, so the lifetime
+// is valid for the struct's lifetime. This is a common pattern for
+// self-referential structs with arenas.
 impl Ast {
+    /// Get a 'static reference to the arena for allocations.
+    ///
+    /// # Safety
+    /// The returned reference has 'static lifetime, but it is only valid
+    /// for the lifetime of `self`. This is safe because `self` owns the arena.
+    #[inline]
+    fn arena_ref(&self) -> &'static bumpalo::Bump {
+        // SAFETY: The arena is owned by Self, so the reference is valid for Self's lifetime
+        unsafe { &*(&self.arena as *const bumpalo::Bump) }
+    }
+
     /// Create AST from tree-sitter tree
     pub(crate) fn from_tree(tree: Tree, source: &str) -> CoreResult<Self> {
+        let arena = bumpalo::Bump::new();
         let root_node = tree.root_node();
+
+        // Transmute arena reference to 'static for storage
+        // SAFETY: The arena is owned by Self, so the reference is valid for Self's lifetime
+        let arena_ref: &'static bumpalo::Bump = unsafe { &*(&arena as *const bumpalo::Bump) };
+
         let mut root_elements = Vec::new();
 
         // Walk the tree and extract elements
         {
             let mut cursor = root_node.walk();
             for child in root_node.children(&mut cursor) {
-                if let Some(element) = Element::from_node(child, source)? {
+                if let Some(element) = Element::from_node(child, source, arena_ref)? {
                     root_elements.push(element);
                     continue;
                 }
@@ -31,11 +62,11 @@ impl Ast {
                     let mut list_cursor = child.walk();
                     for list_child in child.children(&mut list_cursor) {
                         // Logseq-style headings: list items starting with `- # Heading`
-                        if let Some(heading) = try_logseq_heading(list_child, source) {
+                        if let Some(heading) = try_logseq_heading(list_child, source, arena_ref) {
                             root_elements.push(Element::Heading(heading));
                             continue;
                         }
-                        if let Some(element) = Element::from_node(list_child, source)? {
+                        if let Some(element) = Element::from_node(list_child, source, arena_ref)? {
                             root_elements.push(element);
                         }
                     }
@@ -45,87 +76,101 @@ impl Ast {
 
         Ok(Self {
             source: source.to_string(),
+            arena,
             tree,
             root_elements,
         })
     }
 
     /// Get root-level elements
-    pub fn root_elements(&self) -> &[Element] {
+    pub fn root_elements(&self) -> &[Element<'static>] {
         &self.root_elements
     }
 
     /// Extract all wiki links from the document
-    pub fn extract_wiki_links(&self) -> Vec<WikiLink> {
-        crate::extract::extract_wiki_links(&self.root_elements, &self.source)
+    pub fn extract_wiki_links(&self) -> Vec<WikiLink<'static>> {
+        crate::extract::extract_wiki_links(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all markdown links
-    pub fn extract_markdown_links(&self) -> Vec<MarkdownLink> {
-        crate::extract::extract_markdown_links(&self.root_elements, &self.source)
+    pub fn extract_markdown_links(&self) -> Vec<MarkdownLink<'static>> {
+        crate::extract::extract_markdown_links(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all link definitions
-    pub fn extract_link_definitions(&self) -> Vec<LinkDefinition> {
-        crate::extract::extract_link_definitions(&self.root_elements, &self.source)
+    pub fn extract_link_definitions(&self) -> Vec<LinkDefinition<'static>> {
+        crate::extract::extract_link_definitions(
+            &self.root_elements,
+            &self.source,
+            self.arena_ref(),
+        )
     }
 
     /// Extract all block IDs (Obsidian)
-    pub fn extract_block_ids(&self) -> Vec<BlockId> {
-        crate::extract::extract_block_ids(&self.root_elements, &self.source)
+    pub fn extract_block_ids(&self) -> Vec<BlockId<'static>> {
+        crate::extract::extract_block_ids(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all block references (Logseq)
-    pub fn extract_block_refs(&self) -> Vec<BlockRef> {
-        crate::extract::extract_block_refs(&self.root_elements, &self.source)
+    pub fn extract_block_refs(&self) -> Vec<BlockRef<'static>> {
+        crate::extract::extract_block_refs(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all tags
-    pub fn extract_tags(&self) -> Vec<Tag> {
-        crate::extract::extract_tags(&self.root_elements, &self.source)
+    pub fn extract_tags(&self) -> Vec<Tag<'static>> {
+        crate::extract::extract_tags(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all embeds
-    pub fn extract_embeds(&self) -> Vec<Embed> {
-        crate::extract::extract_embeds(&self.root_elements, &self.source)
+    pub fn extract_embeds(&self) -> Vec<Embed<'static>> {
+        crate::extract::extract_embeds(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all list items
-    pub fn extract_list_items(&self) -> Vec<ListItem> {
+    pub fn extract_list_items(&self) -> Vec<ListItem<'static>> {
         let root_node = self.tree.root_node();
         let mut items = Vec::new();
-        collect_top_level_list_items(root_node, &self.source, &mut items);
+        collect_top_level_list_items(root_node, &self.source, self.arena_ref(), &mut items);
         items
     }
 
     /// Extract all tasks
-    pub fn extract_tasks(&self) -> Vec<Task> {
-        crate::extract::extract_tasks(&self.root_elements, &self.source)
+    pub fn extract_tasks(&self) -> Vec<Task<'static>> {
+        crate::extract::extract_tasks(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all callouts (Obsidian)
-    pub fn extract_callouts(&self) -> Vec<Callout> {
-        crate::extract::extract_callouts(&self.root_elements, &self.source)
+    pub fn extract_callouts(&self) -> Vec<Callout<'static>> {
+        crate::extract::extract_callouts(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all query blocks (Logseq)
-    pub fn extract_query_blocks(&self) -> Vec<QueryBlock> {
-        crate::extract::extract_query_blocks(&self.root_elements, &self.source)
+    pub fn extract_query_blocks(&self) -> Vec<QueryBlock<'static>> {
+        crate::extract::extract_query_blocks(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Get frontmatter if present
-    pub fn frontmatter(&self) -> Option<Frontmatter> {
-        crate::extract::extract_frontmatter(&self.root_elements, &self.source)
+    pub fn frontmatter(&self) -> Option<Frontmatter<'static>> {
+        crate::extract::extract_frontmatter(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Get page properties (Logseq)
-    pub fn page_properties(&self) -> Option<Properties> {
-        crate::extract::extract_page_properties(&self.root_elements, &self.source)
+    pub fn page_properties(&self) -> Option<Properties<'static>> {
+        crate::extract::extract_page_properties(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all XML/HTML tags from the document
-    pub fn extract_xml_tags(&self) -> Vec<XmlTag> {
-        crate::extract::extract_xml_tags(&self.root_elements, &self.source)
+    pub fn extract_xml_tags(&self) -> Vec<XmlTag<'static>> {
+        crate::extract::extract_xml_tags(&self.root_elements, &self.source, self.arena_ref())
+    }
+}
+
+impl Default for Ast {
+    fn default() -> Self {
+        // Create a minimal empty AST for testing purposes
+        // This parses an empty string which produces an empty document
+        let mut parser = crate::Parser::new().expect("parser should initialize");
+        parser.parse("").expect("empty document should parse")
     }
 }
 
@@ -134,7 +179,11 @@ impl Ast {
 /// Logseq markdown prefixes headings with list markers: `- # Heading`, `- ## Sub`.
 /// Tree-sitter parses these as list items, not ATX headings. This function checks
 /// whether a list_item node contains a heading pattern and extracts it.
-fn try_logseq_heading(node: Node, source: &str) -> Option<Heading> {
+fn try_logseq_heading<'a>(
+    node: Node,
+    source: &str,
+    arena: &'a bumpalo::Bump,
+) -> Option<Heading<'a>> {
     if node.kind() != "list_item" {
         return None;
     }
@@ -164,7 +213,7 @@ fn try_logseq_heading(node: Node, source: &str) -> Option<Heading> {
         return None;
     }
 
-    let heading_text = rest[1..].trim().to_string();
+    let heading_text = rest[1..].trim();
     if heading_text.is_empty() {
         return None;
     }
@@ -180,20 +229,31 @@ fn try_logseq_heading(node: Node, source: &str) -> Option<Heading> {
         Position::new(row, (hash_col + level + 1 + heading_text.len()) as u32),
     );
 
+    // Allocate heading text in arena
+    let heading_text = arena.alloc_str(heading_text);
+
     Some(Heading::new(level as u8, heading_text, range))
 }
 
-fn collect_top_level_list_items<'a>(node: Node<'a>, source: &str, items: &mut Vec<ListItem>) {
+fn collect_top_level_list_items<'a>(
+    node: Node,
+    source: &str,
+    arena: &'a bumpalo::Bump,
+    items: &mut Vec<ListItem<'a>>,
+) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "tight_list" || child.kind() == "loose_list" {
-            if let Ok(list_items) = ListItem::list_items_from_list_node(child, source) {
-                items.extend(list_items);
+            if let Ok(list_items) = ListItem::list_items_from_list_node(child, source, arena) {
+                // Convert slice to Vec for compatibility
+                for item in list_items {
+                    items.push(item.clone());
+                }
             }
 
             continue;
         }
 
-        collect_top_level_list_items(child, source, items);
+        collect_top_level_list_items(child, source, arena, items);
     }
 }
