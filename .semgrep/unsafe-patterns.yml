@@ -1,0 +1,25 @@
+rules:
+  # Intent: force explicit review of any unsafe block in production code.
+  # Noise boundary: tests are excluded to avoid fixture/assertion noise.
+  - id: markymark.rust.unsafe-block
+    languages: [rust]
+    severity: WARNING
+    message: "Unsafe block detected. Require explicit safety justification and review."
+    patterns:
+      - pattern: unsafe { ... }
+    paths:
+      exclude:
+        - "**/tests/**"
+
+  # Intent: ban transmute by default because invariants are easy to get wrong.
+  # Noise boundary: tests are excluded to keep CI signal focused on shipped code.
+  - id: markymark.rust.mem-transmute
+    languages: [rust]
+    severity: ERROR
+    message: "std::mem::transmute is high risk. Prefer safe conversion APIs or document invariants."
+    pattern-either:
+      - pattern: std::mem::transmute($X)
+      - pattern: core::mem::transmute($X)
+    paths:
+      exclude:
+        - "**/tests/**"

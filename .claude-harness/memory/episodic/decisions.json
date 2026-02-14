@@ -3,6 +3,18 @@
   "maxEntries": 50,
   "entries": [
     {
+      "id": "dec-20260214063123-marky-7za",
+      "timestamp": "2026-02-14T06:31:23Z",
+      "feature": "marky-84l",
+      "decision": "Use fixture-based semgrep verification scans for custom rules in this environment",
+      "rationale": "Installed semgrep CLI test mode does not support split rules/tests layout, but explicit fixture scans still provide deterministic positive/negative coverage",
+      "alternatives": [
+        "Use semgrep test subcommand",
+        "Skip fixture coverage"
+      ],
+      "impact": ".semgrep/* rules and security-fixtures/semgrep/* fixtures"
+    },
+    {
       "id": "dec-20260214061450-marky-ops-exec",
       "timestamp": "2026-02-14T06:14:50Z",
       "feature": "marky-84l",
