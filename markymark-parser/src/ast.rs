@@ -27,6 +27,17 @@ pub struct Ast {
 // is valid for the struct's lifetime. This is a common pattern for
 // self-referential structs with arenas.
 impl Ast {
+    /// Get a 'static reference to the arena for allocations.
+    ///
+    /// # Safety
+    /// The returned reference has 'static lifetime, but it is only valid
+    /// for the lifetime of `self`. This is safe because `self` owns the arena.
+    #[inline]
+    fn arena_ref(&self) -> &'static bumpalo::Bump {
+        // SAFETY: The arena is owned by Self, so the reference is valid for Self's lifetime
+        unsafe { &*(&self.arena as *const bumpalo::Bump) }
+    }
+
     /// Create AST from tree-sitter tree
     pub(crate) fn from_tree(tree: Tree, source: &str) -> CoreResult<Self> {
         let arena = bumpalo::Bump::new();
@@ -80,59 +91,37 @@ impl Ast {
 
     /// Extract all wiki links from the document
     pub fn extract_wiki_links(&self) -> Vec<WikiLink<'static>> {
-        // SAFETY: arena_ref is valid for self's lifetime
-        let arena_ref: &'static bumpalo::Bump = unsafe {
-            &*(&self.arena as *const bumpalo::Bump)
-        };
-        crate::extract::extract_wiki_links(&self.root_elements, &self.source, arena_ref)
+        crate::extract::extract_wiki_links(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all markdown links
     pub fn extract_markdown_links(&self) -> Vec<MarkdownLink<'static>> {
-        let arena_ref: &'static bumpalo::Bump = unsafe {
-            &*(&self.arena as *const bumpalo::Bump)
-        };
-        crate::extract::extract_markdown_links(&self.root_elements, &self.source, arena_ref)
+        crate::extract::extract_markdown_links(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all link definitions
     pub fn extract_link_definitions(&self) -> Vec<LinkDefinition<'static>> {
-        let arena_ref: &'static bumpalo::Bump = unsafe {
-            &*(&self.arena as *const bumpalo::Bump)
-        };
-        crate::extract::extract_link_definitions(&self.root_elements, &self.source, arena_ref)
+        crate::extract::extract_link_definitions(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all block IDs (Obsidian)
     pub fn extract_block_ids(&self) -> Vec<BlockId<'static>> {
-        let arena_ref: &'static bumpalo::Bump = unsafe {
-            &*(&self.arena as *const bumpalo::Bump)
-        };
-        crate::extract::extract_block_ids(&self.root_elements, &self.source, arena_ref)
+        crate::extract::extract_block_ids(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all block references (Logseq)
     pub fn extract_block_refs(&self) -> Vec<BlockRef<'static>> {
-        let arena_ref: &'static bumpalo::Bump = unsafe {
-            &*(&self.arena as *const bumpalo::Bump)
-        };
-        crate::extract::extract_block_refs(&self.root_elements, &self.source, arena_ref)
+        crate::extract::extract_block_refs(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all tags
     pub fn extract_tags(&self) -> Vec<Tag<'static>> {
-        let arena_ref: &'static bumpalo::Bump = unsafe {
-            &*(&self.arena as *const bumpalo::Bump)
-        };
-        crate::extract::extract_tags(&self.root_elements, &self.source, arena_ref)
+        crate::extract::extract_tags(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all embeds
     pub fn extract_embeds(&self) -> Vec<Embed<'static>> {
-        let arena_ref: &'static bumpalo::Bump = unsafe {
-            &*(&self.arena as *const bumpalo::Bump)
-        };
-        crate::extract::extract_embeds(&self.root_elements, &self.source, arena_ref)
+        crate::extract::extract_embeds(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all list items
