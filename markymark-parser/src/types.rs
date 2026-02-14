@@ -631,7 +631,7 @@ impl<'arena> FrontmatterValue<'arena> {
 
     fn as_list(&self) -> Option<Vec<&'arena str>> {
         match self {
-            FrontmatterValue::List(list) => Some(list.iter().copied().collect()),
+            FrontmatterValue::List(list) => Some(list.to_vec()),
             _ => None,
         }
     }

@@ -398,7 +398,7 @@ impl ServerState {
 
         // 1. Check wiki links for broken references
         for wl in index.wiki_links() {
-            let resolved = resolve_wiki_link(&self.realm, uri, &wl.target, wl.heading.as_deref());
+            let resolved = resolve_wiki_link(&self.realm, uri, wl.target, wl.heading);
             if resolved.is_none() {
                 let target_desc = match &wl.heading {
                     Some(h) => format!("{}#{}", wl.target, h),
@@ -419,7 +419,7 @@ impl ServerState {
                 let raw_url = ml
                     .url
                     .strip_suffix(&format!("#{}", anchor))
-                    .unwrap_or(&ml.url);
+                    .unwrap_or(ml.url);
                 let resolved = resolve_markdown_link(&self.realm, uri, raw_url, Some(*anchor));
                 if resolved.is_none() {
                     diagnostics.push(MarkyDiagnostic {
@@ -438,7 +438,7 @@ impl ServerState {
         // (the indexer already appends `-1`, `-2`, etc. to avoid collisions).
         let mut slug_counts: HashMap<String, Vec<Range>> = HashMap::new();
         for h in index.headings() {
-            let base_slug = slugify(&h.text);
+            let base_slug = slugify(h.text);
             slug_counts.entry(base_slug).or_default().push(h.range);
         }
         for (slug, ranges) in &slug_counts {
@@ -542,13 +542,13 @@ impl ServerState {
                 // 2. Search all documents for wiki links referencing the old slug
                 for (doc_uri, index) in self.realm.iter_documents() {
                     for wl in index.wiki_links() {
-                        if wl.heading.as_deref() == Some(&old_slug) {
+                        if wl.heading == Some(old_slug) {
                             // Compute the range of just the heading part in the wiki link.
                             // Wiki link format: [[target#heading]] or [[#heading]]
                             // We need to replace just the heading text after #.
                             let doc_text = self.get_document_text(doc_uri);
                             if let Some(anchor_range) =
-                                find_wiki_link_heading_range(doc_text, wl, &old_slug)
+                                find_wiki_link_heading_range(doc_text, wl, old_slug)
                             {
                                 edits.push(RenameEdit {
                                     uri: doc_uri.clone(),
@@ -561,10 +561,10 @@ impl ServerState {
 
                     // 3. Update markdown link anchors: [text](#old-slug) → [text](#new-slug)
                     for ml in index.markdown_links() {
-                        if ml.anchor.as_deref() == Some(&old_slug) {
+                        if ml.anchor == Some(old_slug) {
                             let doc_text = self.get_document_text(doc_uri);
                             if let Some(anchor_range) =
-                                find_markdown_link_anchor_range(doc_text, ml, &old_slug)
+                                find_markdown_link_anchor_range(doc_text, ml, old_slug)
                             {
                                 edits.push(RenameEdit {
                                     uri: doc_uri.clone(),

@@ -181,7 +181,7 @@ impl LanguageServer for Backend {
 
         let resolved = match &symbol {
             SymbolAtPosition::WikiLink(wl) => {
-                resolve_wiki_link(state.realm(), &doc_uri, &wl.target, wl.heading.as_deref())
+                resolve_wiki_link(state.realm(), &doc_uri, wl.target, wl.heading)
             }
             SymbolAtPosition::MarkdownLink(ml) => {
                 // MarkdownLinkEntry stores the url with anchor appended; extract raw url
@@ -189,10 +189,10 @@ impl LanguageServer for Backend {
                     Some(anchor) => ml
                         .url
                         .strip_suffix(&format!("#{}", anchor))
-                        .unwrap_or(&ml.url),
-                    None => &ml.url,
+                        .unwrap_or(ml.url),
+                    None => ml.url,
                 };
-                resolve_markdown_link(state.realm(), &doc_uri, raw_url, ml.anchor.as_deref())
+                resolve_markdown_link(state.realm(), &doc_uri, raw_url, ml.anchor)
             }
             SymbolAtPosition::Heading(_) => return Ok(None),
             SymbolAtPosition::XmlTag(ref xt) => {
@@ -267,14 +267,14 @@ impl LanguageServer for Backend {
                 // Search all documents for wiki links and markdown links referencing this slug
                 for (uri, index) in iter_realm_documents(&state) {
                     for wl in index.wiki_links() {
-                        if wl.heading.as_deref() == Some(slug) {
+                        if wl.heading == Some(slug) {
                             if let Ok(loc) = crate::convert::to_lsp_location(uri, wl.range) {
                                 locations.push(loc);
                             }
                         }
                     }
                     for ml in index.markdown_links() {
-                        if ml.anchor.as_deref() == Some(slug) {
+                        if ml.anchor == Some(slug) {
                             if let Ok(loc) = crate::convert::to_lsp_location(uri, ml.range) {
                                 locations.push(loc);
                             }
@@ -330,8 +330,7 @@ impl LanguageServer for Backend {
                 format!("{} {}\n\nHeading (level {})", prefix, h.text, h.level)
             }
             SymbolAtPosition::WikiLink(wl) => {
-                let resolved =
-                    resolve_wiki_link(state.realm(), &doc_uri, &wl.target, wl.heading.as_deref());
+                let resolved = resolve_wiki_link(state.realm(), &doc_uri, wl.target, wl.heading);
                 match resolved {
                     Some(ResolvedTarget::Document(uri)) => {
                         format!("Wiki link to **{}**", uri.as_str())
@@ -352,7 +351,7 @@ impl LanguageServer for Backend {
             }
             SymbolAtPosition::XmlTag(xt) => {
                 let mut lines = vec![format!("**`<{}>`** XML tag", xt.tag_name)];
-                let stats = xml_hover_stats(&state, &xt.tag_name);
+                let stats = xml_hover_stats(&state, xt.tag_name);
                 if !xt.attributes.is_empty() {
                     let mut attrs: Vec<_> = xt.attributes.iter().collect();
                     attrs.sort_by_key(|(k, _)| *k);
@@ -423,7 +422,7 @@ impl LanguageServer for Backend {
         };
 
         let outline = index.outline();
-        let mut symbols = outline_children_to_symbols(&outline.children);
+        let mut symbols = outline_children_to_symbols(outline.children);
         symbols.extend(xml_tags_to_symbols(index.xml_tags()));
 
         if symbols.is_empty() {
@@ -674,7 +673,7 @@ fn outline_children_to_symbols(children: &[OutlineNode]) -> Vec<DocumentSymbol> 
                 deprecated: None,
                 range,
                 selection_range: range,
-                children: Some(outline_children_to_symbols(&node.children)),
+                children: Some(outline_children_to_symbols(node.children)),
             })
         })
         .collect()
