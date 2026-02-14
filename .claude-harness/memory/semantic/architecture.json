@@ -16,7 +16,7 @@
       "markymark-cli/src/main.rs"
     ],
     "components": [
-      ".github/workflows/security.yml (planned: advisory-only CI security workflow with 4 jobs + SARIF uploads)",
+      ".github/workflows/security.yml (advisory-only CI security workflow with 4 jobs + SARIF uploads)",
       "deny.toml (cargo-deny policy: advisories/licenses/sources/bans)",
       "markymark-core/src/engine.rs (CoreEngine trait, CoreOperation, CoreResult)",
       "markymark-index/src/document.rs (DocumentIndex, slugify, outline)",
@@ -85,6 +85,6 @@
     }
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-14T06:08:38Z",
+  "lastUpdated": "2026-02-14T06:14:50Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

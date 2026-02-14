@@ -3,6 +3,18 @@
   "maxEntries": 50,
   "entries": [
     {
+      "id": "dec-20260214061450-marky-ops-exec",
+      "timestamp": "2026-02-14T06:14:50Z",
+      "feature": "marky-84l",
+      "decision": "Implemented and closed marky-ops with dedicated security.yml workflow and non-blocking security jobs",
+      "rationale": "Fulfills epic requirement for isolated advisory CI security scanning without modifying ci.yml",
+      "alternatives": [
+        "Inline security jobs into ci.yml",
+        "Split each security tool into separate workflow files"
+      ],
+      "impact": ".github/workflows/security.yml added; next task marky-8jx created for lefthook"
+    },
+    {
       "id": "dec-001",
       "timestamp": "2026-02-13T21:15:00Z",
       "feature": "marky-1vb",

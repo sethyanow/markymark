@@ -6,8 +6,9 @@
       "type": "epic",
       "location": "bd:marky-84l",
       "relationships": [
-        "child:marky-yjg",
-        "child:marky-ops"
+        "child:marky-8jx",
+        "child:marky-ops",
+        "child:marky-yjg"
       ],
       "discoveredAt": "2026-02-14T06:08:38Z"
     }
