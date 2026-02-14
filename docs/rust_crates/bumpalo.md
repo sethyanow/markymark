@@ -24,8 +24,13 @@
 
 ```toml
 [dependencies]
-bumpalo = { version = "3", features = ["collections"] }
+bumpalo = { version = "3.16", features = ["collections", "boxed", "allocator-api2"] }
 ```
+
+Features:
+- **collections** - Vec, String, and other collection types in the arena
+- **boxed** - Drop handling for heap/box-like complex types
+- **allocator-api2** - Custom allocator support so types like hashbrown can use the arena
 
 ### Basic Usage
 
