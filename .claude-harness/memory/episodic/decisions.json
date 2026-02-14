@@ -429,6 +429,18 @@
         "Drop CodeQL from initial workflow"
       ],
       "impact": ".github/workflows/security.yml planning and task marky-ops"
+    },
+    {
+      "id": "dec-sast-007",
+      "timestamp": "2026-02-14T06:23:36Z",
+      "feature": "marky-84l",
+      "decision": "Adopt lefthook pre-commit security chain with deterministic order and explicit tool-presence checks",
+      "rationale": "Keeps local guardrails strict and reproducible without Python runtime dependencies while providing clear failures when tooling is missing",
+      "alternatives": [
+        "Python pre-commit framework",
+        "Custom unmanaged git hooks"
+      ],
+      "impact": "lefthook.yml, README.md, and follow-up task marky-7za for custom Semgrep rules"
     }
   ]
 }

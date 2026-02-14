@@ -33,7 +33,8 @@
       "markymark-mcp/src/runtime_engine.rs (MCP RuntimeEngine: startup indexing, CoreEngine impl)",
       "markymark-parser/src/ast.rs (tree-sitter AST construction)",
       "markymark-parser/src/extract.rs (regex-based extraction: wiki links, XML tags, etc.)",
-      "markymark-parser/src/types.rs (element types and constructors)"
+      "markymark-parser/src/types.rs (element types and constructors)",
+      "lefthook.yml (deterministic pre-commit hooks: fmt/clippy/cargo-audit/gitleaks)"
     ],
     "api": [
       "markymark-parser/src/lib.rs",
@@ -79,12 +80,13 @@
         "Range containment for nested XML document symbols",
         "Security scans run advisory-only during initial adoption (continue-on-error in CI jobs)",
         "Single-pass stack tokenizer for XML extraction",
-        "convert/state/server module separation in markymark-lsp"
+        "convert/state/server module separation in markymark-lsp",
+        "Local security guardrail uses lefthook pre-commit with strict ordering before commit"
       ],
       "bash": "set -euo pipefail, jq for JSON, case statements for file extension matching"
     }
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-14T06:14:50Z",
+  "lastUpdated": "2026-02-14T06:23:36Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }
