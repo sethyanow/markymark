@@ -256,10 +256,7 @@ fn test_xml_tag_with_attributes() {
     let xml = idx.xml_tags();
     assert_eq!(xml.len(), 1);
     assert_eq!(xml[0].tag_name, "goal");
-    assert_eq!(
-        xml[0].attributes.get("priority").map(|s| s.as_str()),
-        Some("high")
-    );
+    assert_eq!(xml[0].attributes.get("priority"), Some(&"high"));
 }
 
 #[test]

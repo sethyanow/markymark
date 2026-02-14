@@ -111,13 +111,13 @@ pub struct MarkyDiagnostic {
 #[derive(Debug, Clone)]
 pub enum SymbolAtPosition {
     /// A heading line.
-    Heading(HeadingEntry),
+    Heading(HeadingEntry<'static>),
     /// A wiki link.
-    WikiLink(WikiLinkEntry),
+    WikiLink(WikiLinkEntry<'static>),
     /// A markdown link.
-    MarkdownLink(MarkdownLinkEntry),
+    MarkdownLink(MarkdownLinkEntry<'static>),
     /// An XML tag.
-    XmlTag(XmlTagEntry),
+    XmlTag(XmlTagEntry<'static>),
 }
 
 /// The internal state of the LSP server.
@@ -317,7 +317,7 @@ impl ServerState {
                                         || heading.text.to_lowercase().contains(&partial_lower)
                                     {
                                         candidates.push(CompletionCandidate {
-                                            label: heading.text.clone(),
+                                            label: heading.text.to_string(),
                                             kind: CompletionCandidateKind::Heading,
                                             detail: Some(format!("H{}", heading.level)),
                                         });
@@ -364,12 +364,12 @@ impl ServerState {
                 let mut seen = std::collections::HashSet::new();
                 for (_doc_uri, index) in self.realm.iter_documents() {
                     for xt in index.xml_tags() {
-                        if seen.insert(xt.tag_name.clone())
+                        if seen.insert(xt.tag_name.to_string())
                             && (partial_lower.is_empty()
                                 || xt.tag_name.to_lowercase().contains(&partial_lower))
                         {
                             candidates.push(CompletionCandidate {
-                                label: xt.tag_name.clone(),
+                                label: xt.tag_name.to_string(),
                                 kind: CompletionCandidateKind::XmlTag,
                                 detail: None,
                             });
@@ -402,7 +402,7 @@ impl ServerState {
             if resolved.is_none() {
                 let target_desc = match &wl.heading {
                     Some(h) => format!("{}#{}", wl.target, h),
-                    None => wl.target.clone(),
+                    None => wl.target.to_string(),
                 };
                 diagnostics.push(MarkyDiagnostic {
                     range: wl.range,
@@ -420,8 +420,7 @@ impl ServerState {
                     .url
                     .strip_suffix(&format!("#{}", anchor))
                     .unwrap_or(&ml.url);
-                let resolved =
-                    resolve_markdown_link(&self.realm, uri, raw_url, Some(anchor.as_str()));
+                let resolved = resolve_markdown_link(&self.realm, uri, raw_url, Some(*anchor));
                 if resolved.is_none() {
                     diagnostics.push(MarkyDiagnostic {
                         range: ml.range,
@@ -485,7 +484,7 @@ impl ServerState {
         match symbol {
             SymbolAtPosition::Heading(h) => Some(PrepareRenameResult {
                 range: h.range,
-                placeholder: h.text.clone(),
+                placeholder: h.text.to_string(),
             }),
             SymbolAtPosition::XmlTag(xt) => {
                 // Tag name range: starts after '<', length of tag_name
@@ -496,7 +495,7 @@ impl ServerState {
                 );
                 Some(PrepareRenameResult {
                     range: Range::new(name_start, name_end),
-                    placeholder: xt.tag_name.clone(),
+                    placeholder: xt.tag_name.to_string(),
                 })
             }
             // Wiki links and markdown links are not renameable themselves
@@ -520,7 +519,7 @@ impl ServerState {
         let symbol = self.symbol_at_position(uri, pos)?;
         match symbol {
             SymbolAtPosition::Heading(h) => {
-                let old_slug = h.slug.clone();
+                let old_slug = h.slug;
                 let new_slug = slugify(new_name);
                 let mut edits = Vec::new();
 
