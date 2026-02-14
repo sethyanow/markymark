@@ -264,6 +264,15 @@
       "rationale": "Phase 1/2/4 and GREEN test conversions landed successfully, but full verification gate still fails on two parser regressions. Accepting checkpoint as complete would hide known failures.",
       "alternatives": ["Checkpoint as complete despite failing tests", "Revert arena migration commits", "Split regressions into separate fix feature"],
       "impact": "feature-001 remains in_progress; parser tests frontmatter/nested-list regressions must be resolved before ACCEPT"
+    },
+    {
+      "id": "dec-012",
+      "timestamp": "2026-02-14T18:00:00Z",
+      "feature": "marky-bjj",
+      "decision": "PropertyValue::as_str() returns Option<&str> instead of &str, with None for List variant",
+      "rationale": "Returning empty string for List masked bugs; callers should explicitly handle the non-string case",
+      "alternatives": ["Keep returning \"\" (hides bugs)", "Panic on List (strict but may break callers)"],
+      "impact": "markymark-parser/src/types/frontmatter.rs, types/mod.rs, frontmatter_and_properties.rs"
     }
   ]
 }

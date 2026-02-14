@@ -39,7 +39,7 @@ created:: [[2024-01-15]]
     assert!(props.is_some());
     let properties = props.unwrap();
 
-    assert_eq!(properties.get("title").unwrap().as_str(), "My Page");
+    assert_eq!(properties.get("title").unwrap().as_str(), Some("My Page"));
     assert!(properties.get("tags").unwrap().is_list());
     assert!(properties.get("created").unwrap().is_page_ref());
 }

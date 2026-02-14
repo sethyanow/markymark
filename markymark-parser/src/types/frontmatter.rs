@@ -77,12 +77,11 @@ pub enum PropertyValue<'arena> {
 }
 
 impl<'arena> PropertyValue<'arena> {
-    /// Get as string
-    pub fn as_str(&self) -> &'arena str {
+    /// Get as string, or `None` if this value is a list.
+    pub fn as_str(&self) -> Option<&'arena str> {
         match self {
-            PropertyValue::String(s) => s,
-            PropertyValue::PageRef(s) => s,
-            _ => "",
+            PropertyValue::String(s) | PropertyValue::PageRef(s) => Some(s),
+            PropertyValue::List(_) => None,
         }
     }
 

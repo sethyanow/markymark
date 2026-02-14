@@ -3,7 +3,7 @@
   "projectName": "markymark",
   "techStack": "Rust",
   "verification": {
-    "build": "/Users/seth/.cargo/bin/cargo build --release",
+    "build": "cargo build --release",
     "test": "",
     "lint": "",
     "acceptance": ""

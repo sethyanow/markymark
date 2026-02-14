@@ -18,7 +18,7 @@
       "markymark-core/src/arena.rs (arena helpers, allocation wrappers)",
       "markymark-parser/src/ast.rs (tree-sitter AST construction, arena ownership)",
       "markymark-parser/src/extract.rs (regex-based extraction updated for arena-backed outputs)",
-      "markymark-parser/src/types.rs (arena-backed element types and constructors)",
+      "markymark-parser/src/types/ (elements, links, blocks, frontmatter, xml - arena-backed element types)",
       "markymark-index/src/document.rs (DocumentIndex arena-backed entries, slugify, outline)",
       "markymark-index/src/graph.rs (ConnectionGraph via petgraph)",
       "markymark-index/src/realm.rs (RealmIndex: multi-document workspace)",
@@ -51,7 +51,7 @@
     "fileOrganization": {
       "rustModules": [
         "Arena helpers in markymark-core/src/arena.rs for cross-crate shared allocator behavior",
-        "Element types and constructors in markymark-parser/src/types.rs",
+        "Element types in markymark-parser/src/types/ (elements, links, blocks, frontmatter, xml submodules)",
         "Parser AST construction and arena ownership in markymark-parser/src/ast.rs",
         "Regex-based extraction in markymark-parser/src/extract.rs",
         "LSP capability negotiation in markymark-lsp/src/server.rs",

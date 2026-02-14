@@ -225,7 +225,7 @@ mod arena_allocation_tests {
 
         let props = Properties::new(data);
 
-        assert_eq!(props.get("type").unwrap().as_str(), "project");
+        assert_eq!(props.get("type").unwrap().as_str(), Some("project"));
     }
 
     /// XmlTag uses arena-allocated strings and HashMap

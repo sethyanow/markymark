@@ -73,8 +73,19 @@ impl<'arena> Heading<'arena> {
                 text.chars().take_while(|&c| c == '#').count() as u8
             }
             "setext_heading" => {
-                // Setext headings are level 1 or 2
-                1 // Simplified for now
+                // Setext: === for h1, --- for h2
+                let mut level = 1u8;
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    if child.kind() == "setext_h1_underline" {
+                        level = 1;
+                        break;
+                    } else if child.kind() == "setext_h2_underline" {
+                        level = 2;
+                        break;
+                    }
+                }
+                level
             }
             _ => 1,
         };
