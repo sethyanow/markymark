@@ -246,6 +246,15 @@
       "rationale": "Project already uses conventional commit format (feat:, fix:, chore:). git-cliff is the standard Rust ecosystem tool (git-chglog deprecated Jan 2026). Integrates via orhun/git-cliff-action@v4 in release CI.",
       "alternatives": ["Manual CHANGELOG.md", "GitHub auto-generated release notes (less structured)", "keep-a-changelog (manual)"],
       "impact": "cliff.toml config added, release.yml updated with fetch-depth:0 + changelog step"
+    },
+    {
+      "id": "dec-010",
+      "timestamp": "2026-02-14T04:31:40Z",
+      "feature": "feature-001",
+      "decision": "Proceed with phased arena migration and defer checkpoint completion until parser regressions are fixed",
+      "rationale": "Phase 1/2/4 and GREEN test conversions landed successfully, but full verification gate still fails on two parser regressions. Accepting checkpoint as complete would hide known failures.",
+      "alternatives": ["Checkpoint as complete despite failing tests", "Revert arena migration commits", "Split regressions into separate fix feature"],
+      "impact": "feature-001 remains in_progress; parser tests frontmatter/nested-list regressions must be resolved before ACCEPT"
     }
   ]
 }
