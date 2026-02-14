@@ -9,7 +9,7 @@
 
 ## Session Summary
 
-Evaluated whether the bumpalo arena migration was worthwhile. Added memory (RSS, resident) and concurrency benchmarks. Ran before/after comparison against pre-arena baseline (9578d85). **Verdict: marginal gains; sample too small to conclude.**
+Evaluated whether the bumpalo arena migration was worthwhile. Added memory (RSS, resident) and concurrency benchmarks. Ran before/after comparison against pre-arena baseline (476795e). **Verdict: marginal gains; sample too small to conclude.**
 
 ---
 
@@ -72,38 +72,28 @@ More content here.
 
 ## Baseline (Pre-Arena) Comparison
 
-**Commit:** `9578d85` — "feat: add marketplace.json for self-hosted plugin distribution"  
-**Last commit before:** arena Phase 1 (`47aada5`)
+**Branch:** `baseline/pre-arena`  
+**Commit:** `476795e` — chore: checkpoint — marky-cfj complete, v0.1.0-alpha.2 released (#5)  
+**Parent of:** `47aada5` (arena Phase 1)
 
 ### Running Baseline
 
 ```bash
-# Create worktree at pre-arena commit
-git worktree add /tmp/markymark-baseline 9578d85
-
-# Benchmark needs from_ast(&ast) — pre-arena takes reference, not ownership
-# Copy markymark-index/benches/memory.rs and change:
-#   DocumentIndex::from_ast(ast)  →  DocumentIndex::from_ast(&ast)
-
-# Add to markymark-index/Cargo.toml (baseline):
-# [dev-dependencies]
-# criterion = "0.5"
-# memory-stats = "1.2"
-# libc = "0.2"
-# [[bench]] name = "memory" harness = false
-
-cd /tmp/markymark-baseline && cargo bench -p markymark-index
+git checkout baseline/pre-arena
+cargo bench -p markymark-index -- --nocapture
 ```
 
-### Results (100 docs, synthetic sample) — 2026-02-14 rerun
+See `docs/benchmarks/baseline-pre-arena.md` for full results and reproducibility.
 
-| Metric              | BEFORE (9578d85) | NOW (arena) | Delta   |
+### Results (100 docs, synthetic sample) — 2026-02-14
+
+| Metric              | BEFORE (476795e) | NOW (arena) | Delta   |
 |---------------------|------------------|-------------|---------|
 | Heap allocations    | 216,806          | 215,837     | −969    |
-| index_100            | ~32.7 ms         | ~33.3 ms    | ~same   |
-| concurrent 4×100    | ~58 ms           | ~59 ms      | ~same   |
+| index_100            | ~33.8 ms         | ~33.3 ms    | ~same   |
+| concurrent 4×100    | ~59 ms           | ~59 ms      | ~same   |
 | concurrent 8×100    | ~104 ms          | ~101 ms     | −3%     |
-| Resident / peak RSS | 25 MiB / 26 MB   | 638 MiB / 3.3 GB (criterion bloat) | —       |
+| Resident / peak RSS | 23 MiB / 24 MB   | 638 MiB (criterion bloat) | —       |
 
 ### Real Corpus (current only — baseline has no real-corpus bench)
 
