@@ -23,7 +23,7 @@ pub(crate) fn rename_heading(
     heading: HeadingEntry,
     new_name: &str,
 ) -> CoreOperationResult {
-    let old_slug = heading.slug.clone();
+    let old_slug = heading.slug;
     let new_slug = slugify(new_name);
     let mut doc_edits: HashMap<DocumentUri, Vec<(Range, String)>> = HashMap::new();
 

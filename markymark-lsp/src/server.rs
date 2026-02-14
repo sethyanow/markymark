@@ -355,7 +355,7 @@ impl LanguageServer for Backend {
                 let stats = xml_hover_stats(&state, &xt.tag_name);
                 if !xt.attributes.is_empty() {
                     let mut attrs: Vec<_> = xt.attributes.iter().collect();
-                    attrs.sort_by_key(|(k, _)| k.as_str());
+                    attrs.sort_by_key(|(k, _)| *k);
                     let attr_list: Vec<String> = attrs
                         .iter()
                         .map(|(k, v)| format!("- `{}` = `{}`", k, v))
@@ -554,7 +554,7 @@ impl LanguageServer for Backend {
                     let range = crate::convert::to_lsp_range(heading.range);
                     #[allow(deprecated)]
                     symbols.push(SymbolInformation {
-                        name: heading.text.clone(),
+                        name: heading.text.to_string(),
                         kind: SymbolKind::STRING,
                         tags: None,
                         deprecated: None,
@@ -667,7 +667,7 @@ fn outline_children_to_symbols(children: &[OutlineNode]) -> Vec<DocumentSymbol> 
             let range = crate::convert::to_lsp_range(heading.range);
             #[allow(deprecated)]
             Some(DocumentSymbol {
-                name: heading.text.clone(),
+                name: heading.text.to_string(),
                 detail: None,
                 kind: SymbolKind::STRING,
                 tags: None,
@@ -708,7 +708,9 @@ fn xml_hover_stats(state: &ServerState, tag_name: &str) -> XmlHoverStats {
             has_tag_in_document = true;
             occurrences += 1;
             for attr_name in tag.attributes.keys() {
-                *attribute_counts.entry(attr_name.clone()).or_insert(0) += 1;
+                *attribute_counts
+                    .entry((*attr_name).to_string())
+                    .or_insert(0) += 1;
             }
         }
 

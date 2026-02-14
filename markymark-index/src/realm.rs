@@ -36,7 +36,7 @@ impl RealmIndex {
     }
 
     /// Look up a heading by slug across all documents.
-    pub fn lookup_heading(&self, slug: &str) -> Vec<(&DocumentUri, &HeadingEntry)> {
+    pub fn lookup_heading(&self, slug: &str) -> Vec<(&DocumentUri, &HeadingEntry<'_>)> {
         let mut results = Vec::new();
         for (uri, index) in self.docs.values() {
             if let Some(entry) = index.heading_by_slug(slug) {
@@ -47,7 +47,7 @@ impl RealmIndex {
     }
 
     /// Look up a block by ID across all documents.
-    pub fn lookup_block(&self, id: &str) -> Option<(&DocumentUri, &BlockEntry)> {
+    pub fn lookup_block(&self, id: &str) -> Option<(&DocumentUri, &BlockEntry<'_>)> {
         for (uri, index) in self.docs.values() {
             if let Some(entry) = index.block_by_id(id) {
                 return Some((uri, entry));
@@ -66,7 +66,7 @@ impl RealmIndex {
             // Collect unique tag names within this single document
             let mut seen_in_doc: HashMap<&str, bool> = HashMap::new();
             for tag in index.tags() {
-                seen_in_doc.entry(tag.name.as_str()).or_insert(true);
+                seen_in_doc.entry(tag.name).or_insert(true);
             }
             for tag_name in seen_in_doc.keys() {
                 *counts.entry(tag_name).or_insert(0) += 1;
