@@ -1,12 +1,13 @@
 {
-  "lastUpdated": "2026-02-14T02:45:00Z",
+  "lastUpdated": "2026-02-14T08:25:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Resumed marky-v8e (v1.0 Product Launch) epic. Merged PR #2 (marky-8pt). Created marketplace.json at repo root for self-hosted marketplace distribution. Added 3 marketplace validation tests (18/18 plugin tests GREEN). Ran /markymark:markdown-check on rust_guidelines docs — found 5 broken image links, filed gigapowers-ctb. Assessed marky-agk — mostly done already. Created local feat/benchmarks-wip branch for stashed criterion work.",
-    "completedTasks": ["marketplace.json setup", "rust_guidelines markdown audit"],
+    "summary": "Addressed all 6 PR #7 review comments from CodeRabbit and Copilot. Removed broken $schema URL (404), expanded marketplace.json description and keywords to match plugin.json, hardened test_select_binary.sh source path resolution with empty guard, absolute path handling, and documented assumptions. All quality gates pass (127 Rust tests, 18 plugin tests, clippy clean).",
+    "completedTasks": ["PR #7 review comment fixes"],
     "blockers": [],
     "nextSteps": [
-      "Commit marketplace.json + test updates on feat/marky-cfj-marketplace branch",
+      "Resolve PR #7 merge conflicts (3 files: claude-progress.json, decisions.json, test_select_binary.sh)",
+      "marky-bjj: P0 refactor types.rs below 1000 LOC",
       "marky-agk: Close or do final polish (tests pass, configs correct)",
       "marky-7cl: Polish README and installation documentation (P2, unblocked)",
       "Submit to Claude marketplace form (manual): https://clau.de/plugin-directory-submission",
@@ -14,20 +15,22 @@
     ]
   },
   "recentChanges": [
-    "Created .claude-plugin/marketplace.json for self-hosted marketplace",
-    "Added 3 marketplace validation tests to test_select_binary.sh (18 total)",
-    "Marketplace add via local path works: /plugin marketplace add /Volumes/code/markymark",
-    "Filed gigapowers-ctb: 5 broken image links in rust_guidelines docs",
-    "v0.1.0-alpha.2 tagged — CI release with git-cliff changelog"
+    "Removed broken $schema URL from marketplace.json (was returning 404)",
+    "Expanded marketplace.json description to match plugin.json (wiki links, XML tags, cross-doc refs)",
+    "Added obsidian and logseq keywords to marketplace.json",
+    "Added empty source_path guard in marketplace test",
+    "Added absolute path handling in source path resolution",
+    "Documented repo-root-relative resolution assumption in test"
   ],
   "knownIssues": [
+    "PR #7 has merge conflicts in 3 files (harness metadata + test file)",
     "cargo publish --dry-run only validates core crate; other 5 fail because deps not on crates.io yet (expected)",
     "Write tool blocked by security_reminder_hook on .github/workflows/*.yml — use Bash heredoc instead",
     "5 broken PNG image links in docs/rust_guidelines/ (filed as gigapowers-ctb)"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-14T02:40:00Z",
+    "lastSuccessfulBuild": "2026-02-14T08:25:00Z",
     "lastTypeCheck": null
   }
 }
