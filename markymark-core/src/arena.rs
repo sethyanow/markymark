@@ -52,6 +52,7 @@ impl<'a, T> ArenaVecBuilder<'a, T> {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(unused_variables)] // Arena used in TODOs for future arena-allocated HashMap
 mod arena_allocation_tests {
     use super::*;
 
