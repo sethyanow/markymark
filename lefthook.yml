@@ -1,0 +1,15 @@
+pre-commit:
+  parallel: false
+  commands:
+    01-fmt:
+      run: "cargo fmt --all -- --check"
+    02-clippy:
+      run: "cargo clippy --workspace --all-targets -- -D warnings"
+    03-check-cargo-audit:
+      run: 'command -v cargo-audit >/dev/null || { echo "cargo-audit is required: cargo install --locked cargo-audit"; exit 1; }'
+    04-audit:
+      run: "cargo audit"
+    05-check-gitleaks:
+      run: 'command -v gitleaks >/dev/null || { echo "gitleaks is required: brew install gitleaks"; exit 1; }'
+    06-gitleaks:
+      run: "gitleaks protect --staged --redact"
