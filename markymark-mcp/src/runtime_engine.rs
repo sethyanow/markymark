@@ -188,12 +188,12 @@ impl CoreEngine for RuntimeEngine {
 
                     for (doc_uri, doc_index) in realm.iter_documents() {
                         for wl in doc_index.wiki_links() {
-                            if wl.heading.as_deref() == Some(slug) {
+                            if wl.heading == Some(slug) {
                                 locations.push((doc_uri.clone(), wl.range));
                             }
                         }
                         for ml in doc_index.markdown_links() {
-                            if ml.anchor.as_deref() == Some(slug) {
+                            if ml.anchor == Some(slug) {
                                 locations.push((doc_uri.clone(), ml.range));
                             }
                         }
@@ -259,7 +259,7 @@ impl CoreEngine for RuntimeEngine {
                 }
 
                 if let Some(xml_tag) = index.xml_tags().iter().find(|x| x.range.contains(cursor)) {
-                    return rename_xml_tag(realm, &xml_tag.tag_name, &new_name);
+                    return rename_xml_tag(realm, xml_tag.tag_name, &new_name);
                 }
 
                 CoreOperationResult::Error(CoreError::Message(

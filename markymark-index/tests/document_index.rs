@@ -187,7 +187,7 @@ fn test_wiki_links_indexed() {
     assert_eq!(links.len(), 2);
     assert_eq!(links[0].target, "PageA");
     assert_eq!(links[1].target, "PageB");
-    assert_eq!(links[1].alias.as_deref(), Some("alias"));
+    assert_eq!(links[1].alias, Some("alias"));
 }
 
 // ---------------------------------------------------------------------------
@@ -216,7 +216,7 @@ fn test_markdown_links_indexed() {
     assert_eq!(links[0].url, "https://google.com");
     assert_eq!(links[1].text, "Docs");
     assert_eq!(links[1].url, "./docs.md#section");
-    assert_eq!(links[1].anchor.as_deref(), Some("section"));
+    assert_eq!(links[1].anchor, Some("section"));
 }
 
 // ---------------------------------------------------------------------------
