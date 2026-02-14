@@ -15,7 +15,9 @@
       "rmcp CallToolResult::structured and structured_error for MCP payloads",
       "Deterministic sort by URI then range for stable output",
       "Range containment for nested XML document symbols",
-      "LSP Content-Length framing vs MCP line-delimited JSON — NEVER mix them"
+      "LSP Content-Length framing vs MCP line-delimited JSON — NEVER mix them",
+      "Arena migration works best as phased TDD: infrastructure -> parser types -> parser GREEN tests -> index types -> index GREEN tests",
+      "When teammate implementer crashes, reassign narrow-scope blocker to test-writer to preserve momentum"
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",
@@ -95,6 +97,12 @@
         "pattern": "Version sync across Cargo workspace and plugin manifest",
         "context": "Bumping project version for any release",
         "application": "Update root Cargo.toml [workspace.package] version, all subcrate path dep versions (use = prefix for prerelease), plugin.json version, and verify with cargo check + cargo run --version"
+      },
+      {
+        "id": "pat-arena-ref-helper",
+        "pattern": "Extract duplicated unsafe arena transmute into a single helper",
+        "context": "Self-referential arena-backed AST methods",
+        "application": "Use one arena_ref() helper with clear SAFETY comment instead of repeating unsafe blocks in each extract_* method"
       }
     ]
   }

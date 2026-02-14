@@ -22,3 +22,6 @@ Thumbs.db
 .claude-harness/memory/working/
 # Claude Code - Local settings
 .claude/settings.local.json
+
+# bv (beads viewer) local config and caches
+.bv/
