@@ -1,32 +1,30 @@
 {
-  "lastUpdated": "2026-02-14T08:25:00Z",
+  "lastUpdated": "2026-02-14T08:35:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Addressed all 6 PR #7 review comments from CodeRabbit and Copilot. Removed broken $schema URL (404), expanded marketplace.json description and keywords to match plugin.json, hardened test_select_binary.sh source path resolution with empty guard, absolute path handling, and documented assumptions. All quality gates pass (127 Rust tests, 18 plugin tests, clippy clean).",
-    "completedTasks": ["PR #7 review comment fixes"],
+    "summary": "Planned SAST security scanning epic (marky-84l). Researched Rust SAST ecosystem (CodeQL GA, Semgrep GA, cargo-audit 0.22.1, cargo-deny 0.19.0, lefthook). Brainstormed with user: advisory-only gates, full tool stack, lefthook pre-commit, all custom rule categories. Created epic with immutable requirements and first task (marky-yjg: baseline scan + cargo-deny config). SRE-refined first task. Reviewed PR #7 comments (CodeRabbit + Copilot).",
+    "completedTasks": ["SAST epic creation (marky-84l)", "First task creation + SRE refinement (marky-yjg)", "PR #7 comment review"],
     "blockers": [],
     "nextSteps": [
-      "Resolve PR #7 merge conflicts (3 files: claude-progress.json, decisions.json, test_select_binary.sh)",
+      "Execute marky-yjg: baseline security scan + deny.toml config",
+      "Resolve PR #7 merge conflicts (3 files)",
       "marky-bjj: P0 refactor types.rs below 1000 LOC",
-      "marky-agk: Close or do final polish (tests pass, configs correct)",
-      "marky-7cl: Polish README and installation documentation (P2, unblocked)",
-      "Submit to Claude marketplace form (manual): https://clau.de/plugin-directory-submission",
-      "marky-7pw: Roadmap Research epic (P3, 3 tracks)"
+      "marky-agk: Polish plugin hooks/skills/config",
+      "marky-7cl: Polish README and installation docs"
     ]
   },
   "recentChanges": [
-    "Removed broken $schema URL from marketplace.json (was returning 404)",
-    "Expanded marketplace.json description to match plugin.json (wiki links, XML tags, cross-doc refs)",
-    "Added obsidian and logseq keywords to marketplace.json",
-    "Added empty source_path guard in marketplace test",
-    "Added absolute path handling in source path resolution",
-    "Documented repo-root-relative resolution assumption in test"
+    "Created bd epic marky-84l: SAST Security Scanning (CI + pre-commit + custom rules + baseline)",
+    "Created bd task marky-yjg: baseline scan + cargo-deny config (SRE-refined)",
+    "Researched Rust SAST tools: CodeQL GA (17 queries), Semgrep GA (70+ rules), cargo-audit/deny stable",
+    "Reviewed PR #7 comments from CodeRabbit (broken $schema, path resolution) and Copilot (keywords, description, error handling)"
   ],
   "knownIssues": [
     "PR #7 has merge conflicts in 3 files (harness metadata + test file)",
     "cargo publish --dry-run only validates core crate; other 5 fail because deps not on crates.io yet (expected)",
     "Write tool blocked by security_reminder_hook on .github/workflows/*.yml — use Bash heredoc instead",
-    "5 broken PNG image links in docs/rust_guidelines/ (filed as gigapowers-ctb)"
+    "5 broken PNG image links in docs/rust_guidelines/ (filed as gigapowers-ctb)",
+    "Zero security scanning infrastructure exists — SAST epic addresses this"
   ],
   "environmentState": {
     "devServerRunning": false,
