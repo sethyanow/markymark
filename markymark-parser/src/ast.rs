@@ -126,53 +126,35 @@ impl Ast {
 
     /// Extract all list items
     pub fn extract_list_items(&self) -> Vec<ListItem<'static>> {
-        let arena_ref: &'static bumpalo::Bump = unsafe {
-            &*(&self.arena as *const bumpalo::Bump)
-        };
         let root_node = self.tree.root_node();
         let mut items = Vec::new();
-        collect_top_level_list_items(root_node, &self.source, arena_ref, &mut items);
+        collect_top_level_list_items(root_node, &self.source, self.arena_ref(), &mut items);
         items
     }
 
     /// Extract all tasks
     pub fn extract_tasks(&self) -> Vec<Task<'static>> {
-        let arena_ref: &'static bumpalo::Bump = unsafe {
-            &*(&self.arena as *const bumpalo::Bump)
-        };
-        crate::extract::extract_tasks(&self.root_elements, &self.source, arena_ref)
+        crate::extract::extract_tasks(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all callouts (Obsidian)
     pub fn extract_callouts(&self) -> Vec<Callout<'static>> {
-        let arena_ref: &'static bumpalo::Bump = unsafe {
-            &*(&self.arena as *const bumpalo::Bump)
-        };
-        crate::extract::extract_callouts(&self.root_elements, &self.source, arena_ref)
+        crate::extract::extract_callouts(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all query blocks (Logseq)
     pub fn extract_query_blocks(&self) -> Vec<QueryBlock<'static>> {
-        let arena_ref: &'static bumpalo::Bump = unsafe {
-            &*(&self.arena as *const bumpalo::Bump)
-        };
-        crate::extract::extract_query_blocks(&self.root_elements, &self.source, arena_ref)
+        crate::extract::extract_query_blocks(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Get frontmatter if present
     pub fn frontmatter(&self) -> Option<Frontmatter<'static>> {
-        let arena_ref: &'static bumpalo::Bump = unsafe {
-            &*(&self.arena as *const bumpalo::Bump)
-        };
-        crate::extract::extract_frontmatter(&self.root_elements, &self.source, arena_ref)
+        crate::extract::extract_frontmatter(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Get page properties (Logseq)
     pub fn page_properties(&self) -> Option<Properties<'static>> {
-        let arena_ref: &'static bumpalo::Bump = unsafe {
-            &*(&self.arena as *const bumpalo::Bump)
-        };
-        crate::extract::extract_page_properties(&self.root_elements, &self.source, arena_ref)
+        crate::extract::extract_page_properties(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all XML/HTML tags from the document
