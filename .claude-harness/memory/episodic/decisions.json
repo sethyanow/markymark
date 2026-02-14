@@ -318,6 +318,24 @@
       "rationale": "extract_list_items was unused (Ast never called it). collect_top_level_list_items already takes arena and uses ListItem::list_items_from_list_node. Removing dead code ensures extraction API is consistently arena-driven.",
       "alternatives": ["Update extract_list_items to take arena", "Keep for future use"],
       "impact": "markymark-parser/src/extract.rs"
+    },
+    {
+      "id": "dec-018",
+      "timestamp": "2026-02-14T23:45:00Z",
+      "feature": "feature-001",
+      "decision": "DocumentIndex::from_ast takes Ast by value, uses arena_ptr + ptr::read + mem::forget to transfer arena ownership",
+      "rationale": "Borrow checker blocks into_arena() while arena ref is in use. Raw pointer breaks the borrow chain; ptr::read extracts arena, mem::forget avoids double-free of ast. All index data points into the arena we take ownership of.",
+      "alternatives": ["Change parser to parse_into(&Bump) - bigger API change", "Two-phase: extract to owned Vec then build - defeats borrowing goal"],
+      "impact": "markymark-parser Ast::arena_ptr(), markymark-index document.rs from_ast"
+    },
+    {
+      "id": "dec-019",
+      "timestamp": "2026-02-14T23:45:00Z",
+      "feature": "feature-001",
+      "decision": "RealmIndex cross-doc lookups use owned ResolvedHeading/ResolvedBlock and tag_to_docs HashMap",
+      "rationale": "Per dec-arena-001, realm-level owned storage for cross-doc lookups. Arena-backed refs from removed docs would dangle. Owned copies survive doc removal.",
+      "alternatives": ["Keep iterating docs and returning refs - breaks on doc remove", "Separate realm arena for cross-doc - adds complexity"],
+      "impact": "markymark-index/src/realm.rs, lookup_heading/block/tag_counts API change"
     }
   ]
 }

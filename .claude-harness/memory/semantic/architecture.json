@@ -21,7 +21,7 @@
       "markymark-parser/src/types/ (elements, links, blocks, frontmatter, xml - arena-backed element types)",
       "markymark-index/src/document.rs (DocumentIndex arena-backed entries, slugify, outline)",
       "markymark-index/src/graph.rs (ConnectionGraph via petgraph)",
-      "markymark-index/src/realm.rs (RealmIndex: multi-document workspace)",
+      "markymark-index/src/realm.rs (RealmIndex: multi-document workspace, hybrid arena with ResolvedHeading/ResolvedBlock, slug_to_headings, block_to_location, tag_to_docs)",
       "markymark-index/src/resolution.rs (wiki link / markdown link resolution)",
       "markymark-lsp/src/server.rs (tower-lsp LanguageServer impl, capability negotiation)",
       "markymark-lsp/src/state.rs (ServerState: document management, diagnostics, rename, refs)",

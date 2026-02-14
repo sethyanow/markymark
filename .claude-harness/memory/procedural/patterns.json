@@ -17,6 +17,8 @@
       "Range containment for nested XML document symbols",
       "LSP Content-Length framing vs MCP line-delimited JSON — NEVER mix them",
       "Arena migration works best as phased TDD: infrastructure -> parser types -> parser GREEN tests -> index types -> index GREEN tests",
+      "DocumentIndex::from_ast borrows from parser arena: use arena_ptr + ptr::read + mem::forget when borrow checker blocks into_arena()",
+      "RealmIndex cross-doc lookups: use owned ResolvedHeading/ResolvedBlock copies, populate on add_document, clear on remove_document",
       "When extraction has dual paths (e.g. extract_list_items vs collect_top_level_list_items), remove dead extract_* if Ast uses the arena-driven path; plan invalidation is allowed",
       "When teammate implementer crashes, reassign narrow-scope blocker to test-writer to preserve momentum",
       "When harness active/archive state drifts from beads reality, reconcile by restoring in-progress feature to active.json and clearing premature archive entry before continuing implementation",
