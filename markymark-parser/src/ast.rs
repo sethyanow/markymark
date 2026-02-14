@@ -12,6 +12,15 @@ pub struct Ast {
     root_elements: Vec<Element>,
 }
 
+impl Default for Ast {
+    fn default() -> Self {
+        // Create a minimal empty AST for testing purposes
+        // This parses an empty string which produces an empty document
+        let mut parser = crate::Parser::new().expect("parser should initialize");
+        parser.parse("").expect("empty document should parse")
+    }
+}
+
 impl Ast {
     /// Create AST from tree-sitter tree
     pub(crate) fn from_tree(tree: Tree, source: &str) -> CoreResult<Self> {
