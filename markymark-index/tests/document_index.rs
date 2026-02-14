@@ -9,7 +9,7 @@ use markymark_parser::Parser;
 fn index_from(source: &str) -> DocumentIndex {
     let mut parser = Parser::new().expect("parser init");
     let ast = parser.parse(source).expect("parse");
-    DocumentIndex::from_ast(&ast)
+    DocumentIndex::from_ast(ast)
 }
 
 // ---------------------------------------------------------------------------
