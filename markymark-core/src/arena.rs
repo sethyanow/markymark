@@ -24,22 +24,19 @@ pub type ArenaStr<'a> = &'a str;
 /// Use `BumpVec::new_in(arena)` and `.into_bump_slice()` to produce.
 pub type ArenaSlice<'a, T> = &'a [T];
 
-/// Arena-allocated HashMap.
+/// Arena-allocated HashMap (dec-arena-003).
 ///
-/// Uses hashbrown for fast hashing. Keys and values are arena references
-/// (`&'arena str` etc.). Map buckets use the default allocator.
+/// Keys, values, and internal buckets are allocated in the arena.
 /// Use [`new_arena_hashmap`] to construct.
-///
-/// Note: Full arena allocation of map buckets would require bumpalo's
-/// `allocator_api` feature (nightly). Keys/values remain arena-backed.
-pub type ArenaHashMap<'a, K, V> = HashMap<K, V>;
+pub type ArenaHashMap<'a, K, V> =
+    HashMap<K, V, hashbrown::DefaultHashBuilder, &'a Bump>;
 
-/// Create an arena HashMap.
+/// Create an arena-allocated HashMap.
 ///
-/// Call with arena in scope; insert arena-allocated keys/values via
-/// `arena.alloc_str(s)` so all data shares the arena lifetime.
-pub fn new_arena_hashmap<'a, K, V>(_arena: &'a Bump) -> ArenaHashMap<'a, K, V> {
-    HashMap::new()
+/// Map's internal storage is allocated in the arena; O(1) bulk deallocation
+/// when the arena is dropped.
+pub fn new_arena_hashmap<'a, K, V>(arena: &'a Bump) -> ArenaHashMap<'a, K, V> {
+    HashMap::new_in(arena)
 }
 
 // ============================================================================
