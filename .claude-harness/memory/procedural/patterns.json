@@ -4,10 +4,13 @@
     "codePatterns": [
       "ChildGuard RAII for process cleanup in integration tests",
       "CoreEngine trait in core, transport crates are thin adapters",
+      "Custom Semgrep rules can be verified with deterministic fixture scans + expected finding counts when semgrep test mode is constrained by CLI version",
       "Deterministic sort by URI then range for stable output",
       "Drop read lock before async publish_diagnostics (deadlock prevention)",
       "FULL text document sync (not INCREMENTAL) for v1 LSP",
+      "For gitleaks staged negative testing, use a synthetic token that matches built-in regex exactly (e.g., ghp_ + 36 chars)",
       "Hook scripts receive JSON on stdin, output JSON to stdout, use exit 0 for no-op on non-matching files",
+      "Keep Semgrep rule scope high-signal by excluding tests/** and validating with repo-wide scan excluding dedicated fixtures",
       "LSP Content-Length framing vs MCP line-delimited JSON — NEVER mix them",
       "Plugin hooks use hooks.json with {description, hooks: {EventName: [{matcher, hooks: [{type, command, timeout}]}]}} structure",
       "Range containment for nested XML document symbols",
@@ -19,9 +22,8 @@
       "When cargo-deny config fails, validate against installed tool version schema before assuming policy error",
       "When writing bd --design content with markdown backticks, use heredoc file + bd update to avoid shell command substitution",
       "convert/state/server module separation in markymark-lsp for testability",
-      "rmcp CallToolResult::structured and structured_error for MCP payloads",
-      "For gitleaks staged negative testing, use a synthetic token that matches built-in regex exactly (e.g., ghp_ + 36 chars)",
-      "lefthook command values containing colons/braces must be YAML-quoted to avoid parse errors"
+      "lefthook command values containing colons/braces must be YAML-quoted to avoid parse errors",
+      "rmcp CallToolResult::structured and structured_error for MCP payloads"
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",
