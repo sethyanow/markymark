@@ -1,0 +1,15 @@
+rules:
+  # Intent: prevent unwrap/expect panics when parsing boundary-controlled input.
+  # Noise boundary: tests are excluded because intentional panic tests are common.
+  - id: markymark.rust.boundary-unwrap
+    languages: [rust]
+    severity: WARNING
+    message: "Avoid unwrap/expect at protocol boundaries. Return structured validation errors instead."
+    pattern-either:
+      - pattern: markymark_core::DocumentUri::new($X).unwrap()
+      - pattern: markymark_core::DocumentUri::new($X).expect($MSG)
+      - pattern: serde_json::from_str($X).unwrap()
+      - pattern: serde_json::from_str($X).expect($MSG)
+    paths:
+      exclude:
+        - "**/tests/**"
