@@ -245,7 +245,11 @@ impl DocumentIndex {
             .into_iter()
             .map(|xt| XmlTagEntry {
                 tag_name: xt.tag_name().to_string(),
-                attributes: xt.attributes().clone(),
+                attributes: xt
+                    .attributes()
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
                 is_self_closing: xt.is_self_closing(),
                 is_unclosed: xt.is_unclosed(),
                 range: xt.range(),
