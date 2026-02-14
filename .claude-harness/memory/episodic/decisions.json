@@ -300,6 +300,15 @@
       "rationale": "Keeping review findings centralized in beads comments gives the next implementer complete context without re-running review.",
       "alternatives": ["Post only summary bullets", "Keep review in local temp file only"],
       "impact": "marky-bjj comments and /private/tmp/marky-bjj-coderabbit-review-full.md"
+    },
+    {
+      "id": "dec-016",
+      "timestamp": "2026-02-14T18:00:00Z",
+      "feature": "feature-001",
+      "decision": "Use bumpalo allocator-api2 feature (stable) not allocator_api (nightly) for hashbrown HashMap::new_in",
+      "rationale": "allocator_api requires nightly Rust; allocator-api2 implements allocator_api2::Allocator on stable, enabling ArenaHashMap with arena-allocated buckets per dec-arena-003.",
+      "alternatives": ["Use nightly rust-toolchain.toml", "Fall back to HashMap with default allocator (keys/values only in arena)"],
+      "impact": "Cargo.toml bumpalo features, markymark-core/src/arena.rs"
     }
   ]
 }
