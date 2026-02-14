@@ -42,8 +42,8 @@ fn extract_tag_with_attributes() {
     assert_eq!(tags[0].tag_name(), "div");
 
     let attrs = tags[0].attributes();
-    assert_eq!(attrs.get("class"), Some(&"note".to_string()));
-    assert_eq!(attrs.get("id"), Some(&"main".to_string()));
+    assert_eq!(attrs.get("class"), Some(&"note"));
+    assert_eq!(attrs.get("id"), Some(&"main"));
 }
 
 #[test]
@@ -59,7 +59,7 @@ fn extract_void_html_element() {
     assert!(tags[0].is_self_closing());
     assert_eq!(
         tags[0].attributes().get("src"),
-        Some(&"photo.jpg".to_string())
+        Some(&"photo.jpg")
     );
 }
 
@@ -263,7 +263,7 @@ fn extract_tag_with_single_attribute() {
     assert_eq!(tags.len(), 1);
     let attrs = tags[0].attributes();
     assert_eq!(attrs.len(), 1);
-    assert_eq!(attrs.get("class"), Some(&"important".to_string()));
+    assert_eq!(attrs.get("class"), Some(&"important"));
 }
 
 // ===========================================================================
@@ -305,7 +305,7 @@ fn extract_attribute_with_gt_in_value() {
     assert_eq!(tags[0].tag_name(), "div");
     assert_eq!(
         tags[0].attributes().get("data-expr"),
-        Some(&"a > b".to_string())
+        Some(&"a > b")
     );
     assert_eq!(tags[0].content(), Some("content"));
 }
