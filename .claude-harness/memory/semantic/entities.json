@@ -11,6 +11,16 @@
         "child:marky-yjg"
       ],
       "discoveredAt": "2026-02-14T06:08:38Z"
+    },
+    {
+      "name": "Custom Semgrep Rules Task",
+      "type": "task",
+      "location": "bd:marky-7za",
+      "relationships": [
+        "parent:marky-84l",
+        "follows:marky-8jx"
+      ],
+      "discoveredAt": "2026-02-14T06:23:36Z"
     }
   ]
 }

@@ -1,29 +1,29 @@
 {
-  "lastUpdated": "2026-02-14T06:14:22Z",
+  "lastUpdated": "2026-02-14T06:23:36Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Executed marky-ops end-to-end: added security workflow with advisory-only cargo-audit/cargo-deny/CodeQL/Semgrep jobs and SARIF uploads; verified YAML validity + ci.yml unchanged + full workspace tests passing; closed marky-ops; created and SRE-refined follow-up task marky-8jx for lefthook security hooks.",
+    "summary": "Executed marky-8jx end-to-end: added root lefthook.yml pre-commit hooks (fmt/clippy/cargo-audit/gitleaks), validated hook install/run, validated gitleaks negative test with staged synthetic token, verified cargo test --workspace and ci.yml unchanged, closed marky-8jx, and created next task marky-7za for custom Semgrep rules + tests.",
     "completedTasks": [
-      "marky-ops implementation and closure",
-      "Created .github/workflows/security.yml",
-      "Verified cargo test --workspace and ci.yml unchanged",
-      "Created refined next task marky-8jx"
+      "Closed marky-8jx",
+      "Added lefthook.yml with deterministic fail-fast pre-commit hooks",
+      "Updated README pre-commit security hook setup",
+      "Verified gitleaks negative test + clean rerun",
+      "Created refined next task marky-7za"
     ],
     "blockers": [
-      "No local workflow runner for full GitHub Actions execution; runtime validation deferred to GitHub CI",
-      "lefthook/gitleaks are not installed locally in this environment (tracked in next task marky-8jx)"
+      "No local GitHub Actions runtime for end-to-end workflow execution; CI runtime validation remains on GitHub"
     ],
     "nextSteps": [
-      "Execute marky-8jx to add lefthook pre-commit hooks",
-      "Add .semgrep custom rules and tests for unsafe/concurrency/input validation",
-      "Verify security workflow behavior on push/PR in GitHub Actions"
+      "Execute marky-7za: implement .semgrep custom rules and rule tests",
+      "Run semgrep local validation and keep test-noise exclusions precise",
+      "Continue epic marky-84l until all criteria are met"
     ]
   },
   "recentChanges": [
-    "Added .github/workflows/security.yml with 4 advisory-only jobs",
-    "Configured CodeQL analyze and Semgrep SARIF uploads",
-    "Confirmed .github/workflows/ci.yml unchanged",
-    "Closed marky-ops and created marky-8jx with SRE-refined plan"
+    "Added lefthook.yml (fmt/clippy/cargo-audit/gitleaks pre-commit)",
+    "Updated README with lefthook + tool install docs",
+    "Closed marky-8jx after full verification",
+    "Created marky-7za for custom Semgrep rules and tests"
   ],
   "knownIssues": [
     "5 broken PNG image links in docs/rust_guidelines/ (filed as gigapowers-ctb)",
@@ -35,7 +35,7 @@
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-14T06:14:22Z",
+    "lastSuccessfulBuild": "2026-02-14T06:23:36Z",
     "lastTypeCheck": null
   }
 }
