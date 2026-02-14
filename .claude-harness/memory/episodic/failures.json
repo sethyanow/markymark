@@ -29,6 +29,18 @@
       "command": "cargo test --package markymark-index --lib",
       "error": "Exit code 101\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s\n     Running unittests src/lib.rs (target/debug/deps/markymark_index-0f55946a544f5b92)\nerror: test failed, to rerun pass `-p markymark-index --lib`\n\n\nrunning 18 tests\ntest document::arena_allocation_tests::heading_by_slug_returns_arena_ref ... FAILED\ntest document::arena_allocation_tests::document_index_to_realm_integration ... FAILED\ntest document::arena_allocation_tests::markdown_link_entry_uses_arena_lifeti",
       "summary": "Failed: cargo test --package markymark-index --lib"
+    },
+    {
+      "timestamp": "2026-02-14T06:23:10Z",
+      "command": "cargo clippy -p markymark-parser --all-targets -- -D warnings",
+      "error": "Exit code 101\n    Checking markymark-core v0.1.0-alpha.2 (/Volumes/code/markymark/.worktrees/feature-mark-bumpalo/markymark-core)\n    Checking markymark-parser v0.1.0-alpha.2 (/Volumes/code/markymark/.worktrees/feature-mark-bumpalo/markymark-parser)\nerror: called `iter().copied().collect()` on a slice to create a `Vec`. Calling `to_vec()` is both faster and more readable\n   --> markymark-parser/src/types.rs:634:54\n    |\n634 |             FrontmatterValue::List(list) => Some(list.iter().copied().",
+      "summary": "Failed: cargo clippy -p markymark-parser --all-targets -- -D warnings"
+    },
+    {
+      "timestamp": "2026-02-14T06:29:03Z",
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "error": "Exit code 101\n    Checking markymark-lsp v0.1.0-alpha.2 (/Volumes/code/markymark/.worktrees/feature-mark-bumpalo/markymark-lsp)\n    Checking markymark-mcp v0.1.0-alpha.2 (/Volumes/code/markymark/.worktrees/feature-mark-bumpalo/markymark-mcp)\n    Checking markymark-index v0.1.0-alpha.2 (/Volumes/code/markymark/.worktrees/feature-mark-bumpalo/markymark-index)\nerror: this expression creates a reference which is immediately dereferenced by the compiler\n   --> markymark-lsp/src/server.rs:352:53\n    |",
+      "summary": "Failed: cargo clippy --workspace --all-targets -- -D warnings"
     }
   ]
 }
