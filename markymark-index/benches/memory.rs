@@ -42,6 +42,11 @@ use std::path::{Path, PathBuf};
 /// Directories to exclude when collecting .md files.
 const EXCLUDE_DIRS: &[&str] = &["node_modules"];
 
+/// Sample size: 100 if MARKYMARK_BENCH_HEAVY=1, else default.
+fn sample_size(default: usize) -> usize {
+    std::env::var("MARKYMARK_BENCH_HEAVY").is_ok().then_some(100).unwrap_or(default)
+}
+
 fn sample_doc(n: usize) -> String {
     format!(
         r#"# Document {}
@@ -175,7 +180,7 @@ fn bench_reparse_real_large_doc(c: &mut Criterion) {
     eprintln!("  [memory] reparse_real_large_doc: fixture {} KB", size_kb);
 
     let mut group = c.benchmark_group("real_corpus");
-    group.sample_size(20);
+    group.sample_size(sample_size(20));
     group.bench_function("reparse_real_large_doc", |b| {
         b.iter(|| {
             let index = reparse_single_document(&content);
@@ -210,7 +215,7 @@ fn bench_index_real_corpus(c: &mut Criterion) {
     eprintln!("  [memory] index_real_corpus: {} sections from fixture", n);
 
     let mut group = c.benchmark_group("real_corpus");
-    group.sample_size(20);
+    group.sample_size(sample_size(20));
     group.bench_function("index_real_corpus", |b| {
         b.iter(|| {
             let realm = index_documents_from_slices(&sections);
@@ -284,7 +289,7 @@ fn bench_index_docs_dir(c: &mut Criterion) {
     );
 
     let mut group = c.benchmark_group("real_corpus");
-    group.sample_size(10);
+    group.sample_size(sample_size(10));
     group.bench_function("index_docs_dir", |b| {
         b.iter(|| {
             let realm = index_documents_from_paths(&paths, &contents);
@@ -297,7 +302,7 @@ fn bench_index_docs_dir(c: &mut Criterion) {
 fn bench_memory_footprint(c: &mut Criterion) {
     static REPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     let mut group = c.benchmark_group("memory");
-    group.sample_size(10);
+    group.sample_size(sample_size(10));
     group.bench_function("memory_after_index_100", |b| {
         b.iter(|| {
             let realm = index_n_documents(100);
@@ -341,7 +346,7 @@ fn get_maxrss_kb() -> u64 {
 fn bench_allocation_count_index_100(c: &mut Criterion) {
     static REPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     let mut group = c.benchmark_group("memory");
-    group.sample_size(10);
+    group.sample_size(sample_size(10));
     group.bench_function("alloc_count_index_100", |b| {
         b.iter(|| {
             ALLOC_COUNT.store(0, Ordering::Relaxed);

@@ -11,6 +11,13 @@
 
 Evaluated whether the bumpalo arena migration was worthwhile. Added memory (RSS, resident) and concurrency benchmarks. Ran before/after comparison against pre-arena baseline (476795e). **Verdict: marginal gains; sample too small to conclude.**
 
+**This session (2026-02-14):**
+- Added real corpus benchmarks (epstein ~492KB, gigapowers 918 files / 5.9 MB)
+- Created `baseline/pre-arena` branch and `pre-arena` tag at 476795e
+- Added `MARKYMARK_BENCH_HEAVY=1` for 100-sample runs; `MARKYMARK_BENCH_EPSTEIN` for fixture path
+- Baseline worktree: `/tmp/markymark-baseline` (keep for benchmarking)
+- **Note:** 100-sample `index_docs_dir` (918 files) is RAM-heavy; froze laptop. Use default sample sizes or run on beefier machine.
+
 ---
 
 ## Current Benchmark Setup
@@ -28,6 +35,8 @@ Evaluated whether the bumpalo arena migration was worthwhile. Added memory (RSS,
 **Dependencies (dev):** criterion, memory-stats, libc
 
 **Run:** `cargo bench -p markymark-index`
+
+**Heavy mode (100 samples):** `MARKYMARK_BENCH_HEAVY=1 cargo bench -p markymark-index -- real_corpus --nocapture` — warning: index_docs_dir uses significant RAM.
 
 ---
 

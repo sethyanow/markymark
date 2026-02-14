@@ -372,6 +372,24 @@
       "rationale": "BlockEntry used hardcoded Range(0,0,0,0), causing go-to-definition for ^block-id to always jump to file start. Regex-extracted types should carry source position for LSP navigation.",
       "alternatives": ["Return separate struct with id+range", "Compute range only in index layer"],
       "impact": "markymark-parser types/blocks.rs BlockId, extract.rs extract_block_ids, markymark-index document.rs BlockEntry"
+    },
+    {
+      "id": "dec-024",
+      "timestamp": "2026-02-15T06:30:00Z",
+      "feature": "feature-001",
+      "decision": "Keep baseline worktree at /tmp/markymark-baseline for benchmarking; only kill PIDs when user explicitly asks for process cleanup",
+      "rationale": "User corrected: they wanted PID cleanup only, not worktree removal. Baseline worktree enables quick pre/post arena comparison.",
+      "alternatives": ["Remove worktree after each run", "Document recreate steps"],
+      "impact": "Checkpoint workflow, process-cleanup behavior"
+    },
+    {
+      "id": "dec-025",
+      "timestamp": "2026-02-15T06:30:00Z",
+      "feature": "feature-001",
+      "decision": "MARKYMARK_BENCH_HEAVY=1 for 100-sample runs; default to 10–20 samples to avoid RAM exhaustion on index_docs_dir (918 files)",
+      "rationale": "100-sample index_docs_dir froze laptop. Real corpus bench allocates ~5.9MB × 100 iterations; default sample sizes are sufficient for most runs.",
+      "alternatives": ["Cap index_docs_dir at 20 samples in heavy mode", "Run heavy bench on CI only"],
+      "impact": "markymark-index benches/memory.rs sample_size()"
     }
   ]
 }
