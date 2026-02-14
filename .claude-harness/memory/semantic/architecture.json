@@ -12,26 +12,33 @@
     "testFramework": "cargo test + bash test scripts for plugin"
   },
   "structure": {
-    "entryPoints": ["markymark-cli/src/main.rs"],
+    "entryPoints": [
+      "markymark-cli/src/main.rs"
+    ],
     "components": [
+      ".github/workflows/security.yml (planned: advisory-only CI security workflow with 4 jobs + SARIF uploads)",
+      "deny.toml (cargo-deny policy: advisories/licenses/sources/bans)",
       "markymark-core/src/engine.rs (CoreEngine trait, CoreOperation, CoreResult)",
-      "markymark-parser/src/ast.rs (tree-sitter AST construction)",
-      "markymark-parser/src/extract.rs (regex-based extraction: wiki links, XML tags, etc.)",
-      "markymark-parser/src/types.rs (element types and constructors)",
       "markymark-index/src/document.rs (DocumentIndex, slugify, outline)",
       "markymark-index/src/graph.rs (ConnectionGraph via petgraph)",
       "markymark-index/src/realm.rs (RealmIndex: multi-document workspace)",
       "markymark-index/src/resolution.rs (wiki link / markdown link resolution)",
+      "markymark-lsp/src/convert.rs (LSP type conversions)",
       "markymark-lsp/src/server.rs (tower-lsp LanguageServer impl, capability negotiation)",
       "markymark-lsp/src/state.rs (ServerState: document management, diagnostics, rename, refs)",
-      "markymark-lsp/src/convert.rs (LSP type conversions)",
+      "markymark-mcp/src/dto.rs (MCP data transfer objects)",
       "markymark-mcp/src/lib.rs (rmcp tool_router/handlers, DTOs)",
-      "markymark-mcp/src/runtime_engine.rs (MCP RuntimeEngine: startup indexing, CoreEngine impl)",
-      "markymark-mcp/src/resources.rs (MCP resource handlers)",
       "markymark-mcp/src/rename_ops.rs (MCP rename operations)",
-      "markymark-mcp/src/dto.rs (MCP data transfer objects)"
+      "markymark-mcp/src/resources.rs (MCP resource handlers)",
+      "markymark-mcp/src/runtime_engine.rs (MCP RuntimeEngine: startup indexing, CoreEngine impl)",
+      "markymark-parser/src/ast.rs (tree-sitter AST construction)",
+      "markymark-parser/src/extract.rs (regex-based extraction: wiki links, XML tags, etc.)",
+      "markymark-parser/src/types.rs (element types and constructors)"
     ],
-    "api": ["markymark-parser/src/lib.rs", "markymark-core/src/engine.rs"],
+    "api": [
+      "markymark-parser/src/lib.rs",
+      "markymark-core/src/engine.rs"
+    ],
     "tests": [
       "markymark-parser/tests/ (xml_extraction, frontmatter, tree_sitter_integration)",
       "markymark-index/tests/ (document_index, connection_graph, realm_index, resolution)",
@@ -49,14 +56,16 @@
     },
     "fileOrganization": {
       "rustModules": [
-        "Element types and constructors in markymark-parser/src/types.rs",
-        "Parser AST construction in markymark-parser/src/ast.rs",
-        "Regex-based extraction in markymark-parser/src/extract.rs",
-        "LSP capability negotiation in markymark-lsp/src/server.rs",
         "Document state management in markymark-lsp/src/state.rs",
+        "Element types and constructors in markymark-parser/src/types.rs",
+        "Integration tests in crate tests/ dirs are standalone crates (no mod.rs needed)",
+        "LSP capability negotiation in markymark-lsp/src/server.rs",
         "MCP DTOs in markymark-mcp/src/dto.rs, resources in src/resources.rs",
         "MCP runtime adapter in markymark-mcp/src/runtime_engine.rs",
-        "Integration tests in crate tests/ dirs are standalone crates (no mod.rs needed)"
+        "Parser AST construction in markymark-parser/src/ast.rs",
+        "Regex-based extraction in markymark-parser/src/extract.rs",
+        "Security CI workflow isolated in .github/workflows/security.yml (planned under marky-ops)",
+        "Security policy in deny.toml at workspace root"
       ],
       "plugin": "markymark-plugin/{.claude-plugin/,bin/,scripts/,hooks/,skills/,tests/}",
       "examples": "examples/claude-code-plugin/ (reference implementations)"
@@ -64,17 +73,18 @@
     "codeStyle": {
       "rust": [
         "CoreEngine trait in core, transport crates are thin adapters",
-        "convert/state/server module separation in markymark-lsp",
-        "FULL text document sync (not INCREMENTAL)",
-        "Drop read lock before async calls (deadlock prevention)",
-        "Single-pass stack tokenizer for XML extraction",
         "Deterministic sort by URI then range for stable output",
-        "Range containment for nested XML document symbols"
+        "Drop read lock before async calls (deadlock prevention)",
+        "FULL text document sync (not INCREMENTAL)",
+        "Range containment for nested XML document symbols",
+        "Security scans run advisory-only during initial adoption (continue-on-error in CI jobs)",
+        "Single-pass stack tokenizer for XML extraction",
+        "convert/state/server module separation in markymark-lsp"
       ],
       "bash": "set -euo pipefail, jq for JSON, case statements for file extension matching"
     }
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-13T21:40:00Z",
+  "lastUpdated": "2026-02-14T06:08:38Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

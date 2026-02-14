@@ -1,4 +1,15 @@
 {
   "version": 3,
-  "entities": []
+  "entities": [
+    {
+      "name": "SAST Security Scanning Epic",
+      "type": "epic",
+      "location": "bd:marky-84l",
+      "relationships": [
+        "child:marky-yjg",
+        "child:marky-ops"
+      ],
+      "discoveredAt": "2026-02-14T06:08:38Z"
+    }
+  ]
 }
