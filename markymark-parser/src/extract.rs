@@ -1,8 +1,7 @@
 //! Extraction functions for arena-allocated markdown types.
 
-use std::collections::HashMap;
-
 use crate::types::*;
+use markymark_core::arena::new_arena_hashmap;
 use markymark_core::prelude::*;
 use regex::Regex;
 
@@ -434,7 +433,7 @@ pub fn extract_page_properties<'a>(
     arena: &'a bumpalo::Bump,
 ) -> Option<Properties<'a>> {
     // Logseq properties: key:: value at start of document
-    let mut data = HashMap::new();
+    let mut data = new_arena_hashmap(arena);
     let mut found_any = false;
 
     for line in source.lines() {
@@ -510,8 +509,10 @@ pub fn extract_xml_tags<'a>(
     // Regex for attributes: key="value"
     let attr_re = Regex::new(r#"([a-zA-Z_:][a-zA-Z0-9_.:-]*)\s*=\s*"([^"]*)""#).unwrap();
 
-    let parse_attrs = |attr_str: &str, arena: &'a bumpalo::Bump| -> HashMap<&'a str, &'a str> {
-        let mut attrs = HashMap::new();
+    let parse_attrs = |attr_str: &str,
+                       arena: &'a bumpalo::Bump|
+     -> markymark_core::arena::ArenaHashMap<'a, &'a str, &'a str> {
+        let mut attrs = new_arena_hashmap(arena);
         for cap in attr_re.captures_iter(attr_str) {
             if let (Some(key), Some(val)) = (cap.get(1), cap.get(2)) {
                 attrs.insert(
@@ -541,7 +542,7 @@ pub fn extract_xml_tags<'a>(
     /// Frame on the tag-matching stack for open tags awaiting their close.
     struct StackFrame<'a> {
         tag_name: &'a str,
-        attrs: HashMap<&'a str, &'a str>,
+        attrs: markymark_core::arena::ArenaHashMap<'a, &'a str, &'a str>,
         tag_start: usize,
         content_start: usize,
     }
@@ -690,7 +691,7 @@ pub fn extract_xml_tags<'a>(
 
 /// Simple YAML parser for frontmatter
 fn parse_simple_yaml<'a>(content: &str, arena: &'a bumpalo::Bump) -> Frontmatter<'a> {
-    let mut data = HashMap::new();
+    let mut data = new_arena_hashmap(arena);
 
     for line in content.lines() {
         if let Some(colon_pos) = line.find(':') {

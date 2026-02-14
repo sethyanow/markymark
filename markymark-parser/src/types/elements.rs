@@ -1,7 +1,7 @@
 //! Element primitives: Element, Heading, Paragraph, ListItem.
 
+use markymark_core::arena::{new_arena_hashmap, ArenaHashMap};
 use markymark_core::prelude::*;
-use std::collections::HashMap;
 use tree_sitter::Node;
 
 use super::arena_alloc_str;
@@ -196,7 +196,7 @@ pub struct ListItem<'arena> {
     #[allow(dead_code)]
     text: &'arena str,
     #[allow(dead_code)]
-    properties_map: HashMap<&'arena str, &'arena str>,
+    properties_map: ArenaHashMap<'arena, &'arena str, &'arena str>,
     #[allow(dead_code)]
     children_list: &'arena [ListItem<'arena>],
 }
@@ -209,7 +209,7 @@ impl<'arena> ListItem<'arena> {
     ) -> CoreResult<Self> {
         let text = node.utf8_text(source.as_bytes()).unwrap_or("").trim();
 
-        let mut properties_map = HashMap::new();
+        let mut properties_map = new_arena_hashmap(arena);
         for line in text.lines() {
             let line = line.trim();
             let Some((key, value)) = line.split_once("::") else {
@@ -283,7 +283,7 @@ impl<'arena> ListItem<'arena> {
     }
 
     /// Get list item properties
-    pub fn properties(&self) -> &HashMap<&'arena str, &'arena str> {
+    pub fn properties(&self) -> &ArenaHashMap<'arena, &'arena str, &'arena str> {
         &self.properties_map
     }
 
@@ -300,7 +300,7 @@ impl<'arena> ListItem<'arena> {
     #[allow(dead_code)]
     pub(crate) fn new(
         text: &'arena str,
-        properties_map: HashMap<&'arena str, &'arena str>,
+        properties_map: ArenaHashMap<'arena, &'arena str, &'arena str>,
         children_list: &'arena [ListItem<'arena>],
     ) -> Self {
         Self {

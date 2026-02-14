@@ -19,7 +19,7 @@ Run `bd show marky-luy` for full requirements, anti-patterns, and design rationa
 
 ## Tasks
 
-- [ ] marky-g9t.1: Add hashbrown dep and arena infrastructure to markymark-core
+- [x] marky-g9t.1: Add hashbrown dep and arena infrastructure to markymark-core
 - [ ] marky-g9t.2: Migrate markymark-parser types to arena lifetimes
 - [ ] marky-g9t.3: Update parser extraction logic for arena allocation
 - [ ] marky-g9t.4: Migrate markymark-index document types to arena lifetimes

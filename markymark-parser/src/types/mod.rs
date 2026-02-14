@@ -33,8 +33,8 @@ pub(crate) fn arena_alloc_str<'a>(arena: &'a bumpalo::Bump, s: &str) -> &'a str 
 mod arena_allocation_tests {
     use super::*;
     use bumpalo::Bump;
+    use markymark_core::arena::new_arena_hashmap;
     use markymark_core::prelude::{Position, Range};
-    use std::collections::HashMap;
 
     // ========================================================================
     // PARSER TYPES: Arena Lifetime Tests
@@ -70,10 +70,13 @@ mod arena_allocation_tests {
     #[test]
     fn list_item_uses_arena_lifetime() {
         let arena = Bump::new();
-        let mut props: HashMap<&str, &str> = HashMap::new();
-        props.insert(arena.alloc_str("key"), arena.alloc_str("value"));
+        let mut props = new_arena_hashmap(&arena);
+        props.insert(
+            arena_alloc_str(&arena, "key"),
+            arena_alloc_str(&arena, "value"),
+        );
 
-        let item = ListItem::new(arena.alloc_str("- test item"), props, &[]);
+        let item = ListItem::new(arena_alloc_str(&arena, "- test item"), props, &[]);
 
         assert_eq!(item.text(), "- test item");
         assert_eq!(item.properties().get("key"), Some(&"value"));
@@ -198,10 +201,10 @@ mod arena_allocation_tests {
     #[test]
     fn frontmatter_uses_arena_lifetime() {
         let arena = Bump::new();
-        let mut data: HashMap<&str, FrontmatterValue> = HashMap::new();
+        let mut data = new_arena_hashmap(&arena);
         data.insert(
-            arena.alloc_str("title"),
-            FrontmatterValue::String(arena.alloc_str("My Page")),
+            arena_alloc_str(&arena, "title"),
+            FrontmatterValue::String(arena_alloc_str(&arena, "My Page")),
         );
 
         let fm = Frontmatter::new(data);
@@ -213,10 +216,10 @@ mod arena_allocation_tests {
     #[test]
     fn properties_uses_arena_lifetime() {
         let arena = Bump::new();
-        let mut data: HashMap<&str, PropertyValue> = HashMap::new();
+        let mut data = new_arena_hashmap(&arena);
         data.insert(
-            arena.alloc_str("type"),
-            PropertyValue::String(arena.alloc_str("project")),
+            arena_alloc_str(&arena, "type"),
+            PropertyValue::String(arena_alloc_str(&arena, "project")),
         );
 
         let props = Properties::new(data);
@@ -228,14 +231,17 @@ mod arena_allocation_tests {
     #[test]
     fn xml_tag_uses_arena_lifetime() {
         let arena = Bump::new();
-        let mut attrs: HashMap<&str, &str> = HashMap::new();
-        attrs.insert(arena.alloc_str("id"), arena.alloc_str("main"));
+        let mut attrs = new_arena_hashmap(&arena);
+        attrs.insert(
+            arena_alloc_str(&arena, "id"),
+            arena_alloc_str(&arena, "main"),
+        );
 
         let tag = XmlTag::new(
-            arena.alloc_str("agent"),
+            arena_alloc_str(&arena, "agent"),
             attrs,
             false,
-            Some(arena.alloc_str("content")),
+            Some(arena_alloc_str(&arena, "content")),
             Range::new(Position::new(0, 0), Position::new(0, 10)),
         );
 
@@ -285,12 +291,12 @@ mod arena_allocation_tests {
     fn list_item_properties_arena_map() {
         let arena = Bump::new();
 
-        let mut map: HashMap<&str, &str> = HashMap::new();
-        let key = arena.alloc_str("property");
-        let value = arena.alloc_str("value");
+        let mut map = new_arena_hashmap(&arena);
+        let key = arena_alloc_str(&arena, "property");
+        let value = arena_alloc_str(&arena, "value");
         map.insert(key, value);
 
-        let item = ListItem::new(arena.alloc_str("test"), map, &[]);
+        let item = ListItem::new(arena_alloc_str(&arena, "test"), map, &[]);
 
         assert_eq!(item.properties().get("property"), Some(&"value"));
     }
@@ -301,8 +307,8 @@ mod arena_allocation_tests {
         let arena = Bump::new();
 
         let item = ListItem::new(
-            arena.alloc_str("parent"),
-            HashMap::new(),
+            arena_alloc_str(&arena, "parent"),
+            new_arena_hashmap(&arena),
             &[], // Empty arena slice
         );
 

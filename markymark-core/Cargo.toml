@@ -14,8 +14,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
-bumpalo = { version = "3", features = ["collections", "boxed"] }
-hashbrown = "0.15"
+bumpalo = { workspace = true }
+hashbrown = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

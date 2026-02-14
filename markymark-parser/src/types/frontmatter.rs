@@ -1,16 +1,16 @@
 //! Metadata and frontmatter: Frontmatter, FrontmatterValue, Properties, PropertyValue.
 
-use std::collections::HashMap;
+use markymark_core::arena::ArenaHashMap;
 
 /// Frontmatter
 #[derive(Debug, Clone)]
 pub struct Frontmatter<'arena> {
-    data: HashMap<&'arena str, FrontmatterValue<'arena>>,
+    data: ArenaHashMap<'arena, &'arena str, FrontmatterValue<'arena>>,
 }
 
 impl<'arena> Frontmatter<'arena> {
     /// Create new frontmatter
-    pub(crate) fn new(data: HashMap<&'arena str, FrontmatterValue<'arena>>) -> Self {
+    pub(crate) fn new(data: ArenaHashMap<'arena, &'arena str, FrontmatterValue<'arena>>) -> Self {
         Self { data }
     }
 
@@ -50,12 +50,12 @@ impl<'arena> FrontmatterValue<'arena> {
 /// Properties (Logseq)
 #[derive(Debug, Clone)]
 pub struct Properties<'arena> {
-    data: HashMap<&'arena str, PropertyValue<'arena>>,
+    data: ArenaHashMap<'arena, &'arena str, PropertyValue<'arena>>,
 }
 
 impl<'arena> Properties<'arena> {
     /// Create new properties
-    pub(crate) fn new(data: HashMap<&'arena str, PropertyValue<'arena>>) -> Self {
+    pub(crate) fn new(data: ArenaHashMap<'arena, &'arena str, PropertyValue<'arena>>) -> Self {
         Self { data }
     }
 
