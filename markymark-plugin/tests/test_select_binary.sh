@@ -526,8 +526,19 @@ test_marketplace_plugin_source_exists() {
     local source_path
     source_path=$(python3 -c "import json; print(json.load(open('${mktplace}'))['plugins'][0]['source'])" 2>/dev/null)
 
-    # Resolve relative path from repo root
-    local resolved="${REPO_ROOT}/${source_path}"
+    if [[ -z "${source_path}" ]]; then
+        fail "marketplace plugin source path exists" "plugins[0].source present" "missing or invalid in ${mktplace}"
+        return
+    fi
+
+    # Resolve source path relative to repo root (marketplace.json convention).
+    # Absolute paths are used as-is; relative paths resolve from REPO_ROOT.
+    local resolved
+    if [[ "${source_path}" = /* ]]; then
+        resolved="${source_path}"
+    else
+        resolved="${REPO_ROOT}/${source_path#./}"
+    fi
     if [[ -d "${resolved}" ]]; then
         pass "marketplace plugin source path exists (${source_path})"
     else
