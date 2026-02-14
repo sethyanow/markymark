@@ -3,4 +3,9 @@
   "projectName": "markymark",
   "techStack": "Rust",
   "verification": {
-    "build": "cargo
+    "build": "cargo build --release",
+    "test": "cargo test",
+    "lint": "cargo clippy --workspace --all-targets",
+    "acceptance": ""
+  }
+}
