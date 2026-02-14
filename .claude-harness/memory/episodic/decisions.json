@@ -249,6 +249,15 @@
     },
     {
       "id": "dec-010",
+      "timestamp": "2026-02-14T02:45:00Z",
+      "feature": "marky-cfj",
+      "decision": "marketplace.json at repo root .claude-plugin/ for self-hosted marketplace distribution",
+      "rationale": "Repo itself serves as both plugin source and marketplace. Users add via /plugin marketplace add sethyanow/markymark (remote) or local path. Plugin source is ./markymark-plugin relative to repo root.",
+      "alternatives": ["Separate marketplace repo", "Official marketplace only (requires form submission)", "No marketplace (manual install only)"],
+      "impact": ".claude-plugin/marketplace.json created at repo root, 3 validation tests added"
+    },
+    {
+      "id": "dec-011",
       "timestamp": "2026-02-14T04:31:40Z",
       "feature": "feature-001",
       "decision": "Proceed with phased arena migration and defer checkpoint completion until parser regressions are fixed",
