@@ -255,6 +255,33 @@
       "rationale": "Repo itself serves as both plugin source and marketplace. Users add via /plugin marketplace add sethyanow/markymark (remote) or local path. Plugin source is ./markymark-plugin relative to repo root.",
       "alternatives": ["Separate marketplace repo", "Official marketplace only (requires form submission)", "No marketplace (manual install only)"],
       "impact": ".claude-plugin/marketplace.json created at repo root, 3 validation tests added"
+    },
+    {
+      "id": "dec-sast-001",
+      "timestamp": "2026-02-14T08:30:00Z",
+      "feature": "marky-84l",
+      "decision": "Single security.yml workflow with 4 parallel jobs (cargo-audit, cargo-deny, CodeQL, Semgrep) instead of integrated or per-tool workflows",
+      "rationale": "Clean separation from build/test (ci.yml), single management point, parallel jobs keep runtime fast. Integrating into ci.yml would grow it to 7 jobs. Per-tool workflows scatter management across 3 files.",
+      "alternatives": ["Integrated into existing ci.yml (mixes concerns)", "Per-tool workflows (3 new files, scattered)"],
+      "impact": ".github/workflows/security.yml — new workflow file"
+    },
+    {
+      "id": "dec-sast-002",
+      "timestamp": "2026-02-14T08:30:00Z",
+      "feature": "marky-84l",
+      "decision": "Advisory-only security gates (not blocking PRs)",
+      "rationale": "User chose advisory-only for initial adoption. Findings reported as annotations but don't prevent merge. Can tighten to hard gates later after baseline is clean.",
+      "alternatives": ["Hard gate (block PRs on findings)", "Phased (advisory then hard gate)"],
+      "impact": "All 4 CI security jobs use continue-on-error: true"
+    },
+    {
+      "id": "dec-sast-003",
+      "timestamp": "2026-02-14T08:30:00Z",
+      "feature": "marky-84l",
+      "decision": "lefthook (Go binary) for pre-commit hooks instead of Python pre-commit or custom git hooks",
+      "rationale": "No Python runtime dependency. Single binary, fast, growing adoption. User explicitly chose this over Python pre-commit framework.",
+      "alternatives": ["pre-commit (Python, industry standard)", "Custom git hooks (no deps but less portable)", "prek (Rust reimplementation)"],
+      "impact": "lefthook.yml at project root, requires lefthook binary"
     }
   ]
 }
