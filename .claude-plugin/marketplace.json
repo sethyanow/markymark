@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "markymark-marketplace",
+  "owner": {
+    "name": "Seth Yanow"
+  },
+  "plugins": [
+    {
+      "name": "markymark",
+      "source": "./markymark-plugin",
+      "description": "High-performance Markdown language server with LSP and MCP support. Provides go-to-definition, find-references, hover, completion, rename, diagnostics, and document symbols for Markdown files.",
+      "version": "0.1.0-alpha.2",
+      "author": {
+        "name": "Seth Yanow"
+      },
+      "repository": "https://github.com/sethyanow/markymark",
+      "license": "MIT OR Apache-2.0",
+      "keywords": ["markdown", "lsp", "mcp", "language-server", "wiki-links"]
+    }
+  ]
+}

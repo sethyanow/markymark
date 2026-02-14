@@ -246,6 +246,15 @@
       "rationale": "Project already uses conventional commit format (feat:, fix:, chore:). git-cliff is the standard Rust ecosystem tool (git-chglog deprecated Jan 2026). Integrates via orhun/git-cliff-action@v4 in release CI.",
       "alternatives": ["Manual CHANGELOG.md", "GitHub auto-generated release notes (less structured)", "keep-a-changelog (manual)"],
       "impact": "cliff.toml config added, release.yml updated with fetch-depth:0 + changelog step"
+    },
+    {
+      "id": "dec-010",
+      "timestamp": "2026-02-14T02:45:00Z",
+      "feature": "marky-cfj",
+      "decision": "marketplace.json at repo root .claude-plugin/ for self-hosted marketplace distribution",
+      "rationale": "Repo itself serves as both plugin source and marketplace. Users add via /plugin marketplace add sethyanow/markymark (remote) or local path. Plugin source is ./markymark-plugin relative to repo root.",
+      "alternatives": ["Separate marketplace repo", "Official marketplace only (requires form submission)", "No marketplace (manual install only)"],
+      "impact": ".claude-plugin/marketplace.json created at repo root, 3 validation tests added"
     }
   ]
 }
