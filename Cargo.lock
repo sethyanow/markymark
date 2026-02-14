@@ -671,6 +671,7 @@ name = "markymark-index"
 version = "0.1.0-alpha.2"
 dependencies = [
  "bumpalo",
+ "hashbrown 0.15.5",
  "insta",
  "markymark-core",
  "markymark-parser",
