@@ -146,9 +146,35 @@ cargo insta test --review
 cargo clippy --workspace --all-targets
 ```
 
+### Pre-Commit Security Hooks
+
+Install lefthook and local security tools:
+
+```bash
+# macOS (Homebrew)
+brew install lefthook gitleaks
+
+# Linux (install lefthook binary from upstream release if needed)
+# https://github.com/evilmartians/lefthook#install
+
+# Rust tooling
+cargo install --locked cargo-audit
+```
+
+Install git hooks for this repository:
+
+```bash
+lefthook install
+```
+
+Run the full pre-commit pipeline manually:
+
+```bash
+lefthook run pre-commit
+```
+
 ## Supported Markdown Flavors
 
 - **CommonMark**: Standard markdown with heading anchors
 - **Obsidian**: Wiki links `[[page]]`, callouts, block IDs `^id`, embeds `![[file]]`
 - **Logseq**: Nested lists, block UUIDs, page properties
-
