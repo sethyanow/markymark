@@ -399,3 +399,299 @@ fn insert_into_outline(root: &mut OutlineNode, stack: &[(u8, usize)], node: Outl
     current.children.push(node);
     current.children.len() - 1
 }
+
+// ============================================================================
+// ARENA ALLOCATION TESTS
+// These tests define the expected behavior for arena-allocated index types.
+// All tests should FAIL until arena allocation is implemented (RED phase).
+// ============================================================================
+
+#[cfg(test)]
+mod arena_allocation_tests {
+    use super::*;
+    use bumpalo::Bump;
+
+    // ========================================================================
+    // INDEX TYPES: Arena Lifetime Tests
+    // ========================================================================
+
+    /// HeadingEntry should be arena-allocated with 'arena lifetime
+    #[test]
+    fn heading_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, HeadingEntry should have lifetime parameter
+        let _entry: HeadingEntry = HeadingEntry {
+            text: String::from("Introduction"),
+            slug: String::from("introduction"),
+            level: 1,
+            range: Range::new(Position::new(0, 0), Position::new(0, 13)),
+        };
+
+        // EXPECTED: let entry: &HeadingEntry<'arena> = arena.alloc(HeadingEntry { ... });
+        // Arena-allocated entry should borrow from arena
+        panic!("RED: HeadingEntry needs 'arena lifetime parameter");
+    }
+
+    /// BlockEntry should be arena-allocated with 'arena lifetime
+    #[test]
+    fn block_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, BlockEntry should have lifetime parameter
+        let _entry: BlockEntry = BlockEntry {
+            id: String::from("abc123"),
+            range: Range::new(Position::new(0, 0), Position::new(0, 6)),
+        };
+
+        panic!("RED: BlockEntry needs 'arena lifetime parameter");
+    }
+
+    /// TocEntry should be arena-allocated with 'arena lifetime
+    #[test]
+    fn toc_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, TocEntry should have lifetime parameter
+        let _entry: TocEntry = TocEntry {
+            text: String::from("Section"),
+            slug: String::from("section"),
+            level: 2,
+            depth: 0,
+        };
+
+        panic!("RED: TocEntry needs 'arena lifetime parameter");
+    }
+
+    /// OutlineNode should be arena-allocated with 'arena lifetime
+    #[test]
+    fn outline_node_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, OutlineNode should have lifetime parameter
+        let _node: OutlineNode = OutlineNode {
+            heading: None,
+            children: Vec::new(),
+        };
+
+        panic!("RED: OutlineNode needs 'arena lifetime parameter");
+    }
+
+    /// WikiLinkEntry should be arena-allocated with 'arena lifetime
+    #[test]
+    fn wiki_link_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, WikiLinkEntry should have lifetime parameter
+        let _entry: WikiLinkEntry = WikiLinkEntry {
+            target: String::from("other-page"),
+            alias: None,
+            heading: Some(String::from("section")),
+            range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+        };
+
+        panic!("RED: WikiLinkEntry needs 'arena lifetime parameter");
+    }
+
+    /// TagEntry should be arena-allocated with 'arena lifetime
+    #[test]
+    fn tag_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, TagEntry should have lifetime parameter
+        let _entry: TagEntry = TagEntry {
+            name: String::from("project/feature"),
+        };
+
+        panic!("RED: TagEntry needs 'arena lifetime parameter");
+    }
+
+    /// MarkdownLinkEntry should be arena-allocated with 'arena lifetime
+    #[test]
+    fn markdown_link_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, MarkdownLinkEntry should have lifetime parameter
+        let _entry: MarkdownLinkEntry = MarkdownLinkEntry {
+            text: String::from("link text"),
+            url: String::from("https://example.com"),
+            anchor: None,
+            range: Range::new(Position::new(0, 0), Position::new(0, 9)),
+        };
+
+        panic!("RED: MarkdownLinkEntry needs 'arena lifetime parameter");
+    }
+
+    /// XmlTagEntry should be arena-allocated with 'arena lifetime
+    #[test]
+    fn xml_tag_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, XmlTagEntry should have lifetime parameter
+        let _entry: XmlTagEntry = XmlTagEntry {
+            tag_name: String::from("agent"),
+            attributes: HashMap::new(),
+            is_self_closing: false,
+            is_unclosed: false,
+            range: Range::new(Position::new(0, 0), Position::new(0, 6)),
+        };
+
+        panic!("RED: XmlTagEntry needs 'arena lifetime parameter");
+    }
+
+    /// DocumentIndex should be arena-allocated with 'arena lifetime
+    #[test]
+    fn document_index_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, DocumentIndex should have lifetime parameter
+        // and should be constructable from arena
+        let _index: DocumentIndex = DocumentIndex {
+            headings: Vec::new(),
+            slug_to_heading: HashMap::new(),
+            blocks: HashMap::new(),
+            toc: Vec::new(),
+            outline: OutlineNode {
+                heading: None,
+                children: Vec::new(),
+            },
+            wiki_links: Vec::new(),
+            tags: Vec::new(),
+            markdown_links: Vec::new(),
+            xml_tags: Vec::new(),
+        };
+
+        panic!("RED: DocumentIndex needs 'arena lifetime parameter");
+    }
+
+    // ========================================================================
+    // ARENA HASHMAP TESTS
+    // ========================================================================
+
+    /// DocumentIndex HashMap fields should use hashbrown with arena allocator
+    #[test]
+    fn document_index_uses_hashbrown_with_arena() {
+        // After migration:
+        // use hashbrown::HashMap;
+        // type ArenaMap<'a, K, V> = HashMap<K, V, bumpalo::collections::allocator::Allocator<'a>>;
+
+        // slug_to_heading should be hashbrown::HashMap<&'arena str, usize, Allocator<'arena>>
+        let map: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+
+        // This fails because we need hashbrown with bumpalo allocator
+        panic!("RED: DocumentIndex HashMaps should use hashbrown with bumpalo allocator");
+    }
+
+    /// XmlTagEntry attributes should use arena-allocated HashMap
+    #[test]
+    fn xml_tag_entry_attributes_arena_map() {
+        let arena = Bump::new();
+
+        // After migration:
+        // attributes: HashMap<&'arena str, &'arena str, Allocator<'arena>>
+        let attrs: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+
+        panic!("RED: XmlTagEntry::attributes should use hashbrown::HashMap with bumpalo allocator");
+    }
+
+    // ========================================================================
+    // ARENA SLICE TESTS
+    // ========================================================================
+
+    /// DocumentIndex Vec fields should be arena slices
+    #[test]
+    fn document_index_vecs_become_slices() {
+        let arena = Bump::new();
+
+        // After migration:
+        // headings: &'arena [HeadingEntry<'arena>]
+        // toc: &'arena [TocEntry<'arena>]
+        // wiki_links: &'arena [WikiLinkEntry<'arena>]
+        // etc.
+
+        let vec: Vec<HeadingEntry> = Vec::new();
+
+        panic!("RED: DocumentIndex Vec fields should be &'arena [T<'arena>] slices");
+    }
+
+    /// OutlineNode children should be arena slice
+    #[test]
+    fn outline_node_children_arena_slice() {
+        let arena = Bump::new();
+
+        // After migration:
+        // children: &'arena [OutlineNode<'arena>]
+        let children: Vec<OutlineNode> = Vec::new();
+
+        panic!("RED: OutlineNode::children should be &'arena [OutlineNode<'arena>] slice");
+    }
+
+    // ========================================================================
+    // LIFETIME PROPAGATION TESTS
+    // ========================================================================
+
+    /// Arena lifetime should propagate through from_ast
+    #[test]
+    fn from_ast_propagates_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration:
+        // impl<'arena> DocumentIndex<'arena> {
+        //     pub fn from_ast(arena: &'arena Bump, ast: &Ast) -> Self<'arena> { ... }
+        // }
+
+        // Currently from_ast doesn't take an arena parameter
+        panic!("RED: DocumentIndex::from_ast should take &'arena Bump parameter");
+    }
+
+    /// Arena lifetime should propagate to heading_by_slug return
+    #[test]
+    fn heading_by_slug_returns_arena_ref() {
+        // After migration:
+        // pub fn heading_by_slug(&self, slug: &str) -> Option<&'arena HeadingEntry<'arena>>
+
+        // Currently returns Option<&HeadingEntry> which is fine, but HeadingEntry needs lifetime
+        panic!("RED: heading_by_slug return type needs arena lifetime");
+    }
+
+    /// Arena lifetime should propagate to toc() return
+    #[test]
+    fn toc_returns_arena_slice() {
+        // After migration:
+        // pub fn toc(&self) -> &'arena [TocEntry<'arena>]
+
+        // Currently returns &[TocEntry] but TocEntry needs lifetime
+        panic!("RED: toc() return type needs arena lifetime");
+    }
+
+    // ========================================================================
+    // CROSS-CRATE INTEGRATION TESTS
+    // ========================================================================
+
+    /// Parser types allocated in arena should be usable by index
+    #[test]
+    fn parser_types_flow_to_index() {
+        let arena = Bump::new();
+
+        // After migration:
+        // 1. Ast<'arena> holds arena-allocated Elements
+        // 2. DocumentIndex<'arena> takes Ast<'arena>
+        // 3. HeadingEntry<'arena> borrows strings from same arena
+
+        // This tests that lifetime 'arena flows from parser to index
+        panic!("RED: Parser types need 'arena lifetime to flow into index types");
+    }
+
+    /// DocumentIndex integration with RealmIndex should preserve arena
+    #[test]
+    fn document_index_to_realm_integration() {
+        let arena = Bump::new();
+
+        // After migration:
+        // RealmIndex holds arena and DocumentIndex<'arena> values
+        // When realm is destroyed, arena is dropped, all memory freed
+
+        // This tests the per-realm arena pattern for multi-tenant LSP
+        panic!("RED: RealmIndex integration needs arena lifetime propagation");
+    }
+}

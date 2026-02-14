@@ -665,6 +665,299 @@ pub struct XmlTag {
     range: Range,
 }
 
+// ============================================================================
+// ARENA ALLOCATION TESTS
+// These tests define the expected behavior for arena-allocated types.
+// All tests should FAIL until arena allocation is implemented (RED phase).
+// ============================================================================
+
+#[cfg(test)]
+mod arena_allocation_tests {
+    use super::*;
+    use bumpalo::Bump;
+
+    // ========================================================================
+    // PARSER TYPES: Arena Lifetime Tests
+    // ========================================================================
+
+    /// Heading should be arena-allocated with 'arena lifetime
+    #[test]
+    fn heading_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, Heading should have lifetime parameter
+        // This test FAILS because Heading<'arena> doesn't exist yet
+        let _heading: Heading = Heading {
+            level: 1,
+            text: String::from("Test"),
+            range: Range::new(Position::new(0, 0), Position::new(0, 4)),
+        };
+
+        // EXPECTED: let heading: &Heading<'arena> = arena.alloc(Heading { ... });
+        // Arena-allocated heading should borrow from arena
+        panic!("RED: Heading needs 'arena lifetime parameter");
+    }
+
+    /// Paragraph should be arena-allocated with 'arena lifetime
+    #[test]
+    fn paragraph_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, Paragraph should have lifetime parameter
+        let _paragraph: Paragraph = Paragraph {
+            text: String::from("Test paragraph"),
+            range: Range::new(Position::new(0, 0), Position::new(0, 14)),
+        };
+
+        panic!("RED: Paragraph needs 'arena lifetime parameter");
+    }
+
+    /// ListItem should be arena-allocated with 'arena lifetime
+    #[test]
+    fn list_item_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, ListItem should have lifetime parameter
+        let _item: ListItem = ListItem {
+            text: String::from("- test item"),
+            properties_map: HashMap::new(),
+            children_list: Vec::new(),
+        };
+
+        panic!("RED: ListItem needs 'arena lifetime parameter");
+    }
+
+    /// WikiLink should be arena-allocated with 'arena lifetime
+    #[test]
+    fn wiki_link_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, WikiLink should have lifetime parameter
+        let _link: WikiLink = WikiLink::new(
+            String::from("target"),
+            None,
+            None,
+            None,
+            Range::new(Position::new(0, 0), Position::new(0, 6)),
+        );
+
+        panic!("RED: WikiLink needs 'arena lifetime parameter");
+    }
+
+    /// MarkdownLink should be arena-allocated with 'arena lifetime
+    #[test]
+    fn markdown_link_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, MarkdownLink should have lifetime parameter
+        let _link: MarkdownLink = MarkdownLink::new(
+            String::from("text"),
+            String::from("url"),
+            None,
+            None,
+            Range::new(Position::new(0, 0), Position::new(0, 4)),
+        );
+
+        panic!("RED: MarkdownLink needs 'arena lifetime parameter");
+    }
+
+    /// LinkDefinition should be arena-allocated with 'arena lifetime
+    #[test]
+    fn link_definition_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, LinkDefinition should have lifetime parameter
+        let _def: LinkDefinition = LinkDefinition::new(
+            String::from("label"),
+            String::from("url"),
+            None,
+        );
+
+        panic!("RED: LinkDefinition needs 'arena lifetime parameter");
+    }
+
+    /// BlockId should be arena-allocated with 'arena lifetime
+    #[test]
+    fn block_id_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, BlockId should have lifetime parameter
+        let _id: BlockId = BlockId::new(String::from("abc123"));
+
+        panic!("RED: BlockId needs 'arena lifetime parameter");
+    }
+
+    /// BlockRef should be arena-allocated with 'arena lifetime
+    #[test]
+    fn block_ref_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, BlockRef should have lifetime parameter
+        let _ref: BlockRef = BlockRef::new(String::from("uuid-1234"));
+
+        panic!("RED: BlockRef needs 'arena lifetime parameter");
+    }
+
+    /// Tag should be arena-allocated with 'arena lifetime
+    #[test]
+    fn tag_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, Tag should have lifetime parameter
+        let _tag: Tag = Tag::new(String::from("project/feature"));
+
+        panic!("RED: Tag needs 'arena lifetime parameter");
+    }
+
+    /// Embed should be arena-allocated with 'arena lifetime
+    #[test]
+    fn embed_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, Embed should have lifetime parameter
+        let _embed: Embed = Embed::new(String::from("embedded-page"));
+
+        panic!("RED: Embed needs 'arena lifetime parameter");
+    }
+
+    /// Task should be arena-allocated with 'arena lifetime
+    #[test]
+    fn task_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, Task should have lifetime parameter
+        let _task: Task = Task::new(TaskState::new(String::from("TODO")));
+
+        panic!("RED: Task needs 'arena lifetime parameter");
+    }
+
+    /// Callout should be arena-allocated with 'arena lifetime
+    #[test]
+    fn callout_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, Callout should have lifetime parameter
+        let _callout: Callout = Callout::new(String::from("note"), Some(String::from("Tip")));
+
+        panic!("RED: Callout needs 'arena lifetime parameter");
+    }
+
+    /// QueryBlock should be arena-allocated with 'arena lifetime
+    #[test]
+    fn query_block_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, QueryBlock should have lifetime parameter
+        let _query: QueryBlock = QueryBlock::new(String::from("{{query todo}}"));
+
+        panic!("RED: QueryBlock needs 'arena lifetime parameter");
+    }
+
+    /// Frontmatter should be arena-allocated with 'arena lifetime
+    #[test]
+    fn frontmatter_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, Frontmatter should have lifetime parameter
+        let _fm: Frontmatter = Frontmatter::new(HashMap::new());
+
+        panic!("RED: Frontmatter needs 'arena lifetime parameter");
+    }
+
+    /// Properties should be arena-allocated with 'arena lifetime
+    #[test]
+    fn properties_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, Properties should have lifetime parameter
+        let _props: Properties = Properties::new(HashMap::new());
+
+        panic!("RED: Properties needs 'arena lifetime parameter");
+    }
+
+    /// XmlTag should be arena-allocated with 'arena lifetime
+    #[test]
+    fn xml_tag_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, XmlTag should have lifetime parameter
+        let _tag: XmlTag = XmlTag::new(
+            String::from("agent"),
+            HashMap::new(),
+            false,
+            Some(String::from("content")),
+            Range::new(Position::new(0, 0), Position::new(0, 10)),
+        );
+
+        panic!("RED: XmlTag needs 'arena lifetime parameter");
+    }
+
+    /// Element enum should be arena-allocated with 'arena lifetime
+    #[test]
+    fn element_uses_arena_lifetime() {
+        let arena = Bump::new();
+
+        // After migration, Element should have lifetime parameter
+        let _element: Element = Element::Other;
+
+        panic!("RED: Element needs 'arena lifetime parameter");
+    }
+
+    // ========================================================================
+    // ARENA STRING STORAGE TESTS
+    // ========================================================================
+
+    /// Heading text should be &str borrowed from arena, not String
+    #[test]
+    fn heading_text_is_arena_str() {
+        let arena = Bump::new();
+
+        // After migration:
+        // struct Heading<'arena> {
+        //     text: &'arena str,  // NOT String
+        //     ...
+        // }
+        let text: String = String::from("Test Heading");
+        let _heading = Heading {
+            level: 1,
+            text,  // Should be &'arena str
+            range: Range::new(Position::new(0, 0), Position::new(0, 12)),
+        };
+
+        panic!("RED: Heading::text should be &'arena str, not String");
+    }
+
+    /// ListItem properties should use arena-allocated HashMap
+    #[test]
+    fn list_item_properties_arena_map() {
+        // After migration, HashMap should use bumpalo allocator
+        // use hashbrown::HashMap;
+        // type ArenaMap<'a, K, V> = HashMap<K, V, bumpalo::collections::allocator::Allocator>;
+
+        let mut map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        map.insert("key".to_string(), "value".to_string());
+
+        // Should use hashbrown with arena allocator instead
+        panic!("RED: ListItem::properties_map should use hashbrown::HashMap with bumpalo allocator");
+    }
+
+    /// Vec fields should be arena slices
+    #[test]
+    fn vec_fields_become_arena_slices() {
+        let arena = Bump::new();
+
+        // After migration:
+        // children_list: &'arena [ListItem<'arena>]
+        let _item = ListItem {
+            text: String::from("test"),
+            properties_map: HashMap::new(),
+            children_list: Vec::new(),  // Should be &'arena [ListItem<'arena>]
+        };
+
+        panic!("RED: Vec fields should be &'arena [T] slices");
+    }
+}
+
 impl XmlTag {
     /// Create a new XML tag
     pub(crate) fn new(
