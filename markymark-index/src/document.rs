@@ -668,7 +668,8 @@ mod arena_allocation_tests {
 
     #[test]
     fn parser_types_flow_to_index() {
-        let index = build_index("# Heading\n\n[[Page#section]]\n#tag\n[Link](https://example.com#frag)\n");
+        let index =
+            build_index("# Heading\n\n[[Page#section]]\n#tag\n[Link](https://example.com#frag)\n");
 
         assert_eq!(index.headings()[0].text, "Heading");
         assert_eq!(index.wiki_links()[0].target, "Page");

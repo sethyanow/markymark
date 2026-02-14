@@ -3,9 +3,9 @@
 //! This module provides arena-allocated types and helpers for efficient
 //! bulk deallocation of parser and index data structures.
 
-pub use bumpalo::Bump;
 pub use bumpalo::boxed::Box as BumpBox;
 pub use bumpalo::collections::{String as BumpString, Vec as BumpVec};
+pub use bumpalo::Bump;
 
 /// Re-export hashbrown for arena-compatible hash maps.
 pub use hashbrown::HashMap;

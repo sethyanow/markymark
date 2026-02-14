@@ -61,6 +61,20 @@
       "rootCause": "PreToolUse security hook intercepts Write operations on .github/workflows/*.yml files. The hook warning looks informational but actually prevents the write.",
       "files": [".github/workflows/release.yml"],
       "resolution": "Use Bash heredoc (cat > file << 'EOF') to write GitHub Actions workflow files, bypassing the Write tool hook."
+    },
+    {
+      "id": "fail-feature-001-rebase-20260214",
+      "timestamp": "2026-02-14T07:45:00Z",
+      "feature": "feature-001",
+      "type": "workflow",
+      "approach": "Autonomous flow conflict detection rebased feature/feature-001 onto origin/main",
+      "errors": [
+        "git rebase halted on conflict in .claude-harness/claude-progress.json",
+        "Autonomous loop could not continue to team-driven implementation phase"
+      ],
+      "rootCause": "Harness progress file diverged between branch histories and produced a non-trivial rebase conflict during autonomous preflight sync.",
+      "files": [".claude-harness/claude-progress.json"],
+      "resolution": "Abort rebase, mark feature skipped in autonomous-state, and require manual conflict resolution before rerunning /claude-harness:flow feature-001 --autonomous."
     }
   ]
 }

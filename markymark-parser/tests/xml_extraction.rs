@@ -57,10 +57,7 @@ fn extract_void_html_element() {
     assert_eq!(tags.len(), 1);
     assert_eq!(tags[0].tag_name(), "img");
     assert!(tags[0].is_self_closing());
-    assert_eq!(
-        tags[0].attributes().get("src"),
-        Some(&"photo.jpg")
-    );
+    assert_eq!(tags[0].attributes().get("src"), Some(&"photo.jpg"));
 }
 
 // ===========================================================================
@@ -303,10 +300,7 @@ fn extract_attribute_with_gt_in_value() {
 
     assert_eq!(tags.len(), 1);
     assert_eq!(tags[0].tag_name(), "div");
-    assert_eq!(
-        tags[0].attributes().get("data-expr"),
-        Some(&"a > b")
-    );
+    assert_eq!(tags[0].attributes().get("data-expr"), Some(&"a > b"));
     assert_eq!(tags[0].content(), Some("content"));
 }
 
