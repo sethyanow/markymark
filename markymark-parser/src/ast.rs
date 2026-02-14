@@ -150,8 +150,8 @@ impl Ast {
         crate::extract::extract_embeds(&self.root_elements, &self.source, self.arena_ref())
     }
 
-    /// Extract all list items
-    pub fn extract_list_items(&self) -> Vec<ListItem<'static>> {
+    /// Extract all list items as references into the arena (avoids cloning ArenaHashMap).
+    pub fn extract_list_items(&self) -> Vec<&ListItem<'static>> {
         let root_node = self.tree.root_node();
         let mut items = Vec::new();
         collect_top_level_list_items(root_node, &self.source, self.arena_ref(), &mut items);
@@ -263,17 +263,17 @@ fn collect_top_level_list_items<'a>(
     node: Node,
     source: &str,
     arena: &'a bumpalo::Bump,
-    items: &mut Vec<ListItem<'a>>,
+    items: &mut Vec<&'a ListItem<'a>>,
 ) {
     let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "tight_list" || child.kind() == "loose_list" {
-            if let Ok(list_items) = ListItem::list_items_from_list_node(child, source, arena) {
-                // Convert slice to Vec for compatibility
-                for item in list_items {
-                    items.push(item.clone());
+        for child in node.children(&mut cursor) {
+            if child.kind() == "tight_list" || child.kind() == "loose_list" {
+                if let Ok(list_items) = ListItem::list_items_from_list_node(child, source, arena) {
+                    // Collect references instead of cloning to avoid ArenaHashMap::clone
+                    for item in list_items {
+                        items.push(item);
+                    }
                 }
-            }
 
             continue;
         }
