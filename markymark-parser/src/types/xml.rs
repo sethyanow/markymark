@@ -1,13 +1,13 @@
 //! XML/HTML tag extraction types.
 
+use markymark_core::arena::ArenaHashMap;
 use markymark_core::prelude::*;
-use std::collections::HashMap;
 
 /// An XML/HTML tag element extracted from markdown
 #[derive(Debug, Clone)]
 pub struct XmlTag<'arena> {
     tag_name: &'arena str,
-    attributes: HashMap<&'arena str, &'arena str>,
+    attributes: ArenaHashMap<'arena, &'arena str, &'arena str>,
     is_self_closing: bool,
     is_unclosed: bool,
     content: Option<&'arena str>,
@@ -18,7 +18,7 @@ impl<'arena> XmlTag<'arena> {
     /// Create a new XML tag
     pub(crate) fn new(
         tag_name: &'arena str,
-        attributes: HashMap<&'arena str, &'arena str>,
+        attributes: ArenaHashMap<'arena, &'arena str, &'arena str>,
         is_self_closing: bool,
         content: Option<&'arena str>,
         range: Range,
@@ -36,7 +36,7 @@ impl<'arena> XmlTag<'arena> {
     /// Create an unclosed XML tag (opening tag with no matching close)
     pub(crate) fn unclosed(
         tag_name: &'arena str,
-        attributes: HashMap<&'arena str, &'arena str>,
+        attributes: ArenaHashMap<'arena, &'arena str, &'arena str>,
         range: Range,
     ) -> Self {
         Self {
@@ -55,7 +55,7 @@ impl<'arena> XmlTag<'arena> {
     }
 
     /// Get attributes as key-value pairs
-    pub fn attributes(&self) -> &HashMap<&'arena str, &'arena str> {
+    pub fn attributes(&self) -> &ArenaHashMap<'arena, &'arena str, &'arena str> {
         &self.attributes
     }
 
