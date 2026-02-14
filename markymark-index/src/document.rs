@@ -231,8 +231,18 @@ impl DocumentIndex {
         let mut wiki_links_builder: BumpVec<'static, WikiLinkEntry<'static>> =
             BumpVec::new_in(arena_ref);
         for wl in ast.extract_wiki_links() {
+            // Skip malformed links with no target, heading, or block
+            if wl.target_page().is_none()
+                && wl.target_heading().is_none()
+                && wl.target_block_id().is_none()
+            {
+                continue;
+            }
             wiki_links_builder.push(WikiLinkEntry {
-                target: arena_alloc_str(arena_ref, wl.target_page().unwrap_or("")),
+                target: arena_alloc_str(
+                    arena_ref,
+                    wl.target_page().unwrap_or(""), // "" = current page for heading-only links
+                ),
                 alias: wl.alias().map(|s| arena_alloc_str(arena_ref, s)),
                 heading: wl.target_heading().map(|s| arena_alloc_str(arena_ref, s)),
                 range: wl.range(),
