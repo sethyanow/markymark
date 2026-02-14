@@ -159,10 +159,7 @@ impl Ast {
 
     /// Extract all XML/HTML tags from the document
     pub fn extract_xml_tags(&self) -> Vec<XmlTag<'static>> {
-        let arena_ref: &'static bumpalo::Bump = unsafe {
-            &*(&self.arena as *const bumpalo::Bump)
-        };
-        crate::extract::extract_xml_tags(&self.root_elements, &self.source, arena_ref)
+        crate::extract::extract_xml_tags(&self.root_elements, &self.source, self.arena_ref())
     }
 }
 
