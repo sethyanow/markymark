@@ -160,9 +160,105 @@ async fn async_function() -> Vec<u8> {
 - Use `spawn_blocking` for CPU-heavy work or blocking I/O in async context
 - Add yield points (`tokio::task::yield_now().await`) in CPU-bound async loops
 
+### Async Testing
+
+```rust
+// Tokio test — most common
+#[tokio::test]
+async fn test_fetch() {
+    let result = fetch_data("https://httpbin.org/get").await;
+    assert!(result.is_ok());
+}
+
+// With timeout (prevents hanging tests)
+#[tokio::test]
+async fn test_with_timeout() {
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        fetch_data("https://httpbin.org/get"),
+    ).await;
+    assert!(result.is_ok(), "test timed out");
+}
+
+// Multi-threaded test runtime (default is current_thread)
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_concurrent() {
+    // Tests that require multiple threads
+}
+```
+
+### Async Trait Patterns
+
+`async fn` in traits requires the `async-trait` crate or Rust 1.75+ RPITIT:
+
+```rust
+// Rust 1.75+: native async fn in traits (not dyn-compatible)
+trait DataStore {
+    async fn get(&self, key: &str) -> Option<String>;
+    async fn set(&mut self, key: &str, value: String);
+}
+
+// For dyn-compatible async traits, use async-trait crate:
+use async_trait::async_trait;
+
+#[async_trait]
+trait DynDataStore: Send + Sync {
+    async fn get(&self, key: &str) -> Option<String>;
+}
+
+// async_trait desugars to Pin<Box<dyn Future + Send + '_>>
+```
+
+### Structured Concurrency with JoinSet
+
+Use `JoinSet` when spawning a dynamic number of tasks:
+
+```rust
+use tokio::task::JoinSet;
+
+async fn process_all(urls: Vec<String>) -> Vec<String> {
+    let mut set = JoinSet::new();
+
+    for url in urls {
+        set.spawn(async move {
+            fetch_data(&url).await.unwrap_or_default()
+        });
+    }
+
+    let mut results = Vec::new();
+    while let Some(result) = set.join_next().await {
+        match result {
+            Ok(data) => results.push(data),
+            Err(e) => eprintln!("task panicked: {e}"),
+        }
+    }
+    results
+}
+```
+
+### Cancellation Safety
+
+> ⚠️ **COMMON MISTAKE: Ignoring cancellation safety in `select!`**
+> When `select!` completes one branch, all other futures are **dropped**.
+> If a future has done partial work (e.g., read half a message), that work is lost.
+
+```
+Is your future cancellation-safe?
+├─ It only does a single .await at the end?
+│   └─ YES → safe (no partial state)
+├─ It modifies external state between .await points?
+│   └─ UNSAFE — state may be inconsistent on cancel
+│       Fix: Use select!-compatible APIs (e.g., tokio::sync::mpsc::Receiver::recv)
+├─ It holds a lock across .await?
+│   └─ UNSAFE — lock won't be released on cancel
+│       Fix: Scope locks before .await
+└─ Unsure?
+    └─ Don't use it in select! — wrap in spawn() instead
+```
+
 ### References
 
 - The Rust Book: [Async](https://doc.rust-lang.org/book/ch17-00-async-await.html)
 - Tokio Tutorial: [tokio.rs](https://tokio.rs/tokio/tutorial)
 - Guidelines: [M-YIELD-POINTS](../../docs/rust_guidelines/performance.md)
-- Related: [advanced/concurrency.md](concurrency.md) (threads, Send/Sync), [core/ownership.md](../core/ownership.md) (lifetimes in async)
+- Related: [advanced/concurrency.md](concurrency.md) (threads, Send/Sync), [core/ownership.md](../core/ownership.md) (lifetimes in async), [core/closures.md](../core/closures.md) (move closures for spawn)

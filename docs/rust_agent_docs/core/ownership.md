@@ -105,10 +105,133 @@ Need interior mutability WITHOUT shared ownership?
 | `RwLock<T>` | Yes | Runtime (lock) | Multi-thread read-heavy access |
 | `AtomicT` | Yes | Lock-free | Primitive counters, flags |
 
+### Advanced Lifetimes
+
+#### Lifetime Subtyping (`'a: 'b`)
+
+`'a: 'b` means `'a` outlives `'b`. Use when a reference must live at least as long as another:
+
+```rust
+fn longest_with_announcement<'a, 'b>(x: &'a str, y: &'a str, ann: &'b str) -> &'a str
+where
+    'a: 'b,  // 'a lives at least as long as 'b
+{
+    println!("Announcement: {ann}");
+    if x.len() > y.len() { x } else { y }
+}
+```
+
+#### Higher-Ranked Trait Bounds (HRTB)
+
+`for<'a>` means "for any lifetime." Use when accepting callbacks that must work with
+any borrow lifetime:
+
+```rust
+// ❌ DON'T: Can't name the lifetime of the closure's argument
+// fn apply(f: impl Fn(&str) -> &str) { ... }
+
+// ✅ DO: for<'a> means the closure works for any lifetime
+fn apply(f: impl for<'a> Fn(&'a str) -> &'a str) {
+    let owned = String::from("hello");
+    let result = f(&owned);
+    println!("{result}");
+}
+```
+
+Most of the time, the compiler inserts `for<'a>` automatically. You only need it explicitly
+in trait bounds on struct fields or type aliases.
+
+#### Self-Referential Structs
+
+Rust does **not** natively support structs that borrow from their own fields:
+
+```rust
+// ❌ IMPOSSIBLE: Can't borrow from yourself
+// struct SelfRef {
+//     data: String,
+//     slice: &str,  // can't reference data
+// }
+```
+
+**Solutions (from most to least preferred):**
+1. **Compute on access** — store indices/offsets instead of references
+2. **Use `Pin` + unsafe** — only if you really need it
+3. **Use `ouroboros` or `self_cell` crate** — safe wrappers for self-referential patterns
+4. **Restructure** — split into two types with explicit lifetime relationship
+
+### Borrow Splitting
+
+The borrow checker understands **disjoint struct field borrows** — you can mutably borrow
+different fields simultaneously:
+
+```rust
+struct State {
+    buffer: Vec<u8>,
+    position: usize,
+}
+
+fn process(state: &mut State) {
+    // ✅ OK: borrowing different fields
+    let buf = &mut state.buffer;
+    let pos = &state.position;
+    buf.resize(*pos, 0);
+}
+```
+
+However, the borrow checker does **NOT** understand array/slice index disjointness:
+
+```rust
+let mut arr = [1, 2, 3];
+// ❌ FAILS: compiler can't prove arr[0] and arr[1] don't overlap
+// let a = &mut arr[0];
+// let b = &mut arr[1];
+
+// ✅ DO: Use split_at_mut for disjoint slice borrows
+let (left, right) = arr.split_at_mut(1);
+let a = &mut left[0];
+let b = &mut right[0];
+```
+
+### Ownership Manipulation: mem::take, mem::replace, mem::swap
+
+These functions are essential tools for working around borrow checker limitations
+without cloning:
+
+| Function | What It Does | Use When |
+|----------|-------------|----------|
+| `mem::take(&mut val)` | Replaces val with `Default::default()`, returns old val | Moving out of `&mut` reference |
+| `mem::replace(&mut val, new)` | Replaces val with `new`, returns old val | Swapping in a sentinel/placeholder |
+| `mem::swap(&mut a, &mut b)` | Swaps values in place | Rearranging without temp variable |
+
+```rust
+use std::mem;
+
+struct Node {
+    value: String,
+    children: Vec<Node>,
+}
+
+fn take_children(node: &mut Node) -> Vec<Node> {
+    // Can't move `node.children` out of &mut Node...
+    // but mem::take replaces it with empty Vec and returns the old one
+    mem::take(&mut node.children)
+}
+
+fn replace_value(node: &mut Node, new_val: String) -> String {
+    // Replace and get old value in one step
+    mem::replace(&mut node.value, new_val)
+}
+```
+
+**When to use instead of `.clone()`:**
+- `mem::take` when you need the old value AND the field has a sensible default
+- `mem::replace` when you need the old value AND want to insert a specific new value
+- These are O(1) operations vs `.clone()` which may be O(n)
+
 ### References
 
 - The Rust Book: [Ownership](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html)
 - The Rust Book: [Smart Pointers](https://doc.rust-lang.org/book/ch15-00-smart-pointers.html)
-- Nomicon: [Ownership](https://doc.rust-lang.org/nomicon/ownership.html)
+- Nomicon: [Ownership](https://doc.rust-lang.org/nomicon/ownership.html), [Splitting Borrows](https://doc.rust-lang.org/nomicon/borrow-splitting.html)
 - Guidelines: [ai.md](../../docs/rust_guidelines/ai.md)
-- Related: [core/traits.md](traits.md) (Deref, Drop), [advanced/concurrency.md](../advanced/concurrency.md) (Arc, Mutex)
+- Related: [core/traits.md](traits.md) (Deref, Drop), [core/closures.md](closures.md) (move semantics), [advanced/concurrency.md](../advanced/concurrency.md) (Arc, Mutex)
