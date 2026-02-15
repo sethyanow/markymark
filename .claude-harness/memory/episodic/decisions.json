@@ -659,7 +659,56 @@
       "impact": "markymark-parser/src/ast.rs, markymark-index/src/document.rs safety docs; marky-5yt issue"
     },
     {
+      "id": "dec-docs-phase3-001",
+      "timestamp": "2026-02-15T09:00:00Z",
+      "feature": "docs-refinement",
+      "decision": "Use markymark realm indexing of 633-doc source vault for systematic gap analysis instead of manual file-by-file review",
+      "rationale": "Realm-based search-symbols queries cover all indexed headings efficiently. Combined with grep for inline content checks, this identified 7 gaps across 15+ topic areas in one pass.",
+      "alternatives": [
+        "Manual file-by-file reading of source vault (too many files)",
+        "Grep-only approach (misses structural gaps)",
+        "Rely on agent knowledge of what's missing (subjective)"
+      ],
+      "impact": "8 docs modified: ownership.md, idioms.md, anti-patterns.md, types.md, syntax-ref.md, MISTAKES.md, AGENTS.md, MEMORY.md"
+    },
+    {
+      "id": "dec-docs-phase3-002",
+      "timestamp": "2026-02-15T09:00:00Z",
+      "feature": "docs-refinement",
+      "decision": "Add nomicon dot-operator derived-Clone autoref gotcha to anti-patterns rather than a standalone doc",
+      "rationale": "The gotcha is an anti-pattern that agents produce silently. It belongs where agents check for mistakes, not in a separate advanced concepts file.",
+      "alternatives": [
+        "Add to traits.md (too academic)",
+        "Create advanced/method-resolution.md (too niche for standalone)"
+      ],
+      "impact": "patterns/anti-patterns.md"
+    },
+    {
       "id": "dec-031",
+      "timestamp": "2026-02-15T15:30:00Z",
+      "feature": "feature-001",
+      "decision": "Reorder Ast struct fields so root_elements is declared before arena to fix drop order",
+      "rationale": "Rust drops struct fields in declaration order. Arena was declared before root_elements, meaning Bump freed all memory before Element drop impls ran. Any Element containing ArenaHashMap would access a dangling &Bump reference on drop — undefined behavior.",
+      "alternatives": [
+        "Use ManuallyDrop for arena (more complex, less idiomatic)",
+        "Implement custom Drop for Ast (overrides field drop order but adds maintenance burden)"
+      ],
+      "impact": "markymark-parser/src/ast.rs — struct field reordering"
+    },
+    {
+      "id": "dec-032",
+      "timestamp": "2026-02-15T15:30:00Z",
+      "feature": "feature-001",
+      "decision": "Gate Ast Default impl behind #[cfg(test)] rather than removing or renaming to Ast::empty()",
+      "rationale": "Default impl panics via .expect() which is inappropriate for library code. Zero usages found in codebase. Gating behind #[cfg(test)] preserves it for future test convenience while removing the public API hazard.",
+      "alternatives": [
+        "Remove entirely (loses test utility)",
+        "Rename to Ast::empty() (still panics, just with different name)"
+      ],
+      "impact": "markymark-parser/src/ast.rs — Default impl visibility"
+    },
+    {
+      "id": "dec-033",
       "timestamp": "2026-02-15T15:33:00Z",
       "feature": "feature-001",
       "decision": "Merge origin/main into feature branch (not rebase) to resolve PR #10 squash merge conflicts",

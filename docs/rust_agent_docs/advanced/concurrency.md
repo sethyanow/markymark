@@ -152,6 +152,96 @@ items.par_sort();
 4. **Use `try_lock()`** with timeouts for defensive programming
 5. **Consider lock-free structures** from `crossbeam` for hot paths
 
+### Send/Sync Auto-Derivation Rules
+
+Send and Sync are **automatically derived**. A type is Send/Sync if **all its fields** are
+Send/Sync. This is how most types get their thread-safety guarantees — you rarely implement
+them manually.
+
+**Key propagation rules:**
+- `T: Send + Sync` → `Vec<T>: Send + Sync`, `HashMap<K,V>: Send + Sync`
+- `T: !Send` → any struct containing `T` is `!Send`
+- `T: !Sync` → `&T: !Send` (sharing refs to non-Sync types across threads is unsafe)
+- Raw pointers (`*const T`, `*mut T`) are `!Send + !Sync` by default — types containing them must opt-in manually
+
+### Diagnosing "Not Send" Errors
+
+When the compiler says your type isn't `Send`, trace through the field chain:
+
+```text
+My struct is !Send — why?
+├─ Contains Rc<T>? → Rc is !Send (non-atomic refcount)
+│   └─ Fix: Use Arc<T> instead
+├─ Contains *mut T or *const T? → Raw pointers are !Send
+│   └─ Fix: Wrap in newtype, unsafe impl Send if safe
+├─ Contains Cell<T> or RefCell<T>? → These are Send but !Sync
+│   └─ Check: is the error actually about Sync, not Send?
+├─ Contains &T where T: !Sync? → &T is !Send when T: !Sync
+│   └─ Fix: Use owned T or Arc<T> instead of &T
+└─ Contains a type with a !Send field (transitive)?
+    └─ Trace deeper: which field of that type is !Send?
+```
+
+**Real-world example** (from this project):
+```rust
+// Bump: !Sync (interior mutability for allocation)
+// → &Bump: !Send (can't send ref to !Sync type)
+// → ArenaHashMap<&Bump>: !Send (contains &Bump)
+// → DocumentIndex: !Send (contains ArenaHashMap)
+// → ServerState: !Send (contains DocumentIndex)
+// → tower-lsp handler: COMPILE ERROR (requires Send)
+
+// Fix: Use std HashMap in index types (Send), keep ArenaHashMap in parser only
+```
+
+### Unsafe impl Send/Sync
+
+When your type contains raw pointers but you can prove thread safety:
+
+```rust
+struct MyBox<T> {
+    ptr: *mut T,
+}
+
+// SAFETY: MyBox has exclusive ownership of the pointee.
+// No other code can access ptr. Transfer to another thread is safe
+// because the new thread gets exclusive access.
+unsafe impl<T: Send> Send for MyBox<T> {}
+
+// SAFETY: &MyBox only provides &T access (via Deref).
+// Since T: Sync, sharing &T across threads is safe.
+unsafe impl<T: Sync> Sync for MyBox<T> {}
+```
+
+**When to use:** Only when your type wraps raw pointers with ownership semantics equivalent
+to standard library types (Box, Arc, etc.). The `where T: Send`/`where T: Sync` bounds
+match what the equivalent std type would require.
+
+### MutexGuard is !Send (Critical for Async)
+
+`MutexGuard` is `!Send` because the mutex must be unlocked on the **same thread** that
+locked it. This commonly causes errors in async code:
+
+```rust
+// ❌ DON'T: Hold MutexGuard across .await
+async fn bad(data: &Mutex<Vec<String>>) {
+    let guard = data.lock().unwrap();
+    // .await may resume on a different thread!
+    some_async_op().await;  // guard is still held here — COMPILE ERROR
+    println!("{:?}", guard);
+}
+
+// ✅ DO: Scope the guard before .await
+async fn good(data: &Mutex<Vec<String>>) {
+    let snapshot = {
+        let guard = data.lock().unwrap();
+        guard.clone()  // clone what you need
+    };  // guard dropped here
+    some_async_op().await;
+    println!("{:?}", snapshot);
+}
+```
+
 ### References
 
 - Nomicon: [Atomics](https://doc.rust-lang.org/nomicon/atomics.html), [Send and Sync](https://doc.rust-lang.org/nomicon/send-and-sync.html)

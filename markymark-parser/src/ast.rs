@@ -28,13 +28,15 @@ use tree_sitter::Node;
 pub struct Ast {
     /// Source text (owned, kept for extract functions)
     source: String,
-    /// Per-document arena for all allocated data
-    arena: DocumentArena,
-    /// Tree-sitter parse tree
     /// Tree-sitter parse tree (used by extract_list_items for node walking)
     tree: Tree,
-    /// Root-level elements, allocated in arena (see struct-level safety docs)
+    /// Root-level elements, allocated in arena (see struct-level safety docs).
+    /// MUST be declared (and thus dropped) before `arena` so that arena-allocated
+    /// data referenced by elements is still valid during their drop.
     root_elements: Vec<Element<'static>>,
+    /// Per-document arena for all allocated data.
+    /// Dropped last so arena memory outlives all borrowing fields above.
+    arena: DocumentArena,
 }
 
 impl Ast {
@@ -205,6 +207,7 @@ impl Ast {
     }
 }
 
+#[cfg(test)]
 impl Default for Ast {
     fn default() -> Self {
         // Create a minimal empty AST for testing purposes
