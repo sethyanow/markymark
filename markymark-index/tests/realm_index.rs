@@ -246,6 +246,97 @@ fn test_heading_collision_across_docs() {
 }
 
 // ---------------------------------------------------------------------------
+// Targeted removal preserves sibling document entries
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_remove_document_preserves_sibling_cross_doc_entries() {
+    let mut realm = RealmIndex::new();
+
+    // Doc A: heading "shared", tag #rust, block ^shared-block
+    let uri_a = uri("doc-a.md");
+    let idx_a = index_from("# Shared\n\nContent #rust here ^shared-block");
+    realm.add_document(uri_a.clone(), idx_a);
+
+    // Doc B: heading "shared" (collision), tag #rust (shared), block ^only-b
+    let uri_b = uri("doc-b.md");
+    let idx_b = index_from("# Shared\n\nMore #rust content ^only-b");
+    realm.add_document(uri_b.clone(), idx_b);
+
+    // Verify both docs contribute to cross-doc indexes
+    assert_eq!(realm.lookup_heading("shared").len(), 2);
+    let rust_count = realm
+        .tag_counts()
+        .iter()
+        .find(|(n, _)| n == "rust")
+        .unwrap()
+        .1;
+    assert_eq!(rust_count, 2);
+
+    // Remove doc A
+    realm.remove_document(&uri_a);
+
+    // Doc B's entries must survive
+    let headings = realm.lookup_heading("shared");
+    assert_eq!(headings.len(), 1, "only doc-b's heading should remain");
+    assert_eq!(headings[0].0.as_str(), uri_b.as_str());
+
+    let rust_count = realm
+        .tag_counts()
+        .iter()
+        .find(|(n, _)| n == "rust")
+        .unwrap()
+        .1;
+    assert_eq!(rust_count, 1, "only doc-b's #rust tag should remain");
+
+    assert!(
+        realm.lookup_block("shared-block").is_none(),
+        "doc-a's block should be gone"
+    );
+    assert!(
+        realm.lookup_block("only-b").is_some(),
+        "doc-b's block should survive"
+    );
+}
+
+#[test]
+fn test_replace_document_via_add_cleans_old_entries() {
+    let mut realm = RealmIndex::new();
+
+    let doc_uri = uri("evolving.md");
+    let idx_v1 = index_from("# Old Title\n\nOld content #deprecated ^old-block");
+    realm.add_document(doc_uri.clone(), idx_v1);
+
+    assert_eq!(realm.lookup_heading("old-title").len(), 1);
+    assert!(realm.lookup_block("old-block").is_some());
+
+    // Replace with new content (same URI)
+    let idx_v2 = index_from("# New Title\n\nNew content #fresh ^new-block");
+    realm.add_document(doc_uri.clone(), idx_v2);
+
+    // Old entries gone
+    assert!(
+        realm.lookup_heading("old-title").is_empty(),
+        "old heading should be removed on replace"
+    );
+    assert!(
+        realm.lookup_block("old-block").is_none(),
+        "old block should be removed on replace"
+    );
+    let has_deprecated = realm
+        .tag_counts()
+        .into_iter()
+        .any(|(n, _)| n == "deprecated");
+    assert!(!has_deprecated, "old tag should be removed on replace");
+
+    // New entries present
+    assert_eq!(realm.lookup_heading("new-title").len(), 1);
+    assert!(realm.lookup_block("new-block").is_some());
+    let has_fresh = realm.tag_counts().into_iter().any(|(n, _)| n == "fresh");
+    assert!(has_fresh, "new tag should be present after replace");
+}
+
+// ---------------------------------------------------------------------------
 // Document lookup by URI
 // ---------------------------------------------------------------------------
 
