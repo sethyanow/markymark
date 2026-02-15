@@ -439,7 +439,8 @@ fn parse_frontmatter<'a>(arena: &'a Bump) -> Frontmatter<'a> {
 }
 ```
 
-### Send Constraint: ArenaHashMap vs HashMap 
+### Send Constraint: ArenaHashMap vs HashMap
+
 <pitfall>
 **Problem:** `Bump: !Sync` → `&Bump: !Send` → `ArenaHashMap: !Send`.
 
@@ -563,7 +564,7 @@ use bumpalo::boxed::Box as BumpBox;
 
 let arena = Bump::new();
 let boxed = BumpBox::new_in(NeedsDrop { data: "hello".into() }, &arena);
-// Drop WILL be called when arena is dropped (with "collections" feature)
+// Drop WILL be called when arena is dropped (with "boxed" feature)
 ```
 </pitfall>
 

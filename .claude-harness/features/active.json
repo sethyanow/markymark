@@ -17,7 +17,7 @@
         "build": "cargo build --release",
         "test": "cargo test --workspace",
         "lint": "cargo clippy --workspace --all-targets -- -D warnings",
-        "format": "cargo fmt --check"
+        "format": "cargo fmt --all --check"
       },
       "maxAttempts": 15,
       "createdAt": "2026-02-14T02:30:00Z"
