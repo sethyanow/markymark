@@ -23,7 +23,7 @@ pub(crate) fn rename_heading(
     heading: HeadingEntry,
     new_name: &str,
 ) -> CoreOperationResult {
-    let old_slug = heading.slug.clone();
+    let old_slug = heading.slug;
     let new_slug = slugify(new_name);
     let mut doc_edits: HashMap<DocumentUri, Vec<(Range, String)>> = HashMap::new();
 
@@ -50,9 +50,9 @@ pub(crate) fn rename_heading(
         let doc_text = read_document_text(doc_uri);
 
         for wl in doc_index.wiki_links() {
-            if wl.heading.as_deref() == Some(&old_slug) {
+            if wl.heading == Some(old_slug) {
                 if let Some(anchor_range) =
-                    find_wiki_link_heading_range(doc_text.as_deref(), wl, &old_slug)
+                    find_wiki_link_heading_range(doc_text.as_deref(), wl, old_slug)
                 {
                     doc_edits
                         .entry(doc_uri.clone())
@@ -63,9 +63,9 @@ pub(crate) fn rename_heading(
         }
 
         for ml in doc_index.markdown_links() {
-            if ml.anchor.as_deref() == Some(&old_slug) {
+            if ml.anchor == Some(old_slug) {
                 if let Some(anchor_range) =
-                    find_markdown_link_anchor_range(doc_text.as_deref(), ml, &old_slug)
+                    find_markdown_link_anchor_range(doc_text.as_deref(), ml, old_slug)
                 {
                     doc_edits
                         .entry(doc_uri.clone())

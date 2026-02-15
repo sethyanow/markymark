@@ -1,11 +1,11 @@
 {
   "version": 3,
-  "lastUpdated": "2026-02-13T22:45:00Z",
+  "lastUpdated": "2026-02-15T15:33:00Z",
   "metadata": {
-    "totalRules": 6,
-    "projectSpecific": 3,
-    "general": 3,
-    "lastReflection": "2026-02-13T22:45:00Z"
+    "totalRules": 8,
+    "projectSpecific": 4,
+    "general": 4,
+    "lastReflection": "2026-02-15T15:33:00Z"
   },
   "rules": [
     {
@@ -87,6 +87,36 @@
         "filePatterns": ["Cargo.toml", "markymark-plugin/.claude-plugin/plugin.json"]
       },
       "learnedAt": "2026-02-13T22:45:00Z",
+      "source": "user-correction"
+    },
+    {
+      "id": "rule-007",
+      "title": "Do not include epstein local corpus file in commits unless explicitly requested",
+      "description": "When `epstein_20250227_all_in_one.md` is present as an untracked local benchmark corpus fixture, keep it out of staged checkpoint/PR commits unless the user explicitly asks to include it.",
+      "scope": "project",
+      "confidence": 1.0,
+      "active": true,
+      "applicability": {
+        "always": false,
+        "features": [],
+        "filePatterns": ["epstein_20250227_all_in_one.md"]
+      },
+      "learnedAt": "2026-02-15T03:46:14Z",
+      "source": "user-correction"
+    },
+    {
+      "id": "rule-008",
+      "title": "Never squash merge — preserve full commit history",
+      "description": "User strongly prefers maintaining full git history. NEVER use squash merges on PRs. Use regular merge commits (or rebase if appropriate) to preserve the granular commit trail. Squash merges destroy context, make bisect harder, and lose the narrative of how work evolved. This applies to all repos and all PR merges.",
+      "scope": "general",
+      "confidence": 1.0,
+      "active": true,
+      "applicability": {
+        "always": true,
+        "features": [],
+        "filePatterns": []
+      },
+      "learnedAt": "2026-02-15T15:33:00Z",
       "source": "user-correction"
     }
   ]

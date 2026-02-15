@@ -2,6 +2,82 @@
   "version": 3,
   "entities": [
     {
+      "name": "ArenaStringExt",
+      "type": "trait",
+      "location": "markymark-core/src/arena.rs",
+      "relationships": [
+        "used by parser extraction",
+        "used by index builders"
+      ]
+    },
+    {
+      "name": "arena_ref",
+      "type": "helper-function",
+      "location": "markymark-parser/src/ast.rs",
+      "relationships": [
+        "deduplicates unsafe arena transmute",
+        "used by multiple extract_* methods"
+      ]
+    },
+    {
+      "name": "feature-001-arena-migration",
+      "type": "feature",
+      "location": ".claude-harness/features/active.json",
+      "relationships": [
+        "beads epic marky-g9t",
+        "touches parser/index/lsp/mcp",
+        "blocked by parser regressions"
+      ]
+    },
+    {
+      "name": "marky-luy-remediation-epic",
+      "type": "feature-epic",
+      "location": "beads:marky-luy",
+      "relationships": [
+        "child remediation epic for marky-g9t",
+        "phases B-E drive g9t.1-g9t.7 closeout",
+        "hard-gated by marky-bjj completion"
+      ]
+    },
+    {
+      "name": "CountingAllocator",
+      "type": "bench-helper",
+      "location": "markymark-index/benches/memory.rs",
+      "relationships": [
+        "wraps System allocator",
+        "counts heap allocations for arena benchmark metrics"
+      ]
+    },
+    {
+      "name": "bench_doc_counts",
+      "type": "bench-config-helper",
+      "location": "markymark-index/src/bench_config.rs",
+      "relationships": [
+        "drives synthetic_scale benchmark tier coverage",
+        "configured by MARKYMARK_BENCH_DOC_TIER"
+      ]
+    },
+    {
+      "name": "bench_roi_report",
+      "type": "benchmark-runner-binary",
+      "location": "markymark-index/src/bin/bench_roi_report.rs",
+      "relationships": [
+        "runs tiered memory benchmarks",
+        "parses criterion estimates via bench_report helpers",
+        "writes docs/benchmarks/roi-tier-report.md"
+      ]
+    },
+    {
+      "name": "realm-block-collision-policy",
+      "type": "indexing-policy",
+      "location": "markymark-index/src/realm.rs",
+      "relationships": [
+        "preserves duplicate block IDs across documents",
+        "lookup_block returns first-in occurrence for compatibility",
+        "validated by realm_index regression test"
+      ]
+    },
+    {
       "name": "SAST Security Scanning Epic",
       "type": "epic",
       "location": "bd:marky-84l",

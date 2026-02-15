@@ -155,6 +155,7 @@ fn from_hex(b: u8) -> Option<u8> {
     }
 }
 
+pub mod arena;
 pub mod engine;
 
 pub mod prelude {
