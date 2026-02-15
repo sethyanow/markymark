@@ -4,9 +4,8 @@
   "techStack": "Rust",
   "verification": {
     "build": "cargo build --release",
-    "test": "",
-    "lint": "",
+    "test": "cargo test --workspace",
+    "lint": "cargo clippy --workspace --all-targets -- -D warnings",
     "acceptance": ""
-  },
-  "_note": "Test/lint verification temporarily disabled during arena allocation migration (RED/GREEN TDD cycle). Also: hook timeout command not available on macOS. Re-enable after migration completes."
+  }
 }

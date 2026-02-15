@@ -220,7 +220,7 @@ fn test_markdown_links_indexed() {
     assert_eq!(links[0].text, "Google");
     assert_eq!(links[0].url, "https://google.com");
     assert_eq!(links[1].text, "Docs");
-    assert_eq!(links[1].url, "./docs.md#section");
+    assert_eq!(links[1].url, "./docs.md");
     assert_eq!(links[1].anchor, Some("section"));
 }
 

@@ -38,6 +38,15 @@ pub fn new_arena_hashmap<'a, K, V>(arena: &'a Bump) -> ArenaHashMap<'a, K, V> {
     HashMap::new_in(arena)
 }
 
+/// Allocate a string in the arena and return as `&str`.
+///
+/// Wraps [`Bump::alloc_str`] which returns `&mut str`, coercing to shared
+/// `&str` for ergonomic use in struct fields and function returns.
+#[inline]
+pub fn arena_alloc_str<'a>(arena: &'a Bump, s: &str) -> &'a str {
+    arena.alloc_str(s)
+}
+
 // ============================================================================
 // DocumentArena — per-document bump allocator wrapper
 // ============================================================================
