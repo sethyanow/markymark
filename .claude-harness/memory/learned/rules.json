@@ -1,11 +1,11 @@
 {
   "version": 3,
-  "lastUpdated": "2026-02-15T03:46:14Z",
+  "lastUpdated": "2026-02-15T15:33:00Z",
   "metadata": {
-    "totalRules": 7,
+    "totalRules": 8,
     "projectSpecific": 5,
-    "general": 2,
-    "lastReflection": "2026-02-15T03:46:14Z"
+    "general": 3,
+    "lastReflection": "2026-02-15T15:33:00Z"
   },
   "rules": [
     {
@@ -102,6 +102,21 @@
         "filePatterns": ["epstein_20250227_all_in_one.md"]
       },
       "learnedAt": "2026-02-15T03:46:14Z",
+      "source": "user-correction"
+    },
+    {
+      "id": "rule-008",
+      "title": "Never squash merge — preserve full commit history",
+      "description": "User strongly prefers maintaining full git history. NEVER use squash merges on PRs. Use regular merge commits (or rebase if appropriate) to preserve the granular commit trail. Squash merges destroy context, make bisect harder, and lose the narrative of how work evolved. This applies to all repos and all PR merges.",
+      "scope": "general",
+      "confidence": 1.0,
+      "active": true,
+      "applicability": {
+        "always": true,
+        "features": [],
+        "filePatterns": []
+      },
+      "learnedAt": "2026-02-15T15:33:00Z",
       "source": "user-correction"
     }
   ]

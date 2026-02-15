@@ -1,19 +1,41 @@
 //! Extraction functions for arena-allocated markdown types.
 
+use crate::types::arena_alloc_str;
 use crate::types::*;
 use markymark_core::arena::new_arena_hashmap;
 use markymark_core::prelude::*;
 use regex::Regex;
+use std::sync::LazyLock;
 
-/// Allocate a string in the arena and return it as `&'a str`.
-/// This helper is needed because `Bump::alloc_str` returns `&mut str`,
-/// which doesn't automatically coerce in all contexts.
-#[inline]
-fn arena_alloc_str<'a>(arena: &'a bumpalo::Bump, s: &str) -> &'a str {
-    let allocated: &mut str = arena.alloc_str(s);
-    // SAFETY: We're reborrowing &mut as &, which is always safe
-    allocated
-}
+// ============================================================================
+// Compiled regex patterns (LazyLock — compiled once, reused across calls)
+// ============================================================================
+
+static WIKI_LINK_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[([^\]]+)\]\]").unwrap());
+static INLINE_LINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[([^\]]+)\]\(([^)]+)\)").unwrap());
+static REF_LINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[([^\]]+)\]\[([^\]]+)\]").unwrap());
+static LINK_DEF_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(?m)^\[([^\]]+)\]:\s+(\S+)(?:\s+"([^"]+)")?"#).unwrap());
+static BLOCK_ID_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)\^([a-zA-Z0-9_-]+)\s*$").unwrap());
+static BLOCK_REF_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\(\(([0-9a-f-]{36})\)\)").unwrap());
+static SIMPLE_TAG_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"#([a-zA-Z0-9_/-]+)").unwrap());
+static MULTI_TAG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"#\[\[([^\]]+)\]\]").unwrap());
+static EMBED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!\[\[([^\]]+)\]\]").unwrap());
+static CHECKBOX_TASK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^-\s+\[([x /])\]\s+").unwrap());
+static MARKER_TASK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^-\s+(TODO|DONE)\s+").unwrap());
+static CALLOUT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\u003e\s+\[!([a-z]+)\]\s+(.*)$").unwrap());
+static QUERY_BLOCK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{\{query\s+([^}]+)\}\}").unwrap());
+static XML_ATTR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"([a-zA-Z_:][a-zA-Z0-9_.:-]*)\s*=\s*"([^"]*)""#).unwrap());
 
 /// Extract wiki links from elements
 pub fn extract_wiki_links<'a>(
@@ -23,10 +45,7 @@ pub fn extract_wiki_links<'a>(
 ) -> Vec<WikiLink<'a>> {
     let mut links = Vec::new();
 
-    // Regex for wiki links: [[target]] or [[target|alias]] or [[target#heading]] or [[target#^blockid]]
-    let re = Regex::new(r"\[\[([^\]]+)\]\]").unwrap();
-
-    for captures in re.captures_iter(source) {
+    for captures in WIKI_LINK_RE.captures_iter(source) {
         if let Some(content_match) = captures.get(1) {
             let content = content_match.as_str();
             let start = content_match.start() - 2; // Account for [[
@@ -122,13 +141,8 @@ pub fn extract_markdown_links<'a>(
 ) -> Vec<MarkdownLink<'a>> {
     let mut links = Vec::new();
 
-    // Regex for inline links: [text](url) or [text](url#anchor)
-    let inline_re = Regex::new(r"\[([^\]]+)\]\(([^)]+)\)").unwrap();
-    // Regex for reference links: [text][ref]
-    let ref_re = Regex::new(r"\[([^\]]+)\]\[([^\]]+)\]").unwrap();
-
     // Extract inline links
-    for captures in inline_re.captures_iter(source) {
+    for captures in INLINE_LINK_RE.captures_iter(source) {
         if let (Some(text_match), Some(url_match)) = (captures.get(1), captures.get(2)) {
             let text = arena_alloc_str(arena, text_match.as_str());
             let url_str = url_match.as_str();
@@ -161,7 +175,7 @@ pub fn extract_markdown_links<'a>(
     }
 
     // Extract reference links
-    for captures in ref_re.captures_iter(source) {
+    for captures in REF_LINK_RE.captures_iter(source) {
         if let (Some(text_match), Some(ref_match)) = (captures.get(1), captures.get(2)) {
             let text = arena_alloc_str(arena, text_match.as_str());
             let reference = arena_alloc_str(arena, ref_match.as_str());
@@ -199,10 +213,7 @@ pub fn extract_link_definitions<'a>(
 ) -> Vec<LinkDefinition<'a>> {
     let mut defs = Vec::new();
 
-    // Regex for link definitions: [label]: url "optional title"
-    let re = Regex::new(r#"(?m)^\[([^\]]+)\]:\s+(\S+)(?:\s+"([^"]+)")?"#).unwrap();
-
-    for captures in re.captures_iter(source) {
+    for captures in LINK_DEF_RE.captures_iter(source) {
         if let (Some(label_match), Some(url_match)) = (captures.get(1), captures.get(2)) {
             let label = arena_alloc_str(arena, label_match.as_str());
             let url = arena_alloc_str(arena, url_match.as_str());
@@ -223,10 +234,7 @@ pub fn extract_block_ids<'a>(
 ) -> Vec<BlockId<'a>> {
     let mut blocks = Vec::new();
 
-    // Regex for block IDs: ^blockid at end of line
-    let re = Regex::new(r"(?m)\^([a-zA-Z0-9_-]+)\s*$").unwrap();
-
-    for captures in re.captures_iter(source) {
+    for captures in BLOCK_ID_RE.captures_iter(source) {
         if let (Some(id_match), Some(full_match)) = (captures.get(1), captures.get(0)) {
             let start = full_match.start();
             let end = full_match.end();
@@ -256,10 +264,7 @@ pub fn extract_block_refs<'a>(
 ) -> Vec<BlockRef<'a>> {
     let mut refs = Vec::new();
 
-    // Regex for Logseq block refs: ((uuid))
-    let re = Regex::new(r"\(\(([0-9a-f-]{36})\)\)").unwrap();
-
-    for captures in re.captures_iter(source) {
+    for captures in BLOCK_REF_RE.captures_iter(source) {
         if let Some(uuid_match) = captures.get(1) {
             refs.push(BlockRef::new(arena_alloc_str(arena, uuid_match.as_str())));
         }
@@ -276,20 +281,15 @@ pub fn extract_tags<'a>(
 ) -> Vec<Tag<'a>> {
     let mut tags = Vec::new();
 
-    // Regex for simple tags: #tag or #nested/tag/path
-    let simple_re = Regex::new(r"#([a-zA-Z0-9_/-]+)").unwrap();
-    // Regex for multi-word tags: #[[multi word tag]]
-    let multi_re = Regex::new(r"#\[\[([^\]]+)\]\]").unwrap();
-
     // Extract multi-word tags first (they're more specific)
-    for captures in multi_re.captures_iter(source) {
+    for captures in MULTI_TAG_RE.captures_iter(source) {
         if let Some(name_match) = captures.get(1) {
             tags.push(Tag::new(arena_alloc_str(arena, name_match.as_str())));
         }
     }
 
     // Extract simple tags
-    for captures in simple_re.captures_iter(source) {
+    for captures in SIMPLE_TAG_RE.captures_iter(source) {
         if let Some(name_match) = captures.get(1) {
             // Skip if it's the start of a wiki link (already captured as multi-word)
             if !source[name_match.start()..].starts_with("[[") {
@@ -309,10 +309,7 @@ pub fn extract_embeds<'a>(
 ) -> Vec<Embed<'a>> {
     let mut embeds = Vec::new();
 
-    // Regex for embeds: ![[target]]
-    let re = Regex::new(r"!\[\[([^\]]+)\]\]").unwrap();
-
-    for captures in re.captures_iter(source) {
+    for captures in EMBED_RE.captures_iter(source) {
         if let Some(content_match) = captures.get(1) {
             embeds.push(Embed::new(arena_alloc_str(arena, content_match.as_str())));
         }
@@ -329,13 +326,8 @@ pub fn extract_tasks<'a>(
 ) -> Vec<Task<'a>> {
     let mut tasks = Vec::new();
 
-    // Regex for task checkboxes: - [ ], - [x], - [/]
-    let checkbox_re = Regex::new(r"(?m)^-\s+\[([x /])\]\s+").unwrap();
-    // Regex for TODO/DONE markers
-    let marker_re = Regex::new(r"(?m)^-\s+(TODO|DONE)\s+").unwrap();
-
     // Extract checkbox tasks
-    for captures in checkbox_re.captures_iter(source) {
+    for captures in CHECKBOX_TASK_RE.captures_iter(source) {
         if let Some(state_match) = captures.get(1) {
             let state_str = match state_match.as_str().trim() {
                 "" => "unchecked",
@@ -348,7 +340,7 @@ pub fn extract_tasks<'a>(
     }
 
     // Extract marker tasks
-    for captures in marker_re.captures_iter(source) {
+    for captures in MARKER_TASK_RE.captures_iter(source) {
         if let Some(marker_match) = captures.get(1) {
             tasks.push(Task::new(TaskState::new(arena_alloc_str(
                 arena,
@@ -368,10 +360,7 @@ pub fn extract_callouts<'a>(
 ) -> Vec<Callout<'a>> {
     let mut callouts = Vec::new();
 
-    // Regex for Obsidian callouts: > [!type] title
-    let re = Regex::new(r"(?m)^\u003e\s+\[!([a-z]+)\]\s+(.*)$").unwrap();
-
-    for captures in re.captures_iter(source) {
+    for captures in CALLOUT_RE.captures_iter(source) {
         if let (Some(type_match), title_match) = (captures.get(1), captures.get(2)) {
             let callout_type = arena_alloc_str(arena, type_match.as_str());
             let title: Option<&'a str> = title_match
@@ -393,10 +382,7 @@ pub fn extract_query_blocks<'a>(
 ) -> Vec<QueryBlock<'a>> {
     let mut queries = Vec::new();
 
-    // Regex for Logseq query blocks: {{query ...}}
-    let re = Regex::new(r"\{\{query\s+([^}]+)\}\}").unwrap();
-
-    for captures in re.captures_iter(source) {
+    for captures in QUERY_BLOCK_RE.captures_iter(source) {
         if let Some(query_match) = captures.get(1) {
             queries.push(QueryBlock::new(arena_alloc_str(
                 arena,
@@ -510,14 +496,11 @@ pub fn extract_xml_tags<'a>(
         "col", "embed", "param",
     ];
 
-    // Regex for attributes: key="value"
-    let attr_re = Regex::new(r#"([a-zA-Z_:][a-zA-Z0-9_.:-]*)\s*=\s*"([^"]*)""#).unwrap();
-
     let parse_attrs = |attr_str: &str,
                        arena: &'a bumpalo::Bump|
      -> markymark_core::arena::ArenaHashMap<'a, &'a str, &'a str> {
         let mut attrs = new_arena_hashmap(arena);
-        for cap in attr_re.captures_iter(attr_str) {
+        for cap in XML_ATTR_RE.captures_iter(attr_str) {
             if let (Some(key), Some(val)) = (cap.get(1), cap.get(2)) {
                 attrs.insert(
                     arena_alloc_str(arena, key.as_str()),

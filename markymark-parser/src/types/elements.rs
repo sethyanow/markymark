@@ -106,7 +106,13 @@ impl<'arena> Heading<'arena> {
                 continue; // Skip ATX markers and setext underlines
             }
             if let Ok(child_text) = child.utf8_text(source.as_bytes()) {
-                text.push_str(child_text.trim());
+                let trimmed = child_text.trim();
+                if !trimmed.is_empty() {
+                    if !text.is_empty() {
+                        text.push(' ');
+                    }
+                    text.push_str(trimmed);
+                }
             }
         }
 
