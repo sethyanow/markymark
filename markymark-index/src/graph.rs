@@ -39,7 +39,10 @@ pub struct UnresolvedRef {
 
 /// Data stored for each node in the graph.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[expect(
+    dead_code,
+    reason = "graph module is scaffolded for future cross-doc navigation"
+)]
 enum SymbolData {
     Document {
         uri: DocumentUri,

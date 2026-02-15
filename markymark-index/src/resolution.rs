@@ -51,8 +51,8 @@ pub fn resolve_wiki_link(
             let entry = doc.heading_by_slug(slug)?;
             Some(ResolvedTarget::Heading {
                 uri: from_uri.clone(),
-                slug: entry.slug.clone(),
-                text: entry.text.clone(),
+                slug: entry.slug.to_string(),
+                text: entry.text.to_string(),
             })
         }
         // [[page-name]] - document link
@@ -67,8 +67,8 @@ pub fn resolve_wiki_link(
             let entry = doc.heading_by_slug(slug)?;
             Some(ResolvedTarget::Heading {
                 uri: doc_uri,
-                slug: entry.slug.clone(),
-                text: entry.text.clone(),
+                slug: entry.slug.to_string(),
+                text: entry.text.to_string(),
             })
         }
         // Empty target with no heading - nothing to resolve
@@ -93,8 +93,8 @@ pub fn resolve_markdown_link(
             let entry = doc.heading_by_slug(slug)?;
             Some(ResolvedTarget::Heading {
                 uri: from_uri.clone(),
-                slug: entry.slug.clone(),
-                text: entry.text.clone(),
+                slug: entry.slug.to_string(),
+                text: entry.text.to_string(),
             })
         }
         _ => None,
@@ -106,8 +106,5 @@ pub fn resolve_markdown_link(
 /// - `((block-id))` → block location
 pub fn resolve_block_ref(realm: &RealmIndex, id: &str) -> Option<ResolvedTarget> {
     let (uri, block) = realm.lookup_block(id)?;
-    Some(ResolvedTarget::Block {
-        uri: uri.clone(),
-        id: block.id.clone(),
-    })
+    Some(ResolvedTarget::Block { uri, id: block.id })
 }

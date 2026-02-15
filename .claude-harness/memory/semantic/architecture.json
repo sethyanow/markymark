@@ -8,33 +8,37 @@
     "mcp": "rmcp 0.13 (official Rust MCP SDK, requires schemars 1.x)",
     "parser": "tree-sitter 0.19.5 + tree-sitter-markdown 0.7",
     "graph": "petgraph 0.7 (StableGraph)",
-    "allocator": "bumpalo 3.16",
+    "allocator": "bumpalo 3.19.1 + hashbrown 0.16.1",
     "testFramework": "cargo test + bash test scripts for plugin"
   },
   "structure": {
     "entryPoints": [
-      "markymark-cli/src/main.rs"
+      "markymark-cli/src/main.rs",
+      "markymark-index/src/bin/bench_roi_report.rs"
     ],
     "components": [
-      ".github/workflows/security.yml (advisory-only CI security workflow with 4 jobs + SARIF uploads)",
-      "deny.toml (cargo-deny policy: advisories/licenses/sources/bans)",
       "markymark-core/src/engine.rs (CoreEngine trait, CoreOperation, CoreResult)",
-      "markymark-index/src/document.rs (DocumentIndex, slugify, outline)",
+      "markymark-core/src/arena.rs (arena helpers, allocation wrappers)",
+      "markymark-parser/src/ast.rs (tree-sitter AST construction, arena ownership)",
+      "markymark-parser/src/extract.rs (regex-based extraction updated for arena-backed outputs)",
+      "markymark-parser/src/types/ (elements, links, blocks, frontmatter, xml - arena-backed element types)",
+      "markymark-index/src/document.rs (DocumentIndex arena-backed entries, slugify, outline)",
       "markymark-index/src/graph.rs (ConnectionGraph via petgraph)",
-      "markymark-index/src/realm.rs (RealmIndex: multi-document workspace)",
+      "markymark-index/src/realm.rs (RealmIndex: multi-document workspace, hybrid arena with ResolvedHeading/ResolvedBlock, slug_to_headings, block_to_location preserving duplicate IDs, tag_to_docs)",
       "markymark-index/src/resolution.rs (wiki link / markdown link resolution)",
-      "markymark-lsp/src/convert.rs (LSP type conversions)",
+      "markymark-index/benches/memory.rs (criterion benchmarks: index/reparse/real_corpus/synthetic_scale, CountingAllocator for alloc metrics)",
+      "markymark-index/src/bench_config.rs (sample/doc tier env parsing for benchmark control)",
+      "markymark-index/src/bench_corpus.rs (mixed-size synthetic corpus generation for scale tests)",
+      "markymark-index/src/bench_report.rs (criterion estimate parsing + markdown report rendering)",
+      "markymark-index/src/bin/bench_roi_report.rs (tiered benchmark orchestration and ROI report writer)",
       "markymark-lsp/src/server.rs (tower-lsp LanguageServer impl, capability negotiation)",
       "markymark-lsp/src/state.rs (ServerState: document management, diagnostics, rename, refs)",
-      "markymark-mcp/src/dto.rs (MCP data transfer objects)",
+      "markymark-lsp/src/convert.rs (LSP type conversions)",
       "markymark-mcp/src/lib.rs (rmcp tool_router/handlers, DTOs)",
-      "markymark-mcp/src/rename_ops.rs (MCP rename operations)",
-      "markymark-mcp/src/resources.rs (MCP resource handlers)",
       "markymark-mcp/src/runtime_engine.rs (MCP RuntimeEngine: startup indexing, CoreEngine impl)",
-      "markymark-parser/src/ast.rs (tree-sitter AST construction)",
-      "markymark-parser/src/extract.rs (regex-based extraction: wiki links, XML tags, etc.)",
-      "markymark-parser/src/types.rs (element types and constructors)",
-      "lefthook.yml (deterministic pre-commit hooks: fmt/clippy/cargo-audit/gitleaks)"
+      "markymark-mcp/src/resources.rs (MCP resource handlers)",
+      "markymark-mcp/src/rename_ops.rs (MCP rename operations)",
+      "markymark-mcp/src/dto.rs (MCP data transfer objects)"
     ],
     "api": [
       "markymark-parser/src/lib.rs",
@@ -57,16 +61,15 @@
     },
     "fileOrganization": {
       "rustModules": [
-        "Document state management in markymark-lsp/src/state.rs",
-        "Element types and constructors in markymark-parser/src/types.rs",
-        "Integration tests in crate tests/ dirs are standalone crates (no mod.rs needed)",
+        "Arena helpers in markymark-core/src/arena.rs for cross-crate shared allocator behavior",
+        "Element types in markymark-parser/src/types/ (elements, links, blocks, frontmatter, xml submodules)",
+        "Parser AST construction and arena ownership in markymark-parser/src/ast.rs",
+        "Regex-based extraction in markymark-parser/src/extract.rs",
         "LSP capability negotiation in markymark-lsp/src/server.rs",
+        "Document state management in markymark-lsp/src/state.rs",
         "MCP DTOs in markymark-mcp/src/dto.rs, resources in src/resources.rs",
         "MCP runtime adapter in markymark-mcp/src/runtime_engine.rs",
-        "Parser AST construction in markymark-parser/src/ast.rs",
-        "Regex-based extraction in markymark-parser/src/extract.rs",
-        "Security CI workflow isolated in .github/workflows/security.yml (planned under marky-ops)",
-        "Security policy in deny.toml at workspace root"
+        "Integration tests in crate tests/ dirs are standalone crates (no mod.rs needed)"
       ],
       "plugin": "markymark-plugin/{.claude-plugin/,bin/,scripts/,hooks/,skills/,tests/}",
       "examples": "examples/claude-code-plugin/ (reference implementations)"
@@ -74,19 +77,29 @@
     "codeStyle": {
       "rust": [
         "CoreEngine trait in core, transport crates are thin adapters",
-        "Deterministic sort by URI then range for stable output",
-        "Drop read lock before async calls (deadlock prevention)",
-        "FULL text document sync (not INCREMENTAL)",
-        "Range containment for nested XML document symbols",
-        "Security scans run advisory-only during initial adoption (continue-on-error in CI jobs)",
-        "Single-pass stack tokenizer for XML extraction",
         "convert/state/server module separation in markymark-lsp",
-        "Local security guardrail uses lefthook pre-commit with strict ordering before commit"
+        "FULL text document sync (not INCREMENTAL)",
+        "Drop read lock before async calls (deadlock prevention)",
+        "Single-pass stack tokenizer for XML extraction",
+        "Deterministic sort by URI then range for stable output",
+        "Range containment for nested XML document symbols",
+        "Arena migration uses phased commits (infrastructure/parser/index/tests)",
+        "Use arena_ref() helper to avoid duplicated unsafe transmute logic",
+        "extract_list_items returns Vec<&ListItem> (refs not clones) to avoid ArenaHashMap::clone SIGSEGV",
+        "Arena empty slice: bumpalo Vec::new_in(arena).into_bump_slice() not &[] (UAF risk)",
+        "Tier benchmark controls via MARKYMARK_BENCH_SAMPLES and MARKYMARK_BENCH_DOC_TIER to separate quick iteration from scale validation",
+        "Benchmark ROI automation via bench_roi_report binary that runs benches, parses criterion estimates.json, and emits docs/benchmarks report artifacts"
       ],
       "bash": "set -euo pipefail, jq for JSON, case statements for file extension matching"
-    }
+    },
+    "codePatterns": [
+      "DocumentArena wrapper preferred over raw Bump for per-document arenas (Debug, capacity)",
+      "ArenaHashMap is !Send (Bump:!Sync); parser types can use it, index types must use std HashMap",
+      "#[expect(lint, reason=\"...\")] preferred over #[allow(lint)] per M-LINT-OVERRIDE-EXPECT",
+      "Self-referential arena: struct owns Bump + stores refs as static; doc_arena_ptr() for ownership transfer"
+    ]
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-14T06:23:36Z",
+  "lastUpdated": "2026-02-15T04:42:00Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

@@ -1,16 +1,22 @@
 //! Document indexing: heading lookup, block lookup, TOC, outline tree.
 
+use bumpalo::collections::Vec as BumpVec;
+use bumpalo::Bump;
+use hashbrown::HashMap;
+use markymark_core::arena::{arena_alloc_str, DocumentArena};
 use markymark_core::prelude::*;
 use markymark_parser::Ast;
-use std::collections::HashMap;
+use std::collections::HashMap as StdHashMap;
+use std::fmt;
+use std::sync::Mutex;
 
 /// A heading entry in the document index.
 #[derive(Debug, Clone)]
-pub struct HeadingEntry {
+pub struct HeadingEntry<'arena> {
     /// The heading text.
-    pub text: String,
+    pub text: &'arena str,
     /// URL-safe slug derived from the heading text.
-    pub slug: String,
+    pub slug: &'arena str,
     /// Heading level (1-6).
     pub level: u8,
     /// Source range of the heading.
@@ -19,20 +25,20 @@ pub struct HeadingEntry {
 
 /// A block entry in the document index (Obsidian `^block-id`).
 #[derive(Debug, Clone)]
-pub struct BlockEntry {
+pub struct BlockEntry<'arena> {
     /// The block identifier.
-    pub id: String,
+    pub id: &'arena str,
     /// Source range of the block.
     pub range: Range,
 }
 
 /// A table-of-contents entry.
 #[derive(Debug, Clone)]
-pub struct TocEntry {
+pub struct TocEntry<'arena> {
     /// Heading text.
-    pub text: String,
+    pub text: &'arena str,
     /// URL-safe slug.
-    pub slug: String,
+    pub slug: &'arena str,
     /// Heading level (1-6).
     pub level: u8,
     /// Nesting depth relative to the root (0-based).
@@ -41,53 +47,59 @@ pub struct TocEntry {
 
 /// A node in the document outline tree.
 #[derive(Debug, Clone)]
-pub struct OutlineNode {
+pub struct OutlineNode<'arena> {
     /// The heading at this node, if any (root node has `None`).
-    pub heading: Option<HeadingEntry>,
+    pub heading: Option<HeadingEntry<'arena>>,
     /// Child outline nodes.
-    pub children: Vec<OutlineNode>,
+    pub children: &'arena [OutlineNode<'arena>],
 }
 
 /// A wiki link entry stored in the index.
 #[derive(Debug, Clone)]
-pub struct WikiLinkEntry {
+pub struct WikiLinkEntry<'arena> {
     /// Target page name.
-    pub target: String,
+    pub target: &'arena str,
     /// Optional alias text.
-    pub alias: Option<String>,
+    pub alias: Option<&'arena str>,
     /// Optional heading anchor within the target.
-    pub heading: Option<String>,
+    pub heading: Option<&'arena str>,
     /// Source range.
     pub range: Range,
 }
 
 /// A tag entry stored in the index.
 #[derive(Debug, Clone)]
-pub struct TagEntry {
+pub struct TagEntry<'arena> {
     /// Tag name (without leading `#`).
-    pub name: String,
+    pub name: &'arena str,
 }
 
 /// A markdown link entry stored in the index.
 #[derive(Debug, Clone)]
-pub struct MarkdownLinkEntry {
+pub struct MarkdownLinkEntry<'arena> {
     /// Link display text.
-    pub text: String,
+    pub text: &'arena str,
     /// Link URL.
-    pub url: String,
+    pub url: &'arena str,
     /// Optional anchor/fragment.
-    pub anchor: Option<String>,
+    pub anchor: Option<&'arena str>,
     /// Source range.
     pub range: Range,
 }
 
 /// An XML tag entry stored in the index.
+///
+/// Uses standard `HashMap` (not `ArenaHashMap`) for attributes because
+/// `Bump: !Sync` makes `&Bump: !Send`, which would prevent `DocumentIndex`
+/// from satisfying `Send + 'static` required by tower-lsp. Keys and values
+/// still borrow from the arena; only the map's internal buckets are heap-allocated.
 #[derive(Debug, Clone)]
-pub struct XmlTagEntry {
+pub struct XmlTagEntry<'arena> {
     /// Tag name (e.g. "agent", "goal", "task").
-    pub tag_name: String,
-    /// Tag attributes as key-value pairs.
-    pub attributes: HashMap<String, String>,
+    pub tag_name: &'arena str,
+    /// Tag attributes as key-value pairs. Standard allocator for Send safety;
+    /// keys/values borrow from arena.
+    pub attributes: HashMap<&'arena str, &'arena str>,
     /// Whether this is a self-closing tag (e.g. `<br/>`).
     pub is_self_closing: bool,
     /// Whether this tag has no matching closing tag.
@@ -130,7 +142,7 @@ pub fn slugify(text: &str) -> String {
 }
 
 /// Deduplicate a slug given a set of already-used slugs.
-fn dedup_slug(base: &str, used: &mut HashMap<String, usize>) -> String {
+fn dedup_slug(base: &str, used: &mut StdHashMap<String, usize>) -> String {
     let count = used.entry(base.to_string()).or_insert(0);
     let slug = if *count == 0 {
         base.to_string()
@@ -145,34 +157,72 @@ fn dedup_slug(base: &str, used: &mut HashMap<String, usize>) -> String {
 ///
 /// Built from a [`markymark_parser::Ast`], provides fast lookups for
 /// headings (by slug), block IDs, table of contents, and outline tree.
+///
+/// # Safety (self-referential arena pattern)
+///
+/// This struct owns a [`DocumentArena`] and stores arena-allocated data with
+/// `'static` lifetime markers. The actual lifetime is the arena's lifetime.
+/// All public accessors return references tied to `&self`, so data cannot
+/// outlive the struct in safe code. However, inner types contain `&'static str`
+/// fields which technically allow extracting arena references beyond `&self`.
+/// Callers **must not** store inner `&'static str` values (e.g. `heading.text`)
+/// past the `DocumentIndex` lifetime. A future version will use `self_cell` or
+/// `ouroboros` to enforce this statically.
+///
+/// # Why `Mutex<DocumentArena>`
+///
+/// `Bump: !Sync` makes `DocumentArena: !Sync`, which prevents `DocumentIndex`
+/// from implementing `Send + Sync`. tower-lsp requires `Send + 'static` for
+/// async handlers that store state in `RwLock<ServerState>`. Wrapping in
+/// `Mutex` satisfies `Send + Sync`. The mutex is never locked at runtime —
+/// it exists solely for ownership and drop-order correctness.
 pub struct DocumentIndex {
-    headings: Vec<HeadingEntry>,
-    slug_to_heading: HashMap<String, usize>,
-    blocks: HashMap<String, BlockEntry>,
-    toc: Vec<TocEntry>,
-    outline: OutlineNode,
-    wiki_links: Vec<WikiLinkEntry>,
-    tags: Vec<TagEntry>,
-    markdown_links: Vec<MarkdownLinkEntry>,
-    xml_tags: Vec<XmlTagEntry>,
+    /// Arena kept alive so `'static` references in this struct remain valid.
+    /// Wrapped in `Mutex` for `Send + Sync`; never locked after construction.
+    _arena: Mutex<DocumentArena>,
+    headings: &'static [HeadingEntry<'static>],
+    slug_to_heading: HashMap<&'static str, usize>,
+    blocks: HashMap<&'static str, BlockEntry<'static>>,
+    toc: &'static [TocEntry<'static>],
+    outline: OutlineNode<'static>,
+    wiki_links: &'static [WikiLinkEntry<'static>],
+    tags: &'static [TagEntry<'static>],
+    markdown_links: &'static [MarkdownLinkEntry<'static>],
+    xml_tags: &'static [XmlTagEntry<'static>],
 }
 
 impl DocumentIndex {
     /// Build a document index from a parsed AST.
-    pub fn from_ast(ast: &Ast) -> Self {
-        let mut headings = Vec::new();
-        let mut slug_to_heading = HashMap::new();
-        let mut slug_counts: HashMap<String, usize> = HashMap::new();
+    ///
+    /// Borrows strings from the parser's arena instead of reallocating,
+    /// then takes ownership of the arena. Callers pass `ast` by value;
+    /// the AST is consumed and its arena is moved into the index.
+    pub fn from_ast(ast: Ast) -> Self {
+        // Raw pointer to DocumentArena for ownership transfer at the end.
+        // We borrow the inner Bump for allocations, then ptr::read the whole
+        // DocumentArena and mem::forget(ast) to avoid double-free.
+        let doc_arena_ptr = ast.doc_arena_ptr();
+        // SAFETY: doc_arena_ptr is valid for the lifetime of `ast`; we cast
+        // the inner Bump to 'static because Self will own the arena.
+        let arena_ref: &'static Bump = unsafe { &*((*doc_arena_ptr).bump() as *const Bump) };
 
-        // Extract headings
+        let mut headings_builder: BumpVec<'static, HeadingEntry<'static>> =
+            BumpVec::new_in(arena_ref);
+        let mut slug_to_heading = HashMap::new();
+        let mut slug_counts: StdHashMap<String, usize> = StdHashMap::new();
+
+        // Extract headings: borrow text from AST, allocate only slug (computed)
         for element in ast.root_elements() {
             if let Some(h) = element.as_heading() {
                 let base_slug = slugify(h.text());
-                let slug = dedup_slug(&base_slug, &mut slug_counts);
-                let idx = headings.len();
-                slug_to_heading.insert(slug.clone(), idx);
-                headings.push(HeadingEntry {
-                    text: h.text().to_string(),
+                let slug_owned = dedup_slug(&base_slug, &mut slug_counts);
+                let text = h.text(); // borrow from parser arena
+                let slug = arena_alloc_str(arena_ref, &slug_owned);
+                let idx = headings_builder.len();
+
+                slug_to_heading.insert(slug, idx);
+                headings_builder.push(HeadingEntry {
+                    text,
                     slug,
                     level: h.level(),
                     range: h.range(),
@@ -180,79 +230,98 @@ impl DocumentIndex {
             }
         }
 
-        // Extract block IDs
+        let headings = headings_builder.into_bump_slice();
+
+        // Extract block IDs: borrow from AST, propagate source range for go-to-definition
         let mut blocks = HashMap::new();
         for block_id in ast.extract_block_ids() {
-            let id = block_id.id().to_string();
+            let id = block_id.id(); // borrow from parser arena
             blocks.insert(
-                id.clone(),
+                id,
                 BlockEntry {
                     id,
-                    range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+                    range: block_id.range(),
                 },
             );
         }
 
-        // Build TOC
-        let toc = build_toc(&headings);
+        // Build TOC and outline tree
+        let toc = build_toc(arena_ref, headings);
+        let outline = build_outline(arena_ref, headings);
 
-        // Build outline tree
-        let outline = build_outline(&headings);
-
-        // Extract wiki links
-        let wiki_links = ast
-            .extract_wiki_links()
-            .into_iter()
-            .map(|wl| WikiLinkEntry {
-                target: wl.target_page().unwrap_or("").to_string(),
-                alias: wl.alias().map(|s| s.to_string()),
-                heading: wl.target_heading().map(|s| s.to_string()),
+        // Extract wiki links: borrow from AST
+        let mut wiki_links_builder: BumpVec<'static, WikiLinkEntry<'static>> =
+            BumpVec::new_in(arena_ref);
+        for wl in ast.extract_wiki_links() {
+            // Skip malformed links with no target, heading, or block
+            if wl.target_page().is_none()
+                && wl.target_heading().is_none()
+                && wl.target_block_id().is_none()
+            {
+                continue;
+            }
+            wiki_links_builder.push(WikiLinkEntry {
+                target: wl.target_page().unwrap_or(""), // "" = current page for heading-only links
+                alias: wl.alias(),
+                heading: wl.target_heading(),
                 range: wl.range(),
-            })
-            .collect();
+            });
+        }
+        let wiki_links = wiki_links_builder.into_bump_slice();
 
-        // Extract tags
-        let tags = ast
-            .extract_tags()
-            .into_iter()
-            .map(|t| TagEntry {
-                name: t.name().to_string(),
-            })
-            .collect();
+        // Extract tags: borrow from AST
+        let mut tags_builder: BumpVec<'static, TagEntry<'static>> = BumpVec::new_in(arena_ref);
+        for t in ast.extract_tags() {
+            tags_builder.push(TagEntry { name: t.name() });
+        }
+        let tags = tags_builder.into_bump_slice();
 
-        // Extract markdown links
-        let markdown_links = ast
-            .extract_markdown_links()
-            .into_iter()
-            .map(|ml| {
-                // Reconstruct the full URL including anchor if present
-                let url = match ml.anchor() {
-                    Some(anchor) => format!("{}#{}", ml.url(), anchor),
-                    None => ml.url().to_string(),
-                };
-                MarkdownLinkEntry {
-                    text: ml.text().to_string(),
-                    url,
-                    anchor: ml.anchor().map(|s| s.to_string()),
-                    range: ml.range(),
-                }
-            })
-            .collect();
+        // Extract markdown links: borrow from AST (url is base only, anchor separate)
+        let mut markdown_links_builder: BumpVec<'static, MarkdownLinkEntry<'static>> =
+            BumpVec::new_in(arena_ref);
+        for ml in ast.extract_markdown_links() {
+            markdown_links_builder.push(MarkdownLinkEntry {
+                text: ml.text(),
+                url: ml.url(),
+                anchor: ml.anchor(),
+                range: ml.range(),
+            });
+        }
+        let markdown_links = markdown_links_builder.into_bump_slice();
 
-        // Extract XML tags
-        let xml_tags = ast
-            .extract_xml_tags()
-            .into_iter()
-            .map(|xt| XmlTagEntry {
-                tag_name: xt.tag_name().to_string(),
-                attributes: xt.attributes().clone(),
+        // Extract XML tags: borrow from AST.
+        // Uses standard HashMap (not ArenaHashMap) because Bump: !Sync
+        // makes ArenaHashMap !Send, breaking tower-lsp's Send requirement.
+        let mut xml_tags_builder: BumpVec<'static, XmlTagEntry<'static>> =
+            BumpVec::new_in(arena_ref);
+        for xt in ast.extract_xml_tags() {
+            let mut attributes = HashMap::new();
+            for (k, v) in xt.attributes() {
+                attributes.insert(*k, *v); // borrow from parser arena
+            }
+
+            xml_tags_builder.push(XmlTagEntry {
+                tag_name: xt.tag_name(),
+                attributes,
                 is_self_closing: xt.is_self_closing(),
                 is_unclosed: xt.is_unclosed(),
                 range: xt.range(),
-            })
-            .collect();
+            });
+        }
+        let xml_tags = xml_tags_builder.into_bump_slice();
+
+        // Take ownership of the DocumentArena from the consumed AST.
+        //
+        // SAFETY: doc_arena_ptr was obtained at the start of this function and
+        // points at the DocumentArena field inside `ast`. All index data points
+        // into the arena's allocations; we move the arena into Self so those
+        // references remain valid. We forget `ast` to prevent its Drop from
+        // running (which would drop the DocumentArena and invalidate our refs).
+        let doc_arena = unsafe { std::ptr::read(doc_arena_ptr) };
+        std::mem::forget(ast);
 
         Self {
+            _arena: Mutex::new(doc_arena),
             headings,
             slug_to_heading,
             blocks,
@@ -266,66 +335,81 @@ impl DocumentIndex {
     }
 
     /// Look up a heading by its slug.
-    pub fn heading_by_slug(&self, slug: &str) -> Option<&HeadingEntry> {
+    pub fn heading_by_slug(&self, slug: &str) -> Option<&HeadingEntry<'static>> {
         self.slug_to_heading
             .get(slug)
             .map(|&idx| &self.headings[idx])
     }
 
     /// Look up a block by its ID.
-    pub fn block_by_id(&self, id: &str) -> Option<&BlockEntry> {
+    pub fn block_by_id(&self, id: &str) -> Option<&BlockEntry<'static>> {
         self.blocks.get(id)
     }
 
     /// Get the flat table of contents.
-    pub fn toc(&self) -> &[TocEntry] {
-        &self.toc
+    pub fn toc(&self) -> &[TocEntry<'static>] {
+        self.toc
     }
 
     /// Get the outline tree.
-    pub fn outline(&self) -> &OutlineNode {
+    pub fn outline(&self) -> &OutlineNode<'static> {
         &self.outline
     }
 
     /// Get all indexed headings.
-    pub fn headings(&self) -> &[HeadingEntry] {
-        &self.headings
+    pub fn headings(&self) -> &[HeadingEntry<'static>] {
+        self.headings
     }
 
     /// Get all indexed wiki links.
-    pub fn wiki_links(&self) -> &[WikiLinkEntry] {
-        &self.wiki_links
+    pub fn wiki_links(&self) -> &[WikiLinkEntry<'static>] {
+        self.wiki_links
     }
 
     /// Get all indexed tags.
-    pub fn tags(&self) -> &[TagEntry] {
-        &self.tags
+    pub fn tags(&self) -> &[TagEntry<'static>] {
+        self.tags
     }
 
     /// Get all indexed markdown links.
-    pub fn markdown_links(&self) -> &[MarkdownLinkEntry] {
-        &self.markdown_links
+    pub fn markdown_links(&self) -> &[MarkdownLinkEntry<'static>] {
+        self.markdown_links
     }
 
     /// Get all indexed XML tags.
-    pub fn xml_tags(&self) -> &[XmlTagEntry] {
-        &self.xml_tags
+    pub fn xml_tags(&self) -> &[XmlTagEntry<'static>] {
+        self.xml_tags
     }
 
     /// Get all block IDs in this document.
-    pub fn block_ids(&self) -> impl Iterator<Item = &str> {
-        self.blocks.keys().map(|s| s.as_str())
+    pub fn block_ids(&self) -> impl Iterator<Item = &str> + '_ {
+        self.blocks.keys().copied()
+    }
+}
+
+impl fmt::Debug for DocumentIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DocumentIndex")
+            .field("headings", &self.headings.len())
+            .field("blocks", &self.blocks.len())
+            .field("toc", &self.toc.len())
+            .field("wiki_links", &self.wiki_links.len())
+            .field("tags", &self.tags.len())
+            .field("markdown_links", &self.markdown_links.len())
+            .field("xml_tags", &self.xml_tags.len())
+            .finish()
     }
 }
 
 /// Build flat TOC entries with depth calculation.
-fn build_toc(headings: &[HeadingEntry]) -> Vec<TocEntry> {
-    let mut toc = Vec::new();
-    // Stack tracks heading levels for depth calculation
+fn build_toc<'arena>(
+    arena: &'arena Bump,
+    headings: &[HeadingEntry<'arena>],
+) -> &'arena [TocEntry<'arena>] {
+    let mut toc = BumpVec::new_in(arena);
     let mut level_stack: Vec<u8> = Vec::new();
 
     for h in headings {
-        // Pop levels from stack that are >= current level
         while let Some(&top) = level_stack.last() {
             if top >= h.level {
                 level_stack.pop();
@@ -338,36 +422,66 @@ fn build_toc(headings: &[HeadingEntry]) -> Vec<TocEntry> {
         level_stack.push(h.level);
 
         toc.push(TocEntry {
-            text: h.text.clone(),
-            slug: h.slug.clone(),
+            text: h.text,
+            slug: h.slug,
             level: h.level,
             depth,
         });
     }
 
-    toc
+    toc.into_bump_slice()
+}
+
+#[derive(Debug, Clone)]
+struct TempOutline<'arena> {
+    heading: Option<HeadingEntry<'arena>>,
+    children: Vec<TempOutline<'arena>>,
+}
+
+fn get_temp_node_mut<'tree, 'arena>(
+    root: &'tree mut TempOutline<'arena>,
+    path: &[usize],
+) -> &'tree mut TempOutline<'arena> {
+    let mut current = root;
+    for &idx in path {
+        current = &mut current.children[idx];
+    }
+    current
+}
+
+fn freeze_outline<'arena>(arena: &'arena Bump, node: TempOutline<'arena>) -> OutlineNode<'arena> {
+    let mut children = BumpVec::new_in(arena);
+    for child in node.children {
+        children.push(freeze_outline(arena, child));
+    }
+
+    OutlineNode {
+        heading: node.heading,
+        children: children.into_bump_slice(),
+    }
 }
 
 /// Build outline tree from heading entries.
-fn build_outline(headings: &[HeadingEntry]) -> OutlineNode {
-    let mut root = OutlineNode {
+fn build_outline<'arena>(
+    arena: &'arena Bump,
+    headings: &[HeadingEntry<'arena>],
+) -> OutlineNode<'arena> {
+    let mut root = TempOutline {
         heading: None,
         children: Vec::new(),
     };
 
-    // Stack of (level, node pointer path)
-    // We build using a stack approach: track where to insert children
-    let mut stack: Vec<(u8, usize)> = Vec::new(); // (level, index_in_parent_children)
+    // Stack entries are (heading level, path of child indices from root).
+    let mut stack: Vec<(u8, Vec<usize>)> = Vec::new();
 
     for h in headings {
-        let node = OutlineNode {
+        let node = TempOutline {
             heading: Some(h.clone()),
             children: Vec::new(),
         };
 
-        // Pop stack entries where the level is >= current heading level
-        while let Some(&(lvl, _)) = stack.last() {
-            if lvl >= h.level {
+        while let Some((lvl, _)) = stack.last() {
+            if *lvl >= h.level {
                 stack.pop();
             } else {
                 break;
@@ -375,27 +489,254 @@ fn build_outline(headings: &[HeadingEntry]) -> OutlineNode {
         }
 
         if stack.is_empty() {
-            // Insert as child of root
             root.children.push(node);
             let idx = root.children.len() - 1;
-            stack.push((h.level, idx));
+            stack.push((h.level, vec![idx]));
         } else {
-            // Navigate to the parent node and insert as child
-            let child_idx = insert_into_outline(&mut root, &stack, node);
-            stack.push((h.level, child_idx));
+            let parent_path = stack.last().expect("stack not empty").1.clone();
+            let parent = get_temp_node_mut(&mut root, &parent_path);
+            parent.children.push(node);
+            let child_idx = parent.children.len() - 1;
+
+            let mut child_path = parent_path;
+            child_path.push(child_idx);
+            stack.push((h.level, child_path));
         }
     }
 
-    root
+    freeze_outline(arena, root)
 }
 
-/// Insert a node into the outline tree following the stack path.
-/// Returns the index of the inserted node in its parent's children.
-fn insert_into_outline(root: &mut OutlineNode, stack: &[(u8, usize)], node: OutlineNode) -> usize {
-    let mut current = root;
-    for &(_, idx) in stack {
-        current = &mut current.children[idx];
+#[cfg(test)]
+mod arena_allocation_tests {
+    use super::*;
+    use markymark_parser::Parser;
+
+    fn build_index(source: &str) -> DocumentIndex {
+        let mut parser = Parser::new().unwrap();
+        let ast = parser.parse(source).unwrap();
+        DocumentIndex::from_ast(ast)
     }
-    current.children.push(node);
-    current.children.len() - 1
+
+    #[test]
+    fn heading_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let entry = HeadingEntry {
+            text: arena.alloc_str("Intro"),
+            slug: arena.alloc_str("intro"),
+            level: 1,
+            range: Range::new(Position::new(0, 0), Position::new(0, 5)),
+        };
+
+        assert_eq!(entry.text, "Intro");
+        assert_eq!(entry.slug, "intro");
+        assert_eq!(entry.level, 1);
+    }
+
+    #[test]
+    fn block_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let entry = BlockEntry {
+            id: arena.alloc_str("block-1"),
+            range: Range::new(Position::new(0, 0), Position::new(0, 7)),
+        };
+
+        assert_eq!(entry.id, "block-1");
+    }
+
+    #[test]
+    fn toc_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let entry = TocEntry {
+            text: arena.alloc_str("Section"),
+            slug: arena.alloc_str("section"),
+            level: 2,
+            depth: 1,
+        };
+
+        assert_eq!(entry.text, "Section");
+        assert_eq!(entry.slug, "section");
+        assert_eq!(entry.depth, 1);
+    }
+
+    #[test]
+    fn outline_node_uses_arena_lifetime() {
+        let root = OutlineNode {
+            heading: None,
+            children: &[],
+        };
+
+        assert!(root.heading.is_none());
+        assert!(root.children.is_empty());
+    }
+
+    #[test]
+    fn wiki_link_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let entry = WikiLinkEntry {
+            target: arena.alloc_str("TargetPage"),
+            alias: Some(arena.alloc_str("Alias")),
+            heading: Some(arena.alloc_str("Section")),
+            range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+        };
+
+        assert_eq!(entry.target, "TargetPage");
+        assert_eq!(entry.alias, Some("Alias"));
+        assert_eq!(entry.heading, Some("Section"));
+    }
+
+    #[test]
+    fn tag_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let entry = TagEntry {
+            name: arena.alloc_str("project/feature"),
+        };
+
+        assert_eq!(entry.name, "project/feature");
+    }
+
+    #[test]
+    fn markdown_link_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let entry = MarkdownLinkEntry {
+            text: arena.alloc_str("Example"),
+            url: arena.alloc_str("https://example.com"),
+            anchor: Some(arena.alloc_str("a")),
+            range: Range::new(Position::new(0, 0), Position::new(0, 7)),
+        };
+
+        assert_eq!(entry.text, "Example");
+        assert_eq!(entry.url, "https://example.com");
+        assert_eq!(entry.anchor, Some("a"));
+    }
+
+    #[test]
+    fn xml_tag_entry_uses_arena_lifetime() {
+        let arena = Bump::new();
+        let mut attrs = HashMap::new();
+        let priority: &str = arena.alloc_str("priority");
+        let high: &str = arena.alloc_str("high");
+        attrs.insert(priority, high);
+
+        let entry = XmlTagEntry {
+            tag_name: arena.alloc_str("goal"),
+            attributes: attrs,
+            is_self_closing: false,
+            is_unclosed: false,
+            range: Range::new(Position::new(0, 0), Position::new(0, 6)),
+        };
+
+        assert_eq!(entry.tag_name, "goal");
+        assert_eq!(entry.attributes.get("priority"), Some(&"high"));
+    }
+
+    #[test]
+    fn document_index_uses_arena_lifetime() {
+        let index = build_index("# Root\n\n## Child\n");
+
+        assert_eq!(index.headings().len(), 2);
+        assert_eq!(index.headings()[0].text, "Root");
+        assert_eq!(index.headings()[1].slug, "child");
+    }
+
+    #[test]
+    fn document_index_uses_hashbrown_with_arena() {
+        let index = build_index("# Root\n\nA block ^block-1\n");
+
+        // HashMap-backed lookups should work for arena-allocated keys.
+        assert!(index.heading_by_slug("root").is_some());
+        assert!(index.block_by_id("block-1").is_some());
+    }
+
+    #[test]
+    fn xml_tag_entry_attributes_arena_map() {
+        let index = build_index("<goal priority=\"high\" status=\"open\">Ship</goal>\n");
+
+        let tags = index.xml_tags();
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].attributes.get("priority"), Some(&"high"));
+        assert_eq!(tags[0].attributes.get("status"), Some(&"open"));
+    }
+
+    #[test]
+    fn document_index_vecs_become_slices() {
+        let index = build_index("# A\n\n## B\n\n[[Page]]\n#tag\n");
+
+        let _: &[HeadingEntry<'static>] = index.headings();
+        let _: &[TocEntry<'static>] = index.toc();
+        let _: &[WikiLinkEntry<'static>] = index.wiki_links();
+        let _: &[TagEntry<'static>] = index.tags();
+        let _: &[MarkdownLinkEntry<'static>] = index.markdown_links();
+        let _: &[XmlTagEntry<'static>] = index.xml_tags();
+
+        assert!(!index.headings().is_empty());
+        assert!(!index.toc().is_empty());
+    }
+
+    #[test]
+    fn outline_node_children_arena_slice() {
+        let index = build_index("# Root\n\n## Child\n\n### Grandchild\n");
+
+        let outline = index.outline();
+        assert_eq!(outline.children.len(), 1);
+        assert_eq!(outline.children[0].heading.as_ref().unwrap().text, "Root");
+        assert_eq!(outline.children[0].children.len(), 1);
+    }
+
+    #[test]
+    fn from_ast_propagates_arena_lifetime() {
+        let mut parser = Parser::new().unwrap();
+        let ast = parser.parse("# Arena\n").unwrap();
+        let index = DocumentIndex::from_ast(ast);
+
+        let heading: &HeadingEntry<'static> = &index.headings()[0];
+        assert_eq!(heading.text, "Arena");
+    }
+
+    #[test]
+    fn heading_by_slug_returns_arena_ref() {
+        let index = build_index("# Root\n\n## Root\n");
+
+        let heading = index.heading_by_slug("root").unwrap();
+        let _: &HeadingEntry<'static> = heading;
+        assert_eq!(heading.text, "Root");
+    }
+
+    #[test]
+    fn toc_returns_arena_slice() {
+        let index = build_index("# A\n\n## B\n\n### C\n");
+
+        let toc: &[TocEntry<'static>] = index.toc();
+        assert_eq!(toc.len(), 3);
+        assert_eq!(toc[0].depth, 0);
+        assert_eq!(toc[1].depth, 1);
+        assert_eq!(toc[2].depth, 2);
+    }
+
+    #[test]
+    fn parser_types_flow_to_index() {
+        let index =
+            build_index("# Heading\n\n[[Page#section]]\n#tag\n[Link](https://example.com#frag)\n");
+
+        assert_eq!(index.headings()[0].text, "Heading");
+        assert_eq!(index.wiki_links()[0].target, "Page");
+        assert_eq!(index.wiki_links()[0].heading, Some("section"));
+
+        // Tag extraction from this fixture can include heading anchors as tags;
+        // assert that our expected tag is present rather than position-dependent.
+        assert!(index.tags().iter().any(|t| t.name == "tag"));
+
+        assert_eq!(index.markdown_links()[0].anchor, Some("frag"));
+    }
+
+    #[test]
+    fn document_index_to_realm_integration() {
+        let index_a = build_index("# Doc A\n\nA block ^a\n");
+        let index_b = build_index("# Doc B\n\nA block ^b\n");
+
+        assert_eq!(index_a.headings()[0].text, "Doc A");
+        assert_eq!(index_b.headings()[0].text, "Doc B");
+        assert!(index_a.block_by_id("a").is_some());
+        assert!(index_b.block_by_id("b").is_some());
+    }
 }

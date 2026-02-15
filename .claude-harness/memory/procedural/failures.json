@@ -63,19 +63,18 @@
       "resolution": "Use Bash heredoc (cat > file << 'EOF') to write GitHub Actions workflow files, bypassing the Write tool hook."
     },
     {
-      "id": "fail-dotfile-extension",
-      "timestamp": "2026-02-15T03:49:00Z",
-      "feature": "marky-lkj",
-      "type": "implementation",
-      "approach": "Using Path::extension() to detect file format for .env files",
+      "id": "fail-feature-001-rebase-20260214",
+      "timestamp": "2026-02-14T07:45:00Z",
+      "feature": "feature-001",
+      "type": "workflow",
+      "approach": "Autonomous flow conflict detection rebased feature/feature-001 onto origin/main",
       "errors": [
-        "Path::new('.env').extension() returns None in Rust — dotfiles have no extension",
-        "Path::new('.env').file_name() returns Some('.env') — must check filename as fallback",
-        "Path::new('.env.local').extension() returns Some('local') — compound dotfiles return wrong extension"
+        "git rebase halted on conflict in .claude-harness/claude-progress.json",
+        "Autonomous loop could not continue to team-driven implementation phase"
       ],
-      "rootCause": "Rust's Path treats dotfiles (files starting with .) as having no extension. The dot is part of the stem, not an extension separator. This means extension-only file format detection silently misses bare .env files.",
-      "files": ["markymark-mcp/src/runtime_engine.rs", "markymark-core/src/lib.rs"],
-      "resolution": "DocumentKind::from_path() must check file_name() as fallback after extension() for known dotfile names like .env."
+      "rootCause": "Harness progress file diverged between branch histories and produced a non-trivial rebase conflict during autonomous preflight sync.",
+      "files": [".claude-harness/claude-progress.json"],
+      "resolution": "Abort rebase, mark feature skipped in autonomous-state, and require manual conflict resolution before rerunning /claude-harness:flow feature-001 --autonomous."
     }
   ]
 }
