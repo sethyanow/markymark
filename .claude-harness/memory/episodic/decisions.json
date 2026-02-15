@@ -621,6 +621,31 @@
         "Add repr(transparent) to DocumentArena"
       ],
       "impact": "markymark-parser/src/ast.rs, markymark-index/src/document.rs"
+    },
+    {
+      "id": "dec-docs-phase3-001",
+      "timestamp": "2026-02-15T09:00:00Z",
+      "feature": "docs-refinement",
+      "decision": "Use markymark realm indexing of 633-doc source vault for systematic gap analysis instead of manual file-by-file review",
+      "rationale": "Realm-based search-symbols queries cover all indexed headings efficiently. Combined with grep for inline content checks, this identified 7 gaps across 15+ topic areas in one pass.",
+      "alternatives": [
+        "Manual file-by-file reading of source vault (too many files)",
+        "Grep-only approach (misses structural gaps)",
+        "Rely on agent knowledge of what's missing (subjective)"
+      ],
+      "impact": "8 docs modified: ownership.md, idioms.md, anti-patterns.md, types.md, syntax-ref.md, MISTAKES.md, AGENTS.md, MEMORY.md"
+    },
+    {
+      "id": "dec-docs-phase3-002",
+      "timestamp": "2026-02-15T09:00:00Z",
+      "feature": "docs-refinement",
+      "decision": "Add nomicon dot-operator derived-Clone autoref gotcha to anti-patterns rather than a standalone doc",
+      "rationale": "The gotcha is an anti-pattern that agents produce silently. It belongs where agents check for mistakes, not in a separate advanced concepts file.",
+      "alternatives": [
+        "Add to traits.md (too academic)",
+        "Create advanced/method-resolution.md (too niche for standalone)"
+      ],
+      "impact": "patterns/anti-patterns.md"
     }
   ]
 }
