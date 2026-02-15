@@ -347,7 +347,7 @@
     },
     {
       "id": "dec-sast-001",
-      "timestamp": "2026-02-14T08:30:00Z",
+      "timestamp": "2026-02-14T06:08:38Z",
       "feature": "marky-84l",
       "decision": "Single security.yml workflow with 4 parallel jobs (cargo-audit, cargo-deny, CodeQL, Semgrep) instead of integrated or per-tool workflows",
       "rationale": "Clean separation from build/test (ci.yml), single management point, parallel jobs keep runtime fast. Integrating into ci.yml would grow it to 7 jobs. Per-tool workflows scatter management across 3 files.",
@@ -359,7 +359,7 @@
     },
     {
       "id": "dec-sast-002",
-      "timestamp": "2026-02-14T08:30:00Z",
+      "timestamp": "2026-02-14T06:08:38Z",
       "feature": "marky-84l",
       "decision": "Advisory-only security gates (not blocking PRs)",
       "rationale": "User chose advisory-only for initial adoption. Findings reported as annotations but don't prevent merge. Can tighten to hard gates later after baseline is clean.",
@@ -371,7 +371,7 @@
     },
     {
       "id": "dec-sast-003",
-      "timestamp": "2026-02-14T08:30:00Z",
+      "timestamp": "2026-02-14T06:08:38Z",
       "feature": "marky-84l",
       "decision": "lefthook (Go binary) for pre-commit hooks instead of Python pre-commit or custom git hooks",
       "rationale": "No Python runtime dependency. Single binary, fast, growing adoption. User explicitly chose this over Python pre-commit framework.",
