@@ -227,13 +227,12 @@ impl<'arena> ListItem<'arena> {
             properties_map.insert(arena_alloc_str(arena, key), arena_alloc_str(arena, value));
         }
 
-        let children_list: &'arena [ListItem<'arena>] = if let Some(child_list) =
-            Self::find_first_list_descendant(node)
-        {
-            Self::list_items_from_list_node(child_list, source, arena)?
-        } else {
-            bumpalo::collections::Vec::new_in(arena).into_bump_slice()
-        };
+        let children_list: &'arena [ListItem<'arena>] =
+            if let Some(child_list) = Self::find_first_list_descendant(node) {
+                Self::list_items_from_list_node(child_list, source, arena)?
+            } else {
+                bumpalo::collections::Vec::new_in(arena).into_bump_slice()
+            };
 
         Ok(Self {
             text: arena_alloc_str(arena, text),

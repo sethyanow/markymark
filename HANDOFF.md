@@ -38,6 +38,8 @@ Evaluated whether the bumpalo arena migration was worthwhile. Added memory (RSS,
 
 **Heavy mode (100 samples):** `MARKYMARK_BENCH_HEAVY=1 cargo bench -p markymark-index -- real_corpus --nocapture` — warning: index_docs_dir uses significant RAM.
 
+**TODO:** Add tiered sample levels (env or flag): light=10x, medium=50x, heavy=100x.
+
 ---
 
 ## Sample Quality Issues (CRITICAL)
@@ -139,21 +141,25 @@ Use `MARKYMARK_BENCH_EPSTEIN` for epstein path; `MARKYMARK_BENCH_CORPUS_DIR` or 
 
 ## Recommended Next Steps (New Session)
 
-1. **Improve sample quality**
+1. **Add tiered sample levels to baseline and arena benches**
+   - light=10x, medium=50x, heavy=100x (via env e.g. `MARKYMARK_BENCH_SAMPLES=50` or `--samples 50`)
+   - Apply to both baseline/pre-arena and feature branch
+
+2. **Improve sample quality**
    - Add real-markdown benchmark: load `.md` files from `docs/` or a fixture dir
    - Add size tiers: small (1KB), medium (10KB), large (100KB) per doc
    - Add benchmarks for N ∈ {100, 1_000, 5_000, 10_000}
 
-2. **Fix memory measurement**
+3. **Fix memory measurement**
    - Run `cargo run --release -p markymark-index --bin memory_bench` (or similar) that does one index run, reports RSS, exits — avoid criterion's accumulated state
    - Or: measure RSS in a subprocess
 
-3. **Re-run before/after**
+4. **Re-run before/after**
    - Baseline at 9578d85 with improved sample
    - Current with improved sample
    - Compare: allocations, time, RSS, concurrency at scale
 
-4. **Re-evaluate "was it worthwhile"**
+5. **Re-evaluate "was it worthwhile"**
    - If 10k docs show meaningful allocation/RSS reduction and similar or better latency: yes
    - If gains remain marginal: document as "low ROI for this workload" and consider scope
 

@@ -266,14 +266,14 @@ fn collect_top_level_list_items<'a>(
     items: &mut Vec<&'a ListItem<'a>>,
 ) {
     let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "tight_list" || child.kind() == "loose_list" {
-                if let Ok(list_items) = ListItem::list_items_from_list_node(child, source, arena) {
-                    // Collect references instead of cloning to avoid ArenaHashMap::clone
-                    for item in list_items {
-                        items.push(item);
-                    }
+    for child in node.children(&mut cursor) {
+        if child.kind() == "tight_list" || child.kind() == "loose_list" {
+            if let Ok(list_items) = ListItem::list_items_from_list_node(child, source, arena) {
+                // Collect references instead of cloning to avoid ArenaHashMap::clone
+                for item in list_items {
+                    items.push(item);
                 }
+            }
 
             continue;
         }

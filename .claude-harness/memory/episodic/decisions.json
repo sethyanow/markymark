@@ -390,6 +390,24 @@
       "rationale": "100-sample index_docs_dir froze laptop. Real corpus bench allocates ~5.9MB × 100 iterations; default sample sizes are sufficient for most runs.",
       "alternatives": ["Cap index_docs_dir at 20 samples in heavy mode", "Run heavy bench on CI only"],
       "impact": "markymark-index benches/memory.rs sample_size()"
+    },
+    {
+      "id": "dec-026",
+      "timestamp": "2026-02-15T07:05:00Z",
+      "feature": "feature-001",
+      "decision": "Add explicit benchmark tier controls for both sample count and corpus scale",
+      "rationale": "A single heavy flag did not provide enough control for iterative profiling versus scale validation. Tiered controls support fast dev loops (light) and progressively larger runs (medium/heavy/extreme) without editing code.",
+      "alternatives": ["Keep MARKYMARK_BENCH_HEAVY only", "Hardcode fixed sample/doc counts in benches"],
+      "impact": "markymark-index/src/bench_config.rs, markymark-index/benches/memory.rs"
+    },
+    {
+      "id": "dec-027",
+      "timestamp": "2026-02-15T07:05:00Z",
+      "feature": "feature-001",
+      "decision": "Automate benchmark ROI reporting with a dedicated runner binary that executes tiered benches and writes markdown",
+      "rationale": "Manual benchmark collection was slow and error-prone. Automating run + parse + report reduces operator overhead and creates a repeatable artifact for go/no-go arena ROI decisions.",
+      "alternatives": ["Manual copy/paste from criterion output", "Ad-hoc one-off scripts outside workspace"],
+      "impact": "markymark-index/src/bench_report.rs, markymark-index/src/bin/bench_roi_report.rs, docs/benchmarks/roi-tier-report.md"
     }
   ]
 }
