@@ -61,6 +61,21 @@
       "rootCause": "PreToolUse security hook intercepts Write operations on .github/workflows/*.yml files. The hook warning looks informational but actually prevents the write.",
       "files": [".github/workflows/release.yml"],
       "resolution": "Use Bash heredoc (cat > file << 'EOF') to write GitHub Actions workflow files, bypassing the Write tool hook."
+    },
+    {
+      "id": "fail-dotfile-extension",
+      "timestamp": "2026-02-15T03:49:00Z",
+      "feature": "marky-lkj",
+      "type": "implementation",
+      "approach": "Using Path::extension() to detect file format for .env files",
+      "errors": [
+        "Path::new('.env').extension() returns None in Rust — dotfiles have no extension",
+        "Path::new('.env').file_name() returns Some('.env') — must check filename as fallback",
+        "Path::new('.env.local').extension() returns Some('local') — compound dotfiles return wrong extension"
+      ],
+      "rootCause": "Rust's Path treats dotfiles (files starting with .) as having no extension. The dot is part of the stem, not an extension separator. This means extension-only file format detection silently misses bare .env files.",
+      "files": ["markymark-mcp/src/runtime_engine.rs", "markymark-core/src/lib.rs"],
+      "resolution": "DocumentKind::from_path() must check file_name() as fallback after extension() for known dotfile names like .env."
     }
   ]
 }

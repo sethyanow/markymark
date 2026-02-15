@@ -453,6 +453,51 @@
         "Custom unmanaged git hooks"
       ],
       "impact": "lefthook.yml, README.md, and follow-up task marky-7za for custom Semgrep rules"
+    },
+    {
+      "id": "dec-multiformat-001",
+      "timestamp": "2026-02-15T03:49:00Z",
+      "feature": "marky-lkj",
+      "decision": "Best-of-breed parsers per format instead of uniform serde or tree-sitter upgrade",
+      "rationale": "LSP requires byte-accurate ranges. tree-sitter-json 0.19 is compatible with pinned version. yaml-rust2 provides MarkedEventReceiver with position data. toml_edit provides native span(). serde-only fails LSP range requirement. tree-sitter upgrade blocks on risky migration.",
+      "alternatives": [
+        "Pure serde + regex position extraction (fails LSP accuracy)",
+        "Upgrade tree-sitter to 0.22+ (blocks on migration epic, no grammars for .env/.json5)"
+      ],
+      "impact": "New deps: tree-sitter-json 0.19, yaml-rust2, toml_edit, json5. Each format parser isolated in own file."
+    },
+    {
+      "id": "dec-multiformat-002",
+      "timestamp": "2026-02-15T03:49:00Z",
+      "feature": "marky-lkj",
+      "decision": "AnyDocumentIndex enum (Markdown | Structured) instead of extending existing DocumentIndex",
+      "rationale": "Keeps markdown index type clean. Structured docs have key paths, not headings/wiki-links. Adding optional fields to DocumentIndex muddies the type semantics. Enum delegates to format-appropriate index type.",
+      "alternatives": [
+        "Add optional key_entries field to DocumentIndex (muddies semantics)"
+      ],
+      "impact": "markymark-index/src/any_index.rs (new), realm.rs stores AnyDocumentIndex"
+    },
+    {
+      "id": "dec-multiformat-003",
+      "timestamp": "2026-02-15T03:49:00Z",
+      "feature": "marky-lkj",
+      "decision": "Support 10 file extensions: .json, .jsonc, .json5, .jsonl, .yaml, .yml, .toml, .env, .ini, .cfg",
+      "rationale": "User wants comprehensive coverage of config formats in codebases. .env/.ini/.cfg are flat key=value, handled with simple parser. .jsonc/.json5 handled via json5 crate.",
+      "alternatives": [
+        "Start minimal with just .json/.yaml/.toml (fewer parsers but incomplete vision)"
+      ],
+      "impact": "DocumentKind enum has 9 variants (Yaml covers both .yaml/.yml, Ini covers both .ini/.cfg)"
+    },
+    {
+      "id": "dec-multiformat-004",
+      "timestamp": "2026-02-15T03:49:00Z",
+      "feature": "marky-lkj",
+      "decision": "Full cross-document references: markdown [[file#key.path]] resolves to structured doc keys",
+      "rationale": "This is the killer feature for agents navigating mixed codebases. Bidirectional: find all markdown docs referencing a JSON key, or jump from markdown wiki-link to JSON key definition.",
+      "alternatives": [
+        "Isolated indexing per format (simpler but less useful)"
+      ],
+      "impact": "markymark-index/src/resolution.rs extended for key path resolution"
     }
   ]
 }
