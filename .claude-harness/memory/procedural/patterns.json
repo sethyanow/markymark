@@ -2,51 +2,37 @@
   "version": 3,
   "patterns": {
     "codePatterns": [
-      "Arena migration works best as phased TDD: infrastructure -> parser types -> parser GREEN tests -> index types -> index GREEN tests",
-      "ArenaHashMap Send constraint: always check trait bounds before adopting arena-backed collections in types stored across async boundaries.",
-      "Avoid cloning ArenaHashMap with bumpalo allocator \u2014 causes SIGSEGV. Return Vec<&T> of arena refs instead of Vec<T> when T contains ArenaHashMap",
-      "Benchmark ROI workflow: expose env-tiered controls (samples + doc counts), run synthetic_scale per tier, parse criterion estimates.json, and persist markdown report artifact for decision reviews",
-      "Benchmark real corpus: use MARKYMARK_BENCH_EPSTEIN for epstein path when running from worktree without fixture; MARKYMARK_BENCH_HEAVY=1 for 100 samples (RAM-heavy for index_docs_dir); keep baseline worktree for pre/post comparison",
-      "ChildGuard RAII for process cleanup in integration tests",
-      "CoreEngine trait in core, transport crates are thin adapters",
-      "Custom Semgrep rules can be verified with deterministic fixture scans + expected finding counts when semgrep test mode is constrained by CLI version",
-      "Deterministic sort by URI then range for stable output",
-      "DocumentIndex::from_ast borrows from parser arena: use arena_ptr + ptr::read + mem::forget when borrow checker blocks into_arena()",
-      "Drop read lock before async publish_diagnostics (deadlock prevention)",
-      "FULL text document sync (not INCREMENTAL) for v1 LSP",
-      "For cross-agent handoff, attach full CodeRabbit plain review (including codegen prompts) as beads comments on the owning task",
-      "For cross-document block ID indexing, store Vec<(uri, block)> in insertion order and keep lookup API stable by returning first match; add regression test before changing semantics",
-      "For gitleaks staged negative testing, use a synthetic token that matches built-in regex exactly (e.g., ghp_ + 36 chars)",
-      "Hook scripts receive JSON on stdin, output JSON to stdout, use exit 0 for no-op on non-matching files",
-      "Keep Semgrep rule scope high-signal by excluding tests/** and validating with repo-wide scan excluding dedicated fixtures",
-      "LSP Content-Length framing vs MCP line-delimited JSON \u2014 NEVER mix them",
       "Plugin hooks use hooks.json with {description, hooks: {EventName: [{matcher, hooks: [{type, command, timeout}]}]}} structure",
-      "Range containment for nested XML document symbols",
-      "RealmIndex cross-doc lookups: use owned ResolvedHeading/ResolvedBlock copies, populate on add_document, clear on remove_document",
-      "Regex-extracted types (BlockId, etc.) should carry source Range from full_match for go-to-definition \u2014 use byte offset to line/char conversion (same pattern as wiki_links, markdown_links)",
-      "Run local SAST baseline (cargo audit, cargo deny, semgrep) before enabling new CI workflow to establish signal baseline",
-      "Security CI for this repo is advisory-only with continue-on-error on each scan job",
-      "Single-pass stack tokenizer for XML extraction (not multi-regex)",
+      "Hook scripts receive JSON on stdin, output JSON to stdout, use exit 0 for no-op on non-matching files",
       "Test files follow pass/fail counter pattern with colored output and exit 1 on any failure",
-      "Use bumpalo Vec::new_in(arena).into_bump_slice() for empty arena slice, not &[] \u2014 literal &[] is stack-local and causes UAF when returned",
-      "Use slugify(heading.text) for duplicate detection, not heading.slug",
-      "When cargo-deny config fails, validate against installed tool version schema before assuming policy error",
-      "When extraction has dual paths (e.g. extract_list_items vs collect_top_level_list_items), remove dead extract_* if Ast uses the arena-driven path; plan invalidation is allowed",
-      "When harness active/archive state drifts from beads reality, reconcile by restoring in-progress feature to active.json and clearing premature archive entry before continuing implementation",
-      "When migrating wrapper types (e.g. Bump->DocumentArena), trace all ptr::read/mem::forget usage - pointer type must match the owning type, not inner type.",
-      "When teammate implementer crashes, reassign narrow-scope blocker to test-writer to preserve momentum",
-      "When writing bd --design content with markdown backticks, use heredoc file + bd update to avoid shell command substitution",
+      "CoreEngine trait in core, transport crates are thin adapters",
       "convert/state/server module separation in markymark-lsp for testability",
+      "FULL text document sync (not INCREMENTAL) for v1 LSP",
+      "Drop read lock before async publish_diagnostics (deadlock prevention)",
+      "Use slugify(heading.text) for duplicate detection, not heading.slug",
+      "Single-pass stack tokenizer for XML extraction (not multi-regex)",
+      "ChildGuard RAII for process cleanup in integration tests",
+      "rmcp CallToolResult::structured and structured_error for MCP payloads",
+      "Deterministic sort by URI then range for stable output",
+      "Range containment for nested XML document symbols",
+      "LSP Content-Length framing vs MCP line-delimited JSON \u2014 NEVER mix them",
+      "Arena migration works best as phased TDD: infrastructure -> parser types -> parser GREEN tests -> index types -> index GREEN tests",
+      "DocumentIndex::from_ast borrows from parser arena: use arena_ptr + ptr::read + mem::forget when borrow checker blocks into_arena()",
+      "RealmIndex cross-doc lookups: use owned ResolvedHeading/ResolvedBlock copies, populate on add_document, clear on remove_document",
+      "When extraction has dual paths (e.g. extract_list_items vs collect_top_level_list_items), remove dead extract_* if Ast uses the arena-driven path; plan invalidation is allowed",
+      "When teammate implementer crashes, reassign narrow-scope blocker to test-writer to preserve momentum",
+      "When harness active/archive state drifts from beads reality, reconcile by restoring in-progress feature to active.json and clearing premature archive entry before continuing implementation",
       "For cross-agent handoff, attach full CodeRabbit plain review (including codegen prompts) as beads comments on the owning task",
       "Avoid cloning ArenaHashMap with bumpalo allocator \u2014 causes SIGSEGV. Return Vec<&T> of arena refs instead of Vec<T> when T contains ArenaHashMap",
-      "Use bumpalo Vec::new_in(arena).into_bump_slice() for empty arena slice, not &[] \u2014 literal &[] has 'static lifetime which mismatches 'arena and can mask lifetime bugs in arena-backed types",
+      "Use bumpalo Vec::new_in(arena).into_bump_slice() for empty arena slice, not &[] \u2014 literal &[] is stack-local and causes UAF when returned",
       "Regex-extracted types (BlockId, etc.) should carry source Range from full_match for go-to-definition \u2014 use byte offset to line/char conversion (same pattern as wiki_links, markdown_links)",
       "Benchmark real corpus: use MARKYMARK_BENCH_EPSTEIN for epstein path when running from worktree without fixture; MARKYMARK_BENCH_HEAVY=1 for 100 samples (RAM-heavy for index_docs_dir); keep baseline worktree for pre/post comparison",
       "Benchmark ROI workflow: expose env-tiered controls (samples + doc counts), run synthetic_scale per tier, parse criterion estimates.json, and persist markdown report artifact for decision reviews",
       "For cross-document block ID indexing, store Vec<(uri, block)> in insertion order and keep lookup API stable by returning first match; add regression test before changing semantics",
       "docs-vs-practice audit: read doc, find all struct/field types in codebase, compare systematically. Key: test Send/Sync implications before changing types.",
-      "lefthook command values containing colons/braces must be YAML-quoted to avoid parse errors",
-      "rmcp CallToolResult::structured and structured_error for MCP payloads"
+      "ArenaHashMap Send constraint: always check trait bounds before adopting arena-backed collections in types stored across async boundaries.",
+      "When migrating wrapper types (e.g. Bump->DocumentArena), trace all ptr::read/mem::forget usage - pointer type must match the owning type, not inner type.",
+      "When token-scanning Markdown for XML-like syntax, precompute fenced code ranges and skip tokens inside fences to avoid language-generic false positives."
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",
@@ -55,14 +41,13 @@
       "crates": "markymark-<role> (e.g., markymark-core, markymark-parser)"
     },
     "projectSpecificRules": [
-      "${CLAUDE_PLUGIN_ROOT} is the standard variable for plugin-relative paths in commands",
-      "Checkpoint updates must include claude-progress, working-context, and memory layer persistence",
-      "Existing tests use set -euo pipefail - be aware this causes early abort on command failures in non-conditional contexts",
       "Plugin directory is markymark-plugin/ with .claude-plugin/plugin.json manifest",
+      "${CLAUDE_PLUGIN_ROOT} is the standard variable for plugin-relative paths in commands",
+      "Existing tests use set -euo pipefail - be aware this causes early abort on command failures in non-conditional contexts",
       "Rust integration tests in tests/ are standalone crates \u2014 each file gets its own imports, no mod.rs needed",
       "Shared test helpers must be duplicated in tests/ files (pub(crate) not accessible from integration tests)",
-      "Use exact count assertions (assert_eq!) not >= in rename/edit tests \u2014 >= masked a closing-tag rename bug",
-      "require_marksman! macro for graceful test skip when marksman unavailable in CI"
+      "require_marksman! macro for graceful test skip when marksman unavailable in CI",
+      "Use exact count assertions (assert_eq!) not >= in rename/edit tests \u2014 >= masked a closing-tag rename bug"
     ],
     "rustPatterns": [
       {
@@ -142,5 +127,5 @@
       }
     ]
   },
-  "lastUpdated": "2026-02-15T04:42:11Z"
+  "lastUpdated": "2026-02-15T20:51:58.952224Z"
 }

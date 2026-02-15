@@ -148,6 +148,45 @@
         "Consolidate helper functions into core crate for cross-crate deduplication",
         "When changing data representation (URL with/without anchor), grep all callers across crates"
       ]
+    },
+    {
+      "id": "suc-014",
+      "timestamp": "2026-02-16T00:48:00Z",
+      "feature": "pr-13-review",
+      "type": "code-review",
+      "approach": "Second PR review batch: triaged 13 comments into 9 actionable, 1 false positive (criterion 0.5 exists), 2 duplicates, 1 deferred (realm.rs perf → marky-43i). Applied all 9 fixes with tests in one session. Key: tab-stop expansion for CommonMark compliance, feature-gating bench internals, drop order safety.",
+      "files": [
+        "markymark-parser/tests/tree_sitter_integration.rs",
+        "docs/rust_crates/tree-sitter.md",
+        "markymark-index/src/document.rs",
+        "markymark-index/src/lib.rs",
+        "markymark-index/Cargo.toml",
+        "markymark-mcp/src/runtime_engine.rs",
+        "markymark-parser/src/extract.rs",
+        "markymark-parser/src/types/xml.rs",
+        "markymark-parser/tests/frontmatter_and_properties.rs",
+        "markymark-parser/tests/xml_extraction.rs"
+      ],
+      "patterns": [
+        "Verify CodeRabbit version claims against Cargo.lock before acting — false positives happen",
+        "Feature-gate internal tooling modules with required-features on [[bench]] and [[bin]] targets",
+        "Drop order matters for self-referencing structs: put the owner field last",
+        "Use std::process::id() for unique temp dir names in parallel test environments",
+        "CommonMark tabs expand to next 4-column tab stop, not 1 column per tab byte"
+      ]
+    },
+    {
+      "id": "suc-015",
+      "timestamp": "2026-02-15T17:05:00Z",
+      "feature": "marky-43i",
+      "type": "optimization",
+      "approach": "Changed remove_from_cross_doc_indexes from O(total indexed) to O(doc size) by looking up the existing DocumentIndex for the URI and iterating only its slugs/block_ids/tags to target specific cross-doc map entries, instead of scanning all buckets.",
+      "files": ["markymark-index/src/realm.rs", "markymark-index/tests/realm_index.rs"],
+      "patterns": [
+        "When a cross-doc index stores per-key buckets, use the source document's own index as a reverse lookup to find which keys to clean",
+        "Guard early-return for first-time add (no existing doc to clean) vs replacement (existing doc needs cleanup)",
+        "Collect keys into Vec before mutating maps to avoid borrow conflicts"
+      ]
     }
   ]
 }

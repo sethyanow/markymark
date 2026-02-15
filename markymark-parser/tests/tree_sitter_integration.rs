@@ -64,9 +64,12 @@ fn parse_preserves_heading_range() {
     let range = heading.range();
     assert_eq!(range.start.line, 0);
     assert_eq!(range.start.character, 0);
+    // Heading::from_node trims to last content child end; "Heading" ends at col 9.
     assert_eq!(range.end.line, 0);
-    // End should be after the newline or at end of heading text
-    assert!(range.end.character > 0);
+    assert!(
+        range.end.character > 0,
+        "end character should be past the heading text"
+    );
 }
 
 #[test]

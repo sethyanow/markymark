@@ -78,25 +78,14 @@
       ]
     },
     {
-      "name": "SAST Security Scanning Epic",
-      "type": "epic",
-      "location": "bd:marky-84l",
+      "name": "fenced-xml-exclusion",
+      "type": "parser-rule",
+      "location": "markymark-parser/src/extract.rs",
       "relationships": [
-        "child:marky-8jx",
-        "child:marky-ops",
-        "child:marky-yjg"
-      ],
-      "discoveredAt": "2026-02-14T06:08:38Z"
-    },
-    {
-      "name": "Custom Semgrep Rules Task",
-      "type": "task",
-      "location": "bd:marky-7za",
-      "relationships": [
-        "parent:marky-84l",
-        "follows:marky-8jx"
-      ],
-      "discoveredAt": "2026-02-14T06:23:36Z"
+        "collect_fenced_code_ranges computes exclusion spans",
+        "extract_xml_tags skips candidates inside fenced ranges",
+        "prevents false Unclosed XML tag diagnostics for Rust generics"
+      ]
     }
   ]
 }

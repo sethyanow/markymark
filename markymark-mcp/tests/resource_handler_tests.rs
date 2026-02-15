@@ -27,6 +27,7 @@ impl CoreEngine for MockEngine {
             )]),
             CoreOperation::ExportIndex { uri } => CoreOperationResult::DocumentExport {
                 uri: uri.clone(),
+                document_kind: None,
                 headings: vec![(
                     "Introduction".to_string(),
                     1,

@@ -1,1 +1,35 @@
-{"lastUpdated":"2026-02-15T15:30:00Z","currentProject":"markymark","lastSession":{"summary":"Addressed all 28 CodeRabbit PR review comments on PR #12. Critical fix: reordered Ast struct fields to prevent use-after-free on drop (arena dropped before elements). Also gated Default impl behind #[cfg(test)], fixed setext heading text extraction, callout title empty-filter, corrected Bump Send/Sync classification across 3 docs, added language tags to fenced blocks, normalized paths, and fixed metadata.","completedTasks":["Fixed critical Ast struct drop order (arena before root_elements → UAF risk)","Gated Ast Default impl behind #[cfg(test)] to avoid panics in library code","Added setext underline markers to heading text skip list","Filtered empty callout titles to None instead of Some(\"\")","Documented lookup_block first-wins semantics","Corrected bumpalo::Bump Send/Sync classification (Send + !Sync, not !Send + !Sync)","Fixed &Bump vs Bump distinction in async-ready.md !Send table","Replaced Pandoc-only anchor syntax in bumpalo.md","Added language tags to 8 unlabeled fenced code blocks","Normalized absolute paths to relative in failure records","Fixed metadata counts and UAF terminology in harness memory"],"blockers":["No blockers"],"nextSteps":["Merge feature/mark-rustdocs into parent branch (feature/mark-bumpalo)","Continue marky-luy arena conformance closeout","Consider splitting branch (8,870 lines, 62 commits, 22 new files)"]},"recentChanges":["markymark-parser/src/ast.rs: struct field reorder (critical drop-order fix) + #[cfg(test)] Default","markymark-parser/src/types/elements.rs: setext underline skip in heading extraction","markymark-parser/src/extract.rs: empty callout title filter","markymark-index/src/realm.rs: lookup_block doc improvement","docs/rust_agent_docs/patterns/async-ready.md: Bump Send/Sync corrections","docs/rust_agent_docs/reference/compiler-errors.md: E0106 note + text language tags","docs/rust_crates/bumpalo.md: anchor fix + version 3.16→3.19","docs/MEMORY.md: capitalize Markdown, remove duplicate adverb, text tag","docs/rust_agent_docs/patterns/anti-patterns.md: &[] const promotion clarification"],"knownIssues":["marky-8la: XML tag false positives in fenced code blocks","Scope guard: branch at 8,870 lines, 62 commits, 22 new files","bumpalo.md#468: Real-world pattern examples have placeholders (deferred)"],"environmentState":{"devServerRunning":false,"lastSuccessfulBuild":"2026-02-15T15:25:00Z","lastTypeCheck":"2026-02-15T15:25:00Z"},"lastCompaction":"2026-02-14T10:00:10.000Z","compactionCount":3}
+{
+  "lastUpdated": "2026-02-16T00:57:00Z",
+  "currentProject": "markymark",
+  "lastSession": {
+    "summary": "Optimized remove_from_cross_doc_indexes from O(total indexed) to O(doc size) by looking up the document's own index for targeted key removal (marky-43i). Added 2 regression tests. 419 tests pass, zero clippy warnings.",
+    "completedTasks": [
+      "Implemented targeted cross-doc index removal using per-doc reverse lookup (realm.rs)",
+      "Added test_remove_document_preserves_sibling_cross_doc_entries regression test",
+      "Added test_replace_document_via_add_cleans_old_entries regression test",
+      "Closed marky-43i bead"
+    ],
+    "blockers": [],
+    "nextSteps": [
+      "Consider merging PR #13 once reviews are addressed",
+      "Pick up next ready work from beads (bd ready)",
+      "marky-5yt: Replace 'static with self_cell/ouroboros",
+      "marky-luy: Arena conformance closeout"
+    ]
+  },
+  "recentChanges": [
+    "realm.rs: remove_from_cross_doc_indexes now O(doc size) instead of O(total indexed)",
+    "2 new realm_index regression tests for removal correctness"
+  ],
+  "knownIssues": [
+    "marky-5yt: 'static lifetime leak deferred to self_cell migration",
+    "marky-luy.1/2/3: P3 research items (Miri CI, arena reuse, Cow optimization)"
+  ],
+  "environmentState": {
+    "devServerRunning": false,
+    "lastSuccessfulBuild": "2026-02-16T00:57:00Z",
+    "lastTypeCheck": "2026-02-16T00:57:00Z"
+  },
+  "lastCompaction": "2026-02-14T10:00:10.000Z",
+  "compactionCount": 3
+}

@@ -90,8 +90,10 @@ impl<'arena> Heading<'arena> {
             _ => 1,
         };
 
-        // Extract heading text content
+        // Extract heading text content and track the last content child's end position
+        // for the range (tree-sitter-md includes trailing newlines in the node span).
         let mut text = String::new();
+        let mut last_content_end = node.end_position();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "atx_h1_marker"
@@ -100,10 +102,8 @@ impl<'arena> Heading<'arena> {
                 || child.kind() == "atx_h4_marker"
                 || child.kind() == "atx_h5_marker"
                 || child.kind() == "atx_h6_marker"
-                || child.kind() == "setext_h1_underline"
-                || child.kind() == "setext_h2_underline"
             {
-                continue; // Skip ATX markers and setext underlines
+                continue; // Skip markers
             }
             if let Ok(child_text) = child.utf8_text(source.as_bytes()) {
                 let trimmed = child_text.trim();
@@ -112,6 +112,7 @@ impl<'arena> Heading<'arena> {
                         text.push(' ');
                     }
                     text.push_str(trimmed);
+                    last_content_end = child.end_position();
                 }
             }
         }
@@ -121,10 +122,7 @@ impl<'arena> Heading<'arena> {
                 node.start_position().row as u32,
                 node.start_position().column as u32,
             ),
-            Position::new(
-                node.end_position().row as u32,
-                node.end_position().column as u32,
-            ),
+            Position::new(last_content_end.row as u32, last_content_end.column as u32),
         );
 
         // Allocate text in arena
@@ -267,7 +265,8 @@ impl<'arena> ListItem<'arena> {
     fn find_first_list_descendant(node: Node) -> Option<Node> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "tight_list" || child.kind() == "loose_list" {
+            // tree-sitter-md uses "list" instead of tight_list/loose_list
+            if child.kind() == "list" {
                 return Some(child);
             }
 

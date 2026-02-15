@@ -209,6 +209,10 @@ pub struct RealmStatsResponse {
     pub wiki_link_count: usize,
     /// Total markdown links across all documents.
     pub markdown_link_count: usize,
+    /// Number of structured (non-markdown) documents indexed.
+    pub structured_doc_count: usize,
+    /// Total key paths across all structured documents.
+    pub key_path_count: usize,
 }
 
 /// Request payload for `export-index`.
