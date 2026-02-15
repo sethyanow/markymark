@@ -148,6 +148,24 @@
         "byte_to_position() converts tree-sitter byte offsets to LSP-style line:col by counting newlines in prefix",
         "Pin exact version (=0.19.0) to avoid accidental upgrade to incompatible tree-sitter-json 0.20+"
       ]
+    },
+    {
+      "id": "suc-014",
+      "timestamp": "2026-02-15T11:20:00Z",
+      "feature": "marky-6gw",
+      "type": "implementation",
+      "approach": "tree-sitter migration 0.19→0.26: updated both Cargo.toml files (workspace + parser), replaced tree-sitter-markdown 0.7 with tree-sitter-md 0.5.2 MarkdownParser wrapper, migrated tree-sitter-json to 0.24 LANGUAGE constant API, removed dead tree-sitter-xml dep, handled 3 behavioral differences (section wrapping, trailing newline, heading range precision). 438 tests pass, clippy clean, single tree-sitter 0.26.5 in dep graph.",
+      "files": ["Cargo.toml", "markymark-parser/Cargo.toml", "markymark-parser/src/lib.rs", "markymark-parser/src/ast.rs", "markymark-parser/src/types.rs", "markymark-parser/src/structured/json.rs", "markymark-parser/tests/tree_sitter_integration.rs", "docs/rust_crates/tree-sitter.md"],
+      "patterns": [
+        "tree-sitter-md wraps content in section nodes — must recurse into sections to find headings/paragraphs/lists",
+        "tree-sitter-md requires trailing newline or produces ERROR nodes — normalize input in parser",
+        "tree-sitter-md includes trailing newline in atx_heading node range — use last content child end_position for precise heading range",
+        "tree-sitter-md uses 'list' instead of tight_list/loose_list — single node kind check",
+        "tree-sitter-md heading text is in 'inline' child, not 'heading_content'",
+        "tree-sitter-json 0.24: LANGUAGE.into() for Language, set_language(&lang) by reference",
+        "tree-sitter-md parser feature must be enabled explicitly: features = [\"parser\"]",
+        "When normalizing source (appending newline), store normalized source in AST to keep node byte ranges valid"
+      ]
     }
   ]
 }

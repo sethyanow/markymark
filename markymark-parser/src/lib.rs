@@ -6,7 +6,7 @@
 #![warn(clippy::all)]
 
 use markymark_core::prelude::*;
-use tree_sitter::Parser as TSParser;
+use tree_sitter_md::MarkdownParser;
 
 mod ast;
 mod extract;
@@ -19,30 +19,36 @@ pub use types::*;
 
 /// Markdown parser using tree-sitter
 pub struct Parser {
-    parser: TSParser,
+    parser: MarkdownParser,
 }
 
 impl Parser {
     /// Create a new parser instance
     pub fn new() -> CoreResult<Self> {
-        let mut parser = TSParser::new();
-        let language = tree_sitter_markdown::language();
-
-        parser
-            .set_language(language)
-            .map_err(|e| CoreError::Message(format!("Failed to set language: {}", e)))?;
-
+        let parser = MarkdownParser::default();
         Ok(Self { parser })
     }
 
     /// Parse markdown text into an AST
     pub fn parse(&mut self, source: &str) -> CoreResult<Ast> {
-        let tree = self
+        // tree-sitter-md requires a trailing newline for valid block parsing.
+        // Normalize input to avoid ERROR nodes for content without one.
+        let needs_newline = !source.is_empty() && !source.ends_with('\n');
+        let normalized;
+        let parse_source = if needs_newline {
+            normalized = format!("{source}\n");
+            normalized.as_str()
+        } else {
+            source
+        };
+
+        let md_tree = self
             .parser
-            .parse(source, None)
+            .parse(parse_source.as_bytes(), None)
             .ok_or_else(|| CoreError::Message("Failed to parse".to_string()))?;
 
-        Ast::from_tree(tree, source)
+        // Store the parse source (with newline) so node byte ranges remain valid
+        Ast::from_markdown_tree(md_tree, parse_source)
     }
 
     /// Parse with incremental update
@@ -56,7 +62,7 @@ impl Parser {
         _new_end_position: usize,
     ) -> CoreResult<Ast> {
         // For now, just re-parse from scratch
-        // TODO: Implement true incremental parsing using tree.edit()
+        // TODO: Implement true incremental parsing using MarkdownTree.edit()
         self.parse(new_source)
     }
 }

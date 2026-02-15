@@ -1,5 +1,5 @@
 use markymark_core::prelude::*;
-use tree_sitter::Tree;
+use tree_sitter_md::MarkdownTree;
 
 use crate::types::*;
 use tree_sitter::Node;
@@ -8,44 +8,23 @@ use tree_sitter::Node;
 pub struct Ast {
     source: String,
     #[allow(dead_code)]
-    tree: Tree,
+    md_tree: MarkdownTree,
     root_elements: Vec<Element>,
 }
 
 impl Ast {
-    /// Create AST from tree-sitter tree
-    pub(crate) fn from_tree(tree: Tree, source: &str) -> CoreResult<Self> {
-        let root_node = tree.root_node();
+    /// Create AST from a MarkdownTree (block + inline trees)
+    pub(crate) fn from_markdown_tree(md_tree: MarkdownTree, source: &str) -> CoreResult<Self> {
+        let root_node = md_tree.block_tree().root_node();
         let mut root_elements = Vec::new();
 
-        // Walk the tree and extract elements
-        {
-            let mut cursor = root_node.walk();
-            for child in root_node.children(&mut cursor) {
-                if let Some(element) = Element::from_node(child, source)? {
-                    root_elements.push(element);
-                    continue;
-                }
-
-                if child.kind() == "tight_list" || child.kind() == "loose_list" {
-                    let mut list_cursor = child.walk();
-                    for list_child in child.children(&mut list_cursor) {
-                        // Logseq-style headings: list items starting with `- # Heading`
-                        if let Some(heading) = try_logseq_heading(list_child, source) {
-                            root_elements.push(Element::Heading(heading));
-                            continue;
-                        }
-                        if let Some(element) = Element::from_node(list_child, source)? {
-                            root_elements.push(element);
-                        }
-                    }
-                }
-            }
-        }
+        // tree-sitter-md wraps content in section nodes:
+        // document → section → {atx_heading, paragraph, list, section(nested)}
+        collect_elements(root_node, source, &mut root_elements)?;
 
         Ok(Self {
             source: source.to_string(),
-            tree,
+            md_tree,
             root_elements,
         })
     }
@@ -92,7 +71,7 @@ impl Ast {
 
     /// Extract all list items
     pub fn extract_list_items(&self) -> Vec<ListItem> {
-        let root_node = self.tree.root_node();
+        let root_node = self.md_tree.block_tree().root_node();
         let mut items = Vec::new();
         collect_top_level_list_items(root_node, &self.source, &mut items);
         items
@@ -127,6 +106,42 @@ impl Ast {
     pub fn extract_xml_tags(&self) -> Vec<XmlTag> {
         crate::extract::extract_xml_tags(&self.root_elements, &self.source)
     }
+}
+
+/// Recursively collect elements from the block tree, descending into section nodes.
+///
+/// tree-sitter-md wraps content in `section` nodes that nest by heading level.
+/// This function flattens the section hierarchy to extract elements.
+fn collect_elements(node: Node, source: &str, elements: &mut Vec<Element>) -> CoreResult<()> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        // Recurse into section nodes (tree-sitter-md's structural wrapper)
+        if child.kind() == "section" {
+            collect_elements(child, source, elements)?;
+            continue;
+        }
+
+        if let Some(element) = Element::from_node(child, source)? {
+            elements.push(element);
+            continue;
+        }
+
+        // tree-sitter-md uses "list" instead of tight_list/loose_list
+        if child.kind() == "list" {
+            let mut list_cursor = child.walk();
+            for list_child in child.children(&mut list_cursor) {
+                // Logseq-style headings: list items starting with `- # Heading`
+                if let Some(heading) = try_logseq_heading(list_child, source) {
+                    elements.push(Element::Heading(heading));
+                    continue;
+                }
+                if let Some(element) = Element::from_node(list_child, source)? {
+                    elements.push(element);
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Detect Logseq-style headings inside list items.
@@ -186,11 +201,17 @@ fn try_logseq_heading(node: Node, source: &str) -> Option<Heading> {
 fn collect_top_level_list_items<'a>(node: Node<'a>, source: &str, items: &mut Vec<ListItem>) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == "tight_list" || child.kind() == "loose_list" {
+        // tree-sitter-md uses "list" instead of tight_list/loose_list
+        if child.kind() == "list" {
             if let Ok(list_items) = ListItem::list_items_from_list_node(child, source) {
                 items.extend(list_items);
             }
+            continue;
+        }
 
+        // Recurse into section nodes (tree-sitter-md's structural wrapper)
+        if child.kind() == "section" {
+            collect_top_level_list_items(child, source, items);
             continue;
         }
 

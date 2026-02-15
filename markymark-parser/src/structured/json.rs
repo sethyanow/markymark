@@ -9,9 +9,9 @@ use tree_sitter::{Node, Parser as TSParser};
 /// Parse a JSON document into a [`StructuredAst`].
 pub fn parse_json(source: &str) -> Result<StructuredAst, CoreError> {
     let mut parser = TSParser::new();
-    let language = tree_sitter_json::language();
+    let language: tree_sitter::Language = tree_sitter_json::LANGUAGE.into();
     parser
-        .set_language(language)
+        .set_language(&language)
         .map_err(|e| CoreError::Message(format!("failed to set JSON language: {e}")))?;
 
     let tree = parser

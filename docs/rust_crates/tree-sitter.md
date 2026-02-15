@@ -3,18 +3,19 @@
 <agent>
 <goal>Parse markdown and other languages incrementally with tree-sitter bindings.</goal>
 <when_to_use>When you need fast, incremental parsing with syntax tree access.</when_to_use>
-<contains>Parser setup, tree-sitter-markdown, node traversal, queries, incremental updates, edit application</contains>
+<contains>Parser setup, tree-sitter-md (MarkdownParser wrapper), node traversal, queries, incremental updates, edit application</contains>
 <see_also>tower-lsp.md, bumpalo.md</see_also>
 </agent>
 
-**TL;DR:** tree-sitter provides incremental parsing. Create a Parser with a Language, parse text to get a Tree, traverse Nodes. On edits, call `edit()` then re-parse for O(edit size) updates.
+**TL;DR:** tree-sitter provides incremental parsing. For markdown, use `tree_sitter_md::MarkdownParser` which handles block+inline grammars automatically. For other languages, create a `Parser` with a `Language` from a grammar crate's `LANGUAGE` constant. Parse text to get a Tree, traverse Nodes. On edits, call `edit()` then re-parse for O(edit size) updates.
 
 **Checklist:**
-- [ ] Create `Parser` and set language
-- [ ] Parse text with `parser.parse(text, old_tree)`
-- [ ] Traverse tree with `root_node()`, `child()`, `children()`
-- [ ] Use queries for pattern matching
-- [ ] Call `tree.edit()` before re-parsing on changes
+- [ ] Use `MarkdownParser::default()` for markdown (not raw `Parser`)
+- [ ] For other grammars: `LANGUAGE.into()` for Language, `set_language(&lang)` by reference
+- [ ] Parse text with `parser.parse(text.as_bytes(), old_tree)`
+- [ ] Traverse block tree with `md_tree.block_tree().root_node()`
+- [ ] Handle `section` nodes wrapping content in tree-sitter-md
+- [ ] Ensure source text ends with `\n` (tree-sitter-md requirement)
 
 ---
 
@@ -24,37 +25,30 @@
 
 ```toml
 [dependencies]
-tree-sitter = "0.22"
-tree-sitter-markdown = { git = "https://github.com/tree-sitter-grammars/tree-sitter-markdown" }
-
-[build-dependencies]
-cc = "1"
+tree-sitter = "0.26"
+tree-sitter-md = { version = "0.5", features = ["parser"] }
+tree-sitter-json = "0.24"  # For JSON parsing
 ```
 
-### Basic Parsing
+Grammar crates use `tree-sitter-language` as a bridge crate, so they work with any tree-sitter >= 0.24.
+
+### Markdown Parsing (MarkdownParser wrapper)
 
 ```rust
-use tree_sitter::{Parser, Language, Tree, Node};
-use tree_sitter_markdown;
+use tree_sitter_md::{MarkdownParser, MarkdownTree};
+use tree_sitter::Node;
 
-fn create_parser() -> Parser {
-    let mut parser = Parser::new();
-    parser
-        .set_language(&tree_sitter_markdown::language())
-        .expect("Error loading markdown grammar");
-    parser
-}
-
-fn parse_markdown(parser: &mut Parser, source: &str) -> Option<Tree> {
-    parser.parse(source, None)
+fn parse_markdown(source: &str) -> Option<MarkdownTree> {
+    let mut parser = MarkdownParser::default();
+    // MarkdownParser::parse takes &[u8], not &str
+    // Source MUST end with \n or tree-sitter-md produces ERROR nodes
+    parser.parse(source.as_bytes(), None)
 }
 
 fn main() {
-    let mut parser = create_parser();
-    let source = "# Hello\n\nSome text with a [[wiki link]].";
-
-    if let Some(tree) = parse_markdown(&mut parser, source) {
-        let root = tree.root_node();
+    let source = "# Hello\n\nSome text with a [[wiki link]].\n";
+    if let Some(md_tree) = parse_markdown(source) {
+        let root = md_tree.block_tree().root_node();
         println!("Root: {} [{}-{}]", root.kind(), root.start_byte(), root.end_byte());
         print_tree(&root, source, 0);
     }
@@ -78,28 +72,62 @@ fn print_tree(node: &Node, source: &str, indent: usize) {
 }
 ```
 
+### Other Language Parsing (e.g., JSON)
+
+```rust
+use tree_sitter::{Parser, Node};
+
+fn create_json_parser() -> Parser {
+    let mut parser = Parser::new();
+    let language: tree_sitter::Language = tree_sitter_json::LANGUAGE.into();
+    parser
+        .set_language(&language)  // Takes &Language in 0.26
+        .expect("Error loading JSON grammar");
+    parser
+}
+```
+
 ---
 
 ## Patterns
 
-### tree-sitter-markdown Node Types
+### tree-sitter-md Node Types (Block Grammar)
 
-tree-sitter-markdown has two parsers: block and inline. The block parser handles document structure:
+tree-sitter-md uses a two-grammar architecture (block + inline). The block grammar wraps content in `section` nodes:
 
 ```
 document
-├── section
-│   ├── atx_heading
-│   │   ├── atx_h1_marker (#)
-│   │   └── heading_content (inline)
-│   └── paragraph
-│       └── inline
-├── fenced_code_block
-│   ├── fenced_code_block_delimiter (```)
-│   ├── info_string
-│   └── code_fence_content
-└── ...
+└── section                          <-- wraps heading + its content
+    ├── atx_heading
+    │   ├── atx_h1_marker (#)
+    │   └── inline (heading text)    <-- "inline", not "heading_content"
+    ├── paragraph
+    │   └── inline
+    ├── list                         <-- single "list" type (no tight_list/loose_list)
+    │   ├── list_item
+    │   │   ├── list_marker_minus (- )
+    │   │   └── paragraph
+    │   └── list_item
+    ├── fenced_code_block
+    │   ├── fenced_code_block_delimiter
+    │   ├── info_string
+    │   └── code_fence_content
+    └── section                      <-- nested section for sub-headings
+        ├── atx_heading
+        │   ├── atx_h2_marker (##)
+        │   └── inline
+        └── paragraph
 ```
+
+**Key differences from old tree-sitter-markdown 0.7:**
+
+| Old (0.7) | New (tree-sitter-md 0.5) | Notes |
+|-----------|--------------------------|-------|
+| No section wrapping | `section` wraps headings + content | Must recurse into sections |
+| `heading_content` | `inline` | Child node name changed |
+| `tight_list` / `loose_list` | `list` | Single list node type |
+| `language()` function | `LANGUAGE` constant (`LanguageFn`) | Use `.into()` for Language |
+| Heading node excludes `\n` | Heading node includes trailing `\n` | Affects range calculations |
 
 ### Extracting Headings
 
@@ -118,7 +146,6 @@ struct Heading<'a> {
 
 fn collect_headings<'a>(node: Node<'a>, source: &'a str, headings: &mut Vec<Heading<'a>>) {
     if node.kind() == "atx_heading" {
-        // Find the marker to determine level
         let mut level = 0u8;
         let mut text = "";
 
@@ -131,7 +158,7 @@ fn collect_headings<'a>(node: Node<'a>, source: &'a str, headings: &mut Vec<Head
                 "atx_h4_marker" => level = 4,
                 "atx_h5_marker" => level = 5,
                 "atx_h6_marker" => level = 6,
-                "heading_content" | "inline" => {
+                "inline" => {
                     text = child.utf8_text(source.as_bytes()).unwrap_or("");
                 }
                 _ => {}
@@ -147,7 +174,7 @@ fn collect_headings<'a>(node: Node<'a>, source: &'a str, headings: &mut Vec<Head
         }
     }
 
-    // Recurse
+    // Recurse into sections and other nodes
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         collect_headings(child, source, headings);
@@ -202,7 +229,6 @@ fn collect_links<'a>(node: Node<'a>, source: &'a str, links: &mut Vec<Link<'a>>)
             });
         }
         "shortcut_link" | "full_reference_link" | "collapsed_reference_link" => {
-            // Reference-style links
             let text = node.child_by_field_name("text")
                 .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                 .unwrap_or("");
@@ -219,11 +245,9 @@ fn collect_links<'a>(node: Node<'a>, source: &'a str, links: &mut Vec<Link<'a>>)
         _ => {}
     }
 
-    // Also check for wiki links (custom pattern in text)
+    // Wiki links aren't in the tree-sitter grammar — parsed via regex
     if node.kind() == "text" {
         let text = node.utf8_text(source.as_bytes()).unwrap_or("");
-        // Wiki links aren't in standard tree-sitter-markdown grammar
-        // Parse manually or use regex
         for wiki in parse_wiki_links(text, node.start_byte()) {
             links.push(wiki);
         }
@@ -236,78 +260,83 @@ fn collect_links<'a>(node: Node<'a>, source: &'a str, links: &mut Vec<Link<'a>>)
 }
 ```
 
-### Incremental Parsing
+### Incremental Parsing with MarkdownTree
 
 ```rust
-use tree_sitter::{InputEdit, Point};
+use tree_sitter::InputEdit;
+use tree_sitter_md::{MarkdownParser, MarkdownTree};
 
 struct Document {
     source: String,
-    tree: Option<Tree>,
-    parser: Parser,
+    md_tree: Option<MarkdownTree>,
+    parser: MarkdownParser,
 }
 
 impl Document {
     fn new(source: String) -> Self {
-        let mut parser = create_parser();
-        let tree = parser.parse(&source, None);
-        Self { source, tree, parser }
+        let mut parser = MarkdownParser::default();
+        let md_tree = parser.parse(source.as_bytes(), None);
+        Self { source, md_tree, parser }
     }
 
     fn apply_edit(&mut self, start_byte: usize, old_end_byte: usize, new_text: &str) {
-        // Calculate positions
         let start_position = byte_to_point(&self.source, start_byte);
         let old_end_position = byte_to_point(&self.source, old_end_byte);
 
-        // Apply text change
         let new_end_byte = start_byte + new_text.len();
         self.source.replace_range(start_byte..old_end_byte, new_text);
-
         let new_end_position = byte_to_point(&self.source, new_end_byte);
 
-        // Tell tree-sitter about the edit
-        if let Some(tree) = &mut self.tree {
-            tree.edit(&InputEdit {
+        // MarkdownTree.edit() takes a slice of InputEdit
+        if let Some(md_tree) = &mut self.md_tree {
+            md_tree.edit(&[InputEdit {
                 start_byte,
                 old_end_byte,
                 new_end_byte,
                 start_position,
                 old_end_position,
                 new_end_position,
-            });
+            }]);
         }
 
         // Re-parse with old tree for incremental update
-        self.tree = self.parser.parse(&self.source, self.tree.as_ref());
+        self.md_tree = self.parser.parse(
+            self.source.as_bytes(),
+            self.md_tree.as_ref(),
+        );
     }
 }
 
-fn byte_to_point(source: &str, byte_offset: usize) -> Point {
+fn byte_to_point(source: &str, byte_offset: usize) -> tree_sitter::Point {
     let prefix = &source[..byte_offset.min(source.len())];
     let row = prefix.matches('\n').count();
     let column = prefix.rfind('\n')
         .map(|pos| byte_offset - pos - 1)
         .unwrap_or(byte_offset);
-    Point { row, column }
+    tree_sitter::Point { row, column }
 }
 ```
 
 ### Using Queries
 
-tree-sitter queries let you pattern-match on the syntax tree:
+tree-sitter queries pattern-match on the syntax tree:
 
 ```rust
 use tree_sitter::Query;
+use tree_sitter_md::LANGUAGE;
 
-fn find_headings_with_query(tree: &Tree, source: &str) -> Vec<(u8, String, Range<usize>)> {
+fn find_headings_with_query(
+    tree: &tree_sitter::Tree,
+    source: &str,
+) -> Vec<(u8, String, std::ops::Range<usize>)> {
     let query_str = r#"
         (atx_heading
           [(atx_h1_marker) (atx_h2_marker) (atx_h3_marker)
            (atx_h4_marker) (atx_h5_marker) (atx_h6_marker)] @marker
-          (heading_content) @content) @heading
+          (inline) @content) @heading
     "#;
 
-    let language = tree_sitter_markdown::language();
+    let language: tree_sitter::Language = LANGUAGE.into();
     let query = Query::new(&language, query_str).expect("Invalid query");
 
     let mut cursor = tree_sitter::QueryCursor::new();
@@ -361,7 +390,7 @@ fn find_headings_with_query(tree: &Tree, source: &str) -> Vec<(u8, String, Range
 ### TreeCursor for Efficient Traversal
 
 ```rust
-fn find_node_at_position<'a>(tree: &'a Tree, byte_offset: usize) -> Option<Node<'a>> {
+fn find_node_at_position<'a>(tree: &'a tree_sitter::Tree, byte_offset: usize) -> Option<Node<'a>> {
     let root = tree.root_node();
     if !root.byte_range().contains(&byte_offset) {
         return None;
@@ -372,19 +401,17 @@ fn find_node_at_position<'a>(tree: &'a Tree, byte_offset: usize) -> Option<Node<
 
     // Descend to most specific node
     'outer: loop {
-        // Check if any child contains the position
         if cursor.goto_first_child() {
             loop {
                 let node = cursor.node();
                 if node.byte_range().contains(&byte_offset) {
                     result = node;
-                    continue 'outer; // Descend into this child
+                    continue 'outer;
                 }
                 if !cursor.goto_next_sibling() {
                     break;
                 }
             }
-            // No child contained position, use parent
             cursor.goto_parent();
         }
         break;
@@ -398,6 +425,65 @@ fn find_node_at_position<'a>(tree: &'a Tree, byte_offset: usize) -> Option<Node<
 
 ## Pitfalls
 
+### Trailing Newline Required
+
+<pitfall>
+**Problem:** tree-sitter-md requires source text to end with `\n`. Without it, block-level elements produce ERROR nodes.
+
+```rust
+// BAD: No trailing newline
+let source = "# Hello";
+let tree = parser.parse(source.as_bytes(), None); // ERROR node!
+```
+
+**Solution:** Normalize input before parsing:
+
+```rust
+// GOOD: Ensure trailing newline
+let source = "# Hello";
+let normalized = if source.ends_with('\n') {
+    source.to_string()
+} else {
+    format!("{source}\n")
+};
+let tree = parser.parse(normalized.as_bytes(), None); // Valid tree
+```
+</pitfall>
+
+### Section Node Wrapping
+
+<pitfall>
+**Problem:** tree-sitter-md wraps content in `section` nodes. Direct children of `document` are sections, not headings/paragraphs.
+
+```rust
+// BAD: Expecting headings as direct children of root
+let root = md_tree.block_tree().root_node();
+for child in root.children(&mut root.walk()) {
+    if child.kind() == "atx_heading" { // Never matches! Headings are inside sections
+        // ...
+    }
+}
+```
+
+**Solution:** Recurse into section nodes:
+
+```rust
+// GOOD: Handle section wrapping
+fn collect_elements(node: Node, source: &str) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "section" => collect_elements(child, source), // Recurse
+            "atx_heading" => { /* process heading */ }
+            "paragraph" => { /* process paragraph */ }
+            "list" => { /* process list */ }
+            _ => {}
+        }
+    }
+}
+```
+</pitfall>
+
 ### Lifetime of Nodes
 
 <pitfall>
@@ -406,10 +492,11 @@ fn find_node_at_position<'a>(tree: &'a Tree, byte_offset: usize) -> Option<Node<
 ```rust
 // BAD: Tree dropped while nodes still in use
 fn get_headings(source: &str) -> Vec<Node> {
-    let mut parser = create_parser();
-    let tree = parser.parse(source, None).unwrap();
-    extract_nodes(&tree) // Returns Vec<Node<'_>> borrowing from tree
-} // tree dropped here, nodes invalid!
+    let mut parser = MarkdownParser::default();
+    let md_tree = parser.parse(source.as_bytes(), None).unwrap();
+    let root = md_tree.block_tree().root_node();
+    extract_nodes(&root) // Returns Vec<Node<'_>> borrowing from tree
+} // md_tree dropped here, nodes invalid!
 ```
 
 **Solution:** Keep tree alive or extract owned data:
@@ -417,9 +504,10 @@ fn get_headings(source: &str) -> Vec<Node> {
 ```rust
 // GOOD: Return owned data, not borrowed nodes
 fn get_headings(source: &str) -> Vec<HeadingData> {
-    let mut parser = create_parser();
-    let tree = parser.parse(source, None).unwrap();
-    extract_nodes(&tree)
+    let mut parser = MarkdownParser::default();
+    let md_tree = parser.parse(source.as_bytes(), None).unwrap();
+    let root = md_tree.block_tree().root_node();
+    extract_nodes(&root)
         .into_iter()
         .map(|node| HeadingData {
             text: node.utf8_text(source.as_bytes()).unwrap().to_owned(),
@@ -491,17 +579,17 @@ let node_text = &source[start..end];
 ### Edit Coordinates Must Match
 
 <pitfall>
-**Problem:** `tree.edit()` coordinates must match actual text change.
+**Problem:** `tree.edit()` / `md_tree.edit()` coordinates must match actual text change.
 
 ```rust
 // BAD: Edit coordinates don't match actual change
-self.source.replace_range(10..20, "new text"); // Changes 10 bytes
-tree.edit(&InputEdit {
+self.source.replace_range(10..20, "new text");
+md_tree.edit(&[InputEdit {
     start_byte: 10,
     old_end_byte: 15, // Wrong! Should be 20
     new_end_byte: 18,
     // ...
-});
+}]);
 ```
 
 **Solution:** Calculate edit carefully:
@@ -509,30 +597,30 @@ tree.edit(&InputEdit {
 ```rust
 // GOOD: Coordinates match exactly
 let start = 10;
-let old_end = 20; // Original range end
+let old_end = 20;
 let new_text = "new text";
 let new_end = start + new_text.len();
 
 self.source.replace_range(start..old_end, new_text);
-tree.edit(&InputEdit {
+md_tree.edit(&[InputEdit {
     start_byte: start,
     old_end_byte: old_end,
     new_end_byte: new_end,
     start_position: byte_to_point(&old_source, start),
     old_end_position: byte_to_point(&old_source, old_end),
     new_end_position: byte_to_point(&self.source, new_end),
-});
+}]);
 ```
 </pitfall>
 
 ### Parser Is Not Thread-Safe
 
 <pitfall>
-**Problem:** `Parser` cannot be shared across threads.
+**Problem:** `MarkdownParser` and `Parser` cannot be shared across threads.
 
 ```rust
 // BAD: Parser shared between threads
-let parser = Arc::new(Mutex::new(create_parser()));
+let parser = Arc::new(Mutex::new(MarkdownParser::default()));
 // This works but serializes all parsing
 ```
 
@@ -541,11 +629,11 @@ let parser = Arc::new(Mutex::new(create_parser()));
 ```rust
 // GOOD: Thread-local parser
 thread_local! {
-    static PARSER: RefCell<Parser> = RefCell::new(create_parser());
+    static PARSER: RefCell<MarkdownParser> = RefCell::new(MarkdownParser::default());
 }
 
-fn parse(source: &str) -> Option<Tree> {
-    PARSER.with(|p| p.borrow_mut().parse(source, None))
+fn parse(source: &str) -> Option<MarkdownTree> {
+    PARSER.with(|p| p.borrow_mut().parse(source.as_bytes(), None))
 }
 ```
 </pitfall>
@@ -554,7 +642,8 @@ fn parse(source: &str) -> Option<Tree> {
 
 ## Related
 
-- LSP integration: `tower-lsp.md`
+- LSP integration: `tower-sitter.md`
 - Memory-efficient storage: `bumpalo.md`
 - tree-sitter docs: https://tree-sitter.github.io/tree-sitter/
-- tree-sitter-markdown: https://github.com/tree-sitter-grammars/tree-sitter-markdown
+- tree-sitter-md (markdown): https://github.com/tree-sitter-grammars/tree-sitter-markdown
+- tree-sitter-json: https://github.com/nickel-lang/tree-sitter-json
