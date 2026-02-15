@@ -1,37 +1,37 @@
 {
-  "lastUpdated": "2026-02-15T09:25:00Z",
+  "lastUpdated": "2026-02-15T11:45:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Research and planning session: investigated tree-sitter version incompatibility. Discovered project uses dead tree-sitter-markdown 0.7.1 (archived 2021) while active crate is tree-sitter-md 0.5.2 (tree-sitter-grammars org, Jan 2026). Confirmed tree-sitter-xml dependency is dead code (XML extraction uses custom tokenizer). Created epic marky-6gw for full migration to tree-sitter 0.26 + tree-sitter-md MarkdownParser wrapper with 5 subtasks.",
+    "summary": "Executed tree-sitter migration epic marky-6gw. Migrated from tree-sitter 0.19.5 + archived tree-sitter-markdown 0.7.1 to tree-sitter 0.26.5 + active tree-sitter-md 0.5.2 (MarkdownParser wrapper). Upgraded tree-sitter-json from 0.19 to 0.24. Removed dead tree-sitter-xml dependency. Handled 3 key behavioral differences: section node wrapping, trailing newline requirement, heading range precision. Updated docs/rust_crates/tree-sitter.md. All 438 tests pass, clippy clean, single tree-sitter version in dep graph.",
     "completedTasks": [
-      "Investigated tree-sitter version incompatibility (0.19 vs 0.22 dual build)",
-      "Discovered tree-sitter-markdown vs tree-sitter-md crate distinction",
-      "Scoped migration: 4 source files, 5 test files, ~30-50 line changes",
-      "Created epic marky-6gw with design doc and 5 dependency-chained subtasks"
+      "marky-pms: Removed dead tree-sitter-xml from both Cargo.toml files",
+      "marky-36t: Upgraded workspace deps (tree-sitter 0.26, tree-sitter-md 0.5, tree-sitter-json 0.24)",
+      "marky-bni: Migrated markdown parser to MarkdownParser wrapper with section handling",
+      "marky-j7h: Migrated JSON parser to LANGUAGE.into() + set_language(&lang) API",
+      "marky-aoo: Full verification — 438 tests, clippy clean, single dep graph",
+      "Updated docs/rust_crates/tree-sitter.md with new API patterns and pitfalls"
     ],
     "blockers": [],
     "nextSteps": [
-      "Execute marky-6gw epic: start with marky-pms (remove dead tree-sitter-xml)",
-      "Continue marky-lkj multi-format epic (YAML, TOML, flat parsers — independent of tree-sitter migration)",
-      "Consider whether to do tree-sitter migration before or after remaining marky-lkj tasks"
+      "Continue marky-lkj multi-format epic (YAML, TOML, flat parsers)",
+      "Fix XML tag false positives in fenced code blocks (marky-bnm)",
+      "Plugin polish tasks (hooks, skills, config, README)",
+      "Consider PR for feature/mark-next → main"
     ]
   },
   "recentChanges": [
-    "Created beads epic marky-6gw: tree-sitter migration 0.19 → 0.26 + tree-sitter-md",
-    "Created subtasks: marky-pms (remove xml), marky-36t (upgrade deps), marky-bni (migrate md parser), marky-j7h (migrate json parser), marky-aoo (verification)"
+    "feat(marky-6gw): migrate tree-sitter 0.19→0.26 with tree-sitter-md wrapper (92dcc82)"
   ],
   "knownIssues": [
-    "tree-sitter-markdown 0.7.1 is dead (archived 2021) — migration to tree-sitter-md planned as marky-6gw",
-    "tree-sitter-xml 0.6 is dead code — removal planned as marky-pms",
-    "Dual tree-sitter build (0.19 + 0.22) — resolved by marky-6gw migration",
     "5 broken PNG image links in docs/rust_guidelines/ (filed as gigapowers-ctb)",
     "PR #7 has merge conflicts in 3 files (harness metadata + test file)",
     "Write tool blocked by security_reminder_hook on .github/workflows/*.yml — use Bash heredoc instead",
-    "runtime_engine.rs is 651 lines (over 500-line limit) — filed marky-lkj.1 for refactor"
+    "runtime_engine.rs is 651 lines (over 500-line limit) — filed marky-lkj.1 for refactor",
+    "scope-guard RED ZONE: feature/mark-next has 8222 lines changed, 13 new files — consider splitting branch"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-15T08:51:00Z",
+    "lastSuccessfulBuild": "2026-02-15T11:45:00Z",
     "lastTypeCheck": null
   }
 }
