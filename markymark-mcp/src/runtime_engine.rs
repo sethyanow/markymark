@@ -93,7 +93,7 @@ fn index_root_into_realm(parser: &mut Parser, root: &Path, realm: &mut RealmData
 
         realm.index.add_document(
             DocumentUri::from_file_path(&path),
-            DocumentIndex::from_ast(&ast),
+            DocumentIndex::from_ast(ast),
         );
     }
 }
@@ -128,7 +128,7 @@ impl CoreEngine for RuntimeEngine {
                         index
                             .headings()
                             .iter()
-                            .map(|heading| heading.text.clone())
+                            .map(|heading| heading.text.to_string())
                             .collect(),
                     ),
                     None => CoreOperationResult::Error(CoreError::Message(format!(
@@ -153,7 +153,7 @@ impl CoreEngine for RuntimeEngine {
                 for (uri, index) in realm.iter_documents() {
                     for heading in index.headings() {
                         if heading.text.to_lowercase().contains(&query_lower) {
-                            matches.push((heading.text.clone(), uri.clone(), heading.range));
+                            matches.push((heading.text.to_string(), uri.clone(), heading.range));
                         }
                     }
                 }
@@ -188,12 +188,12 @@ impl CoreEngine for RuntimeEngine {
 
                     for (doc_uri, doc_index) in realm.iter_documents() {
                         for wl in doc_index.wiki_links() {
-                            if wl.heading.as_deref() == Some(slug) {
+                            if wl.heading == Some(slug) {
                                 locations.push((doc_uri.clone(), wl.range));
                             }
                         }
                         for ml in doc_index.markdown_links() {
-                            if ml.anchor.as_deref() == Some(slug) {
+                            if ml.anchor == Some(slug) {
                                 locations.push((doc_uri.clone(), ml.range));
                             }
                         }
@@ -259,7 +259,7 @@ impl CoreEngine for RuntimeEngine {
                 }
 
                 if let Some(xml_tag) = index.xml_tags().iter().find(|x| x.range.contains(cursor)) {
-                    return rename_xml_tag(realm, &xml_tag.tag_name, &new_name);
+                    return rename_xml_tag(realm, xml_tag.tag_name, &new_name);
                 }
 
                 CoreOperationResult::Error(CoreError::Message(
@@ -448,25 +448,31 @@ impl CoreEngine for RuntimeEngine {
                         let headings = index
                             .headings()
                             .iter()
-                            .map(|h| (h.text.clone(), h.level, h.range))
+                            .map(|h| (h.text.to_string(), h.level, h.range))
                             .collect();
 
                         let xml_tags = index
                             .xml_tags()
                             .iter()
-                            .map(|x| (x.tag_name.clone(), x.range))
+                            .map(|x| (x.tag_name.to_string(), x.range))
                             .collect();
 
                         let wiki_links = index
                             .wiki_links()
                             .iter()
-                            .map(|wl| (wl.target.clone(), wl.heading.clone(), wl.range))
+                            .map(|wl| {
+                                (
+                                    wl.target.to_string(),
+                                    wl.heading.map(|h| h.to_string()),
+                                    wl.range,
+                                )
+                            })
                             .collect();
 
                         let markdown_links = index
                             .markdown_links()
                             .iter()
-                            .map(|ml| (ml.text.clone(), ml.url.clone(), ml.range))
+                            .map(|ml| (ml.text.to_string(), ml.url.to_string(), ml.range))
                             .collect();
 
                         CoreOperationResult::DocumentExport {
@@ -563,7 +569,7 @@ fn build_dependency_graph(realm: &RealmIndex, format: &str) -> Result<String, St
             if ml.url.starts_with("http://") || ml.url.starts_with("https://") {
                 continue; // Skip external URLs.
             }
-            let to = ml.url.clone();
+            let to = ml.url.to_string();
             nodes.insert(to.clone());
             edges.push((from.clone(), to, "markdown_link".to_string()));
         }
