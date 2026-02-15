@@ -657,6 +657,18 @@
         "Remove arena allocation entirely"
       ],
       "impact": "markymark-parser/src/ast.rs, markymark-index/src/document.rs safety docs; marky-5yt issue"
+    },
+    {
+      "id": "dec-031",
+      "timestamp": "2026-02-15T15:33:00Z",
+      "feature": "feature-001",
+      "decision": "Merge origin/main into feature branch (not rebase) to resolve PR #10 squash merge conflicts",
+      "rationale": "PR #10 was squash-merged to main, causing 22 conflicts with the 52-commit feature branch. Rebase failed before (fail-feature-001-rebase-20260214). Merge commit is safest — preserves all history and clearly documents integration point.",
+      "alternatives": [
+        "Rebase 52 commits (failed before, rewrites hashes)",
+        "Reset main to before squash merge (force push to main, risky)"
+      ],
+      "impact": "Merge commit 02dd960, PR #11 now MERGEABLE"
     }
   ]
 }
