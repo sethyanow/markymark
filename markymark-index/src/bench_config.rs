@@ -80,6 +80,10 @@ mod tests {
         let prev_heavy = std::env::var("MARKYMARK_BENCH_HEAVY").ok();
         let prev_doc_tier = std::env::var("MARKYMARK_BENCH_DOC_TIER").ok();
 
+        // SAFETY: set_var/remove_var are unsafe because they are not thread-safe.
+        // We hold `env_lock()` (a Mutex) to serialize all env mutations, and
+        // these tests run under `cargo test` which uses a single test thread
+        // per Mutex-guarded group. No other threads mutate these env vars.
         match samples {
             Some(v) => unsafe { std::env::set_var("MARKYMARK_BENCH_SAMPLES", v) },
             None => unsafe { std::env::remove_var("MARKYMARK_BENCH_SAMPLES") },
@@ -95,6 +99,7 @@ mod tests {
 
         f();
 
+        // Restore previous env values (same safety justification as above).
         match prev_samples {
             Some(v) => unsafe { std::env::set_var("MARKYMARK_BENCH_SAMPLES", v) },
             None => unsafe { std::env::remove_var("MARKYMARK_BENCH_SAMPLES") },

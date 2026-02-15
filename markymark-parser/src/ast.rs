@@ -1,5 +1,6 @@
 //! Abstract Syntax Tree for arena-allocated markdown parsing.
 
+use markymark_core::arena::DocumentArena;
 use markymark_core::prelude::*;
 use tree_sitter::Tree;
 
@@ -8,68 +9,78 @@ use tree_sitter::Node;
 
 /// Abstract Syntax Tree representing a parsed markdown document.
 ///
-/// The AST owns a bumpalo arena that all parsed data is allocated into,
+/// The AST owns a [`DocumentArena`] that all parsed data is allocated into,
 /// enabling efficient bulk deallocation when the AST is dropped.
+///
+/// # Safety (self-referential arena pattern)
+///
+/// `root_elements` stores `Element<'static>` but the actual lifetime is the
+/// arena's lifetime. This is sound because `Self` owns the arena — the
+/// references cannot outlive the struct. The `'static` marker is a workaround
+/// for Rust's inability to express self-referential borrows. No `'static`
+/// references are exposed beyond `&self` method returns, so the lifetime
+/// bound holds as long as `self` is alive.
 pub struct Ast {
     /// Source text (owned, kept for extract functions)
     source: String,
-    /// Bump arena for all allocated data
-    arena: bumpalo::Bump,
+    /// Per-document arena for all allocated data
+    arena: DocumentArena,
     /// Tree-sitter parse tree
-    #[allow(dead_code)]
+    /// Tree-sitter parse tree (used by extract_list_items for node walking)
     tree: Tree,
-    /// Root-level elements, allocated in arena
-    root_elements: Vec<Element<'static>>, // 'static is a lie - actually 'arena, but Self owns arena
+    /// Root-level elements, allocated in arena (see struct-level safety docs)
+    root_elements: Vec<Element<'static>>,
 }
 
-// SAFETY: The 'static lifetime on root_elements is a workaround.
-// The Ast struct owns both the arena and the elements, so the lifetime
-// is valid for the struct's lifetime. This is a common pattern for
-// self-referential structs with arenas.
 impl Ast {
-    /// Get a reference to the arena for allocations.
+    /// Get a reference to the inner bump allocator.
     ///
-    /// Callers (e.g. DocumentIndex) use this to allocate into the parser's arena
-    /// and then take ownership via [`into_arena`](Self::into_arena).
+    /// Callers (e.g. `DocumentIndex`) use this to allocate into the parser's
+    /// arena and then take ownership via [`into_arena`](Self::into_arena).
     #[inline]
     pub fn arena(&self) -> &bumpalo::Bump {
-        &self.arena
+        self.arena.bump()
     }
 
-    /// Get a 'static reference to the arena for internal allocations.
+    /// Get a `'static` reference to the inner bump allocator.
     ///
     /// # Safety
-    /// The returned reference has 'static lifetime, but it is only valid
-    /// for the lifetime of `self`. This is safe because `self` owns the arena.
+    ///
+    /// The returned reference has `'static` lifetime but is only valid for
+    /// the lifetime of `self`. Sound because `self` owns the `DocumentArena`.
+    /// Callers must not let the reference escape beyond `&self` methods.
     #[inline]
     fn arena_ref(&self) -> &'static bumpalo::Bump {
-        // SAFETY: The arena is owned by Self, so the reference is valid for Self's lifetime
-        unsafe { &*(&self.arena as *const bumpalo::Bump) }
+        // SAFETY: DocumentArena is owned by Self; reference valid for Self's lifetime.
+        unsafe { &*(self.arena.bump() as *const bumpalo::Bump) }
     }
 
-    /// Consume the AST and return its arena.
+    /// Consume the AST and return its [`DocumentArena`].
     ///
-    /// Used by DocumentIndex to take ownership of the arena after borrowing
+    /// Used by `DocumentIndex` to take ownership of the arena after borrowing
     /// from it during index construction, avoiding string reallocation.
-    pub fn into_arena(self) -> bumpalo::Bump {
+    pub fn into_arena(self) -> DocumentArena {
         self.arena
     }
 
-    /// Raw pointer to the arena for extraction when the borrow checker
-    /// prevents using [`into_arena`](Self::into_arena).
+    /// Raw pointer to the owned [`DocumentArena`] for extraction when the
+    /// borrow checker prevents using [`into_arena`](Self::into_arena).
+    ///
+    /// Used by `DocumentIndex::from_ast` to borrow and then take ownership
+    /// of the arena in a single pass via `ptr::read` + `mem::forget`.
     #[inline]
-    pub fn arena_ptr(&self) -> *const bumpalo::Bump {
-        &self.arena as *const bumpalo::Bump
+    pub fn doc_arena_ptr(&self) -> *const DocumentArena {
+        &self.arena as *const DocumentArena
     }
 
-    /// Create AST from tree-sitter tree
+    /// Create AST from tree-sitter tree.
     pub(crate) fn from_tree(tree: Tree, source: &str) -> CoreResult<Self> {
-        let arena = bumpalo::Bump::new();
+        let arena = DocumentArena::new();
         let root_node = tree.root_node();
 
-        // Transmute arena reference to 'static for storage
-        // SAFETY: The arena is owned by Self, so the reference is valid for Self's lifetime
-        let arena_ref: &'static bumpalo::Bump = unsafe { &*(&arena as *const bumpalo::Bump) };
+        // SAFETY: The arena is owned by Self, so the reference is valid for Self's lifetime.
+        // See struct-level safety docs for the self-referential pattern rationale.
+        let arena_ref: &'static bumpalo::Bump = unsafe { &*(arena.bump() as *const bumpalo::Bump) };
 
         let mut root_elements = Vec::new();
 
