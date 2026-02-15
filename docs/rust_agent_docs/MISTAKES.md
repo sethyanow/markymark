@@ -18,13 +18,16 @@
 | 1 | Taking references to packed struct fields | 🔴 | [type-layout](advanced/type-layout.md) | Read by value or `read_unaligned()` |
 | 2 | Passing String/Vec/Box across FFI/DLL | 🔴 | [ffi](advanced/ffi.md) | Use opaque handles with create/destroy |
 | 3 | Wrong PhantomData variance | 🔴 | [unsafe](advanced/unsafe.md) | Match Nomicon variance table exactly |
-| 4 | Defaulting to Ordering::Relaxed | 🟠 | [concurrency](advanced/concurrency.md) | Default to SeqCst; downgrade with proof |
-| 5 | Ignoring pinning in async code | 🟠 | [async](advanced/async.md) | Use `Box::pin()` or `pin!()` macro |
-| 6 | Fighting borrow checker with `.clone()` | 🟡 | [ownership](core/ownership.md) | Restructure algorithm or use Rc/Arc |
-| 7 | Using `unwrap()` in library code | 🟡 | [errors](core/errors.md) | Use `?` propagation with proper errors |
-| 8 | Leaking external crate types in API | 🟡 | [api-design](patterns/api-design.md) | Wrap in newtypes |
-| 9 | Glob imports in libraries | 🟡 | [modules](core/modules.md) | Explicit `pub use` with `#[doc(inline)]` |
-| 10 | Non-descriptive error types | 🟡 | [errors](core/errors.md) | Use `thiserror` with descriptive variants |
+| 4 | Wrong Fn trait bound on closure | 🟠 | [closures](core/closures.md) | FnOnce for one-shot, FnMut for repeated, Fn for shared |
+| 5 | Type is !Send due to transitive field | 🟠 | [concurrency](advanced/concurrency.md) | Trace field chain; use Arc instead of Rc, owned instead of &T |
+| 6 | Defaulting to Ordering::Relaxed | 🟠 | [concurrency](advanced/concurrency.md) | Default to SeqCst; downgrade with proof |
+| 7 | Ignoring pinning in async code | 🟠 | [async](advanced/async.md) | Use `Box::pin()` or `pin!()` macro |
+| 8 | Ignoring cancellation safety in select! | 🟠 | [async](advanced/async.md) | Scope partial state; use cancellation-safe APIs |
+| 9 | Fighting borrow checker with `.clone()` | 🟡 | [ownership](core/ownership.md) | Restructure or use `mem::take`/`mem::replace` |
+| 10 | Using `unwrap()` in library code | 🟡 | [errors](core/errors.md) | Use `?` propagation with proper errors |
+| 11 | Leaking external crate types in API | 🟡 | [api-design](patterns/api-design.md) | Wrap in newtypes |
+| 12 | Glob imports in libraries | 🟡 | [modules](core/modules.md) | Explicit `pub use` with `#[doc(inline)]` |
+| 13 | Non-descriptive error types | 🟡 | [errors](core/errors.md) | Use `thiserror` with descriptive variants |
 
 ---
 
