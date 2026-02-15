@@ -143,6 +143,40 @@ impl Drop for TempFile {
 // File is automatically deleted when TempFile goes out of scope
 ```
 
+#### Drop Order Rules
+
+| Scope | Drop Order |
+|-------|-----------|
+| Local variables | **Reverse** declaration order (last declared, first dropped) |
+| Struct fields | **Declaration** order (first field dropped first) |
+| Tuple elements | Index order (`.0` first, `.1` second, ...) |
+| Enum variants | The active variant's fields only |
+
+```rust
+// Variables: c drops before b, b before a
+let a = ResourceA::new();
+let b = ResourceB::new();
+let c = ResourceC::new();
+// scope end: drop(c), drop(b), drop(a)
+
+// Struct fields: x drops before y (declaration order)
+struct S { x: ResourceX, y: ResourceY }
+```
+
+**Early drop with `std::mem::drop()`:** When you need to release a resource before scope end
+(e.g., releasing a lock before doing more work):
+
+```rust
+let guard = mutex.lock().unwrap();
+let data = guard.clone();
+drop(guard); // Release lock early
+// ... use data without holding the lock
+```
+
+**Recursive drop:** Rust automatically drops all fields. If you implement `Drop`, your
+`drop(&mut self)` runs first, then Rust drops each field. Don't manually drop fields
+in your `drop()` impl — Rust handles it.
+
 ### Cow (Clone-on-Write)
 
 Avoid cloning when you might only need a borrow:
@@ -178,6 +212,33 @@ println!("Length: {}", email.len());  // Uses str methods directly
 ```
 
 **Caution:** Only use Deref for smart-pointer-like types, not for general inheritance emulation.
+
+#### Automatic Deref Coercion Rules
+
+Rust automatically inserts deref calls when passing arguments to functions/methods.
+The three coercion rules:
+
+| From | To | Requires |
+|------|----|----------|
+| `&T` | `&U` | `T: Deref<Target=U>` |
+| `&mut T` | `&mut U` | `T: DerefMut<Target=U>` |
+| `&mut T` | `&U` | `T: Deref<Target=U>` |
+
+Note: `&T` → `&mut U` is **never** allowed (would violate borrowing rules).
+
+**Common auto-coercions agents should know:**
+
+| You have | Coerces to | Because |
+|----------|-----------|---------|
+| `&String` | `&str` | `String: Deref<Target=str>` |
+| `&Vec<T>` | `&[T]` | `Vec<T>: Deref<Target=[T]>` |
+| `&Box<T>` | `&T` | `Box<T>: Deref<Target=T>` |
+| `&Arc<T>` | `&T` | `Arc<T>: Deref<Target=T>` |
+| `&PathBuf` | `&Path` | `PathBuf: Deref<Target=Path>` |
+| `&OsString` | `&OsStr` | `OsString: Deref<Target=OsStr>` |
+
+Coercion is **recursive** and resolved at **compile time** (zero runtime cost).
+`&Box<String>` → `&String` → `&str` happens automatically.
 
 ### Blanket Implementations
 

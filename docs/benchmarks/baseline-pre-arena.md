@@ -21,7 +21,7 @@ MARKYMARK_BENCH_EPSTEIN=/path/to/epstein_20250227_all_in_one.md \
   cargo bench -p markymark-index -- real_corpus --nocapture
 ```
 
-Gigapowers: set `MARKYMARK_BENCH_CORPUS_DIR` or use default `/Volumes/code/gigapowers`.
+Gigapowers: set `MARKYMARK_BENCH_CORPUS_DIR` to your local gigapowers checkout path.
 
 ## Results (synthetic sample: 100 docs)
 

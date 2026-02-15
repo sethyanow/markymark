@@ -179,6 +179,55 @@ Can you solve it with generics + traits?
             └─ YES → Use attribute proc macro (#[my_attr])
 ```
 
+### Which Fn Trait Bound?
+*Source: [core/closures.md](../core/closures.md)*
+
+```
+How will you call the closure?
+├─ Exactly once (consuming callback, one-shot handler)?
+│   └─ FnOnce — most flexible, accepts all closures
+├─ Multiple times, closure may need to mutate state?
+│   └─ FnMut — accepts Fn and FnMut closures
+├─ Multiple times, possibly concurrently, no mutation?
+│   └─ Fn — most restrictive, guarantees no side effects
+└─ Unsure?
+    └─ Start with FnOnce (accepts everything); tighten if needed
+```
+
+### Why Is My Type !Send?
+*Source: [advanced/concurrency.md](../advanced/concurrency.md)*
+
+```
+My struct is !Send — why?
+├─ Contains Rc<T>? → Rc is !Send (non-atomic refcount)
+│   └─ Fix: Use Arc<T> instead
+├─ Contains *mut T or *const T? → Raw pointers are !Send
+│   └─ Fix: Wrap in newtype, unsafe impl Send if safe
+├─ Contains Cell<T> or RefCell<T>? → These are Send but !Sync
+│   └─ Check: is the error actually about Sync, not Send?
+├─ Contains &T where T: !Sync? → &T is !Send when T: !Sync
+│   └─ Fix: Use owned T or Arc<T> instead of &T
+└─ Contains a type with a !Send field (transitive)?
+    └─ Trace deeper: which field of that type is !Send?
+```
+
+### Is My Future Cancellation-Safe?
+*Source: [advanced/async.md](../advanced/async.md)*
+
+```
+Is your future cancellation-safe?
+├─ It only does a single .await at the end?
+│   └─ YES → safe (no partial state)
+├─ It modifies external state between .await points?
+│   └─ UNSAFE — state may be inconsistent on cancel
+│       Fix: Use select!-compatible APIs (e.g., mpsc::Receiver::recv)
+├─ It holds a lock across .await?
+│   └─ UNSAFE — lock won't be released on cancel
+│       Fix: Scope locks before .await
+└─ Unsure?
+    └─ Don't use it in select! — wrap in spawn() instead
+```
+
 ### References
 
 - Each decision tree links to its source file above for full context
