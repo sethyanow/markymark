@@ -162,7 +162,7 @@ them manually.
 - `T: Send + Sync` → `Vec<T>: Send + Sync`, `HashMap<K,V>: Send + Sync`
 - `T: !Send` → any struct containing `T` is `!Send`
 - `T: !Sync` → `&T: !Send` (sharing refs to non-Sync types across threads is unsafe)
-- Raw pointers (`*const T`, `*mut T`) are `!Send + !Sync` as a **lint** — types containing them must opt-in manually
+- Raw pointers (`*const T`, `*mut T`) are `!Send + !Sync` by default — types containing them must opt-in manually
 
 ### Diagnosing "Not Send" Errors
 
