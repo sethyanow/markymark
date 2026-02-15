@@ -116,6 +116,22 @@ fn test_global_block_lookup() {
     assert!(result.is_none(), "nonexistent block should return None");
 }
 
+#[test]
+fn test_block_lookup_prefers_first_inserted_doc_on_collision() {
+    let mut realm = RealmIndex::new();
+    let uri_a = uri("block-a.md");
+    let uri_b = uri("block-b.md");
+
+    realm.add_document(uri_a.clone(), index_from("Doc A line ^shared-block"));
+    realm.add_document(uri_b.clone(), index_from("Doc B line ^shared-block"));
+
+    let (resolved_uri, block) = realm
+        .lookup_block("shared-block")
+        .expect("shared block should resolve");
+    assert_eq!(resolved_uri.as_str(), uri_a.as_str());
+    assert_eq!(block.id, "shared-block");
+}
+
 // ---------------------------------------------------------------------------
 // Global tag table
 // ---------------------------------------------------------------------------

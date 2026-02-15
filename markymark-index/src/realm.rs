@@ -38,8 +38,9 @@ pub struct RealmIndex {
     docs: HashMap<String, (DocumentUri, DocumentIndex)>,
     /// Slug → (uri, owned heading). Owned copies survive doc removal.
     slug_to_headings: HashMap<String, Vec<(DocumentUri, ResolvedHeading)>>,
-    /// Block id → (uri, block). Owned copies survive doc removal.
-    block_to_location: HashMap<String, (DocumentUri, ResolvedBlock)>,
+    /// Block id → list of (uri, block) in insertion order.
+    /// Multiple docs may contain the same block id.
+    block_to_location: HashMap<String, Vec<(DocumentUri, ResolvedBlock)>>,
     /// Tag name → URIs of docs containing it. For tag_counts.
     tag_to_docs: HashMap<String, Vec<DocumentUri>>,
 }
@@ -81,16 +82,16 @@ impl RealmIndex {
         // Populate cross-doc block index (owned copies)
         for id in index.block_ids() {
             if let Some(block) = index.block_by_id(id) {
-                self.block_to_location.insert(
-                    id.to_string(),
-                    (
+                self.block_to_location
+                    .entry(id.to_string())
+                    .or_default()
+                    .push((
                         uri.clone(),
                         ResolvedBlock {
                             id: id.to_string(),
                             range: block.range,
                         },
-                    ),
-                );
+                    ));
             }
         }
 
@@ -123,7 +124,10 @@ impl RealmIndex {
             .for_each(|v| v.retain(|(u, _)| u.as_str() != key));
         self.slug_to_headings.retain(|_, v| !v.is_empty());
 
-        self.block_to_location.retain(|_, (u, _)| u.as_str() != key);
+        self.block_to_location
+            .values_mut()
+            .for_each(|v| v.retain(|(u, _)| u.as_str() != key));
+        self.block_to_location.retain(|_, v| !v.is_empty());
 
         self.tag_to_docs
             .values_mut()
@@ -145,7 +149,9 @@ impl RealmIndex {
     /// Look up a block by ID across all documents.
     /// Returns owned [`ResolvedBlock`] from the cross-doc index.
     pub fn lookup_block(&self, id: &str) -> Option<(DocumentUri, ResolvedBlock)> {
-        self.block_to_location.get(id).cloned()
+        self.block_to_location
+            .get(id)
+            .and_then(|entries| entries.first().cloned())
     }
 
     /// Get tag usage counts across all documents.

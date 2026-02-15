@@ -252,10 +252,6 @@ impl<'arena> ListItem<'arena> {
         for child in node.children(&mut cursor) {
             if child.kind() == "list_item" {
                 let item = Self::from_node(child, source, arena)?;
-
-                // Note: children_list population would require recursive arena allocation
-                // For now, we leave it empty - this can be enhanced later
-
                 items.push(item);
             }
         }
