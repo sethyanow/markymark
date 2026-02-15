@@ -5,16 +5,22 @@
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 
+#[cfg(feature = "bench-internals")]
 pub mod bench_config;
+#[cfg(feature = "bench-internals")]
 pub mod bench_corpus;
+#[cfg(feature = "bench-internals")]
 pub mod bench_report;
 pub mod document;
 pub mod graph;
 pub mod realm;
 pub mod resolution;
 
+#[cfg(feature = "bench-internals")]
 pub use bench_config::*;
+#[cfg(feature = "bench-internals")]
 pub use bench_corpus::*;
+#[cfg(feature = "bench-internals")]
 pub use bench_report::*;
 pub use document::*;
 pub use graph::*;

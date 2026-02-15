@@ -4,7 +4,7 @@ use markymark_core::arena::ArenaHashMap;
 use markymark_core::prelude::*;
 
 /// An XML/HTML tag element extracted from markdown
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct XmlTag<'arena> {
     tag_name: &'arena str,
     attributes: ArenaHashMap<'arena, &'arena str, &'arena str>,

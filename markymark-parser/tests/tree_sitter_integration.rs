@@ -64,9 +64,12 @@ fn parse_preserves_heading_range() {
     let range = heading.range();
     assert_eq!(range.start.line, 0);
     assert_eq!(range.start.character, 0);
-    // tree-sitter-md includes the trailing newline in heading nodes,
-    // so end position is at the start of the next line (line 1, col 0)
-    assert!(range.end.line <= 1);
+    // Heading::from_node trims to last content child end; "Heading" ends at col 9.
+    assert_eq!(range.end.line, 0);
+    assert!(
+        range.end.character > 0,
+        "end character should be past the heading text"
+    );
 }
 
 #[test]

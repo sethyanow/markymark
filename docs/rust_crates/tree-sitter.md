@@ -642,7 +642,7 @@ fn parse(source: &str) -> Option<MarkdownTree> {
 
 ## Related
 
-- LSP integration: `tower-sitter.md`
+- LSP integration: `tower-lsp.md`
 - Memory-efficient storage: `bumpalo.md`
 - tree-sitter docs: https://tree-sitter.github.io/tree-sitter/
 - tree-sitter-md (markdown): https://github.com/tree-sitter-grammars/tree-sitter-markdown
