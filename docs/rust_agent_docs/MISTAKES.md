@@ -28,6 +28,9 @@
 | 11 | Leaking external crate types in API | 🟡 | [api-design](patterns/api-design.md) | Wrap in newtypes |
 | 12 | Glob imports in libraries | 🟡 | [modules](core/modules.md) | Explicit `pub use` with `#[doc(inline)]` |
 | 13 | Non-descriptive error types | 🟡 | [errors](core/errors.md) | Use `thiserror` with descriptive variants |
+| 14 | Trusting pre-training over crate docs | 🟠 | [anti-patterns](patterns/anti-patterns.md) | Read `cargo doc` output before implementing |
+| 15 | Cloning arena-backed types (SIGSEGV) | 🔴 | [anti-patterns](patterns/anti-patterns.md) | Return references; convert to owned types |
+| 16 | Returning `&[]` as arena-lifetime slice | 🔴 | [anti-patterns](patterns/anti-patterns.md) | Allocate empty slice in arena |
 
 ---
 

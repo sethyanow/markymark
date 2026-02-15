@@ -78,7 +78,9 @@ rust_agent_docs/
 │   ├── _index.md           — Part overview
 │   ├── idioms.md           — Builder, newtype, typestate, RAII, Cow
 │   ├── api-design.md       — Public API surface, naming, backwards compat
-│   └── anti-patterns.md    — What NOT to do (with fixes)
+│   ├── anti-patterns.md    — What NOT to do (with real failure cases)
+│   ├── cookbook.md          — Complete working recipes (config, service, iterators)
+│   └── async-ready.md      — Make your type async-ready (Send/Sync/Pin)
 │
 ├── tooling/                — Part 4: Tooling & Ecosystem
 │   ├── _index.md           — Part overview
@@ -102,9 +104,10 @@ rust_agent_docs/
     ├── _index.md           — Reference catalog
     ├── rules.md            — Ownership, borrowing, lifetime elision rules
     ├── decision-trees.md   — All decision trees collected
-    ├── compiler-errors.md  — Common compiler error solutions
+    ├── compiler-errors.md  — Error codes with step-by-step walkthroughs
     ├── syntax-ref.md       — Rust syntax cheatsheet
-    └── cargo-ref.md        — Cargo.toml fields reference
+    ├── cargo-ref.md        — Cargo.toml fields reference
+    └── migration-bridges.md — Python/TypeScript → Rust translation
 ```
 
 ## Common Agent Mistakes
@@ -124,3 +127,6 @@ rust_agent_docs/
 | Leaking external types in public API | MEDIUM | [patterns/api-design.md](patterns/api-design.md) |
 | Glob imports (`use module::*`) in libs | MEDIUM | [core/modules.md](core/modules.md) |
 | Non-descriptive error types | MEDIUM | [core/errors.md](core/errors.md) |
+| Trusting pre-training over crate docs | HIGH | [patterns/anti-patterns.md](patterns/anti-patterns.md) |
+| Cloning arena-backed types (SIGSEGV) | CRITICAL | [patterns/anti-patterns.md](patterns/anti-patterns.md) |
+| Returning `&[]` as arena-lifetime slice | CRITICAL | [patterns/anti-patterns.md](patterns/anti-patterns.md) |
