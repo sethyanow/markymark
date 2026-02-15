@@ -210,6 +210,10 @@ async fn process(data: Arc<Vec<String>>) {
 
 #### Walkthrough 4: E0716 — Temporary value dropped while borrowed
 
+> **Note:** This signature also triggers E0106 (missing lifetime specifier) since
+> there are no input references to elide from. The walkthrough assumes you've added
+> a lifetime annotation (e.g. `fn get_name<'a>(...) -> &'a str`) and hit E0716 next.
+
 **The code:**
 ```rust
 fn get_name(use_default: bool) -> &str {

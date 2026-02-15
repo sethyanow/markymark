@@ -8,5 +8,5 @@
     "lint": "",
     "acceptance": ""
   },
-  "_note": "Test/lint verification temporarily disabled during arena allocation migration (RED/GREEN TDD cycle). Also: hook timeout command not available on macOS. Re-enable after migration completes."
+  "_note": "Test/lint verification temporarily disabled during arena allocation migration (RED/GREEN TDD cycle). Re-enable after migration completes. Tracked: marky-luy (arena conformance closeout)."
 }

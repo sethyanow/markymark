@@ -16,7 +16,7 @@
 - [ ] Drop entire `Bump` to free all memory at once
 - [ ] Data lifetimes tied to arena lifetime (`'arena`)
 - [ ] Use `DocumentArena` wrapper for per-document arenas (provides `Debug`, capacity hints)
-- [ ] Understand `Bump: !Sync` constraint: `ArenaHashMap` makes types `!Send` (see [Send Constraint](#send-constraint))
+- [ ] Understand `Bump: !Sync` constraint: `ArenaHashMap` makes types `!Send` (see [Send Constraint](#send-constraint-arenahashmap-vs-hashmap))
 - [ ] If struct owns arena + stores refs into it, see [Self-Referential Arena](#self-referential-arena-ownership) pattern
 
 ---
@@ -27,7 +27,7 @@
 
 ```toml
 [dependencies]
-bumpalo = { version = "3.16", features = ["collections", "boxed", "allocator-api2"] }
+bumpalo = { version = "3.19", features = ["collections", "boxed", "allocator-api2"] }
 ```
 
 Features:
@@ -400,8 +400,7 @@ pub fn from_ast(ast: Ast) -> DocumentIndex {
 **Why Mutex?** `Bump: !Sync` means `DocumentArena: !Sync`. Wrapping in `Mutex`
 makes `DocumentIndex` `Send + Sync` for async LSP contexts (tower-lsp requires it).
 
-### Hybrid Ownership Model { #hybrid-model }
-
+### Hybrid Ownership Model 
 Per-document arena for parsed content; owned `String` for cross-document lookups.
 
 ```text
@@ -422,8 +421,7 @@ Per-document arena for parsed content; owned `String` for cross-document lookups
 - **Cross-document**: `RealmIndex` stores **owned** copies (`String`, not `&str`)
   so lookups survive document removal/replacement.
 
-### hashbrown with Arena Allocator (ArenaHashMap) { #arena-hashmap }
-
+### hashbrown with Arena Allocator (ArenaHashMap) 
 Parser types (e.g. `Frontmatter`, `XmlTag`) use `ArenaHashMap` where the map's
 internal buckets are arena-allocated alongside keys/values:
 
@@ -441,8 +439,7 @@ fn parse_frontmatter<'a>(arena: &'a Bump) -> Frontmatter<'a> {
 }
 ```
 
-### Send Constraint: ArenaHashMap vs HashMap { #send-constraint }
-
+### Send Constraint: ArenaHashMap vs HashMap 
 <pitfall>
 **Problem:** `Bump: !Sync` → `&Bump: !Send` → `ArenaHashMap: !Send`.
 

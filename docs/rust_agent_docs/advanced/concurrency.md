@@ -168,7 +168,7 @@ them manually.
 
 When the compiler says your type isn't `Send`, trace through the field chain:
 
-```
+```text
 My struct is !Send — why?
 ├─ Contains Rc<T>? → Rc is !Send (non-atomic refcount)
 │   └─ Fix: Use Arc<T> instead

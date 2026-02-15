@@ -374,8 +374,10 @@ pub fn extract_callouts<'a>(
     for captures in re.captures_iter(source) {
         if let (Some(type_match), title_match) = (captures.get(1), captures.get(2)) {
             let callout_type = arena_alloc_str(arena, type_match.as_str());
-            let title: Option<&'a str> =
-                title_match.map(|m| arena_alloc_str(arena, m.as_str().trim()));
+            let title: Option<&'a str> = title_match
+                .map(|m| m.as_str().trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| arena_alloc_str(arena, s));
             callouts.push(Callout::new(callout_type, title));
         }
     }
