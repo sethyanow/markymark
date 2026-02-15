@@ -155,6 +155,61 @@ should never break code that doesn't use it.
 | `cargo update` | Update Cargo.lock |
 | `cargo publish --dry-run` | Validate crate for publishing |
 
+### Conditional Compilation
+
+Three forms of conditional compilation:
+
+| Form | Purpose | Example |
+|------|---------|---------|
+| `#[cfg(...)]` | Include/exclude items | `#[cfg(target_os = "linux")] fn unix_only() {}` |
+| `#[cfg_attr(...)]` | Conditionally apply attributes | `#[cfg_attr(feature = "serde", derive(Serialize))]` |
+| `cfg!(...)` macro | Runtime-evaluated boolean | `if cfg!(unix) { ... }` |
+
+**Predicate combinators:** `all(P1, P2)`, `any(P1, P2)`, `not(P)`
+
+**Common predicates:**
+
+| Predicate | Values | Use Case |
+|-----------|--------|----------|
+| `target_os` | `"windows"`, `"linux"`, `"macos"` | OS-specific code |
+| `target_arch` | `"x86_64"`, `"aarch64"`, `"arm"` | Architecture-specific |
+| `unix` / `windows` | (name) | Family shorthand |
+| `feature` | user-defined | Feature flags |
+| `test` | (name) | Test harness |
+| `debug_assertions` | (name) | Debug builds |
+
+```rust
+#[cfg(all(feature = "serde", target_os = "linux"))]
+fn serde_on_linux() { }
+
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+struct Config { /* ... */ }
+```
+
+### no_std Development
+
+`#![no_std]` removes the standard library, using only `core` (and optionally `alloc`).
+
+| Feature | std | no_std | no_std + alloc |
+|---------|-----|--------|----------------|
+| Collections | Vec, String, HashMap | Arrays, slices only | Vec, String, Box |
+| Panic handler | Provided | Required (`#[panic_handler]`) | Required |
+| Main entry | Auto-generated | Custom (`#![no_main]`) | Custom |
+| I/O | println!, file ops | `core::fmt` only | `core::fmt` only |
+| Use cases | General apps | Bare metal, kernels | Embedded with heap |
+
+```rust
+#![no_std]
+#![no_main]
+use core::panic::PanicInfo;
+
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! { loop {} }
+
+#[unsafe(no_mangle)]
+extern "C" fn _start() -> ! { loop {} }
+```
+
 ### References
 
 - Cargo Book: [Reference](https://doc.rust-lang.org/cargo/reference/)

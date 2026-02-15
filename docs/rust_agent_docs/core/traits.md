@@ -154,6 +154,102 @@ impl private::Sealed for MyPublicType {}
 impl MyTrait for MyPublicType { fn method(&self) {} }
 ```
 
+### impl Trait: Opaque Types and Trait Bounds
+
+#### Return-Position impl Trait (RPIT)
+
+```rust
+fn returns_closure() -> impl Fn(i32) -> i32 {
+    |x| x + 1  // Concrete closure type hidden from callers
+}
+// Function chooses return type; callers only see trait bounds
+// Every return path must resolve to the SAME concrete type
+```
+
+RPIT creates an **opaque type**: compiler knows the concrete type, callers only see bounds.
+
+#### Argument-Position impl Trait (APIT)
+
+```rust
+// These are almost equivalent:
+fn with_generic<T: Trait>(arg: T) { }   // caller can turbofish: foo::<usize>(1)
+fn with_impl_trait(arg: impl Trait) { }  // no turbofish possible
+```
+
+APIT is syntactic sugar for an anonymous generic parameter. Switching between forms
+is a breaking change (changes number of generic arguments).
+
+#### RPITIT — Return-Position impl Trait In Traits (Rust 1.75+)
+
+```rust
+trait MyService {
+    // Each impl chooses its own concrete future type — no Box needed
+    async fn fetch(&self) -> String;
+    // Desugars to: type _ReturnType: Future<Output = String>; fn fetch(&self) -> Self::_ReturnType;
+}
+```
+
+Eliminates the need for `#[async_trait]` in most cases.
+
+#### impl Trait Decision Table
+
+| Goal | Use | Why |
+|------|-----|-----|
+| Hide allocation (closure/iterator return) | `-> impl Trait` | Avoids `Box<dyn>`, zero heap cost |
+| Accept any type satisfying trait | `impl Trait` in argument | Cleaner than `<T: Trait>` for simple cases |
+| Async method in trait | async fn + RPITIT | No `#[async_trait]` macro needed (1.75+) |
+| Store multiple implementations | `Box<dyn Trait>` | RPIT can't unify different concrete types |
+| Caller chooses return type | Generic return `-> T` | Gives control to caller |
+
+> **Limitation:** `impl Trait` can only appear in function parameters/returns, not in
+> `let` bindings, struct fields, or type aliases. Pre-2024 edition, free functions
+> didn't auto-capture all lifetimes in RPIT.
+
+### Generic Associated Types (GATs)
+
+```rust
+trait LendingIterator {
+    type Item<'x> where Self: 'x;   // GAT: lifetime-parameterized associated type
+    fn next<'a>(&'a mut self) -> Self::Item<'a>;
+}
+```
+
+**Where clause rules:**
+- If bounds can be proven in *any* function signature where the GAT appears, add them to the GAT declaration
+- Multiple functions → use intersection of bounds, not union
+- Bounds on GATs propagate to types that reference them
+
+| Decision | Use GATs | Regular Associated Type | Generic on Trait |
+|----------|----------|------------------------|-----------------|
+| Need lifetime variation per call | Yes | No | No |
+| Lending/borrowing patterns | Yes | No | No |
+| Single fixed type across impl | No | Yes | No |
+| Method-specific generics only | No | No | Yes |
+
+### Trait Objects and Dynamic Dispatch
+
+**Object safety rules** (a trait is object-safe if):
+- No associated functions without `self` parameter
+- No use of `Self` as a concrete type in returns/params
+- No generic type parameters on methods
+- No `where Self: Sized` bounds
+
+**Memory layout — wide pointer pair:**
+```
+[data_ptr: *const T] [vtable_ptr: *const VTable]  // 2 × usize
+```
+The vtable contains method pointers, destructor, size/alignment.
+
+**Lifetime bounds:**
+```rust
+&'a dyn Trait              // borrowed, lifetime-bounded
+Box<dyn Trait + 'a>        // owned, lifetime-bounded ('static if omitted)
+Arc<dyn Trait + Send + Sync>  // thread-safe shared ownership
+```
+
+**Performance:** One pointer dereference per call, prevents inlining. Use generics
+for hot paths; trait objects for heterogeneous collections and plugin architectures.
+
 ### References
 
 - The Rust Book: [Traits](https://doc.rust-lang.org/book/ch10-02-traits.html)

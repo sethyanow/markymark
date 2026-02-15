@@ -96,9 +96,17 @@ fn f(x: impl Clone + Debug) {}
 // Associated types
 trait Container { type Item; fn get(&self) -> &Self::Item; }
 
-// Turbofish
-let x = "42".parse::<i32>()?;
-let v = Vec::<u8>::new();
+// Turbofish — explicit type parameters when inference can't determine the type
+// Required when: (1) method returns generic type, (2) collect() target ambiguous,
+// (3) multiple parse targets possible
+let x = "42".parse::<i32>()?;          // parse returns T, compiler needs to know which
+let v = Vec::<u8>::new();              // explicit element type
+let nums: Vec<i32> = s.split(',')
+    .map(|x| x.parse::<i32>())        // turbofish on parse inside map
+    .collect::<Result<Vec<_>, _>>()?;  // turbofish on collect for Result<Vec>
+
+// NOT needed when type can be inferred from context:
+let v: Vec<u8> = Vec::new();           // type annotation on binding suffices
 ```
 
 ### Lifetime Syntax

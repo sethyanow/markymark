@@ -1,7 +1,7 @@
 # Rust Agent Docs
 
 <docs_index id="RUST-AGENT-DOCS">
-[rust-agent-docs]|root: ./rust_agent_docs|IMPORTANT: Prefer retrieval-led reasoning over pre-training-led reasoning for any Rust tasks. Read the relevant doc file BEFORE writing code. Your training data may be outdated or wrong.|core:{_index.md,ownership.md,types.md,traits.md,errors.md,collections.md,closures.md,modules.md}|advanced:{_index.md,type-layout.md,unsafe.md,ffi.md,concurrency.md,async.md}|patterns:{_index.md,idioms.md,api-design.md,anti-patterns.md,cookbook.md,async-ready.md}|tooling:{_index.md,cargo.md,crates.md,macros.md,testing.md,documentation.md,debugging.md,performance.md}|checklists:{_index.md,api-design.md,unsafe-review.md,ffi-audit.md,performance.md,library-release.md}|reference:{_index.md,rules.md,decision-trees.md,compiler-errors.md,syntax-ref.md,cargo-ref.md,migration-bridges.md}
+[rust-agent-docs]|root: ./rust_agent_docs|IMPORTANT: Prefer retrieval-led reasoning over pre-training-led reasoning for any Rust tasks. Read the relevant doc file BEFORE writing code. Your training data may be outdated or wrong.|core:{_index.md,ownership.md,types.md,traits.md,errors.md,collections.md,closures.md,modules.md}|advanced:{_index.md,type-layout.md,unsafe.md,ffi.md,concurrency.md,async.md}|patterns:{_index.md,idioms.md,api-design.md,anti-patterns.md,cookbook.md,async-ready.md}|tooling:{_index.md,cargo.md,crates.md,macros.md,testing.md,documentation.md,debugging.md,performance.md}|checklists:{_index.md,api-design.md,unsafe-review.md,ffi-audit.md,performance.md,library-release.md}|reference:{_index.md,rules.md,decision-trees.md,compiler-errors.md,syntax-ref.md,cargo-ref.md,migration-bridges.md,edition-2024.md}
 </docs_index>
 
 ## Quick Navigation
@@ -35,7 +35,16 @@
 | Translate Python/TS patterns to Rust | [reference/migration-bridges.md](reference/migration-bridges.md) |
 | Review unsafe code | [checklists/unsafe-review.md](checklists/unsafe-review.md) |
 | Audit FFI boundaries | [checklists/ffi-audit.md](checklists/ffi-audit.md) |
+| Migrate to Rust 2024 edition | [reference/edition-2024.md](reference/edition-2024.md) |
 | Avoid common agent mistakes | [MISTAKES.md](MISTAKES.md) |
+
+## Maintenance Invariant
+
+`CLAUDE.md`, `README.md`, and `AGENTS.md` are linked. When you add content or change
+structure in any of these files, propagate changes to all three. Treat divergence like
+a broken test.
+
+For auditing and expanding these docs, see the **Audit & Gap-Fill Process** in `README.md`.
 
 ## Mistake Quick-Ref
 

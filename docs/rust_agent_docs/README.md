@@ -107,8 +107,63 @@ rust_agent_docs/
     ├── compiler-errors.md  — Error codes with step-by-step walkthroughs
     ├── syntax-ref.md       — Rust syntax cheatsheet
     ├── cargo-ref.md        — Cargo.toml fields reference
-    └── migration-bridges.md — Python/TypeScript → Rust translation
+    ├── migration-bridges.md — Python/TypeScript → Rust translation
+    └── edition-2024.md     — Rust 2024 edition migration guide
 ```
+
+## Audit & Gap-Fill Process
+
+When auditing or expanding these docs against a reference vault (e.g., a local copy of
+the Rust Book, Nomicon, or Reference), use this token-efficient extraction workflow:
+
+### Setup: Index both vaults
+
+```
+# Create markymark realms for comparison
+create-realm("rustdocs")    → add-root(docs/rust_agent_docs)
+create-realm("reference")   → add-root(path/to/reference/docs)
+```
+
+### Step 1: Identify gaps via search
+
+Use `search-symbols` to search both realms for a topic (e.g., "impl Trait").
+Compare heading counts and depth between vaults.
+
+### Step 2: Get exact line ranges
+
+Use `get-outline` or `export-index` on the reference file to find the exact
+heading and line range containing the content you need.
+
+### Step 3: Surgical extraction via haiku subagents
+
+Dispatch **haiku-model** subagents with XML-wrapped prompts targeting exact line ranges.
+This avoids opus agents reading full 600-line files when only 50 lines are relevant.
+
+```xml
+<task>
+  <source>reference/.rust_docs/reference/items/associated-items.md</source>
+  <lines>252-396</lines>
+  <instruction>Extract the GAT explanation. Summarize in 20 lines max as an
+  agent-friendly reference: definition, syntax, required where clauses, one
+  practical example.</instruction>
+</task>
+```
+
+### Step 4: Integrate into rustdocs
+
+Edit the target file (from the audit's "Where to add" column) with the extracted content.
+Follow existing formatting conventions: decision trees, tables, code examples with comments.
+
+### Step 5: Verify and cross-reference
+
+- Update `CLAUDE.md` docs_index if new files were added
+- Update `README.md` file tree if structure changed
+- Update `AGENTS.md` compressed index for new topics
+- Run `search-symbols` in the rustdocs realm to confirm the new content is indexed
+
+> **Linked files:** `CLAUDE.md`, `README.md`, and `AGENTS.md` must stay in sync.
+> When you add content or change structure, propagate changes to all three.
+> This is a maintenance invariant — treat it like a broken test if they diverge.
 
 ## Common Agent Mistakes
 

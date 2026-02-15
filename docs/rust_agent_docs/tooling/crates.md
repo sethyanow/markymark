@@ -34,6 +34,27 @@
 | **Compression** | `flate2`, `zstd` | gzip, zstd |
 | **WASM** | `wasm-bindgen`, `wasm-pack` | Rust→WebAssembly |
 
+### Deprecated/Replaced Crates
+
+| Old Crate | Replacement | Since | Notes |
+|-----------|-------------|-------|-------|
+| `lazy_static` | `std::sync::LazyLock` | Rust 1.80 | Zero-dep, std-only |
+| `once_cell::sync::Lazy` | `std::sync::LazyLock` | Rust 1.80 | `once_cell::sync::OnceCell` → `std::sync::OnceLock` (1.70) |
+| `once_cell::unsync::Lazy` | `std::cell::LazyCell` | Rust 1.80 | Single-threaded version |
+
+```rust
+use std::sync::LazyLock;
+use regex::Regex;
+
+// ✅ Replaces lazy_static! { static ref RE: Regex = ... }
+static RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\d{4}-\d{2}-\d{2}$").unwrap()
+});
+
+// ⚠️ If the init closure panics, all future accesses also panic (poisoning).
+// Unlike OnceLock, LazyLock has no recovery mechanism.
+```
+
 ### Crate Evaluation Criteria
 
 Before adding a dependency, check:

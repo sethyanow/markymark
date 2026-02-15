@@ -183,6 +183,42 @@ fn apply(f: impl for<'a> Fn(&'a str) -> &'a str) {
 Most of the time, the compiler inserts `for<'a>` automatically. You only need it explicitly
 in trait bounds on struct fields or type aliases.
 
+**When you need explicit `for<'a>`:**
+
+```rust
+// 1. Struct fields storing closures with borrowed arguments
+struct Processor {
+    // Without for<'a>, compiler can't express "works with any lifetime"
+    handler: Box<dyn for<'a> Fn(&'a str) -> &'a str>,
+}
+
+// 2. Type aliases for complex closure types
+type Validator = Box<dyn for<'a> Fn(&'a [u8]) -> Result<&'a [u8], Error>>;
+
+// 3. Trait bounds that must work with locally-created borrows
+fn with_temp_buffer<F>(f: F)
+where
+    F: for<'a> FnOnce(&'a mut [u8]) -> &'a [u8],
+{
+    let mut buf = [0u8; 1024];
+    let result = f(&mut buf);
+    println!("{:?}", result);
+}
+```
+
+**HRTB vs regular lifetime parameter:**
+
+```
+Does the caller choose the lifetime?
+├─ YES → Use regular lifetime parameter: fn foo<'a>(x: &'a str, f: impl Fn(&'a str))
+└─ NO, the callee creates the borrow internally
+    └─ Use HRTB: fn foo(f: impl for<'a> Fn(&'a str))
+```
+
+**Connection to closures:** Every `Fn(&T) -> &U` bound is implicitly
+`for<'a> Fn(&'a T) -> &'a U`. The compiler desugars this automatically for function
+arguments, but you must write `for<'a>` explicitly in struct fields and type aliases.
+
 #### Self-Referential Structs
 
 Rust does **not** natively support structs that borrow from their own fields:
@@ -269,6 +305,44 @@ fn replace_value(node: &mut Node, new_val: String) -> String {
 - `mem::take` when you need the old value AND the field has a sensible default
 - `mem::replace` when you need the old value AND want to insert a specific new value
 - These are O(1) operations vs `.clone()` which may be O(n)
+
+### Interior Mutability
+
+Interior mutability allows mutation through shared (`&`) references by shifting
+borrow-checking from compile-time to runtime.
+
+| Type | Threading | Check | Use Case | Panic? |
+|------|-----------|-------|----------|--------|
+| `Cell<T>` | Single | Copy-based | Caching, counters | No |
+| `RefCell<T>` | Single | Runtime borrows | Mock objects, interior state | Yes |
+| `UnsafeCell<T>` | Single | None (user) | Building custom sync types | User responsible |
+| `Mutex<T>` | Multi | Lock-based | Shared mutable state | Yes (poison) |
+| `RwLock<T>` | Multi | Lock-based | Many readers, few writers | Yes (poison) |
+
+```
+Do you need interior mutability?
+├─ Single-threaded?
+│  ├─ T: Copy? → Cell<T>
+│  ├─ Need borrowing? → RefCell<T>
+│  └─ Custom sync? → UnsafeCell<T>
+└─ Multi-threaded?
+   ├─ Exclusive access? → Mutex<T>
+   └─ Read-heavy? → RwLock<T>
+```
+
+**Send/Sync:** `Cell`/`RefCell`/`UnsafeCell` are **not Sync** (can't share `&T` across threads).
+`Mutex`/`RwLock` are `Send + Sync`. For thread-safe shared mutation: `Arc<Mutex<T>>`.
+
+> **Common pitfall: RefCell double-borrow panic**
+> ```rust
+> let x = RefCell::new(5);
+> let a = x.borrow_mut();     // Mutable borrow active
+> let b = x.borrow_mut();     // PANIC at runtime, not compile time
+> ```
+> Fix: Drop borrows explicitly with scoped blocks before creating new ones.
+
+**Common patterns:** `Rc<RefCell<T>>` for single-threaded multiple-owner mutation.
+`Arc<Mutex<T>>` for multi-threaded equivalent (requires `T: Send`).
 
 ### References
 

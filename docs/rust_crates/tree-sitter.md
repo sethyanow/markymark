@@ -525,18 +525,50 @@ tree.edit(&InputEdit {
 ```
 </pitfall>
 
-### Parser Is Not Thread-Safe
+### Thread Safety: Parser, Tree, and Node
 
 <pitfall>
-**Problem:** `Parser` cannot be shared across threads.
+**Problem:** `Parser`, `Tree`, and `Node` have different thread-safety characteristics
+that directly affect async LSP code.
+
+| Type | `Send` | `Sync` | Why |
+|------|--------|--------|-----|
+| `Parser` | Yes (unsafe impl) | Yes (unsafe impl) | C state behind `*mut TSParser`; safe if not shared concurrently |
+| `Tree` | Yes (unsafe impl) | Yes (unsafe impl) | Immutable after parse completes |
+| `Node` | **No** | **No** | Contains `*const TSTree` raw pointer — auto-trait rules make it `!Send + !Sync` |
+
+> **CRITICAL for async code:** You cannot hold a `Node` across an `.await` point.
+> This is a compile error in async contexts because `Node: !Send`.
 
 ```rust
-// BAD: Parser shared between threads
-let parser = Arc::new(Mutex::new(create_parser()));
-// This works but serializes all parsing
+// ❌ COMPILE ERROR: Node held across await
+async fn bad_example(tree: &Tree) {
+    let node = tree.root_node();       // Node is !Send
+    some_async_fn().await;              // await while Node is live
+    println!("{}", node.kind());        // node still borrowed
+}
+
+// ✅ DO: Extract data from Node before awaiting
+async fn good_example(tree: &Tree) {
+    let kind = tree.root_node().kind().to_string();
+    let range = tree.root_node().range();
+    some_async_fn().await;
+    println!("{kind} at {range:?}");
+}
+
+// ✅ DO: Use scoped blocks to drop Node before await
+async fn also_good(tree: &Tree) {
+    let info = {
+        let node = tree.root_node();
+        (node.kind().to_string(), node.start_position(), node.end_position())
+    }; // Node dropped here
+    some_async_fn().await;
+    println!("{info:?}");
+}
 ```
 
-**Solution:** Create parser per thread or use a pool:
+**Parser threading:** `Parser` cannot be used concurrently (not reentrant).
+Create one per thread or use a pool:
 
 ```rust
 // GOOD: Thread-local parser

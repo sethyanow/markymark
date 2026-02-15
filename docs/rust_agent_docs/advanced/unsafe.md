@@ -81,6 +81,42 @@ struct MutRef<'a, T> {
 }
 ```
 
+### Variance Explained
+
+Variance determines how subtyping of type parameters relates to subtyping of the
+containing type. This matters for unsafe abstractions and generic library design.
+
+| Variance | Rule | Example |
+|----------|------|---------|
+| **Covariant** | If `'long: 'short`, then `Container<'long>` can be used where `Container<'short>` expected | `&'a T`, `Vec<T>`, `Box<T>` |
+| **Contravariant** | Reversed: `Container<'short>` usable where `Container<'long>` expected | `fn(T)` (function arguments) |
+| **Invariant** | No subtyping — must match exactly | `&'a mut T` (over T), `Cell<T>`, `UnsafeCell<T>` |
+
+**Why it matters:** Getting variance wrong in unsafe code lets the compiler accept
+programs that produce dangling references or data races.
+
+```rust
+// Covariant: Vec<&'long str> can become Vec<&'short str> (safe, shorter lifetime is weaker)
+fn covariant_demo<'long, 'short>(v: Vec<&'long str>) -> Vec<&'short str>
+where 'long: 'short
+{
+    v  // compiles: covariant over 'long
+}
+
+// Invariant: &mut T is invariant over T — can't substitute subtypes
+fn invariant_demo(x: &mut &'static str) {
+    // Can't pass to fn expecting &mut &'a str for some shorter 'a
+    // because caller could write a shorter-lived &str through the &mut
+}
+```
+
+**Designing unsafe abstractions:**
+1. Ask "does my type read T, write T, or both?"
+2. Read-only → covariant (`PhantomData<T>`)
+3. Write-only → contravariant (`PhantomData<fn(T)>`) — rare
+4. Read+write → invariant (`PhantomData<fn(T) -> T>` or `PhantomData<*mut T>`)
+5. When in doubt, **choose invariant** — it's always safe, just less flexible
+
 ### Undefined Behavior Catalog
 
 These are **always UB** in Rust — no exceptions:

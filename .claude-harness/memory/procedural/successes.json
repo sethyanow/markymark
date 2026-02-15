@@ -136,6 +136,21 @@
       ]
     },
     {
+      "id": "suc-014",
+      "timestamp": "2026-02-15T16:55:00Z",
+      "feature": "rustdocs-audit",
+      "type": "workflow",
+      "approach": "Token-efficient doc audit via markymark realms: index both vaults with create-realm+add-root, use search-symbols to compare topic coverage, get-outline for exact line ranges, then dispatch haiku subagents with XML surgical prompts targeting specific line ranges. Avoids opus agents reading full 600-line files when 50 lines suffice.",
+      "files": ["docs/rust_agent_docs/README.md", "docs/rust_agent_docs/CLAUDE.md"],
+      "patterns": [
+        "Create separate markymark realms for local docs and reference docs for cross-vault comparison",
+        "Use search-symbols to quantify coverage gaps (heading counts per topic)",
+        "Use get-outline to find exact line ranges before dispatching extraction agents",
+        "Dispatch haiku-model subagents with XML prompts for surgical content extraction",
+        "Maintain sync invariant between CLAUDE.md, README.md, and AGENTS.md"
+      ]
+    },
+    {
       "id": "suc-013",
       "timestamp": "2026-02-15T04:55:00Z",
       "feature": "feature-001",
