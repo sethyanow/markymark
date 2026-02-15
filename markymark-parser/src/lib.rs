@@ -66,3 +66,8 @@ impl Parser {
         self.parse(new_source)
     }
 }
+
+/// Convenience function to parse markdown text.
+pub fn parse(source: &str) -> CoreResult<Ast> {
+    Parser::new()?.parse(source)
+}

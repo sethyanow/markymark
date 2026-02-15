@@ -66,6 +66,11 @@ fn extract_obsidian_block_id() {
 
     assert_eq!(blocks.len(), 1);
     assert_eq!(blocks[0].id(), "block123");
+    // Range covers ^block123 on line 0 (0-indexed)
+    let r = blocks[0].range();
+    assert_eq!(r.start.line, 0);
+    assert_eq!(r.start.character, 31); // position of ^ in "This paragraph has a block ID. ^"
+    assert_eq!(r.end.character, 40); // exclusive end of ^block123 (no trailing newline)
 }
 
 #[test]
