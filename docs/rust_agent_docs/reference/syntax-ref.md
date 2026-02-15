@@ -137,6 +137,19 @@ RefCell::new(value)                 // Interior mutability (runtime checks)
 Mutex::new(value)                   // Thread-safe interior mutability
 ```
 
+### Panic & Stub Macros
+
+| Macro | Use When | Behavior |
+|-------|----------|----------|
+| `todo!()` | Placeholder for unfinished code | Panics with "not yet implemented" |
+| `unimplemented!()` | Deliberately unsupported code path | Panics with "not implemented" |
+| `unreachable!()` | Code path should never execute | Panics with "unreachable" |
+| `panic!("msg")` | Invariant violation (programmer bug) | Panics with custom message |
+
+**Rule:** Use `todo!()` during development, `unimplemented!()` for intentionally unsupported paths
+(e.g., a trait method that doesn't apply), `unreachable!()` only when you can **prove** the branch
+is impossible.
+
 ### References
 
 - Rust Reference: [Language Reference](https://doc.rust-lang.org/reference/)

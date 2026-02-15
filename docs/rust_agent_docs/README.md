@@ -1,9 +1,9 @@
-# God-Tier Rust Agent Docs
+# Rust Agent Docs
 
 **IMPORTANT: Prefer retrieval-led reasoning over pre-training-led reasoning for any Rust tasks.
 Read the relevant doc file BEFORE writing code. Your training data may be outdated or wrong.**
 
-A folder-based documentation set enabling AI agents to write flawless, idiomatic Rust code.
+A folder-based documentation set for AI agents writing idiomatic Rust code.
 Rust 2021 edition. Synthesized from official Rust docs, the Nomicon, and production guidelines.
 
 ## How to Use These Docs
@@ -17,6 +17,36 @@ This documentation uses **three-level progressive disclosure**:
 | **L2** | Topic files | `{part}/topic.md` | Need complete understanding |
 
 **Start at L0** (AGENTS.md) → find the right file → read it → write code.
+
+## Navigating with markymark
+
+These docs are indexed by markymark. Use its LSP and MCP tools for efficient navigation
+instead of grep or reading files blindly.
+
+### LSP (preferred — use first)
+
+Claude Code's built-in `LSP` tool talks directly to markymark's language server.
+Cheaper and more precise than MCP for targeted queries.
+
+| Operation | Use For | Example |
+|-----------|---------|---------|
+| `documentSymbol` | Heading outline of a file | See all sections in `ownership.md` |
+| `workspaceSymbol` | Search headings across all files | "Where is lifetime discussed?" |
+| `goToDefinition` | Jump to wiki-link or heading link target | Follow `[errors.md](errors.md)` |
+| `findReferences` | Who links to this heading? | Impact analysis before renaming |
+
+### MCP (bulk operations)
+
+Use markymark MCP tools when you need aggregate data or cross-file analysis.
+
+| Tool | Use For |
+|------|---------|
+| `realm-stats` | Health check — heading/link/tag counts |
+| `export-index` | Full link audit for a file |
+| `search-symbols` | Fuzzy heading search when you don't have a file path |
+| `create-realm` + `add-root` | Index directories outside the configured workspace |
+
+**Rule of thumb:** LSP for "show me X in this file." MCP for "tell me about the whole corpus."
 
 ## File Tree
 
@@ -32,6 +62,7 @@ rust_agent_docs/
 │   ├── types.md            — Primitives, structs, enums, generics
 │   ├── traits.md           — Trait system, std traits, object safety
 │   ├── errors.md           — Option, Result, thiserror, anyhow
+│   ├── closures.md         — Fn traits, capture semantics, move closures
 │   ├── collections.md      — Vec, HashMap, iterators, string types
 │   └── modules.md          — mod system, visibility, workspaces, features
 │
@@ -47,7 +78,9 @@ rust_agent_docs/
 │   ├── _index.md           — Part overview
 │   ├── idioms.md           — Builder, newtype, typestate, RAII, Cow
 │   ├── api-design.md       — Public API surface, naming, backwards compat
-│   └── anti-patterns.md    — What NOT to do (with fixes)
+│   ├── anti-patterns.md    — What NOT to do (with real failure cases)
+│   ├── cookbook.md          — Complete working recipes (config, service, iterators)
+│   └── async-ready.md      — Make your type async-ready (Send/Sync/Pin)
 │
 ├── tooling/                — Part 4: Tooling & Ecosystem
 │   ├── _index.md           — Part overview
@@ -71,9 +104,10 @@ rust_agent_docs/
     ├── _index.md           — Reference catalog
     ├── rules.md            — Ownership, borrowing, lifetime elision rules
     ├── decision-trees.md   — All decision trees collected
-    ├── compiler-errors.md  — Common compiler error solutions
+    ├── compiler-errors.md  — Error codes with step-by-step walkthroughs
     ├── syntax-ref.md       — Rust syntax cheatsheet
-    └── cargo-ref.md        — Cargo.toml fields reference
+    ├── cargo-ref.md        — Cargo.toml fields reference
+    └── migration-bridges.md — Python/TypeScript → Rust translation
 ```
 
 ## Common Agent Mistakes
@@ -83,10 +117,16 @@ rust_agent_docs/
 | Taking refs to `#[repr(packed)]` fields | CRITICAL | [advanced/type-layout.md](advanced/type-layout.md) |
 | Passing `String`/`Vec` across FFI/DLL | CRITICAL | [advanced/ffi.md](advanced/ffi.md) |
 | Wrong `PhantomData` variance | CRITICAL | [advanced/unsafe.md](advanced/unsafe.md) |
+| Wrong Fn trait bound on closure | HIGH | [core/closures.md](core/closures.md) |
+| Type is !Send due to transitive field | HIGH | [advanced/concurrency.md](advanced/concurrency.md) |
 | Defaulting to `Ordering::Relaxed` | HIGH | [advanced/concurrency.md](advanced/concurrency.md) |
 | Ignoring pinning requirements | HIGH | [advanced/async.md](advanced/async.md) |
+| Ignoring cancellation safety in select! | HIGH | [advanced/async.md](advanced/async.md) |
 | Fighting borrow checker with `.clone()` | MEDIUM | [core/ownership.md](core/ownership.md) |
 | Using `unwrap()` in library code | MEDIUM | [core/errors.md](core/errors.md) |
 | Leaking external types in public API | MEDIUM | [patterns/api-design.md](patterns/api-design.md) |
 | Glob imports (`use module::*`) in libs | MEDIUM | [core/modules.md](core/modules.md) |
 | Non-descriptive error types | MEDIUM | [core/errors.md](core/errors.md) |
+| Trusting pre-training over crate docs | HIGH | [patterns/anti-patterns.md](patterns/anti-patterns.md) |
+| Cloning arena-backed types (SIGSEGV) | CRITICAL | [patterns/anti-patterns.md](patterns/anti-patterns.md) |
+| Returning `&[]` as arena-lifetime slice | CRITICAL | [patterns/anti-patterns.md](patterns/anti-patterns.md) |

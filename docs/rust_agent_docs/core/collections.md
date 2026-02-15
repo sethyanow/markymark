@@ -105,8 +105,71 @@ let results: Result<Vec<i32>, _> = strings.iter().map(|s| s.parse::<i32>()).coll
 let joined: String = words.iter().copied().collect::<Vec<_>>().join(", ");
 ```
 
+### Implementing Custom Iterators
+
+To make your type iterable, implement `Iterator` and the `IntoIterator` triple:
+
+```rust
+struct Counter {
+    current: u32,
+    max: u32,
+}
+
+impl Counter {
+    fn new(max: u32) -> Self { Self { current: 0, max } }
+}
+
+impl Iterator for Counter {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current < self.max {
+            self.current += 1;
+            Some(self.current)
+        } else {
+            None
+        }
+    }
+}
+
+// Now you get all iterator adapters for free:
+let sum: u32 = Counter::new(5).filter(|x| x % 2 == 0).sum();
+```
+
+### The IntoIterator Triple
+
+For collection types, implement `IntoIterator` for three receiver types:
+
+```rust
+struct MyList<T> { items: Vec<T> }
+
+// for item in &my_list — yields &T
+impl<'a, T> IntoIterator for &'a MyList<T> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter { self.items.iter() }
+}
+
+// for item in &mut my_list — yields &mut T
+impl<'a, T> IntoIterator for &'a mut MyList<T> {
+    type Item = &'a mut T;
+    type IntoIter = std::slice::IterMut<'a, T>;
+    fn into_iter(self) -> Self::IntoIter { self.items.iter_mut() }
+}
+
+// for item in my_list — yields T (consumes the list)
+impl<T> IntoIterator for MyList<T> {
+    type Item = T;
+    type IntoIter = std::vec::IntoIter<T>;
+    fn into_iter(self) -> Self::IntoIter { self.items.into_iter() }
+}
+```
+
+**Rule:** Always implement all three if your type is a collection. Users expect
+`for x in &collection`, `for x in &mut collection`, and `for x in collection` to all work.
+
 ### References
 
 - The Rust Book: [Collections](https://doc.rust-lang.org/book/ch08-00-common-collections.html)
 - Rust std: [Iterator](https://doc.rust-lang.org/std/iter/trait.Iterator.html)
-- Related: [core/ownership.md](ownership.md) (borrowing in iterators), [core/traits.md](traits.md) (Iterator trait)
+- Related: [core/ownership.md](ownership.md) (borrowing in iterators), [core/traits.md](traits.md) (Iterator trait), [core/closures.md](closures.md) (closure args in iterators)

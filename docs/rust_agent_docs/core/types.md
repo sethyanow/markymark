@@ -143,6 +143,20 @@ if let Some(value) = optional {
 let Some(value) = optional else {
     return Err("missing value".into());
 };
+
+// matches! macro — returns bool, great for filter/assert
+assert!(matches!(status, Status::Active | Status::Pending));
+let active_users: Vec<_> = users.iter()
+    .filter(|u| matches!(u.status, Status::Active))
+    .collect();
+
+// match guard
+match value {
+    n if n < 0 => "negative",
+    0 => "zero",
+    n if n > 100 => "large",
+    _ => "moderate",
+}
 ```
 
 ### References

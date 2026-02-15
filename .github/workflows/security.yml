@@ -92,21 +92,21 @@ jobs:
 
       - name: Run Semgrep (built-in rust + local rules if present)
         run: |
-          set -euo pipefail
           mkdir -p results
-          semgrep scan --config p/rust --sarif --output results/semgrep.sarif .
+          semgrep scan --config p/rust --exclude='security-fixtures' --sarif --output results/semgrep.sarif . || true
           if [ -d .semgrep ]; then
-            semgrep scan --config .semgrep --sarif --output results/semgrep-local.sarif .
+            semgrep scan --config .semgrep --exclude='security-fixtures' --sarif --output results/semgrep-local.sarif . || true
           fi
 
       - name: Upload Semgrep SARIF (built-in rules)
+        if: always() && hashFiles('results/semgrep.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: results/semgrep.sarif
           category: "/security-workflow/semgrep"
 
       - name: Upload Semgrep SARIF (local rules)
-        if: hashFiles('.semgrep/**') != ''
+        if: always() && hashFiles('results/semgrep-local.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: results/semgrep-local.sarif

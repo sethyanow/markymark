@@ -11,6 +11,7 @@ before writing any Rust code.
 | [types.md](types.md) | Primitives, structs, enums, generics, pattern matching | Defining data structures |
 | [traits.md](traits.md) | Trait system, std traits, object safety, orphan rules | Polymorphism, implementing std traits |
 | [errors.md](errors.md) | Option, Result, `?`, thiserror, anyhow | Any error handling |
+| [closures.md](closures.md) | Fn/FnMut/FnOnce, capture semantics, move | Callbacks, iterators, threads |
 | [collections.md](collections.md) | Vec, HashMap, iterators, string types | Choosing containers or string types |
 | [modules.md](modules.md) | mod system, visibility, workspaces, features | Organizing code |
 
@@ -19,9 +20,10 @@ before writing any Rust code.
 1. **ownership.md** — Must-read; everything in Rust flows from ownership
 2. **types.md** — How to define and compose data
 3. **traits.md** — How to abstract behavior
-4. **errors.md** — How to handle failure
-5. **collections.md** — How to work with data
-6. **modules.md** — How to organize code at scale
+4. **closures.md** — How Fn traits interact with ownership
+5. **errors.md** — How to handle failure
+6. **collections.md** — How to work with data
+7. **modules.md** — How to organize code at scale
 
 ### Common Tasks → File
 
@@ -29,6 +31,7 @@ before writing any Rust code.
 |------|------|
 | Fix borrow checker error | [ownership.md](ownership.md) |
 | Choose between `&T`, `Box<T>`, `Rc<T>`, `Arc<T>` | [ownership.md](ownership.md) |
+| Write a function that takes a callback | [closures.md](closures.md) |
 | Implement `Display`, `From`, `Iterator` | [traits.md](traits.md) |
 | Decide `thiserror` vs `anyhow` | [errors.md](errors.md) |
 | Pick `String` vs `&str` vs `OsString` | [collections.md](collections.md) |
