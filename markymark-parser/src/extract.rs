@@ -479,6 +479,93 @@ pub fn extract_page_properties<'a>(
     }
 }
 
+fn parse_fence_marker(line: &str) -> Option<(u8, usize)> {
+    let line_bytes = line.as_bytes();
+    if line_bytes.is_empty() {
+        return None;
+    }
+
+    let marker = line_bytes[0];
+    if marker != b'`' && marker != b'~' {
+        return None;
+    }
+
+    let mut marker_len = 0;
+    while marker_len < line_bytes.len() && line_bytes[marker_len] == marker {
+        marker_len += 1;
+    }
+
+    if marker_len >= 3 {
+        Some((marker, marker_len))
+    } else {
+        None
+    }
+}
+
+fn is_fence_closing_line(line: &str, marker: u8, min_len: usize) -> bool {
+    let line_bytes = line.as_bytes();
+    if line_bytes.is_empty() || line_bytes[0] != marker {
+        return false;
+    }
+
+    let mut marker_len = 0;
+    while marker_len < line_bytes.len() && line_bytes[marker_len] == marker {
+        marker_len += 1;
+    }
+
+    marker_len >= min_len
+        && line_bytes[marker_len..]
+            .iter()
+            .all(|b| *b == b' ' || *b == b'\t' || *b == b'\r' || *b == b'\n')
+}
+
+fn collect_fenced_code_ranges(source: &str) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    let mut line_start = 0;
+    let source_len = source.len();
+
+    // (marker byte, marker length, fence start byte offset)
+    let mut active_fence: Option<(u8, usize, usize)> = None;
+
+    while line_start < source_len {
+        let line_end = source[line_start..]
+            .find('\n')
+            .map(|offset| line_start + offset + 1)
+            .unwrap_or(source_len);
+
+        let line = &source[line_start..line_end];
+
+        // CommonMark allows up to 3 spaces of indentation for fenced code blocks.
+        let indent_len = line
+            .bytes()
+            .take_while(|b| *b == b' ' || *b == b'\t')
+            .take(4)
+            .count();
+        let fence_candidate = if indent_len <= 3 {
+            &line[indent_len..]
+        } else {
+            ""
+        };
+
+        if let Some((marker, marker_len, fence_start)) = active_fence {
+            if is_fence_closing_line(fence_candidate, marker, marker_len) {
+                ranges.push((fence_start, line_end));
+                active_fence = None;
+            }
+        } else if let Some((marker, marker_len)) = parse_fence_marker(fence_candidate) {
+            active_fence = Some((marker, marker_len, line_start));
+        }
+
+        line_start = line_end;
+    }
+
+    if let Some((_, _, fence_start)) = active_fence {
+        ranges.push((fence_start, source_len));
+    }
+
+    ranges
+}
+
 /// Extract XML/HTML tags from the document source.
 ///
 /// Uses a single-pass stack-based tokenizer for O(n) performance.
@@ -563,11 +650,26 @@ pub fn extract_xml_tags<'a>(
         None
     };
 
+    let fenced_ranges = collect_fenced_code_ranges(source);
+    let mut current_fence_idx = 0usize;
+
     let mut stack: Vec<StackFrame<'a>> = Vec::new();
     let bytes = source.as_bytes();
     let mut pos = 0;
 
     while pos < bytes.len() {
+        while current_fence_idx < fenced_ranges.len() && pos >= fenced_ranges[current_fence_idx].1 {
+            current_fence_idx += 1;
+        }
+
+        if current_fence_idx < fenced_ranges.len() {
+            let (fence_start, fence_end) = fenced_ranges[current_fence_idx];
+            if pos >= fence_start {
+                pos = fence_end;
+                continue;
+            }
+        }
+
         if bytes[pos] != b'<' {
             pos += 1;
             continue;

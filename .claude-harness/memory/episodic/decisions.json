@@ -3,79 +3,6 @@
   "maxEntries": 50,
   "entries": [
     {
-      "id": "dec-001",
-      "timestamp": "2026-02-13T21:15:00Z",
-      "feature": "marky-1vb",
-      "decision": "Copy suggest-lsp.sh from examples/ rather than creating a new version",
-      "rationale": "Example already works and has tests; no need to rewrite",
-      "alternatives": [
-        "Write new hook from scratch",
-        "Symlink to examples/"
-      ],
-      "impact": "markymark-plugin/hooks/suggest-lsp.sh"
-    },
-    {
-      "id": "dec-002",
-      "timestamp": "2026-02-13T21:15:00Z",
-      "feature": "marky-1vb",
-      "decision": "Use Bash heredoc instead of Write tool for files containing ${CLAUDE_PLUGIN_ROOT}",
-      "rationale": "Harness PreToolUse hook blocks Write tool when content contains ${CLAUDE_PLUGIN_ROOT}, interpreting it as self-modification",
-      "alternatives": [
-        "Disable hook temporarily",
-        "Encode the variable reference"
-      ],
-      "impact": "Any future hook JSON files"
-    },
-    {
-      "id": "dec-003",
-      "timestamp": "2026-02-13T21:15:00Z",
-      "feature": "marky-9dx",
-      "decision": "Filed separate bug for pre-existing test_select_binary.sh failures rather than fixing inline",
-      "rationale": "Out of scope for marky-1vb task. Test failures are structural (JSON path mismatch), not related to hook integration",
-      "alternatives": [
-        "Fix tests inline during hook work"
-      ],
-      "impact": "markymark-plugin/tests/test_select_binary.sh"
-    },
-    {
-      "id": "dec-004",
-      "timestamp": "2026-02-13T21:35:00Z",
-      "feature": "marky-7u7",
-      "decision": "Accept partial dry-run validation (only core passes) and defer full sequential publish validation to marky-hoh",
-      "rationale": "cargo publish --dry-run cannot resolve deps that aren't on crates.io yet. Core passing validates metadata format is correct. The actual sequential publish during release will validate the rest.",
-      "alternatives": [
-        "Attempt to publish core first to unblock dry-run for others"
-      ],
-      "impact": "marky-hoh release task must do sequential publish validation"
-    },
-    {
-      "id": "dec-arch-001",
-      "timestamp": "2026-02-06T21:10:00Z",
-      "feature": "architecture",
-      "decision": "Dual-transport architecture: LSP and MCP as pluggable layers over shared core",
-      "rationale": "Enables both editor (LSP) and AI assistant (MCP) use cases from single codebase without duplication",
-      "alternatives": [
-        "LSP-only",
-        "MCP-only",
-        "Separate projects"
-      ],
-      "impact": "6-crate workspace: core, parser, index, lsp, mcp, cli",
-      "ported_from": "markdown-mcp dec-20260206-003"
-    },
-    {
-      "id": "dec-arch-002",
-      "timestamp": "2026-02-06T21:23:00Z",
-      "feature": "architecture",
-      "decision": "CoreEngine trait lives in markymark-core, not a transport crate",
-      "rationale": "Transport abstraction (CoreOperation, CoreResult, CoreEngine) has no protocol-specific deps. Each transport crate converts protocol types internally.",
-      "alternatives": [
-        "Separate markymark-transport crate",
-        "Transport trait with protocol-aware enums"
-      ],
-      "impact": "6 crates instead of 7. No cross-protocol dependencies.",
-      "ported_from": "markdown-mcp dec-20260206-006"
-    },
-    {
       "id": "dec-arch-003",
       "timestamp": "2026-02-06T21:23:00Z",
       "feature": "architecture",
@@ -627,7 +554,7 @@
       "timestamp": "2026-02-15T04:55:00Z",
       "feature": "feature-001",
       "decision": "Use LazyLock<Regex> static compilation for all 14 regex patterns in extract.rs",
-      "rationale": "CodeRabbit flagged regex recompilation on every function call as Major issue. LazyLock compiles each regex exactly once (first access) and reuses across all calls. No crate dependency added — LazyLock is in std since Rust 1.80.",
+      "rationale": "CodeRabbit flagged regex recompilation on every function call as Major issue. LazyLock compiles each regex exactly once (first access) and reuses across all calls. No crate dependency added \u2014 LazyLock is in std since Rust 1.80.",
       "alternatives": [
         "once_cell::sync::Lazy (external crate)",
         "Thread-local regex (separate per-thread compilation)"
@@ -639,7 +566,7 @@
       "timestamp": "2026-02-15T04:55:00Z",
       "feature": "feature-001",
       "decision": "MarkdownLinkEntry.url stores base URL only (without fragment); anchor stored separately",
-      "rationale": "CodeRabbit flagged that url field duplicated anchor info. Parser already splits URL at '#' — index was re-concatenating them. Storing base URL matches parser semantics and simplifies callers (no need to strip anchor from url).",
+      "rationale": "CodeRabbit flagged that url field duplicated anchor info. Parser already splits URL at '#' \u2014 index was re-concatenating them. Storing base URL matches parser semantics and simplifies callers (no need to strip anchor from url).",
       "alternatives": [
         "Keep concatenated url (matches browser URL bar behavior)",
         "Remove anchor field entirely and only store full url"
@@ -663,12 +590,36 @@
       "timestamp": "2026-02-15T15:33:00Z",
       "feature": "feature-001",
       "decision": "Merge origin/main into feature branch (not rebase) to resolve PR #10 squash merge conflicts",
-      "rationale": "PR #10 was squash-merged to main, causing 22 conflicts with the 52-commit feature branch. Rebase failed before (fail-feature-001-rebase-20260214). Merge commit is safest — preserves all history and clearly documents integration point.",
+      "rationale": "PR #10 was squash-merged to main, causing 22 conflicts with the 52-commit feature branch. Rebase failed before (fail-feature-001-rebase-20260214). Merge commit is safest \u2014 preserves all history and clearly documents integration point.",
       "alternatives": [
         "Rebase 52 commits (failed before, rewrites hashes)",
         "Reset main to before squash merge (force push to main, risky)"
       ],
       "impact": "Merge commit 02dd960, PR #11 now MERGEABLE"
+    },
+    {
+      "id": "dec-20260215205211-fence-xml",
+      "timestamp": "2026-02-15T20:52:11.032429Z",
+      "feature": "marky-8la",
+      "decision": "Implement fenced-code exclusion in extract_xml_tags instead of altering diagnostics emission logic",
+      "rationale": "Fixes false Unclosed XML tag warnings for Rust generics while preserving existing XML diagnostic behavior in non-fenced content.",
+      "alternatives": [
+        "Suppress warnings in ServerState::compute_diagnostics",
+        "Disable XML extraction entirely for code-like documents"
+      ],
+      "impact": "markymark-parser/src/extract.rs, markymark-parser/tests/xml_extraction.rs, markymark-lsp/tests/diagnostics.rs"
+    },
+    {
+      "id": "dec-20260215205211-feature-close",
+      "timestamp": "2026-02-15T20:52:11.032429Z",
+      "feature": "feature-001",
+      "decision": "Close and archive feature-001 in harness tracking at checkpoint time",
+      "rationale": "User explicitly requested closure; feature state now reflects completed delivery instead of stale in_progress metadata.",
+      "alternatives": [
+        "Leave feature-001 in_progress until additional follow-up tasks are linked",
+        "Close only in beads and keep harness active.json unchanged"
+      ],
+      "impact": ".claude-harness/features/active.json, .claude-harness/features/archive.json, .claude-harness/claude-progress.json"
     }
   ]
 }

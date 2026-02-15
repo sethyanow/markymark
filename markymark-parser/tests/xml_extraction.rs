@@ -305,6 +305,33 @@ fn extract_attribute_with_gt_in_value() {
 }
 
 // ===========================================================================
+// Fenced code blocks
+// ===========================================================================
+
+#[test]
+fn ignore_xml_like_generics_inside_fenced_code_blocks() {
+    let mut parser = Parser::new().unwrap();
+    let markdown = concat!(
+        "<agent>outside</agent>\n\n",
+        "```rust\n",
+        "fn wrap<T>(value: T) -> std::sync::Arc<std::sync::Mutex<T>> {\n",
+        "    std::sync::Arc::new(std::sync::Mutex::new(value))\n",
+        "}\n",
+        "```\n\n",
+        "~~~rust\n",
+        "fn dyn_box(value: Box<dyn std::fmt::Display>) {}\n",
+        "~~~\n",
+    );
+
+    let ast = parser.parse(markdown).unwrap();
+    let tags = ast.extract_xml_tags();
+
+    assert_eq!(tags.len(), 1);
+    assert_eq!(tags[0].tag_name(), "agent");
+    assert_eq!(tags[0].content(), Some("outside"));
+}
+
+// ===========================================================================
 // No XML tags
 // ===========================================================================
 
