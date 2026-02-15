@@ -67,6 +67,39 @@ across sessions. This file is linked from CLAUDE.md and auto-loaded at session s
 
 **Stats:** 45 files, 6,432 lines (up from 5,033). 14 decision trees. 16 mistakes tracked.
 
+### Assessment Update: 2026-02-15 (Session 3: source vault final pass)
+
+**Grade: A** (confirmed — gap analysis found no remaining structural gaps)
+
+**Method:** Indexed 633 source vault docs via markymark realm (`source-vault`). Searched
+headings systematically for 15+ topic areas. Cross-referenced vault coverage against our docs.
+
+**Gaps found and filled (+172 lines, 6,271 → 6,443 total):**
+- `core/ownership.md`: Added "RefCell in Practice" section — borrow()/borrow_mut() mechanics, panic risk, Rc<RefCell<T>> pattern, agent pitfall callout
+- `patterns/idioms.md`: Added "Drop Order Rules" subsection — variable vs struct vs tuple drop order, early drop with mem::drop(), recursive drop behavior
+- `patterns/idioms.md`: Expanded "Deref Polymorphism" with 3 automatic coercion rules and 6 common auto-coercion examples agents should know
+- `core/types.md`: Added `matches!` macro and match guards to pattern matching section
+- `reference/syntax-ref.md`: Added "Panic & Stub Macros" table — todo!/unimplemented!/unreachable!/panic! with usage guidance
+- `patterns/anti-patterns.md`: Added derived Clone with generic Arc fields gotcha (from nomicon dot-operator.md)
+- `MISTAKES.md`: Added mistakes #17 (RefCell double borrow panic) and #18 (struct field drop order assumption)
+- `AGENTS.md`: Updated mistake quick-ref table with new entries
+
+**Topics confirmed adequate (no changes needed):**
+- Pin/Unpin: Well covered in async-ready.md + async.md
+- Iterators: Solid cheatsheet + IntoIterator triple + custom Iterator in collections.md
+- Object safety: 5 rules in traits.md
+- From/Into: Decision tree in traits.md + examples in cookbook.md
+- HRTB: Covered in ownership.md
+- Builder pattern: Covered in idioms.md
+- cfg/conditional compilation: Covered in rules.md, syntax-ref.md, modules.md
+- Turbofish syntax: Covered in syntax-ref.md
+- Option/Result combinators: Full table in errors.md
+
+**Topics assessed as too niche to add:**
+- Variance/covariance: Nomicon-level; PhantomData table in unsafe.md is sufficient
+- ?Sized/DST: Deref coercion handles most agent scenarios transparently
+- Full type coercion list: Reference-level detail beyond agent needs
+
 **markymark dogfooding findings:**
 - XML tag parsing inside fenced code blocks produces false positives (filed marky-8la)
 - 198 false positive "unclosed XML tag" warnings from Rust generics like `<T>`, `<Mutex<T>>`

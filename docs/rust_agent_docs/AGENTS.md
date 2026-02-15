@@ -57,3 +57,5 @@
 | Trusting pre-training over crate docs | HIGH | [patterns/anti-patterns.md](patterns/anti-patterns.md) |
 | Cloning arena-backed types (SIGSEGV) | CRITICAL | [patterns/anti-patterns.md](patterns/anti-patterns.md) |
 | Returning `&[]` as arena-lifetime slice | CRITICAL | [patterns/anti-patterns.md](patterns/anti-patterns.md) |
+| RefCell double borrow panic | HIGH | [core/ownership.md](core/ownership.md) |
+| Assuming reverse drop order for struct fields | MEDIUM | [patterns/idioms.md](patterns/idioms.md) |

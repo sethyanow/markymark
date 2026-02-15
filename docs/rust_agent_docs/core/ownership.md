@@ -105,6 +105,48 @@ Need interior mutability WITHOUT shared ownership?
 | `RwLock<T>` | Yes | Runtime (lock) | Multi-thread read-heavy access |
 | `AtomicT` | Yes | Lock-free | Primitive counters, flags |
 
+#### RefCell in Practice
+
+`RefCell<T>` enforces the same borrow rules as the compiler, but at **runtime**.
+If you violate the rules, the program **panics** instead of getting a compiler error.
+
+```rust
+use std::cell::RefCell;
+
+let data = RefCell::new(vec![1, 2, 3]);
+
+// borrow() → shared reference (like &T)
+let r = data.borrow();
+println!("len: {}", r.len());
+drop(r); // Must drop before borrowing mutably
+
+// borrow_mut() → exclusive reference (like &mut T)
+data.borrow_mut().push(4);
+
+// ❌ PANICS: two mutable borrows at once
+// let a = data.borrow_mut();
+// let b = data.borrow_mut(); // panic: already mutably borrowed
+```
+
+**Common pattern — `Rc<RefCell<T>>` for shared mutable state:**
+
+```rust
+use std::cell::RefCell;
+use std::rc::Rc;
+
+let shared = Rc::new(RefCell::new(0));
+let clone1 = Rc::clone(&shared);
+
+*clone1.borrow_mut() += 1;
+assert_eq!(*shared.borrow(), 1);
+```
+
+**Multi-threaded equivalent:** Replace `Rc<RefCell<T>>` with `Arc<Mutex<T>>`.
+
+> ⚠️ **Agent pitfall:** `borrow()` and `borrow_mut()` are **not** compile-time checked.
+> If you hold a `Ref` or `RefMut` guard across a code path that calls `borrow_mut()` again,
+> the program panics at runtime. Always drop guards before re-borrowing.
+
 ### Advanced Lifetimes
 
 #### Lifetime Subtyping (`'a: 'b`)
