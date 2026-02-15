@@ -10,6 +10,7 @@ use tree_sitter::Parser as TSParser;
 
 mod ast;
 mod extract;
+pub mod structured;
 mod types;
 
 pub use ast::Ast;
