@@ -31,7 +31,8 @@
       "For cross-document block ID indexing, store Vec<(uri, block)> in insertion order and keep lookup API stable by returning first match; add regression test before changing semantics",
       "docs-vs-practice audit: read doc, find all struct/field types in codebase, compare systematically. Key: test Send/Sync implications before changing types.",
       "ArenaHashMap Send constraint: always check trait bounds before adopting arena-backed collections in types stored across async boundaries.",
-      "When migrating wrapper types (e.g. Bump->DocumentArena), trace all ptr::read/mem::forget usage - pointer type must match the owning type, not inner type."
+      "When migrating wrapper types (e.g. Bump->DocumentArena), trace all ptr::read/mem::forget usage - pointer type must match the owning type, not inner type.",
+      "When token-scanning Markdown for XML-like syntax, precompute fenced code ranges and skip tokens inside fences to avoid language-generic false positives."
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",
@@ -126,5 +127,5 @@
       }
     ]
   },
-  "lastUpdated": "2026-02-15T04:42:11Z"
+  "lastUpdated": "2026-02-15T20:51:58.952224Z"
 }

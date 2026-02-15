@@ -1,1 +1,38 @@
-{"lastUpdated":"2026-02-15T15:33:00Z","currentProject":"markymark","lastSession":{"summary":"Resolved PR #11 merge conflicts caused by squash merge of PR #10 into main. Merged origin/main into feature/feature-001 taking feature branch version for all 22 conflicting files (10 harness, 5 code, 1 modify/delete types.rs, Cargo.lock). All quality gates pass (476 tests, 0 clippy warnings, clean build). Recorded rule-008: never squash merge. PR #11 now MERGEABLE.","completedTasks":["Session startup and context compilation (30 decisions, 13 successes, 5 failures, 7 rules loaded)","Identified 22 merge conflicts from PR #10 squash merge into main","Resolved all conflicts: git merge origin/main, checkout --ours for all files","Deleted types.rs (split into submodules on feature branch, modified on main)","Regenerated Cargo.lock","Verified quality gates: 476 tests pass, 0 clippy warnings, clean build","Recorded rule-008: never squash merge, preserve git history","Pushed merge resolution (02dd960) and rule commit (45662ef)"],"blockers":["No blockers; PR #11 is MERGEABLE"],"nextSteps":["Human review of PR #11","Merge PR #11 when approved (use merge commit, NOT squash)","Close marky-luy epic","Continue with marky-v8e v1.0 Product Launch epic"]},"recentChanges":["Merge commit resolving 22 conflicts from PR #10 squash merge","rule-008 added to learned rules (never squash merge)"],"knownIssues":["marky-5yt: 'static lifetime leak deferred to self_cell migration","marky-luy.1/2/3: P3 research items (Miri CI, arena reuse, Cow optimization)"],"environmentState":{"devServerRunning":false,"lastSuccessfulBuild":"2026-02-15T15:33:00Z","lastTypeCheck":"2026-02-15T15:33:00Z"},"lastCompaction":"2026-02-14T10:00:10.000Z","compactionCount":3}
+{
+  "lastUpdated": "2026-02-15T20:51:58.952224Z",
+  "currentProject": "markymark",
+  "lastSession": {
+    "summary": "Implemented fenced-code XML exclusion (marky-8la), validated parser/LSP suites, repaired harness context, and closed feature-001 in harness state by archiving it.",
+    "completedTasks": [
+      "Added RED regression tests for parser and LSP diagnostics around fenced code generics",
+      "Implemented fenced range filtering in extract_xml_tags without changing diagnostics pipeline",
+      "Ran targeted and full crate verification for parser and LSP (all passing)",
+      "Recompiled session memory context under .claude-harness/sessions/manual-session/context.json",
+      "Archived feature-001 from active.json to archive.json per user request"
+    ],
+    "blockers": [
+      ".claude-harness/agents/context.json is historically truncated/invalid in git history and cannot be fully restored from commits"
+    ],
+    "nextSteps": [
+      "Commit and push checkpoint",
+      "Optionally regenerate agents/context.json from harness tooling to replace truncated historical artifact",
+      "Run /claude-harness:start in next session to load updated state"
+    ]
+  },
+  "recentChanges": [
+    "Parser XML extraction ignores fenced code blocks for generic syntax",
+    "LSP diagnostics regression added for fenced code XML false positives",
+    "Harness active/archive feature state updated: feature-001 closed"
+  ],
+  "knownIssues": [
+    "marky-5yt: 'static lifetime leak deferred to self_cell migration",
+    "marky-luy.1/2/3: P3 research items (Miri CI, arena reuse, Cow optimization)"
+  ],
+  "environmentState": {
+    "devServerRunning": false,
+    "lastSuccessfulBuild": "2026-02-15T15:33:00Z",
+    "lastTypeCheck": "2026-02-15T15:33:00Z"
+  },
+  "lastCompaction": "2026-02-14T10:00:10.000Z",
+  "compactionCount": 3
+}
