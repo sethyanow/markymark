@@ -117,6 +117,82 @@ fn invariant_demo(x: &mut &'static str) {
 4. Read+write → invariant (`PhantomData<fn(T) -> T>` or `PhantomData<*mut T>`)
 5. When in doubt, **choose invariant** — it's always safe, just less flexible
 
+### PhantomData in Practice
+
+The variance table tells you *which* `PhantomData` to pick. These examples show *why* real
+data structures need it and how the drop checker interacts.
+
+**Owning raw pointer (Vec-like):**
+```rust
+use std::marker::PhantomData;
+
+struct RawVec<T> {
+    ptr: *mut T,         // raw pointer: no ownership semantics
+    cap: usize,
+    _marker: PhantomData<T>,  // tells compiler: "I own T values"
+    // Effect: enables drop check — compiler knows dropping RawVec
+    // may drop T values, so T must outlive RawVec.
+}
+
+// Without PhantomData<T>, the compiler wouldn't know RawVec<T>
+// logically owns T values, and drop check would be unsound.
+unsafe impl<T: Send> Send for RawVec<T> {}
+unsafe impl<T: Sync> Sync for RawVec<T> {}
+```
+
+**Shared ownership (Arc-like):**
+```rust
+struct MyArc<T> {
+    ptr: *const ArcInner<T>,
+    _marker: PhantomData<ArcInner<T>>,  // owns the ArcInner
+    // PhantomData<T> would also work here — the key point is
+    // establishing ownership for the drop checker.
+}
+
+struct ArcInner<T> {
+    ref_count: AtomicUsize,
+    data: T,
+}
+```
+
+**Lifetime token (no data):**
+```rust
+/// Borrow guard — holds no data but represents a logical borrow.
+struct BorrowGuard<'a> {
+    _marker: PhantomData<&'a ()>,  // covariant over 'a
+    // Makes BorrowGuard<'long> usable where BorrowGuard<'short> expected
+}
+
+/// Exclusive borrow guard — invariant over the lifetime.
+struct MutBorrowGuard<'a> {
+    _marker: PhantomData<&'a mut ()>,  // invariant over lifetime
+    // Prevents the compiler from shortening or extending the borrow
+}
+```
+
+**Drop checker interaction (RFC 1238):**
+
+The drop checker ensures that when a generic type is dropped, all type/lifetime
+parameters are still valid. `PhantomData<T>` opts into this check:
+
+```rust
+// This compiles — Vec<&'a str> needs 'a valid at drop
+{
+    let v: Vec<&str>;
+    let s = String::from("hello");
+    v = vec![&s];  // OK: s outlives v (dropped in reverse declaration order)
+}
+
+// This would NOT compile:
+// {
+//     let s = String::from("hello");
+//     let v = vec![&s];  // ERROR: s dropped before v
+// }
+```
+
+Without `PhantomData`, custom types using raw pointers would bypass this check,
+potentially accessing freed memory in their `Drop` impl.
+
 ### Undefined Behavior Catalog
 
 These are **always UB** in Rust — no exceptions:

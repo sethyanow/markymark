@@ -568,21 +568,36 @@ let boxed = BumpBox::new_in(NeedsDrop { data: "hello".into() }, &arena);
 ```
 </pitfall>
 
-### Thread Safety
+### Thread Safety: `Bump: Send + !Sync`
 
 <pitfall>
-**Problem:** `Bump` is not `Sync` - cannot be shared across threads.
+**`Bump` is `Send` but NOT `Sync`:** You can *move* a `Bump` to another thread,
+but you cannot *share* a `&Bump` across threads concurrently.
+
+| Trait | `Bump` | `&Bump` | Implication |
+|-------|--------|---------|-------------|
+| `Send` | Yes | No | Can move arena to another thread |
+| `Sync` | No | N/A | Cannot share `&Bump` across threads |
+
+This means `Arc<Bump>` won't compile (requires `Sync`), but you can
+`std::thread::spawn(move || { let arena = Bump::new(); ... })`.
 
 ```rust
 // BAD: Sharing arena across threads
-let arena = Arc::new(Bump::new());
-let arena_clone = arena.clone();
+let arena = Arc::new(Bump::new()); // ERROR: Bump is not Sync
+
+// GOOD: Moving arena to another thread
+let arena = Bump::new();
 std::thread::spawn(move || {
-    arena_clone.alloc(1); // ERROR: Bump is not Sync
+    arena.alloc(42); // OK: arena moved (Send), not shared
 });
 ```
 
-**Solution:** Use one arena per thread or protect with mutex (defeats purpose):
+**For async LSP contexts** where `Send + Sync` is required (tower-lsp):
+wrap in `Mutex` to satisfy `Sync`, accepting the synchronization cost.
+See [Send Constraint](#send-constraint-arenahashmap-vs-hashmap) above.
+
+**Solution for shared allocation:** Use one arena per thread or protect with mutex:
 
 ```rust
 // GOOD: Thread-local arenas
