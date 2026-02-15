@@ -31,11 +31,10 @@ lsp-types = "0.97"
 # MCP dependencies
 rmcp = { version = "0.13", features = ["server", "transport-io"] }
 
-# Parser dependencies - using compatible versions
-tree-sitter = "=0.19.5"  # Match tree-sitter-markdown dependency
-tree-sitter-markdown = "0.7"
-tree-sitter-xml = "0.6"
-tree-sitter-json = "=0.19.0"  # Compatible with pinned tree-sitter 0.19.5
+# Parser dependencies
+tree-sitter = "0.26"
+tree-sitter-md = { version = "0.5", features = ["parser"] }
+tree-sitter-json = "0.24"
 
 # Graph and algorithms
 petgraph = "0.7"

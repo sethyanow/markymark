@@ -69,8 +69,10 @@ impl Heading {
             _ => 1,
         };
 
-        // Extract heading text content
+        // Extract heading text content and track the last content child's end position
+        // for the range (tree-sitter-md includes trailing newlines in the node span).
         let mut text = String::new();
+        let mut last_content_end = node.end_position();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "atx_h1_marker"
@@ -84,6 +86,7 @@ impl Heading {
             }
             if let Ok(child_text) = child.utf8_text(source.as_bytes()) {
                 text.push_str(child_text.trim());
+                last_content_end = child.end_position();
             }
         }
 
@@ -92,10 +95,7 @@ impl Heading {
                 node.start_position().row as u32,
                 node.start_position().column as u32,
             ),
-            Position::new(
-                node.end_position().row as u32,
-                node.end_position().column as u32,
-            ),
+            Position::new(last_content_end.row as u32, last_content_end.column as u32),
         );
 
         Ok(Self { level, text, range })
@@ -225,7 +225,8 @@ impl ListItem {
     fn find_first_list_descendant(node: Node) -> Option<Node> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "tight_list" || child.kind() == "loose_list" {
+            // tree-sitter-md uses "list" instead of tight_list/loose_list
+            if child.kind() == "list" {
                 return Some(child);
             }
 
