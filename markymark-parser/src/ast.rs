@@ -200,6 +200,7 @@ impl Ast {
     }
 }
 
+#[cfg(test)]
 impl Default for Ast {
     fn default() -> Self {
         // Create a minimal empty AST for testing purposes

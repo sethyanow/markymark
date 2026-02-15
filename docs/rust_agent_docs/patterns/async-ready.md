@@ -66,11 +66,11 @@ A type is `Sync` if `&T` can be safely shared between threads. Auto-derived when
 
 `T: Sync` means `&T: Send`. These are linked:
 
-```
+```text
 Send + Sync:  Arc<T>, Mutex<T>, AtomicU64, String, Vec<T>
-Send + !Sync: Cell<T>, RefCell<T>, mpsc::Sender
+Send + !Sync: Cell<T>, RefCell<T>, mpsc::Sender, bumpalo::Bump
 !Send + Sync: (rare — usually indicates a design issue)
-!Send + !Sync: Rc<T>, *mut T, bumpalo::Bump
+!Send + !Sync: Rc<T>, *mut T
 ```
 
 **Common pattern — making shared state Sync:**
@@ -185,7 +185,7 @@ async fn run_task(task: Task) {
 
 // Parser layer (single-threaded, !Send OK):
 struct Ast<'arena> {
-    arena: DocumentArena,                    // !Sync → struct is !Send
+    arena: DocumentArena,                    // borrows from arena make struct !Send
     headings: &'arena [Heading<'arena>],     // borrows from arena
 }
 

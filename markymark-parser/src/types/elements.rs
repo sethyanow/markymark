@@ -100,8 +100,10 @@ impl<'arena> Heading<'arena> {
                 || child.kind() == "atx_h4_marker"
                 || child.kind() == "atx_h5_marker"
                 || child.kind() == "atx_h6_marker"
+                || child.kind() == "setext_h1_underline"
+                || child.kind() == "setext_h2_underline"
             {
-                continue; // Skip markers
+                continue; // Skip ATX markers and setext underlines
             }
             if let Ok(child_text) = child.utf8_text(source.as_bytes()) {
                 text.push_str(child_text.trim());
