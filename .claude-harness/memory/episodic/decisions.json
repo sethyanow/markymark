@@ -408,6 +408,33 @@
       "rationale": "Manual benchmark collection was slow and error-prone. Automating run + parse + report reduces operator overhead and creates a repeatable artifact for go/no-go arena ROI decisions.",
       "alternatives": ["Manual copy/paste from criterion output", "Ad-hoc one-off scripts outside workspace"],
       "impact": "markymark-index/src/bench_report.rs, markymark-index/src/bin/bench_roi_report.rs, docs/benchmarks/roi-tier-report.md"
+    },
+    {
+      "id": "dec-028",
+      "timestamp": "2026-02-15T03:46:14Z",
+      "feature": "feature-001",
+      "decision": "Preserve duplicate block IDs in RealmIndex and keep first-in lookup semantics",
+      "rationale": "Overwriting duplicate block IDs silently dropped cross-document references. Storing all occurrences prevents data loss while returning the first entry preserves existing Option-based resolution behavior.",
+      "alternatives": ["Keep overwrite behavior", "Change lookup API to return Vec and propagate broad signature changes"],
+      "impact": "markymark-index/src/realm.rs, markymark-index/tests/realm_index.rs, markymark-index/src/resolution.rs"
+    },
+    {
+      "id": "dec-029",
+      "timestamp": "2026-02-15T03:46:14Z",
+      "feature": "feature-001",
+      "decision": "Upgrade workspace allocator dependencies to bumpalo 3.19.1 and hashbrown 0.16.1",
+      "rationale": "Code review flagged outdated versions and security concerns on earlier hashbrown line. Upgrading keeps arena allocation strategy current and secure without changing allocator-api2 approach.",
+      "alternatives": ["Pin minimum patch release in 0.15.x", "Defer dependency upgrades to separate maintenance task"],
+      "impact": "Cargo.toml, Cargo.lock, allocator-backed map usage in parser/index/core crates"
+    },
+    {
+      "id": "dec-030",
+      "timestamp": "2026-02-15T03:46:14Z",
+      "feature": "feature-001",
+      "decision": "Keep local epstein benchmark corpus file out of checkpoint commits unless explicitly requested",
+      "rationale": "The fixture is user-local context and should not be accidentally bundled with PR code cleanup commits.",
+      "alternatives": ["Auto-stage all untracked files", "Delete local fixture each checkpoint"],
+      "impact": "checkpoint commit workflow and staging discipline for this branch"
     }
   ]
 }
