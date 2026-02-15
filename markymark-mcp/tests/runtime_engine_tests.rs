@@ -783,6 +783,7 @@ fn realm_stats_returns_aggregate_counts_for_default_realm() {
             xml_tag_count,
             wiki_link_count,
             markdown_link_count,
+            ..
         } => {
             assert_eq!(name, "default");
             assert_eq!(root_count, 1);
@@ -836,6 +837,7 @@ fn realm_stats_works_for_empty_realm() {
             xml_tag_count,
             wiki_link_count,
             markdown_link_count,
+            ..
         } => {
             assert_eq!(name, "empty-realm");
             assert_eq!(root_count, 0);
@@ -874,6 +876,7 @@ fn export_index_returns_full_document_data() {
             xml_tags,
             wiki_links,
             markdown_links,
+            ..
         } => {
             assert_eq!(result_uri.as_str(), uri.as_str());
             assert_eq!(headings.len(), 2);
@@ -909,6 +912,39 @@ fn export_index_errors_for_unindexed_document() {
     match result {
         CoreOperationResult::Error(_) => {} // expected
         other => panic!("expected Error result, got: {other:?}"),
+    }
+}
+
+#[test]
+fn workspace_with_mixed_formats_only_indexes_markdown() {
+    let ws = TempWorkspace::new("mixed-formats");
+    fs::write(ws.root().join("notes.md"), "# Notes\n").expect("md should be created");
+    fs::write(ws.root().join("config.json"), r#"{"key": "val"}"#).expect("json should be created");
+    fs::write(ws.root().join("settings.yaml"), "key: val\n").expect("yaml should be created");
+    fs::write(ws.root().join(".env"), "DB_HOST=localhost\n").expect("env should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let result = engine.execute(CoreOperation::RealmStats {
+        realm: "default".to_string(),
+    });
+
+    match result {
+        CoreOperationResult::RealmStats {
+            document_count,
+            heading_count,
+            structured_doc_count,
+            key_path_count,
+            ..
+        } => {
+            // Only the .md file should be indexed
+            assert_eq!(document_count, 1, "only markdown should be indexed");
+            assert_eq!(heading_count, 1, "one heading from notes.md");
+            assert_eq!(structured_doc_count, 0, "no structured docs indexed yet");
+            assert_eq!(key_path_count, 0, "no key paths indexed yet");
+        }
+        other => panic!("expected RealmStats result, got: {other:?}"),
     }
 }
 

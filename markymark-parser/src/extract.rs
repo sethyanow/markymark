@@ -237,7 +237,8 @@ pub fn extract_block_ids<'a>(
     for captures in BLOCK_ID_RE.captures_iter(source) {
         if let (Some(id_match), Some(full_match)) = (captures.get(1), captures.get(0)) {
             let start = full_match.start();
-            let end = full_match.end();
+            // Use id_match.end() to exclude trailing whitespace captured by \s*$
+            let end = id_match.end();
             let line = source[..start].matches('\n').count() as u32;
             let line_start = source[..start].rfind('\n').map(|pos| pos + 1).unwrap_or(0);
             let start_char = (start - line_start) as u32;
@@ -478,6 +479,107 @@ pub fn extract_page_properties<'a>(
     }
 }
 
+fn parse_fence_marker(line: &str) -> Option<(u8, usize)> {
+    let line_bytes = line.as_bytes();
+    if line_bytes.is_empty() {
+        return None;
+    }
+
+    let marker = line_bytes[0];
+    if marker != b'`' && marker != b'~' {
+        return None;
+    }
+
+    let mut marker_len = 0;
+    while marker_len < line_bytes.len() && line_bytes[marker_len] == marker {
+        marker_len += 1;
+    }
+
+    if marker_len >= 3 {
+        Some((marker, marker_len))
+    } else {
+        None
+    }
+}
+
+fn is_fence_closing_line(line: &str, marker: u8, min_len: usize) -> bool {
+    let line_bytes = line.as_bytes();
+    if line_bytes.is_empty() || line_bytes[0] != marker {
+        return false;
+    }
+
+    let mut marker_len = 0;
+    while marker_len < line_bytes.len() && line_bytes[marker_len] == marker {
+        marker_len += 1;
+    }
+
+    marker_len >= min_len
+        && line_bytes[marker_len..]
+            .iter()
+            .all(|b| *b == b' ' || *b == b'\t' || *b == b'\r' || *b == b'\n')
+}
+
+fn collect_fenced_code_ranges(source: &str) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    let mut line_start = 0;
+    let source_len = source.len();
+
+    // (marker byte, marker length, fence start byte offset)
+    let mut active_fence: Option<(u8, usize, usize)> = None;
+
+    while line_start < source_len {
+        let line_end = source[line_start..]
+            .find('\n')
+            .map(|offset| line_start + offset + 1)
+            .unwrap_or(source_len);
+
+        let line = &source[line_start..line_end];
+
+        // CommonMark allows up to 3 spaces of indentation for fenced code blocks.
+        // Tabs expand to the next 4-column tab stop per CommonMark spec.
+        let mut indent_cols = 0usize;
+        let mut indent_bytes = 0usize;
+        for b in line.bytes() {
+            match b {
+                b' ' => {
+                    indent_cols += 1;
+                    indent_bytes += 1;
+                }
+                b'\t' => {
+                    indent_cols = (indent_cols / 4 + 1) * 4;
+                    indent_bytes += 1;
+                }
+                _ => break,
+            }
+            if indent_cols >= 4 {
+                break;
+            }
+        }
+        let fence_candidate = if indent_cols <= 3 {
+            &line[indent_bytes..]
+        } else {
+            ""
+        };
+
+        if let Some((marker, marker_len, fence_start)) = active_fence {
+            if is_fence_closing_line(fence_candidate, marker, marker_len) {
+                ranges.push((fence_start, line_end));
+                active_fence = None;
+            }
+        } else if let Some((marker, marker_len)) = parse_fence_marker(fence_candidate) {
+            active_fence = Some((marker, marker_len, line_start));
+        }
+
+        line_start = line_end;
+    }
+
+    if let Some((_, _, fence_start)) = active_fence {
+        ranges.push((fence_start, source_len));
+    }
+
+    ranges
+}
+
 /// Extract XML/HTML tags from the document source.
 ///
 /// Uses a single-pass stack-based tokenizer for O(n) performance.
@@ -562,11 +664,26 @@ pub fn extract_xml_tags<'a>(
         None
     };
 
+    let fenced_ranges = collect_fenced_code_ranges(source);
+    let mut current_fence_idx = 0usize;
+
     let mut stack: Vec<StackFrame<'a>> = Vec::new();
     let bytes = source.as_bytes();
     let mut pos = 0;
 
     while pos < bytes.len() {
+        while current_fence_idx < fenced_ranges.len() && pos >= fenced_ranges[current_fence_idx].1 {
+            current_fence_idx += 1;
+        }
+
+        if current_fence_idx < fenced_ranges.len() {
+            let (fence_start, fence_end) = fenced_ranges[current_fence_idx];
+            if pos >= fence_start {
+                pos = fence_end;
+                continue;
+            }
+        }
+
         if bytes[pos] != b'<' {
             pos += 1;
             continue;

@@ -1,9 +1,19 @@
 {
   "version": 3,
-  "lastUpdated": "2026-02-13T17:40:24Z",
+  "lastUpdated": "2026-02-15T20:51:58.952224Z",
   "currentSession": null,
   "projectContext": {
     "name": "markymark",
-    "techStack": ["Rust"],
-    "testingFramework": "",
-    "buildCommand": "cargo
+    "techStack": [
+      "Rust"
+    ],
+    "testingFramework": "cargo test",
+    "buildCommand": "cargo build --release"
+  },
+  "agentResults": [],
+  "sharedState": {
+    "discoveredPatterns": [],
+    "architecturalDecisions": []
+  },
+  "notes": "Recreated valid context structure because historical file in git is truncated/corrupt."
+}
