@@ -94,6 +94,53 @@ cargo build --target x86_64-unknown-linux-musl --release
 linker = "x86_64-linux-musl-gcc"
 ```
 
+### Version & Dependency Semantics
+
+**Semver matching:**
+- `"1.2"` matches `>=1.2.0, <2.0.0`
+- `"0.1"` matches `>=0.1.0, <0.2.0` (0.x is special: minor = breaking)
+- `"=1.2.3"` matches exactly `1.2.3`
+
+**Prerelease versions:**
+> **COMMON MISTAKE: Prerelease dependencies require exact version match**
+
+```toml
+# ❌ DON'T: semver range won't match prereleases
+serde = "0.1.0-alpha.1"  # This means >=0.1.0-alpha.1, <0.2.0 — but
+                          # prereleases are excluded from range matches!
+
+# ✅ DO: Use exact match for prerelease dependencies
+serde = "=0.1.0-alpha.1"
+
+# ✅ DO: Or use path dependency during development
+my-crate = { path = "../my-crate", version = "=0.1.0-alpha.1" }
+```
+
+Prerelease versions (`-alpha`, `-beta`, `-rc`) are only matched by exact version
+requirements. If crate A depends on `my-lib = "0.1"`, it will NOT resolve to `0.1.0-alpha.1`.
+
+**Workspace dependency inheritance:**
+
+```toml
+# Root Cargo.toml — define shared deps once
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+my-core = { path = "crates/core", version = "=0.1.0-alpha.1" }
+
+# Member Cargo.toml — inherit with .workspace = true
+[dependencies]
+serde.workspace = true
+my-core.workspace = true
+# Can add extra features:
+tokio = { workspace = true, features = ["macros"] }
+```
+
+**Feature unification:** Cargo unifies features across the dependency graph. If crate A
+uses `tokio = { features = ["rt"] }` and crate B uses `tokio = { features = ["net"] }`,
+tokio is built with both `rt` and `net`. Features must be additive — enabling a feature
+should never break code that doesn't use it.
+
 ### Useful Cargo Commands
 
 | Command | Purpose |

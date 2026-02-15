@@ -147,7 +147,8 @@ impl RealmIndex {
     }
 
     /// Look up a block by ID across all documents.
-    /// Returns owned [`ResolvedBlock`] from the cross-doc index.
+    /// Returns the first-inserted [`ResolvedBlock`] from the cross-doc index.
+    /// Multiple documents may define the same block ID; this returns the first match.
     pub fn lookup_block(&self, id: &str) -> Option<(DocumentUri, ResolvedBlock)> {
         self.block_to_location
             .get(id)
