@@ -621,6 +621,42 @@
         "Add repr(transparent) to DocumentArena"
       ],
       "impact": "markymark-parser/src/ast.rs, markymark-index/src/document.rs"
+    },
+    {
+      "id": "dec-pr-review-001",
+      "timestamp": "2026-02-15T04:55:00Z",
+      "feature": "feature-001",
+      "decision": "Use LazyLock<Regex> static compilation for all 14 regex patterns in extract.rs",
+      "rationale": "CodeRabbit flagged regex recompilation on every function call as Major issue. LazyLock compiles each regex exactly once (first access) and reuses across all calls. No crate dependency added — LazyLock is in std since Rust 1.80.",
+      "alternatives": [
+        "once_cell::sync::Lazy (external crate)",
+        "Thread-local regex (separate per-thread compilation)"
+      ],
+      "impact": "markymark-parser/src/extract.rs"
+    },
+    {
+      "id": "dec-pr-review-002",
+      "timestamp": "2026-02-15T04:55:00Z",
+      "feature": "feature-001",
+      "decision": "MarkdownLinkEntry.url stores base URL only (without fragment); anchor stored separately",
+      "rationale": "CodeRabbit flagged that url field duplicated anchor info. Parser already splits URL at '#' — index was re-concatenating them. Storing base URL matches parser semantics and simplifies callers (no need to strip anchor from url).",
+      "alternatives": [
+        "Keep concatenated url (matches browser URL bar behavior)",
+        "Remove anchor field entirely and only store full url"
+      ],
+      "impact": "markymark-index/src/document.rs, markymark-lsp/src/server.rs, markymark-index/tests/document_index.rs"
+    },
+    {
+      "id": "dec-pr-review-003",
+      "timestamp": "2026-02-15T04:55:00Z",
+      "feature": "feature-001",
+      "decision": "Accept 'static lifetime pattern with documentation; defer self_cell migration to marky-5yt",
+      "rationale": "Copilot flagged 'static as unsound. While inner &'static str can technically escape &self, all callers access through &self. Documenting the invariant + filing marky-5yt for proper fix is pragmatic given scope of arena migration.",
+      "alternatives": [
+        "Immediately adopt ouroboros/self_cell (large refactor)",
+        "Remove arena allocation entirely"
+      ],
+      "impact": "markymark-parser/src/ast.rs, markymark-index/src/document.rs safety docs; marky-5yt issue"
     }
   ]
 }

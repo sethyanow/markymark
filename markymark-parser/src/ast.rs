@@ -17,9 +17,14 @@ use tree_sitter::Node;
 /// `root_elements` stores `Element<'static>` but the actual lifetime is the
 /// arena's lifetime. This is sound because `Self` owns the arena — the
 /// references cannot outlive the struct. The `'static` marker is a workaround
-/// for Rust's inability to express self-referential borrows. No `'static`
-/// references are exposed beyond `&self` method returns, so the lifetime
-/// bound holds as long as `self` is alive.
+/// for Rust's inability to express self-referential borrows.
+///
+/// All public accessors return references tied to `&self`, so data cannot
+/// outlive the struct in safe code. However, inner types contain `&'static str`
+/// fields which technically allow extracting arena references beyond `&self`.
+/// Callers **must not** store inner `&'static str` values (e.g.
+/// `heading.text()`) past the `Ast` lifetime. A future version will use
+/// `self_cell` or `ouroboros` to enforce this statically.
 pub struct Ast {
     /// Source text (owned, kept for extract functions)
     source: String,

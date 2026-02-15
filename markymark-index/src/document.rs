@@ -3,19 +3,12 @@
 use bumpalo::collections::Vec as BumpVec;
 use bumpalo::Bump;
 use hashbrown::HashMap;
-use markymark_core::arena::DocumentArena;
+use markymark_core::arena::{arena_alloc_str, DocumentArena};
 use markymark_core::prelude::*;
 use markymark_parser::Ast;
 use std::collections::HashMap as StdHashMap;
 use std::fmt;
 use std::sync::Mutex;
-
-/// Allocate a string in the arena and return it as `&str`.
-#[inline]
-fn arena_alloc_str<'a>(arena: &'a Bump, s: &str) -> &'a str {
-    let allocated: &mut str = arena.alloc_str(s);
-    allocated
-}
 
 /// A heading entry in the document index.
 #[derive(Debug, Clone)]
@@ -169,11 +162,23 @@ fn dedup_slug(base: &str, used: &mut StdHashMap<String, usize>) -> String {
 ///
 /// This struct owns a [`DocumentArena`] and stores arena-allocated data with
 /// `'static` lifetime markers. The actual lifetime is the arena's lifetime.
-/// This is sound because `Self` owns the arena -- references cannot outlive
-/// the struct. The `Mutex` wrapper makes the struct `Send + Sync` for use
-/// in async LSP contexts (the `Bump` inside is `Send` but not `Sync`).
+/// All public accessors return references tied to `&self`, so data cannot
+/// outlive the struct in safe code. However, inner types contain `&'static str`
+/// fields which technically allow extracting arena references beyond `&self`.
+/// Callers **must not** store inner `&'static str` values (e.g. `heading.text`)
+/// past the `DocumentIndex` lifetime. A future version will use `self_cell` or
+/// `ouroboros` to enforce this statically.
+///
+/// # Why `Mutex<DocumentArena>`
+///
+/// `Bump: !Sync` makes `DocumentArena: !Sync`, which prevents `DocumentIndex`
+/// from implementing `Send + Sync`. tower-lsp requires `Send + 'static` for
+/// async handlers that store state in `RwLock<ServerState>`. Wrapping in
+/// `Mutex` satisfies `Send + Sync`. The mutex is never locked at runtime —
+/// it exists solely for ownership and drop-order correctness.
 pub struct DocumentIndex {
     /// Arena kept alive so `'static` references in this struct remain valid.
+    /// Wrapped in `Mutex` for `Send + Sync`; never locked after construction.
     _arena: Mutex<DocumentArena>,
     headings: &'static [HeadingEntry<'static>],
     slug_to_heading: HashMap<&'static str, usize>,
@@ -271,21 +276,14 @@ impl DocumentIndex {
         }
         let tags = tags_builder.into_bump_slice();
 
-        // Extract markdown links: borrow from AST, allocate concatenated url when anchor present
+        // Extract markdown links: borrow from AST (url is base only, anchor separate)
         let mut markdown_links_builder: BumpVec<'static, MarkdownLinkEntry<'static>> =
             BumpVec::new_in(arena_ref);
         for ml in ast.extract_markdown_links() {
-            let (url, anchor) = match ml.anchor() {
-                Some(a) => (
-                    arena_alloc_str(arena_ref, &format!("{}#{}", ml.url(), a)),
-                    Some(a),
-                ),
-                None => (ml.url(), None),
-            };
             markdown_links_builder.push(MarkdownLinkEntry {
                 text: ml.text(),
-                url,
-                anchor,
+                url: ml.url(),
+                anchor: ml.anchor(),
                 range: ml.range(),
             });
         }
@@ -602,13 +600,13 @@ mod arena_allocation_tests {
         let arena = Bump::new();
         let entry = MarkdownLinkEntry {
             text: arena.alloc_str("Example"),
-            url: arena.alloc_str("https://example.com#a"),
+            url: arena.alloc_str("https://example.com"),
             anchor: Some(arena.alloc_str("a")),
             range: Range::new(Position::new(0, 0), Position::new(0, 7)),
         };
 
         assert_eq!(entry.text, "Example");
-        assert_eq!(entry.url, "https://example.com#a");
+        assert_eq!(entry.url, "https://example.com");
         assert_eq!(entry.anchor, Some("a"));
     }
 

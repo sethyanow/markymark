@@ -15,14 +15,7 @@ pub use frontmatter::*;
 pub use links::*;
 pub use xml::*;
 
-/// Allocate a string in the arena and return it as `&'arena str`.
-/// This helper is needed because `Bump::alloc_str` returns `&mut str`,
-/// which doesn't automatically coerce in all contexts.
-#[inline]
-pub(crate) fn arena_alloc_str<'a>(arena: &'a bumpalo::Bump, s: &str) -> &'a str {
-    let allocated: &mut str = arena.alloc_str(s);
-    allocated
-}
+pub(crate) use markymark_core::arena::arena_alloc_str;
 
 // ============================================================================
 // ARENA ALLOCATION TESTS (GREEN phase)

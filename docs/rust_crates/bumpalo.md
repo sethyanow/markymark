@@ -566,7 +566,7 @@ use bumpalo::boxed::Box as BumpBox;
 
 let arena = Bump::new();
 let boxed = BumpBox::new_in(NeedsDrop { data: "hello".into() }, &arena);
-// Drop WILL be called when arena is dropped (with "collections" feature)
+// Drop WILL be called when arena is dropped (with "boxed" feature)
 ```
 </pitfall>
 

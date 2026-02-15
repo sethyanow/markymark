@@ -184,15 +184,7 @@ impl LanguageServer for Backend {
                 resolve_wiki_link(state.realm(), &doc_uri, wl.target, wl.heading)
             }
             SymbolAtPosition::MarkdownLink(ml) => {
-                // MarkdownLinkEntry stores the url with anchor appended; extract raw url
-                let raw_url = match &ml.anchor {
-                    Some(anchor) => ml
-                        .url
-                        .strip_suffix(&format!("#{}", anchor))
-                        .unwrap_or(ml.url),
-                    None => ml.url,
-                };
-                resolve_markdown_link(state.realm(), &doc_uri, raw_url, ml.anchor)
+                resolve_markdown_link(state.realm(), &doc_uri, ml.url, ml.anchor)
             }
             SymbolAtPosition::Heading(_) => return Ok(None),
             SymbolAtPosition::XmlTag(ref xt) => {
