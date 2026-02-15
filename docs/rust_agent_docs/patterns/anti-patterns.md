@@ -18,6 +18,7 @@
 | Leaking external types | Semver coupling | Newtype wrappers |
 | Excessive generics | Unreadable signatures, slow compilation | Concrete types first |
 | God structs | Everything in one type | Split into focused types |
+| Derived `Clone` with generic `Arc` fields | `.clone()` clones the reference, not the value | Manual `Clone` impl when `T: !Clone` |
 
 ### Stringly-Typed APIs → Enums
 
@@ -271,6 +272,41 @@ schemars = "1.2"  # Matches rmcp's expectation
 **Lesson:** Before adding a dependency that's also used transitively, check `cargo tree`
 for version expectations. When two crates need different major versions of the same
 dependency, you get two copies and incompatible types.
+
+#### Gotcha: Derived Clone with Generic Arc Fields
+
+When `#[derive(Clone)]` is used on a generic struct, the generated impl adds `T: Clone`
+as a bound — even when `Clone` doesn't need `T: Clone` (e.g., `Arc<T>` is always `Clone`).
+
+```rust
+#[derive(Clone)]
+struct Container<T>(Arc<T>);
+
+// Generated code (roughly):
+// impl<T> Clone for Container<T> where T: Clone { ... }
+
+fn example<T>(c: &Container<T>) {
+    let cloned = c.clone();
+    // If T: Clone → cloned: Container<T> (correct)
+    // If T: !Clone → cloned: &Container<T> (autoref! Just clones the reference)
+}
+```
+
+When `T: !Clone`, Rust's method resolution tries `Container<T>::clone()` (fails),
+then falls back to `(&Container<T>)::clone()` (succeeds — references are always `Clone`).
+The result is a reference, not a cloned container.
+
+```rust
+// ✅ FIX: Manual Clone impl without T: Clone bound
+impl<T> Clone for Container<T> {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+}
+```
+
+**Rule:** If your struct uses `Arc<T>`, `Rc<T>`, or other wrappers that are `Clone`
+regardless of `T`, write a manual `Clone` impl instead of deriving.
 
 ### References
 

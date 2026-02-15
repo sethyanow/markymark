@@ -31,6 +31,8 @@
 | 14 | Trusting pre-training over crate docs | 🟠 | [anti-patterns](patterns/anti-patterns.md) | Read `cargo doc` output before implementing |
 | 15 | Cloning arena-backed types (SIGSEGV) | 🔴 | [anti-patterns](patterns/anti-patterns.md) | Return references; convert to owned types |
 | 16 | Returning `&[]` as arena-lifetime slice | 🔴 | [anti-patterns](patterns/anti-patterns.md) | Allocate empty slice in arena |
+| 17 | RefCell double borrow panic | 🟠 | [ownership](core/ownership.md) | Drop `Ref`/`RefMut` guard before re-borrowing |
+| 18 | Assuming reverse drop order for struct fields | 🟡 | [idioms](patterns/idioms.md) | Fields drop in declaration order (not reverse) |
 
 ---
 
