@@ -498,6 +498,18 @@
         "Isolated indexing per format (simpler but less useful)"
       ],
       "impact": "markymark-index/src/resolution.rs extended for key path resolution"
+    },
+    {
+      "id": "dec-multiformat-005",
+      "timestamp": "2026-02-15T08:46:00Z",
+      "feature": "marky-lkj",
+      "decision": "Pin tree-sitter-json to =0.19.0 exactly to ensure compatibility with tree-sitter =0.19.5",
+      "rationale": "tree-sitter-json 0.19.0 requires tree-sitter >=0.19,<0.21 (verified via crates.io API). Later versions (0.20+) require tree-sitter 0.20+ which is incompatible. Exact pinning prevents accidental upgrade.",
+      "alternatives": [
+        "Use semver range ~0.19 (could pull in 0.19.x patch that changes API)",
+        "Use 0.24 (requires tree-sitter upgrade, blocked)"
+      ],
+      "impact": "Cargo.toml workspace dependency: tree-sitter-json = '=0.19.0'"
     }
   ]
 }

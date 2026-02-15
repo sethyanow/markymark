@@ -1,26 +1,30 @@
 {
-  "lastUpdated": "2026-02-15T03:49:00Z",
+  "lastUpdated": "2026-02-15T08:52:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Brainstormed and designed multi-format document support epic (marky-lkj). Explored architecture via subagents, compared 3 parser strategies, resolved 6 design questions via Socratic method. Created epic with immutable requirements covering 10 file extensions (.json/.jsonc/.json5/.jsonl/.yaml/.yml/.toml/.env/.ini/.cfg). Created and SRE-refined first task (marky-dr3: DocumentKind + KeyEntry types + file discovery). Discovered critical .env dotfile edge case (Path::extension() returns None).",
+    "summary": "Executed first two tasks of multi-format document support epic (marky-lkj). Implemented DocumentKind enum with 9 variants, KeyEntry/ValueKind/StructuredAst types, expanded file discovery to find all supported formats (while only indexing markdown). Then implemented structured parser module with JSON parser using tree-sitter-json 0.19.0, producing byte-accurate KeyEntry items from CST walking.",
     "completedTasks": [
-      "Created epic marky-lkj with full design rationale",
-      "Created first task marky-dr3 with SRE refinement",
-      "Compared serde vs best-of-breed vs tree-sitter upgrade parser strategies",
-      "Resolved parser approach: best-of-breed (tree-sitter-json, yaml-rust2, toml_edit)",
-      "Discovered and documented .env dotfile edge case"
+      "marky-dr3: Added DocumentKind enum, KeyEntry types, expanded file discovery",
+      "marky-lkj.2: Implemented structured parser module with JSON parser (tree-sitter-json)",
+      "Created follow-up marky-lkj.1 for runtime_engine.rs refactor (651 lines, over 500 limit)"
     ],
     "blockers": [],
     "nextSteps": [
-      "Execute marky-dr3: add DocumentKind enum, KeyEntry types, expand file discovery",
-      "Continue with JSON parser implementation after marky-dr3 completes",
-      "Review epic marky-84l success criteria and close if accepted"
+      "Implement flat format parser (.env/.ini/.cfg) - simplest remaining format",
+      "Implement YAML parser (yaml-rust2 MarkedEventReceiver)",
+      "Implement TOML parser (toml_edit with .span())",
+      "Implement JSON variant parsers (json5 crate for .jsonc/.json5, line-split for .jsonl)",
+      "Wire structured parsers into RuntimeEngine indexing pipeline",
+      "Add StructuredDocumentIndex in markymark-index"
     ]
   },
   "recentChanges": [
-    "Created epic marky-lkj: Multi-format document support",
-    "Created task marky-dr3: DocumentKind + KeyEntry types + file discovery",
-    "Plan file at ~/.claude/plans/curious-finding-falcon.md"
+    "markymark-core/src/structured.rs: DocumentKind, KeyEntry, ValueKind, StructuredAst types",
+    "markymark-core/src/engine.rs: RealmStats + DocumentExport new fields",
+    "markymark-mcp/src/runtime_engine.rs: collect_documents() replaces collect_markdown_files()",
+    "markymark-parser/src/structured/mod.rs: parse_structured() dispatch",
+    "markymark-parser/src/structured/json.rs: tree-sitter-json CST walker",
+    "Cargo.toml: added tree-sitter-json = 0.19.0 workspace dependency"
   ],
   "knownIssues": [
     "5 broken PNG image links in docs/rust_guidelines/ (filed as gigapowers-ctb)",
@@ -29,11 +33,12 @@
     "PR #7 has merge conflicts in 3 files (harness metadata + test file)",
     "Write tool blocked by security_reminder_hook on .github/workflows/*.yml — use Bash heredoc instead",
     "cargo publish --dry-run only validates core crate; other 5 fail because deps not on crates.io yet (expected)",
-    "Path::new('.env').extension() returns None in Rust — dotfile extension detection requires filename check"
+    "Path::new('.env').extension() returns None in Rust — dotfile extension detection requires filename check",
+    "runtime_engine.rs is 651 lines (over 500-line limit) — filed marky-lkj.1 for refactor"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-14T06:31:23Z",
+    "lastSuccessfulBuild": "2026-02-15T08:51:00Z",
     "lastTypeCheck": null
   }
 }
