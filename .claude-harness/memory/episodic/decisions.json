@@ -646,6 +646,30 @@
         "Create advanced/method-resolution.md (too niche for standalone)"
       ],
       "impact": "patterns/anti-patterns.md"
+    },
+    {
+      "id": "dec-031",
+      "timestamp": "2026-02-15T15:30:00Z",
+      "feature": "feature-001",
+      "decision": "Reorder Ast struct fields so root_elements is declared before arena to fix drop order",
+      "rationale": "Rust drops struct fields in declaration order. Arena was declared before root_elements, meaning Bump freed all memory before Element drop impls ran. Any Element containing ArenaHashMap would access a dangling &Bump reference on drop — undefined behavior.",
+      "alternatives": [
+        "Use ManuallyDrop for arena (more complex, less idiomatic)",
+        "Implement custom Drop for Ast (overrides field drop order but adds maintenance burden)"
+      ],
+      "impact": "markymark-parser/src/ast.rs — struct field reordering"
+    },
+    {
+      "id": "dec-032",
+      "timestamp": "2026-02-15T15:30:00Z",
+      "feature": "feature-001",
+      "decision": "Gate Ast Default impl behind #[cfg(test)] rather than removing or renaming to Ast::empty()",
+      "rationale": "Default impl panics via .expect() which is inappropriate for library code. Zero usages found in codebase. Gating behind #[cfg(test)] preserves it for future test convenience while removing the public API hazard.",
+      "alternatives": [
+        "Remove entirely (loses test utility)",
+        "Rename to Ast::empty() (still panics, just with different name)"
+      ],
+      "impact": "markymark-parser/src/ast.rs — Default impl visibility"
     }
   ]
 }
