@@ -93,9 +93,9 @@ jobs:
       - name: Run Semgrep (built-in rust + local rules if present)
         run: |
           mkdir -p results
-          semgrep scan --config p/rust --sarif --output results/semgrep.sarif . || true
+          semgrep scan --config p/rust --exclude='security-fixtures' --sarif --output results/semgrep.sarif . || true
           if [ -d .semgrep ]; then
-            semgrep scan --config .semgrep --sarif --output results/semgrep-local.sarif . || true
+            semgrep scan --config .semgrep --exclude='security-fixtures' --sarif --output results/semgrep-local.sarif . || true
           fi
 
       - name: Upload Semgrep SARIF (built-in rules)
