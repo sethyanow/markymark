@@ -121,6 +121,33 @@
         "Bash heredoc required for workflow YAML — both Write and Edit blocked by security_reminder_hook",
         "git-cliff: fetch-depth:0 required, --latest --strip header for release body content"
       ]
+    },
+    {
+      "id": "suc-012",
+      "timestamp": "2026-02-15T08:46:00Z",
+      "feature": "marky-dr3",
+      "type": "implementation",
+      "approach": "TDD for foundational types: added DocumentKind enum with from_path() handling dotfile edge case, KeyEntry/ValueKind/StructuredAst types, expanded collect_documents() to find all supported formats while filtering to only index markdown. Updated 10 files across core/mcp crates with zero regression (391 tests pass).",
+      "files": ["markymark-core/src/structured.rs", "markymark-core/src/engine.rs", "markymark-mcp/src/runtime_engine.rs"],
+      "patterns": [
+        "Check Path::file_name() as fallback when Path::extension() returns None for dotfiles",
+        "Use .. in existing pattern matches when adding new fields to avoid touching every match site",
+        "Run cargo fmt before commit — lefthook pre-commit hook enforces formatting"
+      ]
+    },
+    {
+      "id": "suc-013",
+      "timestamp": "2026-02-15T08:51:00Z",
+      "feature": "marky-lkj.2",
+      "type": "implementation",
+      "approach": "tree-sitter-json 0.19.0 CST walker: recursive descent through document->object->pair->value nodes, extracting KeyEntry with byte-accurate ranges. Handles nested objects (dotted paths), arrays (indexed paths like items[0]), all 7 value kinds. 11 tests covering empty/flat/nested/array/position accuracy/dispatch.",
+      "files": ["markymark-parser/src/structured/mod.rs", "markymark-parser/src/structured/json.rs", "Cargo.toml", "markymark-parser/Cargo.toml"],
+      "patterns": [
+        "tree-sitter-json 0.19.0 is compatible with pinned tree-sitter =0.19.5 (requires >=0.19, <0.21)",
+        "CST walker pattern: walk_value dispatches to walk_object/walk_array, extract_pair handles key-value, recurse into nested structures",
+        "byte_to_position() converts tree-sitter byte offsets to LSP-style line:col by counting newlines in prefix",
+        "Pin exact version (=0.19.0) to avoid accidental upgrade to incompatible tree-sitter-json 0.20+"
+      ]
     }
   ]
 }
