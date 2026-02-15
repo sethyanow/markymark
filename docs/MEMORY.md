@@ -45,12 +45,27 @@ across sessions. This file is linked from CLAUDE.md and auto-loaded at session s
 - Added prerelease version semantics + feature unification to cargo.md
 - Converted all AGENTS.md nav to clickable markdown links
 
-**Remaining gaps (priority order):**
-1. Compiler error walkthroughs — teaching agents to READ rustc output, not just match error codes
-2. Cookbook/recipes — multi-concept working examples
-3. Cross-cutting guides — "make type async-ready" (Send+Sync+Pin+lifetime combined)
-4. Language migration bridges — "coming from Python/TS" patterns
-5. Real failure mining — convert harness memory failures into concrete doc examples
+**Remaining gaps (all closed in marky-9ya):**
+~~1. Compiler error walkthroughs~~ → Added 4 step-by-step walkthroughs to compiler-errors.md
+~~2. Cookbook/recipes~~ → Created patterns/cookbook.md with 5 complete recipes
+~~3. Cross-cutting guides~~ → Created patterns/async-ready.md (Send/Sync/Pin/'static combined)
+~~4. Language migration bridges~~ → Created reference/migration-bridges.md (Python/TS → Rust)
+~~5. Real failure mining~~ → Added 6 real failures from harness memory to anti-patterns.md
+
+### Assessment Update: 2026-02-15 (Session 2: marky-9ya)
+
+**Grade: A** (up from A- after closing all 5 gaps)
+
+**What was added:**
+- `reference/compiler-errors.md`: 4 detailed walkthroughs (E0382, E0502, E0277/Send, E0716) + error-reading protocol
+- `patterns/cookbook.md`: 5 recipes — config parsing, newtype suite, trait object service, iterator chain, Arc+Mutex shared state
+- `patterns/async-ready.md`: Cross-cutting checklist combining Send, Sync, Pin, 'static with real markymark arena examples
+- `reference/migration-bridges.md`: Python/TS → Rust side-by-side translations covering 9 concept categories + 7 common traps
+- `patterns/anti-patterns.md`: 6 real-world failures from harness memory (stale API trust, MCP framing, arena SIGSEGV, stack temporary, key overwrite, semver mismatch)
+- 3 new mistakes in MISTAKES.md (arena clone SIGSEGV, arena empty slice, stale docs trust)
+- All index files updated (AGENTS.md, README.md, _index.md files, CLAUDE.md docs_index)
+
+**Stats:** 45 files, 6,432 lines (up from 5,033). 14 decision trees. 16 mistakes tracked.
 
 **markymark dogfooding findings:**
 - XML tag parsing inside fenced code blocks produces false positives (filed marky-8la)
