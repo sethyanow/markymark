@@ -9,7 +9,7 @@ use markymark_parser::Parser;
 fn index_from(source: &str) -> DocumentIndex {
     let mut parser = Parser::new().expect("parser init");
     let ast = parser.parse(source).expect("parse");
-    DocumentIndex::from_ast(&ast)
+    DocumentIndex::from_ast(ast)
 }
 
 // ---------------------------------------------------------------------------
@@ -103,7 +103,12 @@ fn test_block_id_index() {
     let idx = index_from(source);
     let block = idx.block_by_id("my-block-id");
     assert!(block.is_some(), "block ID should be indexed");
-    assert_eq!(block.unwrap().id, "my-block-id");
+    let b = block.unwrap();
+    assert_eq!(b.id, "my-block-id");
+    // Range propagates from source for go-to-definition (not 0,0,0,0)
+    assert_eq!(b.range.start.line, 0);
+    assert_eq!(b.range.start.character, 15); // position of ^ in "Some paragraph ^"
+    assert_eq!(b.range.end.character, 27); // exclusive end of "my-block-id"
 }
 
 // ---------------------------------------------------------------------------
@@ -215,7 +220,7 @@ fn test_markdown_links_indexed() {
     assert_eq!(links[0].text, "Google");
     assert_eq!(links[0].url, "https://google.com");
     assert_eq!(links[1].text, "Docs");
-    assert_eq!(links[1].url, "./docs.md#section");
+    assert_eq!(links[1].url, "./docs.md");
     assert_eq!(links[1].anchor, Some("section"));
 }
 

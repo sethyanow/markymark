@@ -39,7 +39,7 @@ created:: [[2024-01-15]]
     assert!(props.is_some());
     let properties = props.unwrap();
 
-    assert_eq!(properties.get("title").unwrap().as_str(), "My Page");
+    assert_eq!(properties.get("title").unwrap().as_str(), Some("My Page"));
     assert!(properties.get("tags").unwrap().is_list());
     assert!(properties.get("created").unwrap().is_page_ref());
 }
@@ -53,7 +53,7 @@ fn extract_inline_properties() {
     let list_items = ast.extract_list_items();
 
     assert_eq!(list_items.len(), 1);
-    let item = &list_items[0];
+    let item = list_items[0];
 
     let props = item.properties();
     assert_eq!(*props.get("status").unwrap(), "done");
@@ -101,7 +101,7 @@ fn parse_deep_nested_lists() {
 
     // Should handle 10 levels of nesting (Logseq requirement)
     assert_eq!(list_items.len(), 1);
-    let root = &list_items[0];
+    let root = list_items[0];
 
     // Navigate down the tree
     let mut current = root;

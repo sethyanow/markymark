@@ -5,10 +5,11 @@
       "id": "feature-001",
       "name": "Arena allocation: bumpalo migration for parser + index types",
       "status": "in_progress",
+      "passes": false,
       "description": "Migrate markymark-parser and markymark-index types from owned String/Vec/HashMap to arena-allocated equivalents using bumpalo. Hybrid ownership model: per-document Bump for parsed content, realm-level owned storage for cross-doc index lookups.",
       "github": {
         "issueNumber": 6,
-        "prNumber": null,
+        "prNumber": 11,
         "branch": "feature/feature-001"
       },
       "beadsEpic": "marky-g9t",
@@ -16,7 +17,7 @@
         "build": "cargo build --release",
         "test": "cargo test --workspace",
         "lint": "cargo clippy --workspace --all-targets -- -D warnings",
-        "format": "cargo fmt --check"
+        "format": "cargo fmt --all --check"
       },
       "maxAttempts": 15,
       "createdAt": "2026-02-14T02:30:00Z"

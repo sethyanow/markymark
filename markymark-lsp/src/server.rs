@@ -184,15 +184,7 @@ impl LanguageServer for Backend {
                 resolve_wiki_link(state.realm(), &doc_uri, wl.target, wl.heading)
             }
             SymbolAtPosition::MarkdownLink(ml) => {
-                // MarkdownLinkEntry stores the url with anchor appended; extract raw url
-                let raw_url = match &ml.anchor {
-                    Some(anchor) => ml
-                        .url
-                        .strip_suffix(&format!("#{}", anchor))
-                        .unwrap_or(ml.url),
-                    None => ml.url,
-                };
-                resolve_markdown_link(state.realm(), &doc_uri, raw_url, ml.anchor)
+                resolve_markdown_link(state.realm(), &doc_uri, ml.url, ml.anchor)
             }
             SymbolAtPosition::Heading(_) => return Ok(None),
             SymbolAtPosition::XmlTag(ref xt) => {
@@ -551,7 +543,10 @@ impl LanguageServer for Backend {
             for heading in index.headings() {
                 if query.is_empty() || heading.text.to_lowercase().contains(&query) {
                     let range = crate::convert::to_lsp_range(heading.range);
-                    #[allow(deprecated)]
+                    #[expect(
+                        deprecated,
+                        reason = "SymbolInformation.deprecated field is deprecated by LSP spec but struct still required"
+                    )]
                     symbols.push(SymbolInformation {
                         name: heading.text.to_string(),
                         kind: SymbolKind::STRING,
@@ -570,7 +565,10 @@ impl LanguageServer for Backend {
                 let tag_name = format!("#{}", tag.name);
                 if query.is_empty() || tag_name.to_lowercase().contains(&query) {
                     let range = crate::convert::to_lsp_range(zero_range);
-                    #[allow(deprecated)]
+                    #[expect(
+                        deprecated,
+                        reason = "SymbolInformation.deprecated field is deprecated by LSP spec but struct still required"
+                    )]
                     symbols.push(SymbolInformation {
                         name: tag_name,
                         kind: SymbolKind::CONSTANT,
@@ -589,7 +587,10 @@ impl LanguageServer for Backend {
                 let xml_name = format!("<{}>", xt.tag_name);
                 if query.is_empty() || xml_name.to_lowercase().contains(&query) {
                     let range = crate::convert::to_lsp_range(xt.range);
-                    #[allow(deprecated)]
+                    #[expect(
+                        deprecated,
+                        reason = "SymbolInformation.deprecated field is deprecated by LSP spec but struct still required"
+                    )]
                     symbols.push(SymbolInformation {
                         name: xml_name,
                         kind: SymbolKind::OBJECT,
@@ -664,7 +665,7 @@ fn outline_children_to_symbols(children: &[OutlineNode]) -> Vec<DocumentSymbol> 
         .filter_map(|node| {
             let heading = node.heading.as_ref()?;
             let range = crate::convert::to_lsp_range(heading.range);
-            #[allow(deprecated)]
+            #[expect(deprecated, reason = "DocumentSymbol.deprecated field is deprecated by LSP spec but struct still required")]
             Some(DocumentSymbol {
                 name: heading.text.to_string(),
                 detail: None,
@@ -768,7 +769,10 @@ fn xml_node_to_document_symbol(node: XmlSymbolNode) -> DocumentSymbol {
         .map(xml_node_to_document_symbol)
         .collect();
 
-    #[allow(deprecated)]
+    #[expect(
+        deprecated,
+        reason = "DocumentSymbol.deprecated field is deprecated by LSP spec but struct still required"
+    )]
     DocumentSymbol {
         name: node.name,
         detail: None,

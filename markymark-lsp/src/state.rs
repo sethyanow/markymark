@@ -141,7 +141,7 @@ impl ServerState {
     fn build_index(text: &str) -> DocumentIndex {
         let mut parser = Parser::new().expect("failed to create parser");
         let ast = parser.parse(text).expect("failed to parse document");
-        DocumentIndex::from_ast(&ast)
+        DocumentIndex::from_ast(ast)
     }
 
     /// Handle a document being opened: store text, parse, and index.
