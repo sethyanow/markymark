@@ -1,39 +1,32 @@
 {
-  "lastUpdated": "2026-02-15T08:52:00Z",
+  "lastUpdated": "2026-02-15T09:25:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Executed first two tasks of multi-format document support epic (marky-lkj). Implemented DocumentKind enum with 9 variants, KeyEntry/ValueKind/StructuredAst types, expanded file discovery to find all supported formats (while only indexing markdown). Then implemented structured parser module with JSON parser using tree-sitter-json 0.19.0, producing byte-accurate KeyEntry items from CST walking.",
+    "summary": "Research and planning session: investigated tree-sitter version incompatibility. Discovered project uses dead tree-sitter-markdown 0.7.1 (archived 2021) while active crate is tree-sitter-md 0.5.2 (tree-sitter-grammars org, Jan 2026). Confirmed tree-sitter-xml dependency is dead code (XML extraction uses custom tokenizer). Created epic marky-6gw for full migration to tree-sitter 0.26 + tree-sitter-md MarkdownParser wrapper with 5 subtasks.",
     "completedTasks": [
-      "marky-dr3: Added DocumentKind enum, KeyEntry types, expanded file discovery",
-      "marky-lkj.2: Implemented structured parser module with JSON parser (tree-sitter-json)",
-      "Created follow-up marky-lkj.1 for runtime_engine.rs refactor (651 lines, over 500 limit)"
+      "Investigated tree-sitter version incompatibility (0.19 vs 0.22 dual build)",
+      "Discovered tree-sitter-markdown vs tree-sitter-md crate distinction",
+      "Scoped migration: 4 source files, 5 test files, ~30-50 line changes",
+      "Created epic marky-6gw with design doc and 5 dependency-chained subtasks"
     ],
     "blockers": [],
     "nextSteps": [
-      "Implement flat format parser (.env/.ini/.cfg) - simplest remaining format",
-      "Implement YAML parser (yaml-rust2 MarkedEventReceiver)",
-      "Implement TOML parser (toml_edit with .span())",
-      "Implement JSON variant parsers (json5 crate for .jsonc/.json5, line-split for .jsonl)",
-      "Wire structured parsers into RuntimeEngine indexing pipeline",
-      "Add StructuredDocumentIndex in markymark-index"
+      "Execute marky-6gw epic: start with marky-pms (remove dead tree-sitter-xml)",
+      "Continue marky-lkj multi-format epic (YAML, TOML, flat parsers — independent of tree-sitter migration)",
+      "Consider whether to do tree-sitter migration before or after remaining marky-lkj tasks"
     ]
   },
   "recentChanges": [
-    "markymark-core/src/structured.rs: DocumentKind, KeyEntry, ValueKind, StructuredAst types",
-    "markymark-core/src/engine.rs: RealmStats + DocumentExport new fields",
-    "markymark-mcp/src/runtime_engine.rs: collect_documents() replaces collect_markdown_files()",
-    "markymark-parser/src/structured/mod.rs: parse_structured() dispatch",
-    "markymark-parser/src/structured/json.rs: tree-sitter-json CST walker",
-    "Cargo.toml: added tree-sitter-json = 0.19.0 workspace dependency"
+    "Created beads epic marky-6gw: tree-sitter migration 0.19 → 0.26 + tree-sitter-md",
+    "Created subtasks: marky-pms (remove xml), marky-36t (upgrade deps), marky-bni (migrate md parser), marky-j7h (migrate json parser), marky-aoo (verification)"
   ],
   "knownIssues": [
+    "tree-sitter-markdown 0.7.1 is dead (archived 2021) — migration to tree-sitter-md planned as marky-6gw",
+    "tree-sitter-xml 0.6 is dead code — removal planned as marky-pms",
+    "Dual tree-sitter build (0.19 + 0.22) — resolved by marky-6gw migration",
     "5 broken PNG image links in docs/rust_guidelines/ (filed as gigapowers-ctb)",
-    "CodeQL local CLI unavailable in current environment; CI action required for CodeQL scans",
-    "Local shell quoting can execute backticks inside bd --design strings; use heredoc file + bd update to avoid command substitution",
     "PR #7 has merge conflicts in 3 files (harness metadata + test file)",
     "Write tool blocked by security_reminder_hook on .github/workflows/*.yml — use Bash heredoc instead",
-    "cargo publish --dry-run only validates core crate; other 5 fail because deps not on crates.io yet (expected)",
-    "Path::new('.env').extension() returns None in Rust — dotfile extension detection requires filename check",
     "runtime_engine.rs is 651 lines (over 500-line limit) — filed marky-lkj.1 for refactor"
   ],
   "environmentState": {

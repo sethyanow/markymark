@@ -510,6 +510,51 @@
         "Use 0.24 (requires tree-sitter upgrade, blocked)"
       ],
       "impact": "Cargo.toml workspace dependency: tree-sitter-json = '=0.19.0'"
+    },
+    {
+      "id": "dec-ts-migration-001",
+      "timestamp": "2026-02-15T09:20:00Z",
+      "feature": "marky-6gw",
+      "decision": "Migrate from tree-sitter-markdown 0.7 (dead crate) to tree-sitter-md 0.5 (active crate from tree-sitter-grammars org)",
+      "rationale": "tree-sitter-markdown 0.7.1 was published April 2021 by ikatyang (archived repo). tree-sitter-md 0.5.2 published January 2026 by tree-sitter-grammars org (active). Different crate name, different API (two-grammar: block + inline).",
+      "alternatives": [
+        "Stay on dead crate (risks no security patches, no grammar improvements)",
+        "Fork tree-sitter-markdown (maintenance burden)"
+      ],
+      "impact": "markymark-parser crate: lib.rs, types.rs, ast.rs, all test files"
+    },
+    {
+      "id": "dec-ts-migration-002",
+      "timestamp": "2026-02-15T09:20:00Z",
+      "feature": "marky-6gw",
+      "decision": "Use tree-sitter-md MarkdownParser wrapper (Option B: two-grammar architecture) instead of raw block grammar only",
+      "rationale": "MarkdownParser handles block+inline coordination automatically, provides MarkdownTree with incremental edit support, enables future inline grammar exploitation for better link/emphasis extraction.",
+      "alternatives": [
+        "Option A: Use only LANGUAGE constant with raw tree-sitter Parser (minimal change but misses inline grammar benefits)"
+      ],
+      "impact": "Parser wrapping changes in lib.rs, tree traversal changes in ast.rs"
+    },
+    {
+      "id": "dec-ts-migration-003",
+      "timestamp": "2026-02-15T09:20:00Z",
+      "feature": "marky-6gw",
+      "decision": "Remove tree-sitter-xml dependency entirely — it's dead code",
+      "rationale": "grep found zero imports of tree_sitter_xml in any .rs file. XML-in-markdown extraction uses custom stack-based tokenizer in extract.rs (dec-parser-001). tree-sitter-xml 0.6 pulls in tree-sitter 0.22 causing dual C runtime compilation.",
+      "alternatives": [
+        "Keep it (wastes compile time, dual tree-sitter build)"
+      ],
+      "impact": "Cargo.toml workspace deps, markymark-parser/Cargo.toml"
+    },
+    {
+      "id": "dec-ts-migration-004",
+      "timestamp": "2026-02-15T09:20:00Z",
+      "feature": "marky-6gw",
+      "decision": "Target tree-sitter 0.26 for the migration (not 0.24)",
+      "rationale": "tree-sitter-md 0.5.2 requires ^0.26. Grammar crates (json 0.24, xml 0.7) use tree-sitter-language bridge crate, making them compatible with any tree-sitter >= 0.24.",
+      "alternatives": [
+        "tree-sitter 0.24 (incompatible with tree-sitter-md 0.5.2 high-level API)"
+      ],
+      "impact": "Cargo.toml: tree-sitter = \"0.26\""
     }
   ]
 }
