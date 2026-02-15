@@ -12,7 +12,9 @@
     "testFramework": "cargo test + bash test scripts for plugin"
   },
   "structure": {
-    "entryPoints": ["markymark-cli/src/main.rs"],
+    "entryPoints": [
+      "markymark-cli/src/main.rs"
+    ],
     "components": [
       "markymark-core/src/engine.rs (CoreEngine trait, CoreOperation, CoreResult)",
       "markymark-parser/src/ast.rs (tree-sitter AST construction)",
@@ -31,7 +33,10 @@
       "markymark-mcp/src/rename_ops.rs (MCP rename operations)",
       "markymark-mcp/src/dto.rs (MCP data transfer objects)"
     ],
-    "api": ["markymark-parser/src/lib.rs", "markymark-core/src/engine.rs"],
+    "api": [
+      "markymark-parser/src/lib.rs",
+      "markymark-core/src/engine.rs"
+    ],
     "tests": [
       "markymark-parser/tests/ (xml_extraction, frontmatter, tree_sitter_integration)",
       "markymark-index/tests/ (document_index, connection_graph, realm_index, resolution)",
@@ -64,17 +69,18 @@
     "codeStyle": {
       "rust": [
         "CoreEngine trait in core, transport crates are thin adapters",
-        "convert/state/server module separation in markymark-lsp",
-        "FULL text document sync (not INCREMENTAL)",
-        "Drop read lock before async calls (deadlock prevention)",
-        "Single-pass stack tokenizer for XML extraction",
         "Deterministic sort by URI then range for stable output",
-        "Range containment for nested XML document symbols"
+        "Drop read lock before async calls (deadlock prevention)",
+        "FULL text document sync (not INCREMENTAL)",
+        "Range containment for nested XML document symbols",
+        "Single-pass stack tokenizer for XML extraction",
+        "convert/state/server module separation in markymark-lsp",
+        "tree-sitter-xml dependency removed; XML extraction remains custom parser logic with dedicated tests"
       ],
       "bash": "set -euo pipefail, jq for JSON, case statements for file extension matching"
     }
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-13T21:40:00Z",
+  "lastUpdated": "2026-02-15T14:23:11Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

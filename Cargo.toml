@@ -34,7 +34,6 @@ rmcp = { version = "0.13", features = ["server", "transport-io"] }
 # Parser dependencies - using compatible versions
 tree-sitter = "=0.19.5"  # Match tree-sitter-markdown dependency
 tree-sitter-markdown = "0.7"
-tree-sitter-xml = "0.6"
 
 # Graph and algorithms
 petgraph = "0.7"
