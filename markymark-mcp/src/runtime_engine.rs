@@ -620,7 +620,7 @@ mod tests {
 
     #[test]
     fn collect_documents_includes_json_alongside_markdown() {
-        let dir = std::env::temp_dir().join("marky-collect-mixed");
+        let dir = std::env::temp_dir().join(format!("marky-collect-mixed-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("notes.md"), "# Hello\n").unwrap();
@@ -642,7 +642,7 @@ mod tests {
 
     #[test]
     fn collect_documents_markdown_unchanged() {
-        let dir = std::env::temp_dir().join("marky-collect-md");
+        let dir = std::env::temp_dir().join(format!("marky-collect-md-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("readme.md"), "# R\n").unwrap();

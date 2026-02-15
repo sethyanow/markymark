@@ -177,9 +177,6 @@ fn dedup_slug(base: &str, used: &mut StdHashMap<String, usize>) -> String {
 /// `Mutex` satisfies `Send + Sync`. The mutex is never locked at runtime —
 /// it exists solely for ownership and drop-order correctness.
 pub struct DocumentIndex {
-    /// Arena kept alive so `'static` references in this struct remain valid.
-    /// Wrapped in `Mutex` for `Send + Sync`; never locked after construction.
-    _arena: Mutex<DocumentArena>,
     headings: &'static [HeadingEntry<'static>],
     slug_to_heading: HashMap<&'static str, usize>,
     blocks: HashMap<&'static str, BlockEntry<'static>>,
@@ -189,6 +186,11 @@ pub struct DocumentIndex {
     tags: &'static [TagEntry<'static>],
     markdown_links: &'static [MarkdownLinkEntry<'static>],
     xml_tags: &'static [XmlTagEntry<'static>],
+    /// Arena kept alive so `'static` references in this struct remain valid.
+    /// Wrapped in `Mutex` for `Send + Sync`; never locked after construction.
+    /// **Drop order**: declared last so all arena-referencing fields are dropped
+    /// before the arena memory is freed.
+    _arena: Mutex<DocumentArena>,
 }
 
 impl DocumentIndex {

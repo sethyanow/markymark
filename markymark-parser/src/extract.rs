@@ -536,13 +536,27 @@ fn collect_fenced_code_ranges(source: &str) -> Vec<(usize, usize)> {
         let line = &source[line_start..line_end];
 
         // CommonMark allows up to 3 spaces of indentation for fenced code blocks.
-        let indent_len = line
-            .bytes()
-            .take_while(|b| *b == b' ' || *b == b'\t')
-            .take(4)
-            .count();
-        let fence_candidate = if indent_len <= 3 {
-            &line[indent_len..]
+        // Tabs expand to the next 4-column tab stop per CommonMark spec.
+        let mut indent_cols = 0usize;
+        let mut indent_bytes = 0usize;
+        for b in line.bytes() {
+            match b {
+                b' ' => {
+                    indent_cols += 1;
+                    indent_bytes += 1;
+                }
+                b'\t' => {
+                    indent_cols = (indent_cols / 4 + 1) * 4;
+                    indent_bytes += 1;
+                }
+                _ => break,
+            }
+            if indent_cols >= 4 {
+                break;
+            }
+        }
+        let fence_candidate = if indent_cols <= 3 {
+            &line[indent_bytes..]
         } else {
             ""
         };

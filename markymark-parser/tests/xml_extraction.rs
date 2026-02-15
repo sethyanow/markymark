@@ -331,6 +331,23 @@ fn ignore_xml_like_generics_inside_fenced_code_blocks() {
     assert_eq!(tags[0].content(), Some("outside"));
 }
 
+#[test]
+fn tab_indented_fence_not_treated_as_code_block() {
+    // CommonMark: tabs expand to 4-column tab stops, so a tab-indented
+    // fence opener has >=4 spaces of visual indent and is NOT a valid fence.
+    // XML tags on tab-indented lines should still be extracted.
+    let mut parser = Parser::new().unwrap();
+    let markdown = "\t```rust\n<div>visible</div>\n\t```\n";
+
+    let ast = parser.parse(markdown).unwrap();
+    let tags = ast.extract_xml_tags();
+
+    // The tab-indented backticks should NOT start a fenced block,
+    // so <div> should be extracted normally.
+    assert_eq!(tags.len(), 1);
+    assert_eq!(tags[0].tag_name(), "div");
+}
+
 // ===========================================================================
 // No XML tags
 // ===========================================================================
