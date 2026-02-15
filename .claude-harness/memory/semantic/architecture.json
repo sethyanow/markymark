@@ -12,7 +12,10 @@
     "testFramework": "cargo test + bash test scripts for plugin"
   },
   "structure": {
-    "entryPoints": ["markymark-cli/src/main.rs", "markymark-index/src/bin/bench_roi_report.rs"],
+    "entryPoints": [
+      "markymark-cli/src/main.rs",
+      "markymark-index/src/bin/bench_roi_report.rs"
+    ],
     "components": [
       "markymark-core/src/engine.rs (CoreEngine trait, CoreOperation, CoreResult)",
       "markymark-core/src/arena.rs (arena helpers, allocation wrappers)",
@@ -37,7 +40,10 @@
       "markymark-mcp/src/rename_ops.rs (MCP rename operations)",
       "markymark-mcp/src/dto.rs (MCP data transfer objects)"
     ],
-    "api": ["markymark-parser/src/lib.rs", "markymark-core/src/engine.rs"],
+    "api": [
+      "markymark-parser/src/lib.rs",
+      "markymark-core/src/engine.rs"
+    ],
     "tests": [
       "markymark-parser/tests/ (xml_extraction, frontmatter, tree_sitter_integration)",
       "markymark-index/tests/ (document_index, connection_graph, realm_index, resolution)",
@@ -85,9 +91,15 @@
         "Benchmark ROI automation via bench_roi_report binary that runs benches, parses criterion estimates.json, and emits docs/benchmarks report artifacts"
       ],
       "bash": "set -euo pipefail, jq for JSON, case statements for file extension matching"
-    }
+    },
+    "codePatterns": [
+      "DocumentArena wrapper preferred over raw Bump for per-document arenas (Debug, capacity)",
+      "ArenaHashMap is !Send (Bump:!Sync); parser types can use it, index types must use std HashMap",
+      "#[expect(lint, reason=\"...\")] preferred over #[allow(lint)] per M-LINT-OVERRIDE-EXPECT",
+      "Self-referential arena: struct owns Bump + stores refs as static; doc_arena_ptr() for ownership transfer"
+    ]
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-15T03:46:14Z",
+  "lastUpdated": "2026-02-15T04:42:00Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }
