@@ -346,6 +346,91 @@
       "impact": ".claude-plugin/marketplace.json created at repo root, 3 validation tests added"
     },
     {
+      "id": "dec-sast-001",
+      "timestamp": "2026-02-14T06:08:38Z",
+      "feature": "marky-84l",
+      "decision": "Single security.yml workflow with 4 parallel jobs (cargo-audit, cargo-deny, CodeQL, Semgrep) instead of integrated or per-tool workflows",
+      "rationale": "Clean separation from build/test (ci.yml), single management point, parallel jobs keep runtime fast. Integrating into ci.yml would grow it to 7 jobs. Per-tool workflows scatter management across 3 files.",
+      "alternatives": [
+        "Integrated into existing ci.yml (mixes concerns)",
+        "Per-tool workflows (3 new files, scattered)"
+      ],
+      "impact": ".github/workflows/security.yml \u2014 new workflow file"
+    },
+    {
+      "id": "dec-sast-002",
+      "timestamp": "2026-02-14T06:08:38Z",
+      "feature": "marky-84l",
+      "decision": "Advisory-only security gates (not blocking PRs)",
+      "rationale": "User chose advisory-only for initial adoption. Findings reported as annotations but don't prevent merge. Can tighten to hard gates later after baseline is clean.",
+      "alternatives": [
+        "Hard gate (block PRs on findings)",
+        "Phased (advisory then hard gate)"
+      ],
+      "impact": "All 4 CI security jobs use continue-on-error: true"
+    },
+    {
+      "id": "dec-sast-003",
+      "timestamp": "2026-02-14T06:08:38Z",
+      "feature": "marky-84l",
+      "decision": "lefthook (Go binary) for pre-commit hooks instead of Python pre-commit or custom git hooks",
+      "rationale": "No Python runtime dependency. Single binary, fast, growing adoption. User explicitly chose this over Python pre-commit framework.",
+      "alternatives": [
+        "pre-commit (Python, industry standard)",
+        "Custom git hooks (no deps but less portable)",
+        "prek (Rust reimplementation)"
+      ],
+      "impact": "lefthook.yml at project root, requires lefthook binary"
+    },
+    {
+      "id": "dec-sast-004",
+      "timestamp": "2026-02-14T06:08:38Z",
+      "feature": "marky-84l",
+      "decision": "Use cargo-deny v0.19 config schema (drop deprecated vulnerability/unmaintained lint keys)",
+      "rationale": "Initial config based on older examples failed validation; updating to current schema is required for reliable CI checks.",
+      "alternatives": [
+        "Pin older cargo-deny",
+        "Use template defaults without explicit policy"
+      ],
+      "impact": "deny.toml"
+    },
+    {
+      "id": "dec-sast-005",
+      "timestamp": "2026-02-14T06:08:38Z",
+      "feature": "marky-84l",
+      "decision": "Record baseline findings in bd notes before workflow rollout",
+      "rationale": "Captures initial signal/noise profile so later CI findings can be diffed against known baseline.",
+      "alternatives": [
+        "Skip local baseline and rely only on CI",
+        "Store ephemeral scan artifacts in repo"
+      ],
+      "impact": "bd issue marky-yjg notes, deny.toml"
+    },
+    {
+      "id": "dec-sast-006",
+      "timestamp": "2026-02-14T06:08:38Z",
+      "feature": "marky-84l",
+      "decision": "Treat CodeQL as CI-only until local CLI is installed",
+      "rationale": "No local codeql binary is present; CI action provides supported path without blocking security workflow implementation.",
+      "alternatives": [
+        "Install local CodeQL CLI now",
+        "Drop CodeQL from initial workflow"
+      ],
+      "impact": ".github/workflows/security.yml planning and task marky-ops"
+    },
+    {
+      "id": "dec-sast-007",
+      "timestamp": "2026-02-14T06:23:36Z",
+      "feature": "marky-84l",
+      "decision": "Adopt lefthook pre-commit security chain with deterministic order and explicit tool-presence checks",
+      "rationale": "Keeps local guardrails strict and reproducible without Python runtime dependencies while providing clear failures when tooling is missing",
+      "alternatives": [
+        "Python pre-commit framework",
+        "Custom unmanaged git hooks"
+      ],
+      "impact": "lefthook.yml, README.md, and follow-up task marky-7za for custom Semgrep rules"
+    },
+    {
       "id": "dec-011",
       "timestamp": "2026-02-14T04:31:40Z",
       "feature": "feature-001",
@@ -627,7 +712,7 @@
       "timestamp": "2026-02-15T04:55:00Z",
       "feature": "feature-001",
       "decision": "Use LazyLock<Regex> static compilation for all 14 regex patterns in extract.rs",
-      "rationale": "CodeRabbit flagged regex recompilation on every function call as Major issue. LazyLock compiles each regex exactly once (first access) and reuses across all calls. No crate dependency added — LazyLock is in std since Rust 1.80.",
+      "rationale": "CodeRabbit flagged regex recompilation on every function call as Major issue. LazyLock compiles each regex exactly once (first access) and reuses across all calls. No crate dependency added \u2014 LazyLock is in std since Rust 1.80.",
       "alternatives": [
         "once_cell::sync::Lazy (external crate)",
         "Thread-local regex (separate per-thread compilation)"
@@ -639,7 +724,7 @@
       "timestamp": "2026-02-15T04:55:00Z",
       "feature": "feature-001",
       "decision": "MarkdownLinkEntry.url stores base URL only (without fragment); anchor stored separately",
-      "rationale": "CodeRabbit flagged that url field duplicated anchor info. Parser already splits URL at '#' — index was re-concatenating them. Storing base URL matches parser semantics and simplifies callers (no need to strip anchor from url).",
+      "rationale": "CodeRabbit flagged that url field duplicated anchor info. Parser already splits URL at '#' \u2014 index was re-concatenating them. Storing base URL matches parser semantics and simplifies callers (no need to strip anchor from url).",
       "alternatives": [
         "Keep concatenated url (matches browser URL bar behavior)",
         "Remove anchor field entirely and only store full url"
@@ -712,7 +797,7 @@
       "timestamp": "2026-02-15T15:33:00Z",
       "feature": "feature-001",
       "decision": "Merge origin/main into feature branch (not rebase) to resolve PR #10 squash merge conflicts",
-      "rationale": "PR #10 was squash-merged to main, causing 22 conflicts with the 52-commit feature branch. Rebase failed before (fail-feature-001-rebase-20260214). Merge commit is safest — preserves all history and clearly documents integration point.",
+      "rationale": "PR #10 was squash-merged to main, causing 22 conflicts with the 52-commit feature branch. Rebase failed before (fail-feature-001-rebase-20260214). Merge commit is safest \u2014 preserves all history and clearly documents integration point.",
       "alternatives": [
         "Rebase 52 commits (failed before, rewrites hashes)",
         "Reset main to before squash merge (force push to main, risky)"
