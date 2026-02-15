@@ -9,6 +9,11 @@ allow = [
   "MIT-0",
   "Unicode-3.0",
   "Unlicense",
+  "ISC",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "0BSD",
+  "Zlib",
 ]
 confidence-threshold = 0.8
 

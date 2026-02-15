@@ -12,7 +12,7 @@ fn good_no_unsafe() {
 
 fn bad_transmute(x: u32) {
     // ruleid: markymark.rust.mem-transmute
-    let _y: f32 = std::mem::transmute(x);
+    let _y: f32 = unsafe { std::mem::transmute(x) };
 }
 
 fn good_checked_conversion(x: u32) {
