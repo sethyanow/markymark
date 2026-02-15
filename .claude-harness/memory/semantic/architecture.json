@@ -12,7 +12,7 @@
     "testFramework": "cargo test + bash test scripts for plugin"
   },
   "structure": {
-    "entryPoints": ["markymark-cli/src/main.rs"],
+    "entryPoints": ["markymark-cli/src/main.rs", "markymark-index/src/bin/bench_roi_report.rs"],
     "components": [
       "markymark-core/src/engine.rs (CoreEngine trait, CoreOperation, CoreResult)",
       "markymark-core/src/arena.rs (arena helpers, allocation wrappers)",
@@ -23,7 +23,11 @@
       "markymark-index/src/graph.rs (ConnectionGraph via petgraph)",
       "markymark-index/src/realm.rs (RealmIndex: multi-document workspace, hybrid arena with ResolvedHeading/ResolvedBlock, slug_to_headings, block_to_location, tag_to_docs)",
       "markymark-index/src/resolution.rs (wiki link / markdown link resolution)",
-    "markymark-index/benches/memory.rs (criterion benchmarks: index/reparse, CountingAllocator for alloc metrics)",
+      "markymark-index/benches/memory.rs (criterion benchmarks: index/reparse/real_corpus/synthetic_scale, CountingAllocator for alloc metrics)",
+      "markymark-index/src/bench_config.rs (sample/doc tier env parsing for benchmark control)",
+      "markymark-index/src/bench_corpus.rs (mixed-size synthetic corpus generation for scale tests)",
+      "markymark-index/src/bench_report.rs (criterion estimate parsing + markdown report rendering)",
+      "markymark-index/src/bin/bench_roi_report.rs (tiered benchmark orchestration and ROI report writer)",
       "markymark-lsp/src/server.rs (tower-lsp LanguageServer impl, capability negotiation)",
       "markymark-lsp/src/state.rs (ServerState: document management, diagnostics, rename, refs)",
       "markymark-lsp/src/convert.rs (LSP type conversions)",
@@ -76,12 +80,14 @@
         "Arena migration uses phased commits (infrastructure/parser/index/tests)",
         "Use arena_ref() helper to avoid duplicated unsafe transmute logic",
         "extract_list_items returns Vec<&ListItem> (refs not clones) to avoid ArenaHashMap::clone SIGSEGV",
-        "Arena empty slice: bumpalo Vec::new_in(arena).into_bump_slice() not &[] (UAF risk)"
+        "Arena empty slice: bumpalo Vec::new_in(arena).into_bump_slice() not &[] (UAF risk)",
+        "Tier benchmark controls via MARKYMARK_BENCH_SAMPLES and MARKYMARK_BENCH_DOC_TIER to separate quick iteration from scale validation",
+        "Benchmark ROI automation via bench_roi_report binary that runs benches, parses criterion estimates.json, and emits docs/benchmarks report artifacts"
       ],
       "bash": "set -euo pipefail, jq for JSON, case statements for file extension matching"
     }
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-15T06:30:00Z",
+  "lastUpdated": "2026-02-15T07:05:00Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

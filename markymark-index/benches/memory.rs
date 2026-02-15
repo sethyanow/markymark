@@ -3,7 +3,7 @@
 //! Measures: indexing N documents (time, peak RSS), allocation count, re-parse time,
 //! memory footprint, and concurrent indexing throughput.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
@@ -35,17 +35,14 @@ unsafe impl GlobalAlloc for CountingAllocator {
 static A: CountingAllocator = CountingAllocator;
 
 use markymark_core::DocumentUri;
-use markymark_index::{DocumentIndex, RealmIndex};
+use markymark_index::{
+    bench_doc_counts, bench_sample_size, build_mixed_size_corpus, DocumentIndex, RealmIndex,
+};
 use markymark_parser::Parser;
 use std::path::{Path, PathBuf};
 
 /// Directories to exclude when collecting .md files.
 const EXCLUDE_DIRS: &[&str] = &["node_modules"];
-
-/// Sample size: 100 if MARKYMARK_BENCH_HEAVY=1, else default.
-fn sample_size(default: usize) -> usize {
-    std::env::var("MARKYMARK_BENCH_HEAVY").is_ok().then_some(100).unwrap_or(default)
-}
 
 fn sample_doc(n: usize) -> String {
     format!(
@@ -96,7 +93,9 @@ fn collect_md_files(dir: &Path, max_files: usize) -> Vec<PathBuf> {
         if out.len() >= max_files {
             return;
         }
-        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
@@ -105,7 +104,7 @@ fn collect_md_files(dir: &Path, max_files: usize) -> Vec<PathBuf> {
                     continue;
                 }
                 walk(&path, out, max_files);
-            } else if path.extension().map_or(false, |e| e == "md") {
+            } else if path.extension().is_some_and(|e| e == "md") {
                 out.push(path);
                 if out.len() >= max_files {
                     return;
@@ -156,6 +155,31 @@ fn bench_index_100_docs(c: &mut Criterion) {
     });
 }
 
+/// Index mixed-size synthetic corpus at scaling tiers (100 -> 10_000 docs).
+fn bench_index_synthetic_scale(c: &mut Criterion) {
+    let mut group = c.benchmark_group("synthetic_scale");
+    for &doc_count in bench_doc_counts() {
+        let docs = build_mixed_size_corpus(doc_count);
+        let configured = bench_sample_size(10);
+        let capped = if doc_count >= 5_000 {
+            configured.min(20)
+        } else {
+            configured
+        };
+        group.sample_size(capped);
+        group.bench_with_input(
+            BenchmarkId::from_parameter(format!("{doc_count}_docs")),
+            &docs,
+            |b, docs| {
+                b.iter(|| {
+                    let realm = index_documents_from_slices(docs);
+                    black_box(realm.document_count())
+                });
+            },
+        );
+    }
+}
+
 fn bench_reparse_single_doc(c: &mut Criterion) {
     let content = sample_doc(0);
     c.bench_function("reparse_single_document", |b| {
@@ -180,7 +204,7 @@ fn bench_reparse_real_large_doc(c: &mut Criterion) {
     eprintln!("  [memory] reparse_real_large_doc: fixture {} KB", size_kb);
 
     let mut group = c.benchmark_group("real_corpus");
-    group.sample_size(sample_size(20));
+    group.sample_size(bench_sample_size(20));
     group.bench_function("reparse_real_large_doc", |b| {
         b.iter(|| {
             let index = reparse_single_document(&content);
@@ -194,7 +218,9 @@ fn bench_index_real_corpus(c: &mut Criterion) {
     let path = match real_corpus_path() {
         Some(p) => p,
         None => {
-            eprintln!("  [memory] Skipping index_real_corpus: epstein_20250227_all_in_one.md not found");
+            eprintln!(
+                "  [memory] Skipping index_real_corpus: epstein_20250227_all_in_one.md not found"
+            );
             return;
         }
     };
@@ -215,7 +241,7 @@ fn bench_index_real_corpus(c: &mut Criterion) {
     eprintln!("  [memory] index_real_corpus: {} sections from fixture", n);
 
     let mut group = c.benchmark_group("real_corpus");
-    group.sample_size(sample_size(20));
+    group.sample_size(bench_sample_size(20));
     group.bench_function("index_real_corpus", |b| {
         b.iter(|| {
             let realm = index_documents_from_slices(&sections);
@@ -268,7 +294,10 @@ fn bench_index_docs_dir(c: &mut Criterion) {
 
     let paths = collect_md_files(&dir, 1000);
     if paths.is_empty() {
-        eprintln!("  [memory] Skipping index_docs_dir: no .md files found in {:?}", dir);
+        eprintln!(
+            "  [memory] Skipping index_docs_dir: no .md files found in {:?}",
+            dir
+        );
         return;
     }
 
@@ -289,7 +318,7 @@ fn bench_index_docs_dir(c: &mut Criterion) {
     );
 
     let mut group = c.benchmark_group("real_corpus");
-    group.sample_size(sample_size(10));
+    group.sample_size(bench_sample_size(10));
     group.bench_function("index_docs_dir", |b| {
         b.iter(|| {
             let realm = index_documents_from_paths(&paths, &contents);
@@ -302,7 +331,7 @@ fn bench_index_docs_dir(c: &mut Criterion) {
 fn bench_memory_footprint(c: &mut Criterion) {
     static REPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     let mut group = c.benchmark_group("memory");
-    group.sample_size(sample_size(10));
+    group.sample_size(bench_sample_size(10));
     group.bench_function("memory_after_index_100", |b| {
         b.iter(|| {
             let realm = index_n_documents(100);
@@ -346,14 +375,17 @@ fn get_maxrss_kb() -> u64 {
 fn bench_allocation_count_index_100(c: &mut Criterion) {
     static REPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     let mut group = c.benchmark_group("memory");
-    group.sample_size(sample_size(10));
+    group.sample_size(bench_sample_size(10));
     group.bench_function("alloc_count_index_100", |b| {
         b.iter(|| {
             ALLOC_COUNT.store(0, Ordering::Relaxed);
             let realm = index_n_documents(100);
             let count = ALLOC_COUNT.load(Ordering::Relaxed);
-            if REPORTED.swap(true, Ordering::Relaxed) == false {
-                eprintln!("  [memory] alloc_count_index_100: {} heap allocations", count);
+            if !REPORTED.swap(true, Ordering::Relaxed) {
+                eprintln!(
+                    "  [memory] alloc_count_index_100: {} heap allocations",
+                    count
+                );
             }
             black_box(realm);
             black_box(count)
@@ -400,6 +432,7 @@ criterion_group!(
     benches,
     bench_index_10_docs,
     bench_index_100_docs,
+    bench_index_synthetic_scale,
     bench_reparse_single_doc,
     bench_reparse_real_large_doc,
     bench_index_real_corpus,
