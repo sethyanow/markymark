@@ -150,7 +150,7 @@ impl<'arena> Heading<'arena> {
 #[derive(Debug, Clone)]
 pub struct Paragraph<'arena> {
     text: &'arena str,
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "stored for future range-based queries")]
     range: Range,
 }
 
@@ -184,7 +184,7 @@ impl<'arena> Paragraph<'arena> {
     }
 
     /// Create a paragraph directly (used by tests).
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn new(text: &'arena str, range: Range) -> Self {
         Self { text, range }
     }
@@ -193,11 +193,8 @@ impl<'arena> Paragraph<'arena> {
 /// A list item
 #[derive(Debug, Clone)]
 pub struct ListItem<'arena> {
-    #[allow(dead_code)]
     text: &'arena str,
-    #[allow(dead_code)]
     properties_map: ArenaHashMap<'arena, &'arena str, &'arena str>,
-    #[allow(dead_code)]
     children_list: &'arena [ListItem<'arena>],
 }
 
@@ -294,7 +291,7 @@ impl<'arena> ListItem<'arena> {
     }
 
     /// Create a list item directly (used by tests and construction).
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn new(
         text: &'arena str,
         properties_map: ArenaHashMap<'arena, &'arena str, &'arena str>,

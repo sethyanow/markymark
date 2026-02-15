@@ -3,9 +3,11 @@
 use bumpalo::collections::Vec as BumpVec;
 use bumpalo::Bump;
 use hashbrown::HashMap;
+use markymark_core::arena::DocumentArena;
 use markymark_core::prelude::*;
 use markymark_parser::Ast;
 use std::collections::HashMap as StdHashMap;
+use std::fmt;
 use std::sync::Mutex;
 
 /// Allocate a string in the arena and return it as `&str`.
@@ -93,11 +95,17 @@ pub struct MarkdownLinkEntry<'arena> {
 }
 
 /// An XML tag entry stored in the index.
+///
+/// Uses standard `HashMap` (not `ArenaHashMap`) for attributes because
+/// `Bump: !Sync` makes `&Bump: !Send`, which would prevent `DocumentIndex`
+/// from satisfying `Send + 'static` required by tower-lsp. Keys and values
+/// still borrow from the arena; only the map's internal buckets are heap-allocated.
 #[derive(Debug, Clone)]
 pub struct XmlTagEntry<'arena> {
     /// Tag name (e.g. "agent", "goal", "task").
     pub tag_name: &'arena str,
-    /// Tag attributes as key-value pairs.
+    /// Tag attributes as key-value pairs. Standard allocator for Send safety;
+    /// keys/values borrow from arena.
     pub attributes: HashMap<&'arena str, &'arena str>,
     /// Whether this is a self-closing tag (e.g. `<br/>`).
     pub is_self_closing: bool,
@@ -157,13 +165,16 @@ fn dedup_slug(base: &str, used: &mut StdHashMap<String, usize>) -> String {
 /// Built from a [`markymark_parser::Ast`], provides fast lookups for
 /// headings (by slug), block IDs, table of contents, and outline tree.
 ///
-/// This struct owns its arena and stores arena-allocated data with a
-/// `'static` lifetime marker. Like `markymark_parser::Ast`, this is a
-/// self-referential pattern where `'static` is valid for the lifetime
-/// of `self` because `self` owns the arena.
+/// # Safety (self-referential arena pattern)
+///
+/// This struct owns a [`DocumentArena`] and stores arena-allocated data with
+/// `'static` lifetime markers. The actual lifetime is the arena's lifetime.
+/// This is sound because `Self` owns the arena -- references cannot outlive
+/// the struct. The `Mutex` wrapper makes the struct `Send + Sync` for use
+/// in async LSP contexts (the `Bump` inside is `Send` but not `Sync`).
 pub struct DocumentIndex {
-    #[allow(dead_code)]
-    _arena: Mutex<Bump>,
+    /// Arena kept alive so `'static` references in this struct remain valid.
+    _arena: Mutex<DocumentArena>,
     headings: &'static [HeadingEntry<'static>],
     slug_to_heading: HashMap<&'static str, usize>,
     blocks: HashMap<&'static str, BlockEntry<'static>>,
@@ -182,9 +193,13 @@ impl DocumentIndex {
     /// then takes ownership of the arena. Callers pass `ast` by value;
     /// the AST is consumed and its arena is moved into the index.
     pub fn from_ast(ast: Ast) -> Self {
-        // Use raw pointer to avoid borrow conflict with ptr::read + forget below
-        let arena_ptr = ast.arena_ptr();
-        let arena_ref = unsafe { &*arena_ptr };
+        // Raw pointer to DocumentArena for ownership transfer at the end.
+        // We borrow the inner Bump for allocations, then ptr::read the whole
+        // DocumentArena and mem::forget(ast) to avoid double-free.
+        let doc_arena_ptr = ast.doc_arena_ptr();
+        // SAFETY: doc_arena_ptr is valid for the lifetime of `ast`; we cast
+        // the inner Bump to 'static because Self will own the arena.
+        let arena_ref: &'static Bump = unsafe { &*((*doc_arena_ptr).bump() as *const Bump) };
 
         let mut headings_builder: BumpVec<'static, HeadingEntry<'static>> =
             BumpVec::new_in(arena_ref);
@@ -276,7 +291,9 @@ impl DocumentIndex {
         }
         let markdown_links = markdown_links_builder.into_bump_slice();
 
-        // Extract XML tags: borrow from AST
+        // Extract XML tags: borrow from AST.
+        // Uses standard HashMap (not ArenaHashMap) because Bump: !Sync
+        // makes ArenaHashMap !Send, breaking tower-lsp's Send requirement.
         let mut xml_tags_builder: BumpVec<'static, XmlTagEntry<'static>> =
             BumpVec::new_in(arena_ref);
         for xt in ast.extract_xml_tags() {
@@ -295,15 +312,18 @@ impl DocumentIndex {
         }
         let xml_tags = xml_tags_builder.into_bump_slice();
 
-        // Take ownership of the arena from the consumed AST.
-        // SAFETY: arena_ptr was obtained at the start. All index data points into the
-        // arena's allocations; we move the arena into Self so those references remain
-        // valid. We forget ast to avoid double-free of the arena.
-        let arena = unsafe { std::ptr::read(arena_ptr) };
+        // Take ownership of the DocumentArena from the consumed AST.
+        //
+        // SAFETY: doc_arena_ptr was obtained at the start of this function and
+        // points at the DocumentArena field inside `ast`. All index data points
+        // into the arena's allocations; we move the arena into Self so those
+        // references remain valid. We forget `ast` to prevent its Drop from
+        // running (which would drop the DocumentArena and invalidate our refs).
+        let doc_arena = unsafe { std::ptr::read(doc_arena_ptr) };
         std::mem::forget(ast);
 
         Self {
-            _arena: Mutex::new(arena),
+            _arena: Mutex::new(doc_arena),
             headings,
             slug_to_heading,
             blocks,
@@ -366,6 +386,20 @@ impl DocumentIndex {
     /// Get all block IDs in this document.
     pub fn block_ids(&self) -> impl Iterator<Item = &str> + '_ {
         self.blocks.keys().copied()
+    }
+}
+
+impl fmt::Debug for DocumentIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DocumentIndex")
+            .field("headings", &self.headings.len())
+            .field("blocks", &self.blocks.len())
+            .field("toc", &self.toc.len())
+            .field("wiki_links", &self.wiki_links.len())
+            .field("tags", &self.tags.len())
+            .field("markdown_links", &self.markdown_links.len())
+            .field("xml_tags", &self.xml_tags.len())
+            .finish()
     }
 }
 
