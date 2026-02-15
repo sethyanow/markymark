@@ -620,6 +620,53 @@
         "Close only in beads and keep harness active.json unchanged"
       ],
       "impact": ".claude-harness/features/active.json, .claude-harness/features/archive.json, .claude-harness/claude-progress.json"
+    },
+    {
+      "id": "dec-032",
+      "timestamp": "2026-02-16T00:48:00Z",
+      "feature": "pr-13-review",
+      "decision": "Feature-gate bench modules (bench_config, bench_corpus, bench_report) behind bench-internals feature flag instead of leaving them in public API",
+      "rationale": "CodeRabbit flagged glob re-exports polluting public API surface. Feature-gating keeps them available for bench/bin targets via required-features while hiding from library consumers.",
+      "alternatives": [
+        "#[doc(hidden)] (weaker, still public)",
+        "Move to separate crate (over-engineering)"
+      ],
+      "impact": "markymark-index/Cargo.toml, markymark-index/src/lib.rs"
+    },
+    {
+      "id": "dec-033",
+      "timestamp": "2026-02-16T00:48:00Z",
+      "feature": "pr-13-review",
+      "decision": "Move DocumentIndex._arena field to last position for drop order safety",
+      "rationale": "Rust drops fields in declaration order. _arena (owning the bump allocator) must drop after all fields that reference its memory. Currently safe because &'static refs are no-ops on drop, but fragile if any field gains a custom Drop.",
+      "alternatives": [
+        "Keep as-is with safety comment only",
+        "Use ManuallyDrop for explicit ordering"
+      ],
+      "impact": "markymark-index/src/document.rs"
+    },
+    {
+      "id": "dec-034",
+      "timestamp": "2026-02-16T00:48:00Z",
+      "feature": "pr-13-review",
+      "decision": "Skip criterion version comment as false positive - criterion 0.5.1 exists and resolves correctly",
+      "rationale": "CodeRabbit's crates.io API check returned incomplete data (1249 bytes). Cargo.lock confirms criterion 0.5.1 resolves. The claim that 0.5 doesn't exist is wrong.",
+      "alternatives": [
+        "Upgrade to criterion 0.8.x (different API, breaking changes)"
+      ],
+      "impact": "No change needed to Cargo.toml"
+    },
+    {
+      "id": "dec-035",
+      "timestamp": "2026-02-15T16:55:00Z",
+      "feature": "marky-lkj",
+      "decision": "Revise multi-format epic to use tree-sitter grammars for YAML and TOML (was rejected when pinned to 0.19.5)",
+      "rationale": "Tree-sitter migration to 0.26 (marky-6gw) removes the version constraint that forced yaml-rust2/toml_edit. tree-sitter-yaml 0.7.2 (^0.25.4) and tree-sitter-toml-ng 0.7.0 (^0.24) are now compatible. Unified CST walker paradigm across JSON/YAML/TOML matches markdown parser pattern, gives byte-accurate ranges for free, and reduces dependency count.",
+      "alternatives": [
+        "Keep yaml-rust2 + toml_edit as originally planned (still works but inconsistent paradigm)",
+        "Use serde-only (still rejected — no source positions)"
+      ],
+      "impact": "marky-lkj epic design: Approach #3 now viable for JSON/YAML/TOML. .json5/.jsonl/.env/.ini/.cfg still need non-tree-sitter parsers."
     }
   ]
 }

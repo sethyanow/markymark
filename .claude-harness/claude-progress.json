@@ -1,44 +1,34 @@
 {
-  "lastUpdated": "2026-02-16T00:49:00Z",
+  "lastUpdated": "2026-02-16T00:57:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Triaged and fixed 9 of 13 PR #13 CodeRabbit review comments. Skipped 1 false positive (criterion 0.5), 2 duplicates, 1 deferred (realm.rs perf → marky-43i). All 515 tests pass, zero clippy warnings.",
+    "summary": "Optimized remove_from_cross_doc_indexes from O(total indexed) to O(doc size) by looking up the document's own index for targeted key removal (marky-43i). Added 2 regression tests. 419 tests pass, zero clippy warnings.",
     "completedTasks": [
-      "Tightened heading range assertion to check exact end line/character",
-      "Fixed broken cross-reference tower-sitter.md → tower-lsp.md in docs",
-      "Fixed rules.json metadata counts (3 project, 2 general)",
-      "Moved DocumentIndex._arena to last field for safe drop order",
-      "Feature-gated bench modules behind bench-internals feature flag",
-      "Added PID suffix to temp dirs for parallel test safety",
-      "Fixed CommonMark tab-stop expansion in fenced code block detection",
-      "Removed Clone derive from XmlTag (ArenaHashMap safety)",
-      "Added test documenting ListItem.text() nested content behavior",
-      "Added regression test for tab-indented fence detection",
-      "Created marky-43i bead for deferred realm.rs O(total) optimization"
+      "Implemented targeted cross-doc index removal using per-doc reverse lookup (realm.rs)",
+      "Added test_remove_document_preserves_sibling_cross_doc_entries regression test",
+      "Added test_replace_document_via_add_cleans_old_entries regression test",
+      "Closed marky-43i bead"
     ],
     "blockers": [],
     "nextSteps": [
-      "Check if CodeRabbit re-reviews PR #13 with new comments",
       "Consider merging PR #13 once reviews are addressed",
-      "Pick up next ready work from beads (bd ready)"
+      "Pick up next ready work from beads (bd ready)",
+      "marky-5yt: Replace 'static with self_cell/ouroboros",
+      "marky-luy: Arena conformance closeout"
     ]
   },
   "recentChanges": [
-    "PR #13 review comments: 9 fixed, 1 false positive, 2 duplicates, 1 deferred",
-    "bench-internals feature flag added to markymark-index",
-    "DocumentIndex drop order corrected (_arena last)",
-    "CommonMark-compliant tab handling in fenced code detection",
-    "XmlTag Clone removed (ArenaHashMap safety)"
+    "realm.rs: remove_from_cross_doc_indexes now O(doc size) instead of O(total indexed)",
+    "2 new realm_index regression tests for removal correctness"
   ],
   "knownIssues": [
     "marky-5yt: 'static lifetime leak deferred to self_cell migration",
-    "marky-luy.1/2/3: P3 research items (Miri CI, arena reuse, Cow optimization)",
-    "marky-43i: realm.rs remove_from_cross_doc_indexes is O(total) not O(doc)"
+    "marky-luy.1/2/3: P3 research items (Miri CI, arena reuse, Cow optimization)"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T00:48:00Z",
-    "lastTypeCheck": "2026-02-16T00:48:00Z"
+    "lastSuccessfulBuild": "2026-02-16T00:57:00Z",
+    "lastTypeCheck": "2026-02-16T00:57:00Z"
   },
   "lastCompaction": "2026-02-14T10:00:10.000Z",
   "compactionCount": 3

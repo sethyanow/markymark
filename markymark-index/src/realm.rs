@@ -118,21 +118,58 @@ impl RealmIndex {
     }
 
     /// Remove a document's entries from cross-doc indexes by URI key.
+    ///
+    /// Uses the document's own index to look up only the specific slugs,
+    /// block IDs, and tags it contributed — O(items in doc) instead of
+    /// O(total items across all docs).
     fn remove_from_cross_doc_indexes(&mut self, key: &str) {
-        self.slug_to_headings
-            .values_mut()
-            .for_each(|v| v.retain(|(u, _)| u.as_str() != key));
-        self.slug_to_headings.retain(|_, v| !v.is_empty());
+        let Some((_uri, index)) = self.docs.get(key) else {
+            return; // No existing doc (first-time add) — nothing to clean.
+        };
 
-        self.block_to_location
-            .values_mut()
-            .for_each(|v| v.retain(|(u, _)| u.as_str() != key));
-        self.block_to_location.retain(|_, v| !v.is_empty());
+        // Collect the keys to remove before mutating the maps.
+        let slugs: Vec<String> = index
+            .headings()
+            .iter()
+            .map(|h| h.slug.to_string())
+            .collect();
+        let block_ids: Vec<String> = index.block_ids().map(|id| id.to_string()).collect();
+        let tag_names: Vec<String> = {
+            let mut seen = std::collections::HashSet::new();
+            index
+                .tags()
+                .iter()
+                .filter(|t| seen.insert(t.name))
+                .map(|t| t.name.to_string())
+                .collect()
+        };
 
-        self.tag_to_docs
-            .values_mut()
-            .for_each(|v| v.retain(|u| u.as_str() != key));
-        self.tag_to_docs.retain(|_, v| !v.is_empty());
+        for slug in &slugs {
+            if let Some(entries) = self.slug_to_headings.get_mut(slug) {
+                entries.retain(|(u, _)| u.as_str() != key);
+                if entries.is_empty() {
+                    self.slug_to_headings.remove(slug);
+                }
+            }
+        }
+
+        for id in &block_ids {
+            if let Some(entries) = self.block_to_location.get_mut(id) {
+                entries.retain(|(u, _)| u.as_str() != key);
+                if entries.is_empty() {
+                    self.block_to_location.remove(id);
+                }
+            }
+        }
+
+        for tag in &tag_names {
+            if let Some(uris) = self.tag_to_docs.get_mut(tag) {
+                uris.retain(|u| u.as_str() != key);
+                if uris.is_empty() {
+                    self.tag_to_docs.remove(tag);
+                }
+            }
+        }
     }
 
     /// Number of documents in the realm.
