@@ -80,7 +80,7 @@
         "Parser AST construction and arena ownership in markymark-parser/src/ast.rs",
         "Parser AST construction in markymark-parser/src/ast.rs",
         "Regex-based extraction in markymark-parser/src/extract.rs",
-        "Security CI workflow isolated in .github/workflows/security.yml (planned under marky-ops)",
+        "Security CI workflow isolated in .github/workflows/security.yml (implemented, advisory-only)",
         "Security policy in deny.toml at workspace root"
       ],
       "plugin": "markymark-plugin/{.claude-plugin/,bin/,scripts/,hooks/,skills/,tests/}",
