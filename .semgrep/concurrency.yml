@@ -1,0 +1,42 @@
+rules:
+  # Intent: catch lock guard immediately followed by await (high deadlock risk).
+  # Noise boundary: rule is intentionally narrow to avoid broad false positives.
+  - id: markymark.rust.await-holding-async-lock
+    languages: [rust]
+    severity: WARNING
+    message: "Potential await-while-holding-lock hazard. Drop lock guard before await."
+    patterns:
+      - pattern-either:
+          - pattern: |
+              let $GUARD = $LOCK.lock().await;
+              $F.await;
+          - pattern: |
+              let $GUARD = $LOCK.read().await;
+              $F.await;
+          - pattern: |
+              let $GUARD = $LOCK.write().await;
+              $F.await;
+    paths:
+      exclude:
+        - "**/tests/**"
+
+  # Intent: catch std sync lock guards held across await points.
+  # Noise boundary: only immediate await sequences are flagged for high precision.
+  - id: markymark.rust.await-holding-sync-lock
+    languages: [rust]
+    severity: WARNING
+    message: "Await while holding std sync lock can deadlock/starve executors. Release guard first."
+    patterns:
+      - pattern-either:
+          - pattern: |
+              let $GUARD = $LOCK.lock().unwrap();
+              $F.await;
+          - pattern: |
+              let $GUARD = $LOCK.read().unwrap();
+              $F.await;
+          - pattern: |
+              let $GUARD = $LOCK.write().unwrap();
+              $F.await;
+    paths:
+      exclude:
+        - "**/tests/**"
