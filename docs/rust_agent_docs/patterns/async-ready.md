@@ -43,8 +43,8 @@ A type is `Send` if it can be safely transferred to another thread. Auto-derived
 | `*mut T`, `*const T` | Raw pointers | Wrap in newtype, `unsafe impl Send` if safe |
 | `&T` where `T: !Sync` | Shared ref to `!Sync` data | Use owned `T` or `Arc<T>` |
 | `MutexGuard<T>` (std) | Some OS mutexes are `!Send` | Drop guard before `.await` |
-| `bumpalo::Bump` | `!Sync` (arena not thread-safe) | Keep arena in single-task scope |
-| `RefCell<T>` | `Send` but `!Sync` — check if error is actually `Sync` | Use `Mutex<T>` for thread-sharing |
+| `&bumpalo::Bump` | `Bump: !Sync` so `&Bump: !Send` | Keep arena refs in single-task scope |
+| `RefCell<T>` | `Send` but `!Sync` — error may actually be about `Sync` | Use `Mutex<T>` for thread-sharing |
 
 **Tracing a `!Send` chain (real example):**
 ```

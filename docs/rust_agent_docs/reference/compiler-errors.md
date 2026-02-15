@@ -74,7 +74,7 @@ fn process(data: Vec<String>) {
 ```
 
 **The error:**
-```
+```text
 error[E0382]: use of moved value: `data`
  --> src/main.rs:4:17
   |
@@ -120,7 +120,7 @@ fn update_map(map: &mut HashMap<String, Vec<String>>) {
 ```
 
 **The error:**
-```
+```text
 error[E0502]: cannot borrow `*map` as mutable because it is also
               borrowed as immutable
  --> src/main.rs:4:5
@@ -166,7 +166,7 @@ async fn process(data: Rc<Vec<String>>) {
 ```
 
 **The error:**
-```
+```text
 error[E0277]: `Rc<Vec<String>>` cannot be sent between threads safely
    --> src/main.rs:4:18
     |
@@ -226,7 +226,7 @@ fn get_name(use_default: bool) -> &str {
 ```
 
 **The error:**
-```
+```text
 error[E0716]: temporary value dropped while borrowed
  --> src/main.rs:3:10
   |
@@ -268,7 +268,7 @@ fn get_name(use_default: bool) -> Cow<'static, str> {
 
 ### Reading Any Error — The Protocol
 
-```
+```text
 1. ERROR LINE → What code triggered it?
 2. SPANS (---- and ^^^^) → Where are the conflicting operations?
 3. NOTES (= note:) → Why does this constraint exist?

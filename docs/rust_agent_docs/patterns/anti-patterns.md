@@ -215,7 +215,8 @@ fn from_node(node: &Node, arena: &'arena Bump) -> ListItem<'arena> {
 ```
 
 **Lesson:** When a struct has `&'arena [T]` fields, every value — including empty slices —
-must live in the arena. Literal `&[]` lives on the stack and becomes dangling.
+should be allocated from the arena. Literal `&[]` has an implicit `'static` lifetime via
+const promotion, which can mask lifetime mismatches in arena-backed types.
 
 #### Failure 5: Silently Overwriting Duplicate Keys in Index
 

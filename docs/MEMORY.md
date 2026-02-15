@@ -43,7 +43,7 @@ across sessions. This file is linked from CLAUDE.md and auto-loaded at session s
 - Added async testing, JoinSet, async traits, cancellation safety to async.md
 - Added HRTB, lifetime subtyping, self-referential struct solutions to ownership.md
 - Added prerelease version semantics + feature unification to cargo.md
-- Converted all AGENTS.md nav to clickable markdown links
+- Converted all AGENTS.md nav to clickable Markdown links
 
 **Remaining gaps (all closed in marky-9ya):**
 ~~1. Compiler error walkthroughs~~ → Added 4 step-by-step walkthroughs to compiler-errors.md
@@ -104,7 +104,7 @@ headings systematically for 15+ topic areas. Cross-referenced vault coverage aga
 - XML tag parsing inside fenced code blocks produces false positives (filed marky-8la)
 - 198 false positive "unclosed XML tag" warnings from Rust generics like `<T>`, `<Mutex<T>>`
 - Realm indexing + search-symbols + export-index all work correctly
-- Wiki-link detection correctly shows 2 (as expected for this doc type)
+- Wiki-link detection shows 2 (as expected for this doc type)
 
 ---
 
@@ -211,7 +211,7 @@ because you get exactly what you asked for at a specific location, no realm setu
 
 **When to use LSP vs MCP:**
 
-```
+```text
 What do you need?
 ├─ Single file outline or structure?
 │   └─ LSP documentSymbol — no setup, instant
