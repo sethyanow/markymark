@@ -803,6 +803,69 @@
         "Reset main to before squash merge (force push to main, risky)"
       ],
       "impact": "Merge commit 02dd960, PR #11 now MERGEABLE"
+    },
+    {
+      "id": "dec-brza-mm-001",
+      "timestamp": "2026-02-15T23:50:00Z",
+      "feature": "marky-8s3",
+      "decision": "Copy and diverge Zig kernels from forge BRZA into markymark",
+      "rationale": "Simplest to start, avoids coordination overhead between forge and markymark repos. Can sync later if patterns converge. Shared kernels (embeddings, similarity, entity hashing) forked; markymark-specific kernels (heading/link/tag/block scan) are new.",
+      "alternatives": [
+        "Zig package (clean versioning but coordination overhead)",
+        "Git submodule (explicit version control but submodule friction)",
+        "Monorepo extract later (delays extraction)"
+      ],
+      "impact": "zig/src/shared/ directory contains forked forge kernels"
+    },
+    {
+      "id": "dec-brza-mm-002",
+      "timestamp": "2026-02-15T23:50:00Z",
+      "feature": "marky-8s3",
+      "decision": "Complement tree-sitter with Zig SIMD scanning, promotion path based on benchmarks",
+      "rationale": "Zig scans fast but context-unaware (false positives in code blocks). Tree-sitter precise but slower. Two-tier model: Tier 1 Zig for speed-critical ops, Tier 2 tree-sitter for precision. If Zig covers 95%+ accurately, promote to primary.",
+      "alternatives": [
+        "Replace tree-sitter entirely (too risky, loses context awareness)",
+        "Complement only (no promotion path, keeps two systems permanently)"
+      ],
+      "impact": "ScanBackend trait, DocumentIndex::from_scan() alternative path"
+    },
+    {
+      "id": "dec-brza-mm-003",
+      "timestamp": "2026-02-15T23:50:00Z",
+      "feature": "marky-8s3",
+      "decision": "markymark-kernels crate below markymark-core in dependency graph",
+      "rationale": "Core defines traits (ScanBackend, EmbeddingProvider), kernels implements via Zig FFI. Other crates depend only on core. Feature-gated: zig-kernels flag in core enables kernels dep.",
+      "alternatives": [
+        "Sibling to core (more wiring, less encapsulation)",
+        "Inside core as feature-gated module (simpler graph but larger core crate)"
+      ],
+      "impact": "Dependency chain: kernels <- core <- index <- mcp"
+    },
+    {
+      "id": "dec-brza-mm-004",
+      "timestamp": "2026-02-15T23:50:00Z",
+      "feature": "marky-8s3",
+      "decision": "Embedding source agnostic via EmbeddingProvider trait",
+      "rationale": "Design the embedding index to be source-agnostic. Provider decision (local ONNX, API, TF-IDF) deferred to implementation time. Trait: embed, embed_batch, dimensions.",
+      "alternatives": [
+        "Local ONNX only (self-contained but limits quality options)",
+        "API only (highest quality but network dependency)",
+        "TF-IDF in Zig (zero deps but lower semantic quality)"
+      ],
+      "impact": "markymark-core/src/embeddings.rs EmbeddingProvider trait"
+    },
+    {
+      "id": "dec-brza-mm-005",
+      "timestamp": "2026-02-15T23:50:00Z",
+      "feature": "marky-8s3",
+      "decision": "P2 parallel exploration priority, full upfront planning with user orchestration",
+      "rationale": "BRZA-markymark doesn't block v1.0 launch. Work on it alongside arena conformance and v1.0 tasks. All 17 tasks planned upfront with dependency graph for user-orchestrated execution.",
+      "alternatives": [
+        "Post-v1.0 (delays exploration)",
+        "P1 with semantic search as launch feature (risky scope addition)",
+        "Spike first (delays full planning)"
+      ],
+      "impact": "Epic marky-8s3 with 17 tasks across 7 phases"
     }
   ]
 }

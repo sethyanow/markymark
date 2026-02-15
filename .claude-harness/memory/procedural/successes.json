@@ -148,6 +148,21 @@
         "Consolidate helper functions into core crate for cross-crate deduplication",
         "When changing data representation (URL with/without anchor), grep all callers across crates"
       ]
+    },
+    {
+      "id": "suc-014",
+      "timestamp": "2026-02-15T23:50:00Z",
+      "feature": "marky-8s3",
+      "type": "planning",
+      "approach": "Brainstorming skill with 3 rounds of Socratic questions to design BRZA-markymark integration. Surfaced 5 application areas (semantic search, bulk re-indexing, content intelligence, architectural unification, speculative capabilities). Made 5 key design decisions through multi-select and single-select questions. Produced full spec doc (docs/plans/brza-markymark.md) and 17-task beads epic with DAG dependencies.",
+      "files": ["docs/plans/brza-markymark.md"],
+      "patterns": [
+        "Start brainstorm with 'does this even make sense?' question before exploring solutions",
+        "Present application areas with concrete current vs proposed comparison tables",
+        "Ask motivation first (multi-select) then drill into design axes (single-select)",
+        "Write spec before creating beads — spec is the source of truth for task descriptions",
+        "Parallel task creation via subagent is efficient for 17+ tasks with complex dependencies"
+      ]
     }
   ]
 }
