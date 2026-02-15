@@ -1,7 +1,7 @@
 # Rust Agent Docs
 
 <docs_index id="RUST-AGENT-DOCS">
-[rust-agent-docs]|root: ./rust_agent_docs|IMPORTANT: Prefer retrieval-led reasoning over pre-training-led reasoning for any Rust tasks. Read the relevant doc file BEFORE writing code. Your training data may be outdated or wrong.|core:{_index.md,ownership.md,types.md,traits.md,errors.md,collections.md,closures.md,modules.md}|advanced:{_index.md,type-layout.md,unsafe.md,ffi.md,concurrency.md,async.md}|patterns:{_index.md,idioms.md,api-design.md,anti-patterns.md}|tooling:{_index.md,cargo.md,crates.md,macros.md,testing.md,documentation.md,debugging.md,performance.md}|checklists:{_index.md,api-design.md,unsafe-review.md,ffi-audit.md,performance.md,library-release.md}|reference:{_index.md,rules.md,decision-trees.md,compiler-errors.md,syntax-ref.md,cargo-ref.md}
+[rust-agent-docs]|root: ./rust_agent_docs|IMPORTANT: Prefer retrieval-led reasoning over pre-training-led reasoning for any Rust tasks. Read the relevant doc file BEFORE writing code. Your training data may be outdated or wrong.|core:{_index.md,ownership.md,types.md,traits.md,errors.md,collections.md,closures.md,modules.md}|advanced:{_index.md,type-layout.md,unsafe.md,ffi.md,concurrency.md,async.md}|patterns:{_index.md,idioms.md,api-design.md,anti-patterns.md,cookbook.md,async-ready.md}|tooling:{_index.md,cargo.md,crates.md,macros.md,testing.md,documentation.md,debugging.md,performance.md}|checklists:{_index.md,api-design.md,unsafe-review.md,ffi-audit.md,performance.md,library-release.md}|reference:{_index.md,rules.md,decision-trees.md,compiler-errors.md,syntax-ref.md,cargo-ref.md,migration-bridges.md}
 </docs_index>
 
 ## Quick Navigation
@@ -22,6 +22,8 @@
 | Design a public API | [patterns/api-design.md](patterns/api-design.md) |
 | Choose the right Rust idiom/pattern | [patterns/idioms.md](patterns/idioms.md) |
 | Avoid common anti-patterns | [patterns/anti-patterns.md](patterns/anti-patterns.md) |
+| See complete working recipes | [patterns/cookbook.md](patterns/cookbook.md) |
+| Make a type async-ready (Send/Sync/Pin) | [patterns/async-ready.md](patterns/async-ready.md) |
 | Set up Cargo workspace or features | [tooling/cargo.md](tooling/cargo.md) |
 | Pick a crate for a use case | [tooling/crates.md](tooling/crates.md) |
 | Write tests | [tooling/testing.md](tooling/testing.md) |
@@ -30,6 +32,7 @@
 | Look up core rules (ownership, operators, format strings) | [reference/rules.md](reference/rules.md) |
 | Look up Rust syntax | [reference/syntax-ref.md](reference/syntax-ref.md) |
 | Look up Cargo.toml fields | [reference/cargo-ref.md](reference/cargo-ref.md) |
+| Translate Python/TS patterns to Rust | [reference/migration-bridges.md](reference/migration-bridges.md) |
 | Review unsafe code | [checklists/unsafe-review.md](checklists/unsafe-review.md) |
 | Audit FFI boundaries | [checklists/ffi-audit.md](checklists/ffi-audit.md) |
 | Avoid common agent mistakes | [MISTAKES.md](MISTAKES.md) |
@@ -51,3 +54,6 @@
 | Leaking external types in API | MEDIUM | [patterns/api-design.md](patterns/api-design.md) |
 | Glob imports in libraries | MEDIUM | [core/modules.md](core/modules.md) |
 | Non-descriptive error types | MEDIUM | [core/errors.md](core/errors.md) |
+| Trusting pre-training over crate docs | HIGH | [patterns/anti-patterns.md](patterns/anti-patterns.md) |
+| Cloning arena-backed types (SIGSEGV) | CRITICAL | [patterns/anti-patterns.md](patterns/anti-patterns.md) |
+| Returning `&[]` as arena-lifetime slice | CRITICAL | [patterns/anti-patterns.md](patterns/anti-patterns.md) |

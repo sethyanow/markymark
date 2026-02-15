@@ -9,9 +9,10 @@ These are look-up files, not tutorial material.
 |------|---------|----------------|
 | [rules.md](rules.md) | Ownership, borrowing, elision rules, operators, format strings | Core language rules |
 | [decision-trees.md](decision-trees.md) | All decision trees collected in one place | Choosing between options |
-| [compiler-errors.md](compiler-errors.md) | Common error codes with fixes | Encountering a confusing compiler error |
+| [compiler-errors.md](compiler-errors.md) | Common error codes with walkthroughs | Encountering a confusing compiler error |
 | [syntax-ref.md](syntax-ref.md) | Syntax cheatsheet (closures, patterns, attributes, etc.) | Forgetting syntax for a construct |
 | [cargo-ref.md](cargo-ref.md) | Cargo.toml fields reference | Configuring Cargo manifest |
+| [migration-bridges.md](migration-bridges.md) | Python/TypeScript → Rust translation patterns | Coming from another language |
 
 ### Usage
 
