@@ -93,7 +93,7 @@ fn index_root_into_realm(parser: &mut Parser, root: &Path, realm: &mut RealmData
 
         realm.index.add_document(
             DocumentUri::from_file_path(&path),
-            DocumentIndex::from_ast(&ast),
+            DocumentIndex::from_ast(ast),
         );
     }
 }
