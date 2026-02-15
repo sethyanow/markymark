@@ -6,7 +6,7 @@
     "language": "Rust",
     "lsp": "tower-lsp-server 0.23 (community fork, uses ls_types not lsp_types)",
     "mcp": "rmcp 0.13 (official Rust MCP SDK, requires schemars 1.x)",
-    "parser": "tree-sitter 0.19.5 + tree-sitter-markdown 0.7",
+    "parser": "tree-sitter 0.26 + tree-sitter-md 0.5 + tree-sitter-json 0.24 (code migration in progress)",
     "graph": "petgraph 0.7 (StableGraph)",
     "allocator": "bumpalo 3.16",
     "testFramework": "cargo test + bash test scripts for plugin"
@@ -69,6 +69,7 @@
     "codeStyle": {
       "rust": [
         "CoreEngine trait in core, transport crates are thin adapters",
+        "Dependency-only migration tasks may intentionally end with known compile breakpoints for explicit handoff to API migration tasks",
         "Deterministic sort by URI then range for stable output",
         "Drop read lock before async calls (deadlock prevention)",
         "FULL text document sync (not INCREMENTAL)",
@@ -81,6 +82,6 @@
     }
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-15T14:23:11Z",
+  "lastUpdated": "2026-02-15T16:22:18Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

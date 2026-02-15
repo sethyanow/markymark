@@ -7,6 +7,7 @@
       "Deterministic sort by URI then range for stable output",
       "Drop read lock before async publish_diagnostics (deadlock prevention)",
       "FULL text document sync (not INCREMENTAL) for v1 LSP",
+      "For staged dependency migrations, run cargo check immediately and record the first unresolved symbol as the handoff contract for the next task",
       "Hook scripts receive JSON on stdin, output JSON to stdout, use exit 0 for no-op on non-matching files",
       "LSP Content-Length framing vs MCP line-delimited JSON — NEVER mix them",
       "Plugin hooks use hooks.json with {description, hooks: {EventName: [{matcher, hooks: [{type, command, timeout}]}]}} structure",

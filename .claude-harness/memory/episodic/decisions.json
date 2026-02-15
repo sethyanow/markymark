@@ -393,6 +393,18 @@
         "Inline with broader marky-36t dependency bump"
       ],
       "impact": "Cargo.toml, markymark-parser/Cargo.toml, Cargo.lock"
+    },
+    {
+      "id": "dec-20260215162218-marky-36t",
+      "timestamp": "2026-02-15T16:22:18Z",
+      "feature": "marky-36t",
+      "decision": "Complete dependency migration as an isolated task even though compilation temporarily breaks",
+      "rationale": "Task scope is manifest + lockfile updates; compile break is expected and documents exact handoff point for parser API migration tasks",
+      "alternatives": [
+        "Bundle source migration into same task",
+        "Delay dependency upgrades until parser code refactor"
+      ],
+      "impact": "Cargo.toml, markymark-parser/Cargo.toml, Cargo.lock"
     }
   ]
 }

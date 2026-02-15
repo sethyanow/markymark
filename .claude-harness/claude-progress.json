@@ -1,31 +1,34 @@
 {
-  "lastUpdated": "2026-02-15T14:23:11Z",
+  "lastUpdated": "2026-02-15T16:22:18Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Executed marky-pms under epic marky-6gw: removed dead tree-sitter-xml dependency from workspace/parser manifests, regenerated lockfile, verified build + XML extraction tests.",
+    "summary": "Executed marky-36t under epic marky-6gw: upgraded workspace/parser dependencies to tree-sitter 0.26 + tree-sitter-md 0.5 + tree-sitter-json 0.24; validated expected compile break handoff to parser migration task.",
     "completedTasks": [
-      "marky-pms: Remove dead tree-sitter-xml dependency"
+      "marky-36t: Upgrade Cargo.toml deps"
     ],
-    "blockers": [],
+    "blockers": [
+      "cargo check fails until marky-bni migrates parser init from tree_sitter_markdown to tree-sitter-md"
+    ],
     "nextSteps": [
-      "Execute marky-36t: upgrade tree-sitter/tree-sitter-md/tree-sitter-json versions",
-      "Run cargo check and fix compile breakages in parser migration tasks",
-      "Continue marky-6gw task chain (marky-bni, marky-j7h, marky-aoo)"
+      "Execute marky-bni: migrate parser to tree-sitter-md MarkdownParser wrapper",
+      "Execute marky-j7h: migrate structured JSON parser to tree-sitter-json 0.24 API",
+      "Run marky-aoo: full suite verification, node kind audit, clippy/lefthook"
     ]
   },
   "recentChanges": [
-    "Removed tree-sitter-xml from workspace Cargo dependencies",
-    "Removed tree-sitter-xml from markymark-parser Cargo dependencies",
-    "Regenerated Cargo.lock without tree-sitter-xml",
-    "Verified cargo build and parser XML extraction tests"
+    "Updated workspace deps: tree-sitter 0.26, tree-sitter-md 0.5, tree-sitter-json 0.24",
+    "Removed tree-sitter-markdown dependency references",
+    "Updated parser crate deps to workspace tree-sitter-md/tree-sitter-json",
+    "Captured expected cargo check failure boundary for follow-on migration"
   ],
   "knownIssues": [
-    "marky-6gw migration tasks still open: marky-36t, marky-bni, marky-j7h, marky-aoo",
-    "agents/context.json is currently malformed JSON and needs repair before orchestration state can be read"
+    "marky-6gw remaining tasks open: marky-bni, marky-j7h, marky-aoo",
+    "Current compile error: unresolved tree_sitter_markdown in markymark-parser/src/lib.rs",
+    "agents/context.json is malformed JSON and cannot be parsed for orchestration persistence"
   ],
   "environmentState": {
     "devServerRunning": false,
     "lastSuccessfulBuild": "2026-02-15T14:23:11Z",
-    "lastTypeCheck": null
+    "lastTypeCheck": "2026-02-15T16:22:18Z"
   }
 }
