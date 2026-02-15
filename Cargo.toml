@@ -40,8 +40,8 @@ tree-sitter-xml = "0.6"
 petgraph = "0.7"
 
 # Memory allocation
-bumpalo = { version = "3.16", features = ["collections", "boxed", "allocator-api2"] }
-hashbrown = "0.15"
+bumpalo = { version = "3.19.1", features = ["collections", "boxed", "allocator-api2"] }
+hashbrown = "0.16.1"
 
 # Testing
 insta = { version = "1.42", features = ["yaml"] }
