@@ -1,5 +1,6 @@
 //! Core engine: transport-agnostic operation types and trait.
 
+use crate::structured::DocumentKind;
 use crate::{CoreError, DocumentUri, Range};
 
 /// An operation that can be executed by the core engine.
@@ -119,11 +120,17 @@ pub enum CoreOperationResult {
         wiki_link_count: usize,
         /// Total markdown links across all documents.
         markdown_link_count: usize,
+        /// Number of structured (non-markdown) documents indexed.
+        structured_doc_count: usize,
+        /// Total key paths across all structured documents.
+        key_path_count: usize,
     },
     /// Exported document index: full structured data for a single document.
     DocumentExport {
         /// Document URI.
         uri: DocumentUri,
+        /// The kind of document (Markdown, JSON, YAML, etc.).
+        document_kind: Option<DocumentKind>,
         /// Heading texts and levels.
         headings: Vec<(String, u8, Range)>,
         /// XML tag names with ranges.

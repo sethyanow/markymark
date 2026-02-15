@@ -5,6 +5,7 @@ use std::sync::RwLock;
 
 use anyhow::{anyhow, bail};
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
+use markymark_core::structured::DocumentKind;
 use markymark_core::{CoreError, DocumentUri};
 use markymark_index::{DocumentIndex, RealmIndex};
 use markymark_parser::Parser;
@@ -78,9 +79,15 @@ impl RuntimeEngine {
 
 /// Index all markdown files under a root into a realm.
 fn index_root_into_realm(parser: &mut Parser, root: &Path, realm: &mut RealmData) {
-    let markdown_files = collect_markdown_files(root);
+    let documents = collect_documents(root);
 
-    for path in markdown_files {
+    for (path, kind) in documents {
+        // Only index markdown documents for now; structured formats will be
+        // handled by future tasks in the multi-format epic.
+        if kind != DocumentKind::Markdown {
+            continue;
+        }
+
         let source = match fs::read_to_string(&path) {
             Ok(source) => source,
             Err(_) => continue,
@@ -417,6 +424,8 @@ impl CoreEngine for RuntimeEngine {
                     xml_tag_count,
                     wiki_link_count,
                     markdown_link_count,
+                    structured_doc_count: 0,
+                    key_path_count: 0,
                 }
             }
             CoreOperation::DependencyGraph { realm, format } => {
@@ -471,6 +480,7 @@ impl CoreEngine for RuntimeEngine {
 
                         CoreOperationResult::DocumentExport {
                             uri,
+                            document_kind: Some(DocumentKind::Markdown),
                             headings,
                             xml_tags,
                             wiki_links,
@@ -497,7 +507,7 @@ fn validate_workspace_root(root: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn collect_markdown_files(root: &Path) -> Vec<PathBuf> {
+fn collect_documents(root: &Path) -> Vec<(PathBuf, DocumentKind)> {
     let mut stack = vec![root.to_path_buf()];
     let mut files = Vec::new();
 
@@ -519,21 +529,14 @@ fn collect_markdown_files(root: &Path) -> Vec<PathBuf> {
                 continue;
             }
 
-            if is_markdown_path(&path) {
-                files.push(path);
+            if let Some(kind) = DocumentKind::from_path(&path) {
+                files.push((path, kind));
             }
         }
     }
 
-    files.sort();
+    files.sort_by(|(a, _), (b, _)| a.cmp(b));
     files
-}
-
-fn is_markdown_path(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|ext| ext.to_str()),
-        Some("md") | Some("markdown")
-    )
 }
 
 /// Build a dependency graph from the realm's indexed documents.
@@ -601,5 +604,48 @@ fn build_dependency_graph(realm: &RealmIndex, format: &str) -> Result<String, St
             Ok(out)
         }
         other => Err(format!("unsupported dependency graph format: {other}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn collect_documents_includes_json_alongside_markdown() {
+        let dir = std::env::temp_dir().join("marky-collect-mixed");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("notes.md"), "# Hello\n").unwrap();
+        fs::write(dir.join("config.json"), "{}").unwrap();
+        fs::write(dir.join("settings.yaml"), "key: val\n").unwrap();
+        fs::write(dir.join("main.rs"), "fn main() {}").unwrap();
+
+        let docs = collect_documents(&dir);
+        let kinds: Vec<_> = docs.iter().map(|(_, k)| *k).collect();
+
+        assert!(kinds.contains(&DocumentKind::Markdown));
+        assert!(kinds.contains(&DocumentKind::Json));
+        assert!(kinds.contains(&DocumentKind::Yaml));
+        // main.rs should NOT be collected
+        assert_eq!(docs.len(), 3);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_documents_markdown_unchanged() {
+        let dir = std::env::temp_dir().join("marky-collect-md");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("readme.md"), "# R\n").unwrap();
+        fs::write(dir.join("guide.markdown"), "# G\n").unwrap();
+
+        let docs = collect_documents(&dir);
+        assert_eq!(docs.len(), 2);
+        assert!(docs.iter().all(|(_, k)| *k == DocumentKind::Markdown));
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
