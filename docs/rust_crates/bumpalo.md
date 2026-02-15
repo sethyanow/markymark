@@ -441,7 +441,7 @@ fn parse_frontmatter<'a>(arena: &'a Bump) -> Frontmatter<'a> {
 }
 ```
 
-### Send Constraint: ArenaHashMap vs HashMap { #send-constraint }
+### Send Constraint
 
 <pitfall>
 **Problem:** `Bump: !Sync` → `&Bump: !Send` → `ArenaHashMap: !Send`.
