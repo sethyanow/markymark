@@ -1,11 +1,11 @@
 {
   "version": 3,
-  "lastUpdated": "2026-02-14T04:31:40Z",
+  "lastUpdated": "2026-02-15T03:46:14Z",
   "metadata": {
-    "totalRules": 6,
-    "projectSpecific": 3,
+    "totalRules": 7,
+    "projectSpecific": 4,
     "general": 3,
-    "lastReflection": "2026-02-14T10:05:36Z"
+    "lastReflection": "2026-02-15T03:46:14Z"
   },
   "rules": [
     {
@@ -87,6 +87,21 @@
         "filePatterns": ["Cargo.toml", "markymark-plugin/.claude-plugin/plugin.json"]
       },
       "learnedAt": "2026-02-13T22:45:00Z",
+      "source": "user-correction"
+    },
+    {
+      "id": "rule-007",
+      "title": "Do not include epstein local corpus file in commits unless explicitly requested",
+      "description": "When `epstein_20250227_all_in_one.md` is present as an untracked local benchmark corpus fixture, keep it out of staged checkpoint/PR commits unless the user explicitly asks to include it.",
+      "scope": "project",
+      "confidence": 1.0,
+      "active": true,
+      "applicability": {
+        "always": false,
+        "features": [],
+        "filePatterns": ["epstein_20250227_all_in_one.md"]
+      },
+      "learnedAt": "2026-02-15T03:46:14Z",
       "source": "user-correction"
     }
   ]

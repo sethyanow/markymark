@@ -42,6 +42,12 @@
       "type": "benchmark-runner-binary",
       "location": "markymark-index/src/bin/bench_roi_report.rs",
       "relationships": ["runs tiered memory benchmarks", "parses criterion estimates via bench_report helpers", "writes docs/benchmarks/roi-tier-report.md"]
+    },
+    {
+      "name": "realm-block-collision-policy",
+      "type": "indexing-policy",
+      "location": "markymark-index/src/realm.rs",
+      "relationships": ["preserves duplicate block IDs across documents", "lookup_block returns first-in occurrence for compatibility", "validated by realm_index regression test"]
     }
   ]
 }
