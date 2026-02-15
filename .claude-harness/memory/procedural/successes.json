@@ -163,6 +163,20 @@
         "Write spec before creating beads — spec is the source of truth for task descriptions",
         "Parallel task creation via subagent is efficient for 17+ tasks with complex dependencies"
       ]
+    },
+    {
+      "id": "suc-015",
+      "timestamp": "2026-02-15T25:10:00Z",
+      "feature": "marky-8s3",
+      "type": "planning",
+      "approach": "SRE task refinement via background subagent: dispatched Opus agent to review all 26 tasks with 8-category SRE checklist. Agent added effort estimates, success criteria, edge cases, anti-patterns, test specs. Found and fixed 9 epic self-dependencies. Then split 3 oversized tasks (8s3.2->3 subtasks, 8s3.7->5 subtasks, qv6->3 subtasks) via 3 parallel subagents.",
+      "files": ["docs/plans/brza-markymark.md"],
+      "patterns": [
+        "Background SRE review subagent works well for 20+ task epics — keeps main context free",
+        "Split tasks >16h into subtasks BEFORE execution, not during",
+        "Parallel subagents for independent splits (3 splits = 3 agents concurrently)",
+        "Parent-child relationships in beads are structural, not removable with dep remove"
+      ]
     }
   ]
 }
