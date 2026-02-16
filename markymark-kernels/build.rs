@@ -1,6 +1,7 @@
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
+use walkdir::WalkDir;
 
 fn main() {
     // Locate the zig directory relative to the crate root
@@ -32,8 +33,14 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", lib_path.display());
     println!("cargo:rustc-link-lib=static=marky_kernels");
 
-    // Rerun if Zig sources change
-    println!("cargo:rerun-if-changed={}", zig_dir.join("src").display());
+    // Rerun if Zig sources change (individual files, not just directory)
+    for entry in WalkDir::new(zig_dir.join("src"))
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "zig"))
+    {
+        println!("cargo:rerun-if-changed={}", entry.path().display());
+    }
     println!(
         "cargo:rerun-if-changed={}",
         zig_dir.join("build.zig").display()
