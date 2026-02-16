@@ -6,6 +6,7 @@
 
 mod flat;
 pub(crate) mod json;
+mod json5;
 mod jsonl;
 mod toml;
 mod yaml;
@@ -23,10 +24,8 @@ pub fn parse_structured(source: &str, kind: DocumentKind) -> Result<StructuredAs
             "use the markdown parser for Markdown documents".to_string(),
         )),
         DocumentKind::Json => json::parse_json(source),
-        DocumentKind::JsonC => json::parse_json(source), // tree-sitter-json tolerates comments
-        DocumentKind::Json5 => Err(CoreError::NotImplemented(
-            "Json5 parser not yet implemented".to_string(),
-        )),
+        DocumentKind::JsonC => json::parse_json(source), // Verified (marky-lkj.13): tree-sitter-json 0.24 tolerates //, /* */, and trailing commas
+        DocumentKind::Json5 => json5::parse_json5(source),
         DocumentKind::JsonLines => jsonl::parse_jsonl(source),
         DocumentKind::Yaml => yaml::parse_yaml(source),
         DocumentKind::Toml => toml::parse_toml(source),
@@ -109,10 +108,12 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_structured_dispatch_json5_unimplemented() {
+    fn test_parse_structured_dispatch_json5() {
         let result = parse_structured("{key: 'val'}", DocumentKind::Json5);
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("not yet implemented"));
+        assert!(result.is_ok());
+        let ast = result.unwrap();
+        assert_eq!(ast.kind, DocumentKind::Json5);
+        assert_eq!(ast.keys.len(), 1);
+        assert_eq!(ast.keys[0].key, "key");
     }
 }

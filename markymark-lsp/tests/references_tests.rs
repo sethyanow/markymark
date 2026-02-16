@@ -364,3 +364,250 @@ async fn test_references_for_xml_tag_include_declaration_true() {
     );
     assert_eq!(locs[0].uri.as_str(), "file:///workspace/b.md");
 }
+
+// ---------------------------------------------------------------------------
+// Structured document key references (marky-lkj.12)
+// ---------------------------------------------------------------------------
+
+/// Helper: create workspace with structured docs and markdown wiki-links referencing keys.
+async fn setup_structured_refs_workspace() -> (
+    tower_lsp_server::LspService<markymark_lsp::server::Backend>,
+    tower_lsp_server::ClientSocket,
+    Uri,
+    Uri,
+    Uri,
+) {
+    let (service, socket) = create_service();
+    let backend = service.inner();
+
+    let uri_md: Uri = "file:///workspace/notes.md".parse().unwrap();
+    let uri_json: Uri = "file:///workspace/config.json".parse().unwrap();
+    let uri_yaml: Uri = "file:///workspace/settings.yaml".parse().unwrap();
+
+    // Markdown doc with wiki-links referencing structured doc keys
+    // Wiki-links use the file stem (not the full filename with extension)
+    let md_text = concat!(
+        "# Notes\n",
+        "\n",
+        "The database host is configured in [[config#database.host]].\n",
+        "\n",
+        "The log level is in [[settings#logging.level]].\n",
+        "\n",
+        "Another ref to host: [[config#database.host]].\n",
+    );
+
+    // JSON config with nested keys
+    let json_text = concat!(
+        "{\n",
+        "  \"database\": {\n",
+        "    \"host\": \"localhost\",\n",
+        "    \"port\": 5432\n",
+        "  }\n",
+        "}\n",
+    );
+
+    // YAML settings with nested keys
+    let yaml_text = concat!("logging:\n", "  level: info\n",);
+
+    {
+        let mut state = backend.state().write().await;
+        let core_md = DocumentUri::new("file:///workspace/notes.md").unwrap();
+        let core_json = DocumentUri::new("file:///workspace/config.json").unwrap();
+        let core_yaml = DocumentUri::new("file:///workspace/settings.yaml").unwrap();
+        state.open_document(core_md, md_text.to_string());
+        state.open_document(core_json, json_text.to_string());
+        state.open_document(core_yaml, yaml_text.to_string());
+    }
+
+    (service, socket, uri_md, uri_json, uri_yaml)
+}
+
+#[tokio::test]
+async fn test_references_structured_key_finds_markdown_wiki_links() {
+    // Direction 1: Cursor on "host" key in config.json -> find markdown wiki-links referencing it
+    // In the JSON: line 2: '    "host": "localhost",' — cursor on "host" key
+    let (service, _socket, _uri_md, uri_json, _uri_yaml) = setup_structured_refs_workspace().await;
+    let backend = service.inner();
+
+    let params = ReferenceParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier {
+                uri: uri_json.clone(),
+            },
+            position: Position::new(2, 5), // on "host" key in JSON
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+        context: ReferenceContext {
+            include_declaration: false,
+        },
+    };
+
+    let result = backend.references(params).await.unwrap();
+    assert!(
+        result.is_some(),
+        "references for structured key should find markdown wiki-links"
+    );
+    let locs = result.unwrap();
+    // notes.md has two wiki-links to config.json#database.host (lines 2 and 6)
+    assert_eq!(
+        locs.len(),
+        2,
+        "should find exactly 2 wiki-link references to database.host: found {}",
+        locs.len()
+    );
+    assert!(
+        locs.iter()
+            .all(|l| l.uri.as_str() == "file:///workspace/notes.md"),
+        "all references should be in notes.md"
+    );
+}
+
+#[tokio::test]
+async fn test_references_structured_key_yaml_finds_wiki_links() {
+    // Direction 1 (YAML): Cursor on "level" key in settings.yaml -> find wiki-links
+    // In the YAML: line 1: '  level: info' — cursor on "level"
+    let (service, _socket, _uri_md, _uri_json, uri_yaml) = setup_structured_refs_workspace().await;
+    let backend = service.inner();
+
+    let params = ReferenceParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier {
+                uri: uri_yaml.clone(),
+            },
+            position: Position::new(1, 3), // on "level" key in YAML
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+        context: ReferenceContext {
+            include_declaration: false,
+        },
+    };
+
+    let result = backend.references(params).await.unwrap();
+    assert!(
+        result.is_some(),
+        "references for YAML key should find markdown wiki-links"
+    );
+    let locs = result.unwrap();
+    assert_eq!(
+        locs.len(),
+        1,
+        "should find exactly 1 wiki-link reference to logging.level: found {}",
+        locs.len()
+    );
+    assert_eq!(locs[0].uri.as_str(), "file:///workspace/notes.md");
+}
+
+#[tokio::test]
+async fn test_references_structured_key_no_refs() {
+    // Cursor on "port" key in config.json -> no wiki-links reference it
+    // In the JSON: line 3: '    "port": 5432' — cursor on "port"
+    let (service, _socket, _uri_md, uri_json, _uri_yaml) = setup_structured_refs_workspace().await;
+    let backend = service.inner();
+
+    let params = ReferenceParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier {
+                uri: uri_json.clone(),
+            },
+            position: Position::new(3, 5), // on "port" key in JSON
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+        context: ReferenceContext {
+            include_declaration: false,
+        },
+    };
+
+    let result = backend.references(params).await.unwrap();
+    let is_empty = result.as_ref().is_none_or(|v| v.is_empty());
+    assert!(
+        is_empty,
+        "references for structured key with no incoming wiki-links should be empty/None"
+    );
+}
+
+#[tokio::test]
+async fn test_references_structured_key_include_declaration() {
+    // Cursor on "host" key with include_declaration=true -> should include the key itself
+    let (service, _socket, _uri_md, uri_json, _uri_yaml) = setup_structured_refs_workspace().await;
+    let backend = service.inner();
+
+    let params = ReferenceParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier {
+                uri: uri_json.clone(),
+            },
+            position: Position::new(2, 5), // on "host" key in JSON
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+        context: ReferenceContext {
+            include_declaration: true,
+        },
+    };
+
+    let result = backend.references(params).await.unwrap();
+    assert!(
+        result.is_some(),
+        "references with include_declaration=true should include declaration + wiki-links"
+    );
+    let locs = result.unwrap();
+    // 2 wiki-links + 1 declaration = 3
+    assert_eq!(
+        locs.len(),
+        3,
+        "should find 2 wiki-link refs + 1 declaration: found {}",
+        locs.len()
+    );
+    // Verify the declaration is in config.json
+    assert!(
+        locs.iter()
+            .any(|l| l.uri.as_str() == "file:///workspace/config.json"),
+        "should include the key declaration in config.json"
+    );
+}
+
+#[tokio::test]
+async fn test_references_wiki_link_to_structured_key_finds_definition() {
+    // Direction 2: Cursor on wiki-link [[config#database.host]] in notes.md
+    // -> should find the key definition location + other wiki-links to same key
+    // Line 2: "The database host is configured in [[config#database.host]]."
+    // The wiki-link starts at column 35
+    let (service, _socket, uri_md, _uri_json, _uri_yaml) = setup_structured_refs_workspace().await;
+    let backend = service.inner();
+
+    let params = ReferenceParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier {
+                uri: uri_md.clone(),
+            },
+            position: Position::new(2, 40), // inside [[config#database.host]]
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+        context: ReferenceContext {
+            include_declaration: false,
+        },
+    };
+
+    let result = backend.references(params).await.unwrap();
+    assert!(
+        result.is_some(),
+        "references from wiki-link to structured key should find related locations"
+    );
+    let locs = result.unwrap();
+    // Should find: the key definition in config.json + the other wiki-link on line 6
+    // (exclude the current wiki-link since include_declaration=false)
+    assert!(
+        !locs.is_empty(),
+        "should find at least 1 reference (key definition or other wiki-link)"
+    );
+    // The key definition should be in config.json
+    assert!(
+        locs.iter()
+            .any(|l| l.uri.as_str() == "file:///workspace/config.json"),
+        "should include the key definition location in config.json"
+    );
+}

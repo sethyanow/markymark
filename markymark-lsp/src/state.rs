@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use markymark_core::structured::DocumentKind;
+use markymark_core::structured::{DocumentKind, KeyEntry, ValueKind};
 use markymark_core::{DocumentUri, Position, Range};
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link};
 use markymark_index::{
@@ -121,6 +121,36 @@ pub enum SymbolAtPosition {
     MarkdownLink(MarkdownLinkEntry<'static>),
     /// An XML tag.
     XmlTag(XmlTagEntry<'static>),
+    /// A key in a structured document (JSON, YAML, TOML, etc.).
+    StructuredKey(StructuredKeyInfo),
+}
+
+/// Information about a structured document key at the cursor position.
+#[derive(Debug, Clone)]
+pub struct StructuredKeyInfo {
+    /// Full dotted key path (e.g. `"database.host"`).
+    pub path: String,
+    /// Leaf key name (e.g. `"host"`).
+    pub key: String,
+    /// Nesting depth (0 = top-level).
+    pub depth: usize,
+    /// Classification of the value.
+    pub value_kind: ValueKind,
+    /// The document kind (Json, Yaml, Toml, etc.).
+    pub document_kind: DocumentKind,
+}
+
+impl StructuredKeyInfo {
+    /// Build from a [`KeyEntry`] and the document kind.
+    pub fn from_key_entry(entry: &KeyEntry, kind: DocumentKind) -> Self {
+        Self {
+            path: entry.path.clone(),
+            key: entry.key.clone(),
+            depth: entry.depth,
+            value_kind: entry.value_kind,
+            document_kind: kind,
+        }
+    }
 }
 
 /// The internal state of the LSP server.
@@ -680,6 +710,20 @@ impl ServerState {
 
     /// Identify what element the cursor is on.
     pub fn symbol_at_position(&self, uri: &DocumentUri, pos: Position) -> Option<SymbolAtPosition> {
+        // Check if it's a structured document first
+        if let Some(structured_index) = self.realm.get_structured_document(uri) {
+            // Find the key entry whose key_range contains the cursor position.
+            // Iterate in reverse to prefer deeper (more specific) keys when nested.
+            for entry in structured_index.keys().iter().rev() {
+                if entry.key_range.contains(pos) {
+                    return Some(SymbolAtPosition::StructuredKey(
+                        StructuredKeyInfo::from_key_entry(entry, structured_index.kind()),
+                    ));
+                }
+            }
+            return None;
+        }
+
         let index = self.realm.get_document(uri)?;
 
         // Check wiki links first (most specific)
