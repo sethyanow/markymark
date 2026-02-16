@@ -1,12 +1,16 @@
 const std = @import("std");
 const heading_scan = @import("kernels/heading_scan.zig");
 const link_scan = @import("kernels/link_scan.zig");
+const tag_scan = @import("kernels/tag_scan.zig");
+const block_scan = @import("kernels/block_scan.zig");
 const token_estimate = @import("kernels/token_estimate.zig");
 const content_hash_mod = @import("kernels/content_hash.zig");
 
 /// Re-export types for C consumers
 pub const HeadingScan = heading_scan.HeadingScan;
 pub const LinkScan = link_scan.LinkScan;
+pub const TagScan = tag_scan.TagScan;
+pub const BlockIdScan = block_scan.BlockIdScan;
 
 /// Version constant for markymark kernels
 /// Format: 0xMMmmpp (major, minor, patch)
@@ -128,6 +132,88 @@ export fn marky_content_hash(
     return content_hash_mod.content_hash(t, len);
 }
 
+/// SIMD-accelerated tag extraction.
+///
+/// Scans `text[0..len]` for #tag patterns (whitespace-bounded).
+/// Writes results into `out[0..cap]`, sets `*written` to the number found.
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointer)
+///  -2  — buffer too small (cap=0, or more tags than cap)
+export fn marky_scan_tags(
+    text: ?[*]const u8,
+    len: u32,
+    out: ?[*]TagScan,
+    cap: u32,
+    written: ?*u32,
+) i32 {
+    const w = written orelse return -1;
+    const t = text orelse {
+        if (len == 0) {
+            w.* = 0;
+            return 0;
+        }
+        return -1;
+    };
+    const o = out orelse return -1;
+
+    if (len == 0) {
+        w.* = 0;
+        return 0;
+    }
+
+    if (cap == 0) return -2;
+
+    const count = tag_scan.scan_tags(t, len, o, cap);
+    w.* = count;
+
+    if (count >= cap) return -2;
+
+    return 0;
+}
+
+/// SIMD-accelerated block ID extraction.
+///
+/// Scans `text[0..len]` for ^block-id patterns at end of line.
+/// Writes results into `out[0..cap]`, sets `*written` to the number found.
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointer)
+///  -2  — buffer too small (cap=0, or more block IDs than cap)
+export fn marky_scan_block_ids(
+    text: ?[*]const u8,
+    len: u32,
+    out: ?[*]BlockIdScan,
+    cap: u32,
+    written: ?*u32,
+) i32 {
+    const w = written orelse return -1;
+    const t = text orelse {
+        if (len == 0) {
+            w.* = 0;
+            return 0;
+        }
+        return -1;
+    };
+    const o = out orelse return -1;
+
+    if (len == 0) {
+        w.* = 0;
+        return 0;
+    }
+
+    if (cap == 0) return -2;
+
+    const count = block_scan.scan_block_ids(t, len, o, cap);
+    w.* = count;
+
+    if (count >= cap) return -2;
+
+    return 0;
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -138,6 +224,10 @@ test {
     _ = @import("reference/heading_scan_ref.zig");
     _ = @import("kernels/link_scan.zig");
     _ = @import("reference/link_scan_ref.zig");
+    _ = @import("kernels/tag_scan.zig");
+    _ = @import("reference/tag_scan_ref.zig");
+    _ = @import("kernels/block_scan.zig");
+    _ = @import("reference/block_scan_ref.zig");
     _ = @import("kernels/token_estimate.zig");
     _ = @import("kernels/content_hash.zig");
 }
@@ -296,4 +386,108 @@ test "marky_content_hash distinct" {
     const hash1 = marky_content_hash("abc".ptr, 3);
     const hash2 = marky_content_hash("def".ptr, 3);
     try std.testing.expect(hash1 != hash2);
+}
+
+// -- marky_scan_tags tests --
+
+test "marky_scan_tags basic" {
+    const text = "text #tag1 #tag2";
+    var out: [8]TagScan = undefined;
+    var w: u32 = undefined;
+    const rc = marky_scan_tags(text.ptr, text.len, &out, 8, &w);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    try std.testing.expectEqual(@as(u32, 2), w);
+    try std.testing.expectEqual(@as(u32, 5), out[0].offset);
+    try std.testing.expectEqual(@as(u32, 11), out[1].offset);
+}
+
+test "marky_scan_tags null text with zero len" {
+    var w: u32 = undefined;
+    var out: [4]TagScan = undefined;
+    const rc = marky_scan_tags(null, 0, &out, 4, &w);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    try std.testing.expectEqual(@as(u32, 0), w);
+}
+
+test "marky_scan_tags null text with nonzero len" {
+    var w: u32 = undefined;
+    var out: [4]TagScan = undefined;
+    const rc = marky_scan_tags(null, 10, &out, 4, &w);
+    try std.testing.expectEqual(@as(i32, -1), rc);
+}
+
+test "marky_scan_tags null written" {
+    const text = "#tag";
+    var out: [4]TagScan = undefined;
+    const rc = marky_scan_tags(text.ptr, text.len, &out, 4, null);
+    try std.testing.expectEqual(@as(i32, -1), rc);
+}
+
+test "marky_scan_tags zero cap" {
+    const text = "#tag";
+    var out: [4]TagScan = undefined;
+    var w: u32 = undefined;
+    const rc = marky_scan_tags(text.ptr, text.len, &out, 0, &w);
+    try std.testing.expectEqual(@as(i32, -2), rc);
+}
+
+test "marky_scan_tags buffer overflow returns -2" {
+    const text = "#a #b #c";
+    var out: [1]TagScan = undefined;
+    var w: u32 = undefined;
+    const rc = marky_scan_tags(text.ptr, text.len, &out, 1, &w);
+    try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqual(@as(u32, 1), w);
+}
+
+// -- marky_scan_block_ids tests --
+
+test "marky_scan_block_ids basic" {
+    const text = "text ^block-id\n";
+    var out: [8]BlockIdScan = undefined;
+    var w: u32 = undefined;
+    const rc = marky_scan_block_ids(text.ptr, text.len, &out, 8, &w);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    try std.testing.expectEqual(@as(u32, 1), w);
+    try std.testing.expectEqual(@as(u32, 5), out[0].offset);
+    try std.testing.expectEqual(@as(u16, 8), out[0].length);
+}
+
+test "marky_scan_block_ids null text with zero len" {
+    var w: u32 = undefined;
+    var out: [4]BlockIdScan = undefined;
+    const rc = marky_scan_block_ids(null, 0, &out, 4, &w);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    try std.testing.expectEqual(@as(u32, 0), w);
+}
+
+test "marky_scan_block_ids null text with nonzero len" {
+    var w: u32 = undefined;
+    var out: [4]BlockIdScan = undefined;
+    const rc = marky_scan_block_ids(null, 10, &out, 4, &w);
+    try std.testing.expectEqual(@as(i32, -1), rc);
+}
+
+test "marky_scan_block_ids null written" {
+    const text = "text ^id\n";
+    var out: [4]BlockIdScan = undefined;
+    const rc = marky_scan_block_ids(text.ptr, text.len, &out, 4, null);
+    try std.testing.expectEqual(@as(i32, -1), rc);
+}
+
+test "marky_scan_block_ids zero cap" {
+    const text = "text ^id\n";
+    var out: [4]BlockIdScan = undefined;
+    var w: u32 = undefined;
+    const rc = marky_scan_block_ids(text.ptr, text.len, &out, 0, &w);
+    try std.testing.expectEqual(@as(i32, -2), rc);
+}
+
+test "marky_scan_block_ids not at EOL" {
+    const text = "^id more text\n";
+    var out: [4]BlockIdScan = undefined;
+    var w: u32 = undefined;
+    const rc = marky_scan_block_ids(text.ptr, text.len, &out, 4, &w);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    try std.testing.expectEqual(@as(u32, 0), w);
 }
