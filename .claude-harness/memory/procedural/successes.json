@@ -2,6 +2,38 @@
   "version": 3,
   "entries": [
     {
+      "id": "suc-030",
+      "timestamp": "2026-02-16T21:00:00Z",
+      "feature": "marky-ams",
+      "type": "implementation",
+      "approach": "ZigScanBackend (zero-size struct) and ZigEmbeddingIndex (Mutex-wrapped) in markymark-core behind zig-kernels feature. TDD: 8 scan tests + 5 embedding tests. ZigScanBackend delegates to markymark_kernels::scan/tokens, maps KernelError to ScanError. ZigEmbeddingIndex wraps EmbeddingIndex in Mutex for Send+Sync with unsafe impl.",
+      "files": ["markymark-core/src/scanner.rs", "markymark-core/src/embeddings.rs", "markymark-core/src/lib.rs"],
+      "patterns": [
+        "Feature-gated impl in private submodule with pub use re-export keeps file structure clean",
+        "Zero-size struct for stateless FFI delegation — no fields needed",
+        "Mutex wrapper for !Send+!Sync FFI handle with unsafe impl Send+Sync",
+        "map_kernel_error helper avoids match boilerplate in each trait method",
+        "estimate_tokens returns directly from tokens module (no error mapping needed — pure function)",
+        "Prelude re-exports behind #[cfg(feature)] for downstream convenience"
+      ]
+    },
+    {
+      "id": "suc-031",
+      "timestamp": "2026-02-16T21:10:00Z",
+      "feature": "marky-0oz",
+      "type": "implementation",
+      "approach": "DocumentIndex::from_scan behind zig-kernels feature. Takes &dyn ScanBackend, creates fresh DocumentArena, scans headings/links/tags/block_ids, builds toc/outline/slug_to_heading. byte_offset_line_starts + binary_search for offset-to-Position conversion. TDD: 12 tests including parity with from_ast.",
+      "files": ["markymark-index/src/document.rs", "markymark-index/Cargo.toml"],
+      "patterns": [
+        "byte_offset_line_starts builds Vec<u32> of newline positions; binary_search converts offset to line:col",
+        "from_scan allocates into fresh DocumentArena with same 'static self-referential pattern as from_ast",
+        "Split scan_links results by ScanLinkType into WikiLinkEntry vs MarkdownLinkEntry",
+        "Split URL#anchor for MarkdownLinkEntry to match from_ast anchor semantics",
+        "XML tags: &[] empty slice for unsupported scan feature (no allocation needed)",
+        "Feature flag propagation: markymark-index/zig-kernels = ['markymark-core/zig-kernels']"
+      ]
+    },
+    {
       "id": "suc-027",
       "timestamp": "2026-02-16T15:36:00Z",
       "feature": "marky-clg",
