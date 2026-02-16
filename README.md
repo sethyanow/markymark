@@ -65,13 +65,13 @@ For a 260-line file, an LSP `documentSymbol` query uses ~100 tokens vs ~2000+ fo
 ### Example LSP Queries
 
 **Document outline** (works for Markdown headings AND JSON/YAML/TOML keys):
-```
+```bash
 LSP documentSymbol file.md
 LSP documentSymbol config.json
 ```
 
 **Hover on a heading or structured key**:
-```
+```bash
 LSP hover file.md <line> <col>
 LSP hover config.yaml <line> <col>
 ```

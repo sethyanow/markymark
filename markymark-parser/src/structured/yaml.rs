@@ -413,6 +413,28 @@ mod tests {
         assert_eq!(ast.keys[1].depth, 1);
     }
 
+    #[test]
+    fn test_parse_yaml_nested_flow_mapping() {
+        let source = "db: {host: localhost, port: 5432}";
+        let ast = parse_yaml(source).unwrap();
+        assert_eq!(ast.keys.len(), 3);
+
+        assert_eq!(ast.keys[0].key, "db");
+        assert_eq!(ast.keys[0].path, "db");
+        assert_eq!(ast.keys[0].depth, 0);
+        assert_eq!(ast.keys[0].value_kind, ValueKind::Object);
+
+        assert_eq!(ast.keys[1].key, "host");
+        assert_eq!(ast.keys[1].path, "db.host");
+        assert_eq!(ast.keys[1].depth, 1);
+        assert_eq!(ast.keys[1].value_kind, ValueKind::String);
+
+        assert_eq!(ast.keys[2].key, "port");
+        assert_eq!(ast.keys[2].path, "db.port");
+        assert_eq!(ast.keys[2].depth, 1);
+        assert_eq!(ast.keys[2].value_kind, ValueKind::Number);
+    }
+
     // ===== SEQUENCES (ARRAYS) =====
 
     #[test]
