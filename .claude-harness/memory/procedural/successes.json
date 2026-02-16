@@ -177,6 +177,48 @@
         "Parallel subagents for independent splits (3 splits = 3 agents concurrently)",
         "Parent-child relationships in beads are structural, not removable with dep remove"
       ]
+    },
+    {
+      "id": "suc-016",
+      "timestamp": "2026-02-16T06:50:00Z",
+      "feature": "marky-een",
+      "type": "implementation",
+      "approach": "Rust FFI bridge crate scaffold: created markymark-kernels/ with build.rs that runs zig build lib, links libmarky_kernels.a. lib.rs wraps marky_version() extern C fn as kernel_version(). Empty module stubs for scan/embed/similarity/tokens/hash. Full quality gate passed first try.",
+      "files": ["markymark-kernels/Cargo.toml", "markymark-kernels/build.rs", "markymark-kernels/src/lib.rs"],
+      "patterns": [
+        "build.rs version check: split on '-' first to handle -dev suffix, then parse X.Y.Z",
+        "rerun-if-changed on zig/src/ and zig/build.zig triggers rebuild when Zig sources change",
+        "cargo:rustc-link-search=native= + cargo:rustc-link-lib=static= for linking .a files",
+        "Test FFI linkage with a simple version function before adding complex kernels"
+      ]
+    },
+    {
+      "id": "suc-017",
+      "timestamp": "2026-02-16T07:19:00Z",
+      "feature": "marky-ccv",
+      "type": "review",
+      "approach": "review-implementation skill caught 3 tautological expect(true) tests in Zig scaffold and missing comptime version gate. Fixed all gaps, verified all quality gates pass, committed and pushed.",
+      "files": ["zig/build.zig", "zig/src/fixtures.zig", "zig/src/harness.zig", "zig/test/smoke_test.zig"],
+      "patterns": [
+        "expect(true) in placeholder modules is tautological — empty modules with only doc comments are cleaner",
+        "comptime version gate in build.zig catches wrong Zig at build time, not just test time",
+        "Review scaffold code with same rigor as production code — placeholder tests create false confidence"
+      ]
+    },
+    {
+      "id": "suc-018",
+      "timestamp": "2026-02-16T07:42:00Z",
+      "feature": "marky-v8r",
+      "type": "implementation",
+      "approach": "SIMD heading scanner using @Vector(16, u8) for newline detection with scalar heading validation. Shared try_parse_heading between SIMD and scalar paths ensures parity. ATX closing hash trimming per CommonMark spec. All 22 tests pass first try, ~1.9x SIMD speedup on 10KB markdown benchmark.",
+      "files": ["zig/src/kernels/heading_scan.zig", "zig/src/reference/heading_scan_ref.zig", "zig/src/c_adapter.zig"],
+      "patterns": [
+        "SIMD for sparse pattern search: use @Vector to find candidate positions (newlines), then scalar for validation",
+        "Share parsing logic between SIMD and scalar modules via pub import from reference",
+        "inline for over SIMD lane indices to check each match without extracting bitmask",
+        "ATX closing hash trimming: trim spaces, trim hashes, check preceding space, trim trailing spaces",
+        "c_adapter.zig test block with _ = @import pulls kernel tests into main test step"
+      ]
     }
   ]
 }

@@ -842,6 +842,30 @@
       "impact": "Dependency chain: kernels <- core <- index <- mcp"
     },
     {
+      "id": "dec-v8r-001",
+      "timestamp": "2026-02-16T07:42:00Z",
+      "feature": "marky-v8r",
+      "decision": "Hybrid SIMD-scalar heading scanner: SIMD finds newlines, scalar validates headings",
+      "rationale": "Headings are sparse in markdown. SIMD accelerates the common case (scanning prose for newlines) while scalar handles the rare case (parsing heading syntax). This avoids complex SIMD logic for # counting and space verification.",
+      "alternatives": [
+        "Full SIMD heading parsing (complex, marginal benefit for sparse headings)",
+        "Pure scalar (simpler but slower on large documents)"
+      ],
+      "impact": "zig/src/kernels/heading_scan.zig, zig/src/reference/heading_scan_ref.zig"
+    },
+    {
+      "id": "dec-v8r-002",
+      "timestamp": "2026-02-16T07:42:00Z",
+      "feature": "marky-v8r",
+      "decision": "Shared try_parse_heading between SIMD and scalar implementations",
+      "rationale": "Both SIMD and scalar paths need identical heading validation logic. Sharing the function ensures parity and reduces duplication. Made pub in reference module for SIMD module to import.",
+      "alternatives": [
+        "Duplicate validation logic in each module",
+        "Extract to shared utility module"
+      ],
+      "impact": "zig/src/reference/heading_scan_ref.zig (pub fn try_parse_heading)"
+    },
+    {
       "id": "dec-brza-mm-004",
       "timestamp": "2026-02-15T23:50:00Z",
       "feature": "marky-8s3",
@@ -866,6 +890,30 @@
         "Spike first (delays full planning)"
       ],
       "impact": "Epic marky-8s3 with 17 tasks across 7 phases"
+    },
+    {
+      "id": "dec-brza-een-001",
+      "timestamp": "2026-02-16T06:50:00Z",
+      "feature": "marky-een",
+      "decision": "build.rs invokes zig build lib via std::process::Command with no external build dependencies",
+      "rationale": "Keeps the crate dependency-free. build.rs uses only std for Command, PathBuf, and env. Version parsing is manual (split on '-' then '.') to handle dev suffixes without regex crate.",
+      "alternatives": [
+        "Use cc crate (overkill for invoking zig CLI)",
+        "Use which crate for zig lookup (unnecessary, PATH lookup via Command is sufficient)"
+      ],
+      "impact": "markymark-kernels/build.rs — zero build-dependencies"
+    },
+    {
+      "id": "dec-brza-een-002",
+      "timestamp": "2026-02-16T06:50:00Z",
+      "feature": "marky-een",
+      "decision": "rerun-if-changed set on zig/src/ directory and zig/build.zig, not individual .zig files",
+      "rationale": "Directory-level rerun-if-changed triggers on any file add/remove/modify within the directory. Avoids maintaining a list of individual zig source files as new kernels are added.",
+      "alternatives": [
+        "List each .zig file individually (maintenance burden)",
+        "No rerun-if-changed (stale builds)"
+      ],
+      "impact": "markymark-kernels/build.rs — rebuild triggers"
     }
   ]
 }
