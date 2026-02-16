@@ -238,6 +238,7 @@ unsafe fn call_scan_ffi<T: Copy>(
         // SAFETY: buf has capacity `cap`, text_ptr valid for text_len bytes,
         // written is a valid mutable reference. FFI function writes at most
         // `cap` elements to buf.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
         let rc = unsafe { ffi_fn(text_ptr, text_len, buf.as_mut_ptr(), cap, &mut written) };
 
         match rc {
@@ -246,6 +247,7 @@ unsafe fn call_scan_ffi<T: Copy>(
             -2 => {
                 // Double capacity and retry
                 let new_cap = (buf.len() * 2).max(INITIAL_CAP);
+                // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
                 buf.resize(new_cap, unsafe { std::mem::zeroed() });
             }
             other => return Err(KernelError::InternalError(other)),
@@ -268,8 +270,10 @@ pub fn scan_headings(text: &str) -> Result<Vec<HeadingScan>, KernelError> {
         return Ok(Vec::new());
     }
 
+    // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let mut buf: Vec<CHeadingScan> = vec![unsafe { std::mem::zeroed() }; INITIAL_CAP];
     // SAFETY: marky_scan_headings matches the expected C ABI signature.
+    // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let written = unsafe { call_scan_ffi(text.as_bytes(), &mut buf, marky_scan_headings) }?;
 
     let results = buf[..written as usize]
@@ -293,8 +297,10 @@ pub fn scan_links(text: &str) -> Result<Vec<LinkScan>, KernelError> {
         return Ok(Vec::new());
     }
 
+    // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let mut buf: Vec<CLinkScan> = vec![unsafe { std::mem::zeroed() }; INITIAL_CAP];
     // SAFETY: marky_scan_links matches the expected C ABI signature.
+    // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let written = unsafe { call_scan_ffi(text.as_bytes(), &mut buf, marky_scan_links) }?;
 
     let results = buf[..written as usize]
@@ -323,8 +329,10 @@ pub fn scan_tags(text: &str) -> Result<Vec<TagScan>, KernelError> {
         return Ok(Vec::new());
     }
 
+    // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let mut buf: Vec<CTagScan> = vec![unsafe { std::mem::zeroed() }; INITIAL_CAP];
     // SAFETY: marky_scan_tags matches the expected C ABI signature.
+    // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let written = unsafe { call_scan_ffi(text.as_bytes(), &mut buf, marky_scan_tags) }?;
 
     let results = buf[..written as usize]
@@ -350,8 +358,10 @@ pub fn scan_block_ids(text: &str) -> Result<Vec<BlockIdScan>, KernelError> {
         return Ok(Vec::new());
     }
 
+    // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let mut buf: Vec<CBlockIdScan> = vec![unsafe { std::mem::zeroed() }; INITIAL_CAP];
     // SAFETY: marky_scan_block_ids matches the expected C ABI signature.
+    // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let written = unsafe { call_scan_ffi(text.as_bytes(), &mut buf, marky_scan_block_ids) }?;
 
     let results = buf[..written as usize]

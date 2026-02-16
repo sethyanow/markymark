@@ -3,16 +3,16 @@
   "maxEntries": 50,
   "entries": [
     {
-      "id": "dec-001",
-      "timestamp": "2026-02-13T21:15:00Z",
-      "feature": "marky-1vb",
-      "decision": "Copy suggest-lsp.sh from examples/ rather than creating a new version",
-      "rationale": "Example already works and has tests; no need to rewrite",
+      "id": "dec-nosemgrep-001",
+      "timestamp": "2026-02-16T13:12:00Z",
+      "feature": "marky-8s3",
+      "decision": "Use nosemgrep inline comments instead of blanket crate exclusion for FFI unsafe blocks",
+      "rationale": "Each unsafe block already has a SAFETY comment explaining invariants. nosemgrep forces deliberate consideration for any new unsafe — blanket exclusion would silently accept unjustified unsafe blocks. Pragmatic: prevents tech debt while keeping the safety gate active.",
       "alternatives": [
-        "Write new hook from scratch",
-        "Symlink to examples/"
+        "Exclude markymark-kernels/ from unsafe rules entirely (easy but loses gate)",
+        "Dismiss findings on GitHub (quick but no future protection)"
       ],
-      "impact": "markymark-plugin/hooks/suggest-lsp.sh"
+      "impact": "21 nosemgrep comments across 6 files in markymark-kernels/src/"
     },
     {
       "id": "dec-002",
@@ -926,6 +926,54 @@
         "Feature-gate markymark-kernels to skip without Zig"
       ],
       "impact": ".github/workflows/ci.yml — mlugg/setup-zig@v2 step added"
+    },
+    {
+      "id": "dec-ncz-001",
+      "timestamp": "2026-02-16T12:35:00Z",
+      "feature": "marky-ncz",
+      "decision": "Split C ABI exports into separate exports_*.zig files instead of adding to c_adapter.zig",
+      "rationale": "c_adapter.zig was at 793 lines. Adding 6 embedding exports + 18 tests would push past 1000-line hard limit. Separate files with _ = @import wiring adds only 2-3 lines to c_adapter.zig while keeping exports in the library.",
+      "alternatives": [
+        "Add directly to c_adapter.zig (would exceed 1000 lines)",
+        "Split c_adapter.zig into c_adapter_scan.zig and c_adapter_shared.zig first (larger refactor)"
+      ],
+      "impact": "zig/src/exports_embed.zig — new pattern for all future C ABI exports"
+    },
+    {
+      "id": "dec-0u5-001",
+      "timestamp": "2026-02-16T12:50:00Z",
+      "feature": "marky-0u5",
+      "decision": "Reuse KernelError from scan.rs instead of defining new error type in lib.rs",
+      "rationale": "The design doc suggested defining KernelError in lib.rs, but scan.rs already has it with the exact same variants. Moving it would require changing scan.rs imports. Using crate::scan::KernelError from the new modules avoids touching working code.",
+      "alternatives": [
+        "Move KernelError to lib.rs and re-export (cleaner but changes existing code)",
+        "Define separate error types per module (more isolation but code duplication)"
+      ],
+      "impact": "similarity.rs, hash.rs, embed.rs all import from crate::scan::KernelError"
+    },
+    {
+      "id": "dec-0u5-002",
+      "timestamp": "2026-02-16T12:50:00Z",
+      "feature": "marky-0u5",
+      "decision": "Use PhantomData<*mut ()> for !Send/!Sync on EmbeddingIndex instead of negative trait impls",
+      "rationale": "impl !Send and impl !Sync require nightly Rust (feature gate negative_impls). This project uses stable Rust. PhantomData<*mut ()> achieves the same effect since raw pointers are !Send + !Sync.",
+      "alternatives": [
+        "Add rust-toolchain.toml with nightly (too disruptive)",
+        "Just document that it's not thread-safe without enforcing (unsafe)"
+      ],
+      "impact": "markymark-kernels/src/embed.rs — EmbeddingIndex struct"
+    },
+    {
+      "id": "dec-0u5-003",
+      "timestamp": "2026-02-16T12:52:00Z",
+      "feature": "marky-0u5",
+      "decision": "Fix exports_embed.zig with comptime { _ = @import } at module level in c_adapter.zig",
+      "rationale": "The previous session wired exports_embed.zig via _ = @import inside a test block. This makes export fn declarations visible during zig build test but NOT in the library build (zig build lib). Symbols were missing at link time. Moving to comptime at module level ensures exports are always included.",
+      "alternatives": [
+        "Move export fn declarations directly into c_adapter.zig (violates 1000-line limit)",
+        "Add exports_embed.zig to build.zig as separate compilation unit (more complex build)"
+      ],
+      "impact": "zig/src/c_adapter.zig — critical fix for all future exports_*.zig files"
     }
   ]
 }

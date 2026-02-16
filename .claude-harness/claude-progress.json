@@ -1,41 +1,40 @@
 {
-  "lastUpdated": "2026-02-16T09:57:00Z",
+  "lastUpdated": "2026-02-16T16:40:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Implemented Rust FFI wrappers for all 6 Zig SIMD kernel functions (marky-h1t). scan.rs: 4 scan wrappers with generic call_scan_ffi<T> helper, exponential buffer retry, repr(C) mirror structs, safe_slice UTF-8 boundary handling. tokens.rs: estimate_tokens wrapper. hash.rs: content_hash wrapper with FNV test vectors. 30 tests pass, clippy clean, all pre-commit hooks pass.",
+    "summary": "Triaged 23 new PR #18 review comments (9 semgrep, 9 Copilot, 5 CodeRabbit). 8 already fixed, 9 expected semgrep, 1 false positive, 4 actionable. Applied defensive FFI hardening: u32::try_from for slice length casts, written clamping from FFI, validation order fix in embed search, renamed MAX_RETRIES to MAX_ATTEMPTS. Added content_hash Rust wrapper for marky_content_hash Zig export. 61 tests pass, clippy clean.",
     "completedTasks": [
-      "marky-h1t: Rust FFI wrappers for extraction kernels — scan_headings, scan_links, scan_tags, scan_block_ids, estimate_tokens, content_hash",
-      "Generic call_scan_ffi<T> with exponential buffer retry (64 -> 128 -> 256 -> 512)",
-      "KernelError enum mapping FFI return codes (-1 InvalidInput, -2 BufferTooSmall)",
-      "safe_slice() UTF-8 char boundary validation for Zig byte offsets",
-      "30 integration tests covering basic, empty, many-results, offset validation"
+      "Triaged 23 new PR #18 review comments into actionable/skip categories",
+      "similarity.rs: u32::try_from() for cosine and jaccard slice lengths",
+      "hash.rs: MAX_RETRIES→MAX_ATTEMPTS, written<=cap clamp, u32::try_from for text_len",
+      "embed.rs: dims validation before k==0, written clamped to k",
+      "tokens.rs: Added content_hash() wrapper with 4 FNV-1a test vectors"
     ],
     "blockers": [
-      "Scope guard RED: branch at ~10700 lines / 29 files"
+      "Scope guard RED: branch at ~8380 lines / 42 commits / 39+ new files",
+      "PR #18 CI checks need to pass before merge"
     ],
     "nextSteps": [
-      "marky-ncz: Port embedding index kernels from forge BRZA",
-      "marky-bgl: Port similarity and entity hash kernels from forge BRZA",
-      "marky-0u5: Write Rust FFI wrappers for shared kernels (blocked on ncz+bgl)",
-      "marky-8s3.1: Implement code fence exclusion map",
-      "marky-ayb: CI integration improvements"
+      "Merge PR #18 once CI passes",
+      "marky-qv6: Add ScanBackend and EmbeddingProvider traits to markymark-core",
+      "marky-ayb: Full CI integration for Zig"
     ]
   },
   "recentChanges": [
-    "markymark-kernels/src/scan.rs: 4 FFI scan wrappers with buffer retry + Rust types",
-    "markymark-kernels/src/tokens.rs: estimate_tokens FFI wrapper",
-    "markymark-kernels/src/hash.rs: content_hash FFI wrapper with FNV test vectors"
+    "fix(kernels): defensive FFI hardening for PR #18 round 2 comments",
+    "8bf7a6b: chore(harness): checkpoint after PR #18 review fixes completion",
+    "ed84d6a: fix(brza): address PR #18 review comments"
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch growing, consider splitting or deferring",
-    "All scan kernels: known false positives inside code blocks (fence_map kernel is separate task)",
+    "Scope guard RED: branch large (~8380 lines, 39+ files, 42 commits)",
+    "c_adapter.zig at 803 lines — new exports use exports_*.zig pattern to stay under limit",
     "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T09:57:00Z",
-    "lastTypeCheck": "2026-02-16T09:57:00Z"
+    "lastSuccessfulBuild": "2026-02-16T16:40:00Z",
+    "lastTypeCheck": "2026-02-16T16:40:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
