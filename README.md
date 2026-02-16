@@ -1,14 +1,15 @@
 # markymark
 
-High-performance Markdown & structured document LSP + MCP server in Rust.
+High-performance Markdown & structured document LSP + MCP server in Rust and Zig.
 
 > **Pre-release Software**: markymark is in active development. APIs, configuration, and behavior may change between minor versions.
 
 ## Overview
 
-markymark is a Rust-based Language Server Protocol (LSP) and Model Context Protocol (MCP) server for Markdown and structured data files, featuring:
+markymark is a Language Server Protocol (LSP) and Model Context Protocol (MCP) server for Markdown and structured data files, built in Rust with Zig SIMD kernels for performance-critical operations:
 
 - **Multi-format support** — Markdown, JSON, JSONC, JSON5, JSONL, YAML, TOML, .env, INI/CFG
+- **Zig SIMD kernels** — Vectorized heading/link/tag/block scanning, similarity search, entity hashing, and token estimation via `@Vector` intrinsics with scalar reference fallbacks
 - **Multi-tenant realm isolation** (shared vs isolated workspaces)
 - **Full Obsidian and Logseq flavor support** (wiki links, callouts, block IDs, page properties)
 - **Anchor link rename support** (updates heading references across workspace)
@@ -113,6 +114,7 @@ This project uses markymark LSP. ALWAYS prefer LSP over reading raw files:
 | `markymark-core` | Core types and abstractions |
 | `markymark-parser` | Tree-sitter based parser (Markdown, JSON, YAML, TOML, JSON5, JSONL, flat) |
 | `markymark-index` | Document indexing and symbol resolution |
+| `markymark-kernels` | Zig SIMD kernel FFI wrappers (scan, embed, similarity, hash, tokens) |
 | `markymark-lsp` | LSP server (tower-lsp-server) |
 | `markymark-mcp` | MCP server (rmcp) |
 | `markymark-cli` | CLI entry point |
@@ -122,6 +124,7 @@ This project uses markymark LSP. ALWAYS prefer LSP over reading raw files:
 ### Requirements
 
 - Rust stable (Edition 2021)
+- Zig 0.15.2+ (for SIMD kernels in `markymark-kernels`)
 
 ### Building
 
@@ -129,6 +132,8 @@ This project uses markymark LSP. ALWAYS prefer LSP over reading raw files:
 cargo build --release
 # Binary at target/release/markymark
 ```
+
+The `markymark-kernels` crate's `build.rs` invokes `zig build lib` automatically — Zig just needs to be on `$PATH`.
 
 ### Testing
 
