@@ -65,7 +65,10 @@ export fn marky_scan_headings(
         return 0;
     }
 
-    if (cap == 0) return -2;
+    if (cap == 0) {
+        w.* = 0;
+        return -2;
+    }
 
     const count = heading_scan.scan_headings(t, len, o, cap);
     w.* = count;
@@ -107,7 +110,10 @@ export fn marky_scan_links(
         return 0;
     }
 
-    if (cap == 0) return -2;
+    if (cap == 0) {
+        w.* = 0;
+        return -2;
+    }
 
     const count = link_scan.scan_links(t, len, o, cap);
     w.* = count;
@@ -174,7 +180,10 @@ export fn marky_scan_tags(
         return 0;
     }
 
-    if (cap == 0) return -2;
+    if (cap == 0) {
+        w.* = 0;
+        return -2;
+    }
 
     const count = tag_scan.scan_tags(t, len, o, cap);
     w.* = count;
@@ -215,7 +224,10 @@ export fn marky_scan_block_ids(
         return 0;
     }
 
-    if (cap == 0) return -2;
+    if (cap == 0) {
+        w.* = 0;
+        return -2;
+    }
 
     const count = block_scan.scan_block_ids(t, len, o, cap);
     w.* = count;
@@ -433,6 +445,7 @@ test "marky_scan_headings zero cap" {
     var w: u32 = undefined;
     const rc = marky_scan_headings(text.ptr, text.len, &out, 0, &w);
     try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqual(@as(u32, 0), w);
 }
 
 // -- marky_scan_links tests --
@@ -476,6 +489,7 @@ test "marky_scan_links zero cap" {
     var w: u32 = undefined;
     const rc = marky_scan_links(text.ptr, text.len, &out, 0, &w);
     try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqual(@as(u32, 0), w);
 }
 
 test "marky_scan_links buffer overflow returns -2" {
@@ -577,6 +591,7 @@ test "marky_scan_tags zero cap" {
     var w: u32 = undefined;
     const rc = marky_scan_tags(text.ptr, text.len, &out, 0, &w);
     try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqual(@as(u32, 0), w);
 }
 
 test "marky_scan_tags buffer overflow returns -2" {
@@ -629,6 +644,7 @@ test "marky_scan_block_ids zero cap" {
     var w: u32 = undefined;
     const rc = marky_scan_block_ids(text.ptr, text.len, &out, 0, &w);
     try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqual(@as(u32, 0), w);
 }
 
 test "marky_scan_block_ids not at EOL" {
