@@ -1,22 +1,15 @@
 {
-  "lastUpdated": "2026-02-16T01:15:00Z",
+  "lastUpdated": "2026-02-16T03:45:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "BRZA-markymark brainstorming and SRE planning session. Investigated forge BRZA implementation (2,973 LOC Zig, 224 tests), designed full integration architecture (docs/plans/brza-markymark.md), created epic marky-8s3 with 26 tasks across 7 phases. SRE review agent updated all 26 tasks with effort estimates, success criteria, edge cases, anti-patterns. Split 3 oversized tasks into 11 subtasks (37 total). Total estimated effort: 196-254h.",
+    "summary": "Dependency upgrade session. Bumped petgraph 0.7→0.8 (drop-in) and rmcp 0.13→0.15 (type renames only). Fixed 11 deprecation warnings in markymark-mcp by renaming *RequestParam→*RequestParams. Updated rmcp docs. All 448 tests pass, clippy clean, zero warnings.",
     "completedTasks": [
-      "Brainstormed 13 ZA application areas for markymark",
-      "Researched forge BRZA implementation via subagent",
-      "Created comprehensive spec: docs/plans/brza-markymark.md",
-      "Created epic marky-8s3 with 26 tasks and 27 dependency edges",
-      "SRE task refinement on all 26 tasks (background agent)",
-      "Split marky-8s3.2 (Aho-Corasick) into 3 subtasks",
-      "Split marky-8s3.7 (multi-format extractors) into 5 subtasks",
-      "Split marky-qv6 (core traits) into 3 subtasks",
-      "Recorded 15 architectural decisions (dec-brza-mm-001 through -015)"
+      "Upgraded petgraph 0.7.1 → 0.8.3 (workspace Cargo.toml)",
+      "Upgraded rmcp 0.13.0 → 0.15.0 (workspace Cargo.toml)",
+      "Fixed 11 deprecation warnings in markymark-mcp/src/lib.rs",
+      "Updated docs/rust_crates/rmcp.md version references"
     ],
-    "blockers": [
-      "No blockers — epic ready for execution"
-    ],
+    "blockers": [],
     "nextSteps": [
       "Execute BRZA epic starting with marky-ccv (Zig scaffold)",
       "Continue marky-luy arena conformance closeout (separate branch)",
@@ -24,20 +17,19 @@
     ]
   },
   "recentChanges": [
-    "docs/plans/brza-markymark.md: comprehensive BRZA integration spec",
-    ".claude-harness/memory/episodic/decisions.json: 15 BRZA decisions added",
-    ".claude-harness/memory/procedural/successes.json: SRE review patterns added",
-    "beads: 37 tasks with SRE-reviewed designs in marky-8s3 epic"
+    "Cargo.toml: petgraph 0.7→0.8, rmcp 0.13→0.15",
+    "Cargo.lock: petgraph 0.7.1→0.8.3, rmcp 0.13.0→0.15.0",
+    "markymark-mcp/src/lib.rs: *RequestParam→*RequestParams renames",
+    "docs/rust_crates/rmcp.md: version 0.13→0.15"
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch at 4,236 lines, 27 commits, 16 new files",
-    "brza-spec.md: untracked file from forge spec reference (not committed)"
+    "Scope guard RED: branch at 4,236 lines, 27 commits, 16 new files"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T01:15:00Z",
-    "lastTypeCheck": "2026-02-16T01:15:00Z"
+    "lastSuccessfulBuild": "2026-02-16T03:42:00Z",
+    "lastTypeCheck": "2026-02-16T03:42:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
