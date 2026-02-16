@@ -914,6 +914,18 @@
         "No rerun-if-changed (stale builds)"
       ],
       "impact": "markymark-kernels/build.rs — rebuild triggers"
+    },
+    {
+      "id": "dec-ci-zig-001",
+      "timestamp": "2026-02-16T09:30:00Z",
+      "feature": "marky-ayb",
+      "decision": "Add Zig to existing build-and-test CI job rather than separate zig-kernels job",
+      "rationale": "Minimum viable fix: markymark-kernels build.rs requires zig binary and was failing CI. Adding to existing job unblocks PR. Full marky-ayb task (separate job, platform matrix, feature gate) deferred.",
+      "alternatives": [
+        "Separate zig-kernels CI job (full marky-ayb scope)",
+        "Feature-gate markymark-kernels to skip without Zig"
+      ],
+      "impact": ".github/workflows/ci.yml — mlugg/setup-zig@v2 step added"
     }
   ]
 }

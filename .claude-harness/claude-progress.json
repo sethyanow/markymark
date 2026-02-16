@@ -1,44 +1,46 @@
 {
-  "lastUpdated": "2026-02-16T09:15:00Z",
+  "lastUpdated": "2026-02-16T09:30:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Merged main into feature/mark-brza (resolved 4 harness JSON conflicts). Implemented marky-50d: tag_scan and block_scan SIMD kernels. tag_scan uses @Vector(16,u8) '#' detection with whitespace boundary validation. block_scan uses @Vector(16,u8) '^' detection with EOL/EOF verification. 45 new tests (122 total Zig, 398 total Rust). 7 C ABI symbols exported. All quality gates pass.",
+    "summary": "Addressed PR #15 CI failure and 8 review comments. Added Zig 0.15.2 to GitHub Actions via mlugg/setup-zig@v2. Fixed u32 overflow in token_estimate BPE multiplier (u64 intermediate + clamp). Fixed SIMD loop bound overflow. Fixed version gate in smoke_test.zig to accept Zig 1.0.0+. Removed unused import, fixed invalid timestamp, added code block language identifiers.",
     "completedTasks": [
-      "Merge main (PR #13 mark-next) into feature/mark-brza — commit d30eeb3",
-      "marky-50d: Implemented tag_scan SIMD kernel (zig/src/kernels/tag_scan.zig)",
-      "marky-50d: Implemented block_scan SIMD kernel (zig/src/kernels/block_scan.zig)",
-      "Created scalar reference implementations for both kernels",
-      "Updated c_adapter.zig with marky_scan_tags and marky_scan_block_ids exports",
-      "Verified: zig build test (122/122), zig build lib (7 symbols), cargo test (398/398)",
-      "All 6 lefthook pre-commit hooks pass"
+      "Added Zig to CI workflow (.github/workflows/ci.yml) — fixes build failure",
+      "Fixed u32 overflow in token_estimate.zig (both SIMD and scalar paths)",
+      "Fixed SIMD loop bound overflow (pre-compute simd_end)",
+      "Fixed smoke_test.zig version gate to accept future major versions",
+      "Added check_zig_version(\"2.0.0\") test in build.rs",
+      "Fixed invalid timestamp in successes.json (25:10 -> 01:10)",
+      "Added language identifiers to 3 fenced code blocks in brza-markymark.md",
+      "Removed unused std import from fixtures.zig"
     ],
     "blockers": [
-      "Scope guard RED: branch at ~4154 lines / 29 files — consider splitting or deferring"
+      "Scope guard RED: branch at ~4162 lines / 29 files — consider splitting or deferring"
     ],
     "nextSteps": [
       "marky-h1t: Write Rust FFI wrappers for extraction kernels (now unblocked)",
       "marky-8s3.2: Implement single-pass multi-pattern scanner (now unblocked)",
-      "marky-ayb: CI integration (Zig build step in GitHub Actions)",
+      "marky-ayb: Remaining CI work (separate zig-kernels job, platform matrix)",
       "marky-8s3.1: Implement code fence exclusion map"
     ]
   },
   "recentChanges": [
-    "zig/src/kernels/tag_scan.zig: SIMD '#' scanner with boundary validation",
-    "zig/src/kernels/block_scan.zig: SIMD '^' scanner with EOL verification",
-    "zig/src/reference/tag_scan_ref.zig: scalar reference + TagScan struct",
-    "zig/src/reference/block_scan_ref.zig: scalar reference + BlockIdScan struct",
-    "zig/src/c_adapter.zig: added tag_scan + block_scan imports, exports, tests"
+    ".github/workflows/ci.yml: added Zig 0.15.2 install step + cache",
+    "zig/src/kernels/token_estimate.zig: u64 overflow fix + simd_end loop bound",
+    "zig/test/smoke_test.zig: version gate accepts major > 0",
+    "markymark-kernels/build.rs: added 2.0.0 test coverage",
+    "zig/src/fixtures.zig: removed unused std import",
+    "docs/plans/brza-markymark.md: added code block language identifiers"
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch at ~4154 lines / 29 files, consider splitting",
+    "Scope guard RED: branch at ~4162 lines / 29 files, consider splitting",
     "All scan kernels: known false positives inside code blocks (by design, fence_map kernel is separate task)",
-    "Zig SIMD bool vectors cannot use 'or' operator — use @select(bool, ...) for element-wise OR"
+    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T09:15:00Z",
-    "lastTypeCheck": "2026-02-16T09:15:00Z"
+    "lastSuccessfulBuild": "2026-02-16T09:30:00Z",
+    "lastTypeCheck": "2026-02-16T09:30:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
