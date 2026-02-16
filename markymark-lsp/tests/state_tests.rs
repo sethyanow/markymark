@@ -148,3 +148,69 @@ fn test_symbol_at_position_structured_returns_none_off_key() {
         "should return None when cursor is not on a key"
     );
 }
+
+// ── MarkdownTree storage tests (marky-tfd) ──────────────────────────
+
+#[test]
+fn test_md_tree_stored_on_open() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Hello\n\nWorld".to_string());
+
+    assert!(
+        state.get_md_tree(&uri).is_some(),
+        "MarkdownTree should be stored after opening a markdown document"
+    );
+}
+
+#[test]
+fn test_md_tree_updated_on_change() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Hello".to_string());
+
+    // Verify tree reflects original document (1 section in block tree root)
+    let tree1 = state.get_md_tree(&uri).unwrap();
+    let root1 = tree1.block_tree().root_node();
+    let child_count_before = root1.child_count();
+
+    state.change_document(&uri, "# Changed\n\n## Added\n\n## Third".to_string());
+
+    let tree2 = state.get_md_tree(&uri);
+    assert!(
+        tree2.is_some(),
+        "MarkdownTree should still exist after change"
+    );
+    let root2 = tree2.unwrap().block_tree().root_node();
+    // More headings → more section nodes in tree-sitter-md's block tree
+    assert!(
+        root2.child_count() >= child_count_before,
+        "tree should reflect updated document structure"
+    );
+}
+
+#[test]
+fn test_md_tree_removed_on_close() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Hello".to_string());
+    assert!(state.get_md_tree(&uri).is_some());
+
+    state.close_document(&uri);
+    assert!(
+        state.get_md_tree(&uri).is_none(),
+        "MarkdownTree should be removed when document is closed"
+    );
+}
+
+#[test]
+fn test_md_tree_not_stored_for_structured_docs() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/config.json").unwrap();
+    state.open_document(uri.clone(), "{\"key\": \"value\"}\n".to_string());
+
+    assert!(
+        state.get_md_tree(&uri).is_none(),
+        "MarkdownTree should not be stored for non-markdown documents"
+    );
+}
