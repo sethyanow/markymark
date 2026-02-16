@@ -315,6 +315,43 @@
         "multi-format",
         "epic-completion"
       ]
+    },
+    {
+      "id": "suc-019",
+      "timestamp": "2026-02-16T08:26:00Z",
+      "feature": "marky-lkj",
+      "type": "workflow",
+      "approach": "Parallel agent execution for 4 independent tasks: launched 3 agents simultaneously (.10 JSON5, .11 hover, .13 JSONC), then .12 after .11 completed. All 4 tasks finished in ~10 minutes wall-clock time. Pre-commit fmt hook caught formatting diffs from agents; cargo fmt + re-commit fixed it.",
+      "files": [
+        "markymark-parser/src/structured/json5.rs",
+        "markymark-lsp/src/state.rs",
+        "markymark-lsp/src/server.rs",
+        "markymark-parser/tests/structured_jsonc.rs"
+      ],
+      "outcome": "marky-lkj epic fully closed. 38+ new tests, 1855 lines, zero failures.",
+      "tags": [
+        "parallel-agents",
+        "epic-completion",
+        "workflow-optimization"
+      ]
+    },
+    {
+      "id": "suc-020",
+      "timestamp": "2026-02-16T08:26:00Z",
+      "feature": "marky-lkj.10",
+      "type": "implementation",
+      "approach": "JSON5 parser: two-phase design — json5 crate (serde) for structure validation + custom Scanner for byte-accurate source positions. Scanner drives iteration in source order and looks up keys in serde map. Handles unquoted identifiers, single-quoted strings, comments, trailing commas, escaped characters.",
+      "files": [
+        "markymark-parser/src/structured/json5.rs",
+        "markymark-parser/tests/structured_json5.rs"
+      ],
+      "outcome": "16 integration + 7 unit tests. Byte-accurate positions verified. serde_json::Map key ordering solved via source-order scanning.",
+      "tags": [
+        "json5",
+        "parser",
+        "source-positions",
+        "serde"
+      ]
     }
   ]
 }
