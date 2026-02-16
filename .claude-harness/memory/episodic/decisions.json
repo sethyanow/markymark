@@ -3,13 +3,13 @@
   "maxEntries": 50,
   "entries": [
     {
-      "id": "dec-035",
-      "timestamp": "2026-02-16T21:00:00Z",
-      "feature": "marky-ams",
-      "decision": "ZigScanBackend as zero-size struct with private submodule + pub use re-export pattern",
-      "rationale": "Zero-size because all state is in the stateless FFI calls. Private submodule keeps feature-gated code isolated; pub use at module level provides clean API surface.",
-      "alternatives": ["Separate zig_backend.rs file", "Inline in scanner.rs without submodule"],
-      "impact": "markymark-core/src/scanner.rs"
+      "id": "dec-039",
+      "timestamp": "2026-02-16T23:55:00Z",
+      "feature": "marky-x3x",
+      "decision": "Branch on ScanLinkType before computing end offset in from_scan link processing",
+      "rationale": "The shared formula text.len+target.len+4 was correct for markdown [text](target) but wrong for wiki links: [[target]] doubled the target length, [[target|alias]] missed the pipe separator. Branching on link type applies the correct formula for each format.",
+      "alternatives": ["Unified formula with conditional pipe (less clear)", "Store raw byte length in LinkResult (changes ScanBackend contract)"],
+      "impact": "markymark-index/src/document.rs from_scan link offset and block ID range calculations"
     },
     {
       "id": "dec-036",
