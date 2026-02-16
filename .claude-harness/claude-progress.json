@@ -1,35 +1,42 @@
 {
-  "lastUpdated": "2026-02-15T17:54:05Z",
+  "lastUpdated": "2026-02-16T06:33:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Reviewed marky-lkj epic (Multi-format document support), created and refined marky-cqx (YAML parser task) with comprehensive SRE review. Deferred test refactoring to backlog. Ready to implement YAML parser following JSON parser pattern.",
+    "summary": "Implemented YAML parser (marky-cqx) using tree-sitter-yaml 0.7, following JSON parser CST walker pattern. 25 tests all GREEN, 380 workspace tests pass, clippy clean, pre-commit hooks pass. Used DeepWiki to unblock CST structure debugging.",
     "completedTasks": [
-      "Reviewed marky-lkj epic status (2/3 child tasks complete)",
-      "Deferred marky-lkj.1 (runtime_engine.rs test refactoring) to P4 backlog",
-      "Created marky-cqx: Implement YAML parser (tree-sitter-yaml)",
-      "SRE refinement on marky-cqx: added effort estimate, 25+ tests, 9 edge case analyses, strengthened anti-patterns",
-      "Added dependencies: marky-cqx depends on marky-dr3 (types) and marky-lkj.2 (pattern)"
+      "Added tree-sitter-yaml 0.7 dependency to workspace and parser crate",
+      "Created markymark-parser/src/structured/yaml.rs (362 impl + 269 test lines)",
+      "Implemented recursive CST walker: unwrap_node, walk_value, extract_mapping_pair, walk_sequence_item",
+      "Implemented classify_value using child node kinds (string_scalar, integer_scalar, etc.)",
+      "Used root.has_error() for O(1) malformed YAML detection (replaced O(n) recursive check)",
+      "Handled anchors, aliases, block scalars, flow/block mappings and sequences",
+      "Wired YAML dispatch in structured/mod.rs",
+      "25 tests GREEN: basic, nested, sequences, value kinds, positions, multiline, anchors, merge keys, errors, stress, unicode",
+      "Closed marky-cqx in beads, pushed to remote"
     ],
     "blockers": [],
     "nextSteps": [
-      "Execute marky-cqx: Implement YAML parser (6-8 hours, follows JSON pattern)",
-      "Continue epic marky-lkj: TOML parser after YAML",
+      "Create TOML parser task (tree-sitter-toml-ng, same pattern as JSON/YAML)",
+      "After parsers complete: integrate into index/MCP/LSP layers (7 epic success criteria remaining)",
       "Consider marky-luy: Arena conformance closeout (P2)",
       "Consider marky-5yt: Replace 'static with self_cell/ouroboros (P3)"
     ]
   },
   "recentChanges": [
-    "Created marky-cqx task with comprehensive design (25+ tests, 9 edge cases)",
-    "Deferred marky-lkj.1 to P4 (not critical path for epic)"
+    "feat(marky-cqx): implement YAML parser using tree-sitter-yaml (commit 09a8811)",
+    "Recorded suc-016 (DeepWiki for CST debugging) and suc-017 (has_error() O(1)) to harness memory"
   ],
   "knownIssues": [
+    "yaml.rs is 631 lines (362 impl + 269 tests) — over 500 line limit but impl alone is under",
+    "Merge key (<<) resolution deferred — indexed as regular key in v1",
+    "tree-sitter-yaml parsing ~3-7x slower than JSON for large docs (inherent grammar complexity)",
     "marky-5yt: 'static lifetime leak deferred to self_cell migration",
     "marky-luy.1/2/3: P3 research items (Miri CI, arena reuse, Cow optimization)"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T00:57:00Z",
-    "lastTypeCheck": "2026-02-16T00:57:00Z"
+    "lastSuccessfulBuild": "2026-02-16T06:32:00Z",
+    "lastTypeCheck": "2026-02-16T06:32:00Z"
   },
   "lastCompaction": "2026-02-14T10:00:10.000Z",
   "compactionCount": 3
