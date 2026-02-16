@@ -22,7 +22,7 @@ json5 = { workspace = true }
 thiserror = { workspace = true }
 regex = { workspace = true }
 bumpalo = { workspace = true }
-self_cell = "1.2.2"
+self_cell = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

@@ -265,3 +265,16 @@ When auditing a doc corpus with markymark:
 8. realm-stats → compare with baseline
 9. destroy-realm
 ```
+
+---
+
+## Session Notes
+
+### 2026-02-16: PR #21 follow-up triage execution (marky-3l6)
+
+- Implemented two accepted follow-ups from review triage:
+  - Added CRLF incremental edit parity regression test in `markymark-lsp/tests/state_tests.rs`.
+  - Added incremental edit clamp observability in `markymark-lsp/src/state.rs` with helper-level unit coverage.
+- Verified with `cargo test -p markymark-lsp` and `cargo fmt --check`.
+- Posted PR response summary comment: https://github.com/sethyanow/markymark/pull/21#issuecomment-3910812072
+- Closed beads issue `marky-3l6` after code, tests, and PR response loop were complete.

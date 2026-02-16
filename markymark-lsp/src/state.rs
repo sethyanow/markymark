@@ -175,6 +175,48 @@ pub enum DocumentChange {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct IncrementalByteBounds {
+    start_byte: usize,
+    old_end_byte: usize,
+    start_clamped: bool,
+    end_clamped: bool,
+}
+
+fn incremental_byte_bounds(
+    text: &str,
+    start_line: u32,
+    start_character: u32,
+    end_line: u32,
+    end_character: u32,
+) -> IncrementalByteBounds {
+    let raw_start_byte =
+        crate::convert::lsp_position_to_byte_offset(text, start_line, start_character);
+    let raw_end_byte = crate::convert::lsp_position_to_byte_offset(text, end_line, end_character);
+
+    let start_byte = raw_start_byte.min(text.len());
+    let old_end_byte = raw_end_byte.min(text.len()).max(start_byte);
+
+    IncrementalByteBounds {
+        start_byte,
+        old_end_byte,
+        start_clamped: position_was_clamped(text, start_line, start_character),
+        end_clamped: position_was_clamped(text, end_line, end_character),
+    }
+}
+
+fn position_was_clamped(text: &str, line: u32, character: u32) -> bool {
+    let target_line = line as usize;
+    let target_character = character as usize;
+    let Some(line_text) = text.split('\n').nth(target_line) else {
+        return true;
+    };
+
+    // CRLF is normalized for offset math in lsp_position_to_byte_offset.
+    let content = line_text.strip_suffix('\r').unwrap_or(line_text);
+    target_character > content.encode_utf16().count()
+}
+
 /// The internal state of the LSP server.
 ///
 /// Manages document text storage, parsed ASTs, and the realm index.
@@ -326,19 +368,24 @@ impl ServerState {
                         end_character,
                         text: new_text,
                     } => {
-                        let start_byte = crate::convert::lsp_position_to_byte_offset(
+                        let bounds = incremental_byte_bounds(
                             text,
                             start_line,
                             start_character,
-                        )
-                        .min(text.len());
-                        let old_end_byte = crate::convert::lsp_position_to_byte_offset(
-                            text,
                             end_line,
                             end_character,
-                        )
-                        .min(text.len())
-                        .max(start_byte);
+                        );
+                        let start_byte = bounds.start_byte;
+                        let old_end_byte = bounds.old_end_byte;
+
+                        if bounds.start_clamped || bounds.end_clamped {
+                            eprintln!(
+                                "markymark-lsp: clamped incremental edit range for {} \
+                                 (start={start_line}:{start_character}, end={end_line}:{end_character}, text_len_bytes={})",
+                                uri.as_str(),
+                                text.len()
+                            );
+                        }
 
                         // Compute tree-sitter Points BEFORE applying the text change
                         let start_position = byte_to_point(text, start_byte);
@@ -996,5 +1043,20 @@ fn find_markdown_link_anchor_range(
         ))
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_incremental_byte_bounds_reports_clamp_when_position_exceeds_document() {
+        let text = "# Title\n";
+        let bounds = incremental_byte_bounds(text, 99, 99, 99, 120);
+        assert_eq!(bounds.start_byte, text.len());
+        assert_eq!(bounds.old_end_byte, text.len());
+        assert!(bounds.start_clamped);
+        assert!(bounds.end_clamped);
     }
 }
