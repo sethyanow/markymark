@@ -521,3 +521,162 @@ async fn test_document_symbol_logseq_deep_nesting() {
         proj_child_names
     );
 }
+
+// ---------------------------------------------------------------------------
+// Structured document symbols (JSON, YAML, TOML, etc.)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_document_symbol_json_file() {
+    let (service, _socket, _, _) = setup_workspace().await;
+    let backend = service.inner();
+
+    let json_uri: Uri = "file:///workspace/config.json".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let core_uri = DocumentUri::new("file:///workspace/config.json").unwrap();
+        state.open_document(
+            core_uri,
+            r#"{"database": {"host": "localhost", "port": 5432}, "debug": true}"#.to_string(),
+        );
+    }
+
+    let params = DocumentSymbolParams {
+        text_document: TextDocumentIdentifier {
+            uri: json_uri.clone(),
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    };
+
+    let result = backend.document_symbol(params).await.unwrap();
+    assert!(
+        result.is_some(),
+        "JSON document should return symbols for its keys"
+    );
+
+    let symbols = match result.unwrap() {
+        DocumentSymbolResponse::Nested(symbols) => symbols,
+        _ => panic!("expected nested response"),
+    };
+
+    // Root keys: "database" (Object) and "debug" (Boolean)
+    let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
+    assert!(
+        names.contains(&"database"),
+        "should contain 'database' key, got: {:?}",
+        names
+    );
+    assert!(
+        names.contains(&"debug"),
+        "should contain 'debug' key, got: {:?}",
+        names
+    );
+
+    // "database" should have children "host" and "port"
+    let db = symbols.iter().find(|s| s.name == "database").unwrap();
+    assert_eq!(db.kind, SymbolKind::OBJECT);
+    let db_children = db.children.as_ref().expect("database should have children");
+    let child_names: Vec<&str> = db_children.iter().map(|s| s.name.as_str()).collect();
+    assert!(
+        child_names.contains(&"host"),
+        "database should contain 'host', got: {:?}",
+        child_names
+    );
+    assert!(
+        child_names.contains(&"port"),
+        "database should contain 'port', got: {:?}",
+        child_names
+    );
+
+    // "debug" should be a leaf (Boolean)
+    let debug = symbols.iter().find(|s| s.name == "debug").unwrap();
+    assert_eq!(debug.kind, SymbolKind::BOOLEAN);
+    assert!(
+        debug.children.is_none() || debug.children.as_ref().unwrap().is_empty(),
+        "debug should be a leaf symbol"
+    );
+}
+
+#[tokio::test]
+async fn test_document_symbol_yaml_file() {
+    let (service, _socket, _, _) = setup_workspace().await;
+    let backend = service.inner();
+
+    let yaml_uri: Uri = "file:///workspace/config.yaml".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let core_uri = DocumentUri::new("file:///workspace/config.yaml").unwrap();
+        state.open_document(
+            core_uri,
+            "server:\n  host: localhost\n  port: 8080\nlogging: true\n".to_string(),
+        );
+    }
+
+    let params = DocumentSymbolParams {
+        text_document: TextDocumentIdentifier {
+            uri: yaml_uri.clone(),
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    };
+
+    let result = backend.document_symbol(params).await.unwrap();
+    assert!(result.is_some(), "YAML document should return symbols");
+
+    let symbols = match result.unwrap() {
+        DocumentSymbolResponse::Nested(symbols) => symbols,
+        _ => panic!("expected nested response"),
+    };
+
+    let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
+    assert!(names.contains(&"server"), "should contain 'server'");
+    assert!(names.contains(&"logging"), "should contain 'logging'");
+
+    let server = symbols.iter().find(|s| s.name == "server").unwrap();
+    assert_eq!(server.kind, SymbolKind::OBJECT);
+    let server_children = server
+        .children
+        .as_ref()
+        .expect("server should have children");
+    assert!(
+        server_children.iter().any(|s| s.name == "host"),
+        "server should contain 'host'"
+    );
+    assert!(
+        server_children.iter().any(|s| s.name == "port"),
+        "server should contain 'port'"
+    );
+}
+
+#[tokio::test]
+async fn test_document_symbol_empty_json() {
+    let (service, _socket, _, _) = setup_workspace().await;
+    let backend = service.inner();
+
+    let json_uri: Uri = "file:///workspace/empty.json".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let core_uri = DocumentUri::new("file:///workspace/empty.json").unwrap();
+        state.open_document(core_uri, "{}".to_string());
+    }
+
+    let params = DocumentSymbolParams {
+        text_document: TextDocumentIdentifier {
+            uri: json_uri.clone(),
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    };
+
+    let result = backend.document_symbol(params).await.unwrap();
+    let is_empty = match &result {
+        None => true,
+        Some(DocumentSymbolResponse::Nested(s)) => s.is_empty(),
+        Some(DocumentSymbolResponse::Flat(s)) => s.is_empty(),
+    };
+    assert!(
+        is_empty,
+        "empty JSON object should return empty or None symbols"
+    );
+}
