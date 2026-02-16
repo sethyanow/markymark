@@ -1,5 +1,7 @@
 const std = @import("std");
 const heading_scan = @import("kernels/heading_scan.zig");
+const token_estimate = @import("kernels/token_estimate.zig");
+const content_hash_mod = @import("kernels/content_hash.zig");
 
 /// Re-export HeadingScan for C consumers
 pub const HeadingScan = heading_scan.HeadingScan;
@@ -57,6 +59,31 @@ export fn marky_scan_headings(
     return 0;
 }
 
+/// Approximate BPE token count via SIMD word boundary detection.
+///
+/// Returns approximate token count for the given text.
+/// Returns 0 for null text pointer or zero length.
+export fn marky_estimate_tokens(
+    text: ?[*]const u8,
+    len: u32,
+) u32 {
+    const t = text orelse return 0;
+    if (len == 0) return 0;
+    return token_estimate.estimate_tokens(t, len);
+}
+
+/// FNV-1a 64-bit content fingerprint.
+///
+/// Returns a deterministic hash of the text content.
+/// Returns 0 for null text pointer. Returns FNV offset basis for zero length.
+export fn marky_content_hash(
+    text: ?[*]const u8,
+    len: u32,
+) u64 {
+    const t = text orelse return 0;
+    return content_hash_mod.content_hash(t, len);
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -65,6 +92,8 @@ export fn marky_scan_headings(
 test {
     _ = @import("kernels/heading_scan.zig");
     _ = @import("reference/heading_scan_ref.zig");
+    _ = @import("kernels/token_estimate.zig");
+    _ = @import("kernels/content_hash.zig");
 }
 
 test "marky_version returns expected version" {
@@ -120,4 +149,53 @@ test "marky_scan_headings zero cap" {
     var w: u32 = undefined;
     const rc = marky_scan_headings(text.ptr, text.len, &out, 0, &w);
     try std.testing.expectEqual(@as(i32, -2), rc);
+}
+
+// -- marky_estimate_tokens tests --
+
+test "marky_estimate_tokens basic" {
+    const text = "hello world foo bar";
+    const result = marky_estimate_tokens(text.ptr, text.len);
+    // 4 words * 1.3 = 5.2 -> (4*13+5)/10 = 57/10 = 5
+    try std.testing.expectEqual(@as(u32, 5), result);
+}
+
+test "marky_estimate_tokens null text" {
+    const result = marky_estimate_tokens(null, 10);
+    try std.testing.expectEqual(@as(u32, 0), result);
+}
+
+test "marky_estimate_tokens zero length" {
+    const text = "hello";
+    const result = marky_estimate_tokens(text.ptr, 0);
+    try std.testing.expectEqual(@as(u32, 0), result);
+}
+
+// -- marky_content_hash tests --
+
+test "marky_content_hash basic" {
+    const text = "hello";
+    const hash = marky_content_hash(text.ptr, text.len);
+    try std.testing.expect(hash != 0);
+    // Deterministic
+    const hash2 = marky_content_hash(text.ptr, text.len);
+    try std.testing.expectEqual(hash, hash2);
+}
+
+test "marky_content_hash null text" {
+    const result = marky_content_hash(null, 10);
+    try std.testing.expectEqual(@as(u64, 0), result);
+}
+
+test "marky_content_hash zero length" {
+    const text = "hello";
+    const result = marky_content_hash(text.ptr, 0);
+    // FNV offset basis for empty
+    try std.testing.expectEqual(@as(u64, 0xcbf29ce484222325), result);
+}
+
+test "marky_content_hash distinct" {
+    const hash1 = marky_content_hash("abc".ptr, 3);
+    const hash2 = marky_content_hash("def".ptr, 3);
+    try std.testing.expect(hash1 != hash2);
 }
