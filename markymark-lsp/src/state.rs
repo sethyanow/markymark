@@ -181,6 +181,8 @@ struct IncrementalByteBounds {
     old_end_byte: usize,
     start_clamped: bool,
     end_clamped: bool,
+    /// True when raw end position was before raw start (would be coerced to insertion).
+    end_before_start: bool,
 }
 
 fn incremental_byte_bounds(
@@ -194,6 +196,7 @@ fn incremental_byte_bounds(
         crate::convert::lsp_position_to_byte_offset(text, start_line, start_character);
     let raw_end_byte = crate::convert::lsp_position_to_byte_offset(text, end_line, end_character);
 
+    let end_before_start = raw_end_byte < raw_start_byte;
     let start_byte = raw_start_byte.min(text.len());
     let old_end_byte = raw_end_byte.min(text.len()).max(start_byte);
 
@@ -202,6 +205,7 @@ fn incremental_byte_bounds(
         old_end_byte,
         start_clamped: position_was_clamped(text, start_line, start_character),
         end_clamped: position_was_clamped(text, end_line, end_character),
+        end_before_start,
     }
 }
 
@@ -375,6 +379,20 @@ impl ServerState {
                             end_line,
                             end_character,
                         );
+
+                        if bounds.end_before_start {
+                            eprintln!(
+                                "markymark-lsp: skipping invalid incremental edit for {} \
+                                 (old_end < start: start={}:{}, end={}:{})",
+                                uri.as_str(),
+                                start_line,
+                                start_character,
+                                end_line,
+                                end_character
+                            );
+                            continue;
+                        }
+
                         let start_byte = bounds.start_byte;
                         let old_end_byte = bounds.old_end_byte;
 
@@ -1058,5 +1076,16 @@ mod tests {
         assert_eq!(bounds.old_end_byte, text.len());
         assert!(bounds.start_clamped);
         assert!(bounds.end_clamped);
+        assert!(!bounds.end_before_start);
+    }
+
+    #[test]
+    fn test_incremental_byte_bounds_end_before_start() {
+        let text = "line0\nline1\nline2\n";
+        // end (line 0, char 2) is before start (line 1, char 3)
+        let bounds = incremental_byte_bounds(text, 1, 3, 0, 2);
+        assert!(bounds.end_before_start, "end position should be before start");
+        // old_end_byte is still coerced for consistency
+        assert!(bounds.old_end_byte >= bounds.start_byte);
     }
 }
