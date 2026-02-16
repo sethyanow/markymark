@@ -29,7 +29,7 @@
 rmcp = { version = "0.15", features = ["server", "transport-io"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
-schemars = "0.8"
+schemars = "1.2"
 anyhow = "1"
 ```
 
@@ -238,7 +238,7 @@ struct MyToolInput {
 }
 ```
 
-Add `schemars = "0.8"` to your dependencies. The `#[tool]` macro generates JSON schema from your types at compile time.
+Add `schemars = "1.2"` to your dependencies. The `#[tool]` macro generates JSON schema from your types at compile time.
 </pitfall>
 
 ### Forgetting to Call .waiting()
