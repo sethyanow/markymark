@@ -1,41 +1,40 @@
 {
-  "lastUpdated": "2026-02-16T09:57:00Z",
+  "lastUpdated": "2026-02-16T10:30:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Implemented Rust FFI wrappers for all 6 Zig SIMD kernel functions (marky-h1t). scan.rs: 4 scan wrappers with generic call_scan_ffi<T> helper, exponential buffer retry, repr(C) mirror structs, safe_slice UTF-8 boundary handling. tokens.rs: estimate_tokens wrapper. hash.rs: content_hash wrapper with FNV test vectors. 30 tests pass, clippy clean, all pre-commit hooks pass.",
+    "summary": "Merged origin/main (v0.2.0 release) into feature/mark-brza. All conflicts were harness memory JSON files (no code conflicts). Resolved by keeping feature branch versions. Triaged all 27 PR #15 review comments — all actionable items were already fixed in prior commits (a8d06fd, 8522d9a). Semgrep unsafe-usage findings are expected for FFI crate.",
     "completedTasks": [
-      "marky-h1t: Rust FFI wrappers for extraction kernels — scan_headings, scan_links, scan_tags, scan_block_ids, estimate_tokens, content_hash",
-      "Generic call_scan_ffi<T> with exponential buffer retry (64 -> 128 -> 256 -> 512)",
-      "KernelError enum mapping FFI return codes (-1 InvalidInput, -2 BufferTooSmall)",
-      "safe_slice() UTF-8 char boundary validation for Zig byte offsets",
-      "30 integration tests covering basic, empty, many-results, offset validation"
+      "Merge origin/main into feature/mark-brza (v0.2.0 integration)",
+      "Resolve 5 harness memory file conflicts (ours strategy)",
+      "Triage 27 PR #15 review comments — all previously addressed",
+      "Saved PR comments as JSON for future reference"
     ],
     "blockers": [
-      "Scope guard RED: branch at ~10700 lines / 29 files"
+      "PR #15 was CONFLICTING before merge — should be clean now after push",
+      "Scope guard RED: ~5121 lines / 29 new files"
     ],
     "nextSteps": [
+      "Push merged branch to update PR #15 conflict status",
       "marky-ncz: Port embedding index kernels from forge BRZA",
       "marky-bgl: Port similarity and entity hash kernels from forge BRZA",
-      "marky-0u5: Write Rust FFI wrappers for shared kernels (blocked on ncz+bgl)",
       "marky-8s3.1: Implement code fence exclusion map",
       "marky-ayb: CI integration improvements"
     ]
   },
   "recentChanges": [
-    "markymark-kernels/src/scan.rs: 4 FFI scan wrappers with buffer retry + Rust types",
-    "markymark-kernels/src/tokens.rs: estimate_tokens FFI wrapper",
-    "markymark-kernels/src/hash.rs: content_hash FFI wrapper with FNV test vectors"
+    "Merge commit 4576da5: integrated origin/main (v0.2.0) into feature branch",
+    "Workspace now at v0.2.0 with all dependency upgrades from main"
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch growing, consider splitting or deferring",
+    "Scope guard RED: branch large but net -4118 Rust lines (deletions > additions)",
     "All scan kernels: known false positives inside code blocks (fence_map kernel is separate task)",
     "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T09:57:00Z",
-    "lastTypeCheck": "2026-02-16T09:57:00Z"
+    "lastSuccessfulBuild": "2026-02-16T10:30:00Z",
+    "lastTypeCheck": "2026-02-16T10:30:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
