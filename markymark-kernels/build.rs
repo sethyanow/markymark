@@ -3,6 +3,22 @@ use std::path::PathBuf;
 use std::process::Command;
 use walkdir::WalkDir;
 
+/// Build script entry point: locate the project's Zig directory, build the Zig library,
+/// verify the produced static library, and emit Cargo instructions and rerun directives.
+///
+/// This function:
+/// - Locates the sibling `zig/` directory relative to `CARGO_MANIFEST_DIR` and canonicalizes it.
+/// - Ensures Zig is installed and meets the minimum required version.
+/// - Invokes `zig build lib` in the Zig directory and verifies `zig-out/lib/libmarky_kernels.a` was produced.
+/// - Emits `cargo:rustc-link-search` and `cargo:rustc-link-lib` so Cargo can find and link the static library.
+/// - Emits `cargo:rerun-if-changed` for each `.zig` source file under `zig/src` and for `zig/build.zig`.
+///
+/// # Examples
+///
+/// ```no_run
+/// // Run as part of build script; do not execute in doctests.
+/// marky_build::main();
+/// ```
 fn main() {
     // Locate the zig directory relative to the crate root
     let manifest_dir =

@@ -29,6 +29,23 @@ pub enum EmbedError {
 }
 
 impl fmt::Display for EmbedError {
+    /// Formats an `EmbedError` into a human-readable message prefixed with `embed:`.
+    ///
+    /// Each variant is rendered with a clear description and any associated data:
+    /// - `InvalidInput(msg)` -> `embed: invalid input: {msg}`
+    /// - `ProviderUnavailable(msg)` -> `embed: provider unavailable: {msg}`
+    /// - `DimensionMismatch { expected, actual }` -> `embed: dimension mismatch: expected {expected}, got {actual}`
+    /// - `InternalError(msg)` -> `embed: internal error: {msg}`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::fmt::Write;
+    ///
+    /// let err = crate::EmbedError::InvalidInput("empty".into());
+    /// let s = format!("{}", err);
+    /// assert_eq!(s, "embed: invalid input: empty");
+    /// ```
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidInput(msg) => write!(f, "embed: invalid input: {msg}"),
@@ -57,10 +74,28 @@ pub trait EmbeddingProvider: Send + Sync {
     /// Generate an embedding vector for a single text input.
     fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError>;
 
-    /// Generate embedding vectors for a batch of text inputs.
+    /// Generates embedding vectors for a batch of text inputs.
     ///
-    /// Default implementation calls [`embed`](Self::embed) sequentially.
-    /// Implementations may override for batch-optimized providers.
+    /// The default implementation calls `embed` for each input sequentially; providers may override
+    /// to perform optimized batch processing.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// struct Dummy;
+    /// impl EmbeddingProvider for Dummy {
+    ///     fn embed(&self, _text: &str) -> Result<Vec<f32>, EmbedError> {
+    ///         Ok(vec![0.0; 4])
+    ///     }
+    ///     fn dimensions(&self) -> u32 { 4 }
+    /// }
+    ///
+    /// let provider = Dummy;
+    /// let batch = ["hello", "world"];
+    /// let embeddings = provider.embed_batch(&batch).unwrap();
+    /// assert_eq!(embeddings.len(), 2);
+    /// assert_eq!(embeddings[0].len(), 4);
+    /// ```
     fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbedError> {
         texts.iter().map(|t| self.embed(t)).collect()
     }
@@ -84,6 +119,14 @@ mod tests {
             Ok(vec![0.0; 4])
         }
 
+        /// Returns the dimensionality of embeddings produced by this provider.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// let provider = DummyEmbeddingProvider;
+        /// assert_eq!(provider.dimensions(), 4);
+        /// ```
         fn dimensions(&self) -> u32 {
             4
         }
@@ -100,10 +143,56 @@ mod tests {
 
     #[test]
     fn test_embedding_provider_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
+        /// Asserts at compile time that a type implements `Send` and `Sync`.
+
+///
+
+/// This function has no runtime behavior; invoking it enforces the `Send + Sync` trait bounds for `T`.
+
+///
+
+/// # Examples
+
+///
+
+/// ```
+
+/// struct Dummy;
+
+///
+
+/// // Compile will fail if `Dummy` does not implement `Send + Sync`.
+
+/// assert_send_sync::<Dummy>();
+
+/// ```
+fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<DummyEmbeddingProvider>();
 
-        fn assert_dyn_send_sync(_: &(dyn EmbeddingProvider + Send + Sync)) {}
+        /// Compile-time assertion that a trait object is usable as `dyn EmbeddingProvider + Send + Sync`.
+
+///
+
+/// This function is a no-op at runtime and exists only to require the caller provide
+
+/// a reference whose dynamic type implements both `Send` and `Sync`.
+
+///
+
+/// # Examples
+
+///
+
+/// ```
+
+/// // Ensure `provider` can be used as a `dyn EmbeddingProvider + Send + Sync`.
+
+/// // let provider: &dyn EmbeddingProvider = /* ... */;
+
+/// // assert_dyn_send_sync(provider);
+
+/// ```
+fn assert_dyn_send_sync(_: &(dyn EmbeddingProvider + Send + Sync)) {}
         let provider = DummyEmbeddingProvider;
         assert_dyn_send_sync(&provider);
     }

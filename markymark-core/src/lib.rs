@@ -146,6 +146,19 @@ fn percent_decode(s: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
+/// Converts an ASCII hexadecimal digit character to its numeric value.
+///
+/// Returns `Some(0..=15)` when `b` is an ASCII hex digit (`0`-`9`, `a`-`f`, `A`-`F`), and `None` otherwise.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(from_hex(b'0'), Some(0));
+/// assert_eq!(from_hex(b'9'), Some(9));
+/// assert_eq!(from_hex(b'a'), Some(10));
+/// assert_eq!(from_hex(b'F'), Some(15));
+/// assert_eq!(from_hex(b'x'), None);
+/// ```
 fn from_hex(b: u8) -> Option<u8> {
     match b {
         b'0'..=b'9' => Some(b - b'0'),

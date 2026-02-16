@@ -23,6 +23,22 @@ pub enum ScanError {
 }
 
 impl fmt::Display for ScanError {
+    /// Formats a `ScanError` into a human-readable message.
+    ///
+    /// Produces `scan: invalid input: {msg}` for `ScanError::InvalidInput(msg)` and
+    /// `scan: internal error: {msg}` for `ScanError::InternalError(msg)`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::scanner::ScanError;
+    ///
+    /// let e = ScanError::InvalidInput("bad markdown".into());
+    /// assert_eq!(format!("{}", e), "scan: invalid input: bad markdown");
+    ///
+    /// let e2 = ScanError::InternalError("parser failed".into());
+    /// assert_eq!(format!("{}", e2), "scan: internal error: parser failed");
+    /// ```
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidInput(msg) => write!(f, "scan: invalid input: {msg}"),
@@ -125,22 +141,113 @@ mod tests {
     struct DummyScanBackend;
 
     impl ScanBackend for DummyScanBackend {
+        /// Extracts heading elements from the provided Markdown text.
+        ///
+        /// # Returns
+        ///
+        /// A `Vec<HeadingResult>` containing one entry per heading found; each entry includes the heading text, byte offset, and level.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// // Given an implementation of `ScanBackend` named `scanner`:
+        /// // let scanner: &dyn ScanBackend = ...;
+        /// // let headings = scanner.scan_headings("# Title\n\n## Subtitle").unwrap();
+        /// // assert_eq!(headings.len(), 2);
+        /// ```
         fn scan_headings(&self, _text: &str) -> Result<Vec<HeadingResult>, ScanError> {
             Ok(Vec::new())
         }
 
+        /// Extracts all links from the given markdown text and returns their metadata.
+        ///
+        /// Returns a `Vec<LinkResult>` containing one entry per discovered link, or a
+        /// `ScanError` if the input cannot be scanned.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// // A backend implementation may return zero or more LinkResult entries.
+        /// struct Dummy;
+        /// impl ScanBackend for Dummy {
+        ///     fn scan_headings(&self, _text: &str) -> Result<Vec<HeadingResult>, ScanError> { Ok(Vec::new()) }
+        ///     fn scan_links(&self, _text: &str) -> Result<Vec<LinkResult>, ScanError> { Ok(Vec::new()) }
+        ///     fn scan_tags(&self, _text: &str) -> Result<Vec<TagResult>, ScanError> { Ok(Vec::new()) }
+        ///     fn scan_block_ids(&self, _text: &str) -> Result<Vec<BlockIdResult>, ScanError> { Ok(Vec::new()) }
+        ///     fn estimate_tokens(&self, _text: &str) -> Result<u32, ScanError> { Ok(0) }
+        /// }
+        ///
+        /// let backend = Dummy;
+        /// let links = backend.scan_links("No links here").unwrap();
+        /// assert!(links.is_empty());
+        /// ```
         fn scan_links(&self, _text: &str) -> Result<Vec<LinkResult>, ScanError> {
             Ok(Vec::new())
         }
 
+        /// Scans the provided markdown text and extracts tags (tokens beginning with `#`).
+        ///
+        /// Returns a `TagResult` for each tag found, where `name` excludes the leading `#` and `offset` is the byte offset of the `#` in the source.
+        ///
+        /// # Parameters
+        ///
+        /// - `text` — the markdown source to scan for tags.
+        ///
+        /// # Returns
+        ///
+        /// `Ok(Vec<TagResult>)` with one entry per tag found; `Err(ScanError)` if the input is invalid or the scanner encounters an internal error.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// // Example usage; a concrete backend must implement `ScanBackend`.
+        /// struct DummyScanBackend;
+        /// impl markymark_core::scanner::ScanBackend for DummyScanBackend {
+        ///     fn scan_headings(&self, _text: &str) -> Result<Vec<markymark_core::scanner::HeadingResult>, markymark_core::scanner::ScanError> { Ok(Vec::new()) }
+        ///     fn scan_links(&self, _text: &str) -> Result<Vec<markymark_core::scanner::LinkResult>, markymark_core::scanner::ScanError> { Ok(Vec::new()) }
+        ///     fn scan_tags(&self, _text: &str) -> Result<Vec<markymark_core::scanner::TagResult>, markymark_core::scanner::ScanError> { Ok(Vec::new()) }
+        ///     fn scan_block_ids(&self, _text: &str) -> Result<Vec<markymark_core::scanner::BlockIdResult>, markymark_core::scanner::ScanError> { Ok(Vec::new()) }
+        ///     fn estimate_tokens(&self, _text: &str) -> Result<u32, markymark_core::scanner::ScanError> { Ok(0) }
+        /// }
+        ///
+        /// let backend: &dyn markymark_core::scanner::ScanBackend = &DummyScanBackend;
+        /// let result = backend.scan_tags("#tag1 #tag2");
+        /// assert!(result.is_ok());
+        /// ```
         fn scan_tags(&self, _text: &str) -> Result<Vec<TagResult>, ScanError> {
             Ok(Vec::new())
         }
 
+        /// Finds block IDs (identifiers preceded by `^`) in the given markdown text.
+        ///
+        /// Returns a vector of `BlockIdResult` entries containing the block ID (without the leading `^`)
+        /// and the byte offset at which the `^` was found.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// let backend = DummyScanBackend;
+        /// let res = backend.scan_block_ids("para ^blockid").unwrap();
+        /// assert_eq!(res.len(), 1);
+        /// assert_eq!(res[0].id, "blockid");
+        /// ```
         fn scan_block_ids(&self, _text: &str) -> Result<Vec<BlockIdResult>, ScanError> {
             Ok(Vec::new())
         }
 
+        /// Estimates the number of tokens in the provided text for downstream processing.
+        ///
+        /// # Returns
+        ///
+        /// `Ok(n)` with the estimated token count, `Err(ScanError)` if estimation fails.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// let backend = DummyScanBackend;
+        /// let tokens = backend.estimate_tokens("hello world").unwrap();
+        /// assert_eq!(tokens, 0);
+        /// ```
         fn estimate_tokens(&self, _text: &str) -> Result<u32, ScanError> {
             Ok(0)
         }
@@ -157,11 +264,71 @@ mod tests {
     #[test]
     fn test_scan_backend_send_sync() {
         // Verifies ScanBackend implementations are Send + Sync.
-        fn assert_send_sync<T: Send + Sync>() {}
+        /// Asserts at compile time that a type implements both `Send` and `Sync`.
+///
+/// This is a zero-cost helper used in tests to verify thread-safety bounds for a type; it has no runtime effect.
+///
+/// # Examples
+///
+/// ```
+/// // Fails to compile if `T` is not `Send + Sync`.
+/// fn assert_send_sync<T: Send + Sync>() {}
+///
+/// // Usage:
+/// assert_send_sync::<i32>();
+/// ```
+fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<DummyScanBackend>();
 
         // Also verify the trait object is Send + Sync.
-        fn assert_dyn_send_sync(_: &(dyn ScanBackend + Send + Sync)) {}
+        /// Asserts at compile time that a `dyn ScanBackend` trait object is `Send + Sync`.
+
+///
+
+/// This helper exists solely for compile-time checks; it takes a reference to a trait object
+
+/// typed as `dyn ScanBackend + Send + Sync` and is a no-op at runtime.
+
+///
+
+/// # Examples
+
+///
+
+/// ```
+
+/// use markymark_core::scanner::{ScanBackend, HeadingResult, LinkResult, TagResult, BlockIdResult, ScanError};
+
+///
+
+/// struct Dummy;
+
+///
+
+/// impl ScanBackend for Dummy {
+
+///     fn scan_headings(&self, _text: &str) -> Result<Vec<HeadingResult>, ScanError> { Ok(vec![]) }
+
+///     fn scan_links(&self, _text: &str) -> Result<Vec<LinkResult>, ScanError> { Ok(vec![]) }
+
+///     fn scan_tags(&self, _text: &str) -> Result<Vec<TagResult>, ScanError> { Ok(vec![]) }
+
+///     fn scan_block_ids(&self, _text: &str) -> Result<Vec<BlockIdResult>, ScanError> { Ok(vec![]) }
+
+///     fn estimate_tokens(&self, _text: &str) -> Result<u32, ScanError> { Ok(0) }
+
+/// }
+
+///
+
+/// let dummy = Dummy;
+
+/// // Compile-time assertion that `&dyn ScanBackend` can be used as `&dyn ScanBackend + Send + Sync`.
+
+/// crate::scanner::assert_dyn_send_sync(&dummy as &(dyn ScanBackend + Send + Sync));
+
+/// ```
+fn assert_dyn_send_sync(_: &(dyn ScanBackend + Send + Sync)) {}
         let backend = DummyScanBackend;
         assert_dyn_send_sync(&backend);
     }
