@@ -233,6 +233,22 @@
         "Token estimation: (word_count * 13 + 5) / 10 for rounding-aware 1.3x multiplier",
         "Simple utility kernels (no buffer/written pattern) just return u32/u64 directly via export fn"
       ]
+    },
+    {
+      "id": "suc-020",
+      "timestamp": "2026-02-16T08:47:00Z",
+      "feature": "marky-yo7",
+      "type": "implementation",
+      "approach": "Link scanner kernel: SIMD @Vector(16,u8) '[' detection with scalar state machine for bracket nesting, escaped brackets, paren-depth URL parsing, and wiki-link pipe splitting. Shared parsing functions between SIMD and scalar via ref module. process_bracket() safe to re-call on consumed positions.",
+      "files": ["zig/src/kernels/link_scan.zig", "zig/src/reference/link_scan_ref.zig", "zig/src/c_adapter.zig"],
+      "patterns": [
+        "For complex pattern kernels (links), keep all parsing logic in scalar ref module and import from SIMD",
+        "Bracket nesting: use depth counter (i32), skip escaped chars (backslash+next)",
+        "Wiki-link detection: check buf[pos+1]=='[' before trying markdown link parse",
+        "Paren-depth tracking for URLs: handle url(with)parens correctly",
+        "inline for over SIMD lanes: process_bracket is safe to call on mid-link positions (they won't match '[')",
+        "is_escaped: count consecutive backslashes before pos, odd = escaped"
+      ]
     }
   ]
 }
