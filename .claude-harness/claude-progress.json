@@ -1,25 +1,23 @@
 {
-  "lastUpdated": "2026-02-16T16:40:00Z",
+  "lastUpdated": "2026-02-16T17:05:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-luy.2 investigation: benchmarked arena reuse via DocumentArena::reset(). Results show arena lifecycle is <0.1% of total reparse cost (662ns vs 64µs small, 22.5µs vs 3.36ms large). Tree-sitter parsing dominates by 100-150x. Concluded arena reuse is not worth implementing. Added reset() method and investigation benchmarks. Filed marky-g9b epic for incremental tree-sitter parsing (the real performance opportunity) with 4 SRE-refined subtasks.",
+    "summary": "Completed marky-8gp: moved Parser from per-call creation in build_markdown_index() to a persistent field on ServerState. Simple structural refactor (1 file, 18 insertions, 7 deletions). All tests pass unchanged. First step of marky-g9b incremental parsing epic.",
     "completedTasks": [
-      "marky-luy.2: Arena reuse investigation — benchmark proves <0.1% benefit, closed as won't-implement",
-      "marky-g9b: Filed incremental tree-sitter parsing epic with SRE refinement (4 subtasks)"
+      "marky-8gp: Store Parser in ServerState — eliminates per-call Parser::new() allocation"
     ],
     "blockers": [],
     "nextSteps": [
-      "marky-luy.3: Evaluate Cow<str> in RealmIndex for reduced allocation",
-      "marky-g9b: Incremental tree-sitter parsing (marky-8gp → marky-tfd → marky-tzq → marky-zan)",
-      "marky-8s3: BRZA SIMD kernels (separate track)"
+      "marky-tfd: Store MarkdownTree per document for incremental tree-sitter reuse (now unblocked)",
+      "marky-tzq: Switch LSP to incremental sync mode (blocked by marky-tfd)",
+      "marky-zan: Wire incremental parsing algorithm (blocked by marky-tfd + marky-tzq)"
     ]
   },
   "recentChanges": [
-    "DocumentArena::reset() method added to markymark-core/src/arena.rs",
-    "arena_reuse_investigation benchmark group added to memory.rs",
-    "marky-luy.2 closed with benchmark evidence",
-    "marky-g9b epic created: incremental tree-sitter parsing with 4 subtasks",
-    "dec-041 recorded: do not implement arena reuse pipeline"
+    "Parser stored as field on ServerState instead of per-call creation",
+    "build_markdown_index changed from static to instance method",
+    "Manual Default impl added for ServerState (clippy requirement)",
+    "marky-8gp closed with all acceptance criteria met"
   ],
   "knownIssues": [
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
@@ -30,8 +28,8 @@
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T16:40:00Z",
-    "lastTypeCheck": "2026-02-16T16:40:00Z"
+    "lastSuccessfulBuild": "2026-02-16T17:04:00Z",
+    "lastTypeCheck": "2026-02-16T17:04:00Z"
   },
   "lastCompaction": "2026-02-16T07:11:59.000Z",
   "compactionCount": 5
