@@ -1,23 +1,25 @@
 {
-  "lastUpdated": "2026-02-16T17:05:00Z",
+  "lastUpdated": "2026-02-16T17:13:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-8gp: moved Parser from per-call creation in build_markdown_index() to a persistent field on ServerState. Simple structural refactor (1 file, 18 insertions, 7 deletions). All tests pass unchanged. First step of marky-g9b incremental parsing epic.",
+    "summary": "Completed marky-tfd: MarkdownTree stored per document in ServerState for future incremental parsing. Ast wraps md_tree in Option with take_md_tree() method. Re-exported MarkdownTree from markymark-parser. 4 new tests, all gates green.",
     "completedTasks": [
-      "marky-8gp: Store Parser in ServerState — eliminates per-call Parser::new() allocation"
+      "marky-8gp: Store Parser in ServerState — eliminates per-call Parser::new() allocation",
+      "marky-tfd: Store MarkdownTree per document — enables future incremental tree-sitter reuse"
     ],
     "blockers": [],
     "nextSteps": [
-      "marky-tfd: Store MarkdownTree per document for incremental tree-sitter reuse (now unblocked)",
-      "marky-tzq: Switch LSP to incremental sync mode (blocked by marky-tfd)",
-      "marky-zan: Wire incremental parsing algorithm (blocked by marky-tfd + marky-tzq)"
+      "marky-tzq: Switch LSP to incremental sync mode (now unblocked by marky-tfd)",
+      "marky-zan: Wire incremental parsing algorithm (blocked by marky-tzq)"
     ]
   },
   "recentChanges": [
-    "Parser stored as field on ServerState instead of per-call creation",
-    "build_markdown_index changed from static to instance method",
-    "Manual Default impl added for ServerState (clippy requirement)",
-    "marky-8gp closed with all acceptance criteria met"
+    "Ast.md_tree wrapped in Option<MarkdownTree> for take_md_tree() extraction",
+    "MarkdownTree re-exported from markymark-parser",
+    "ServerState.md_trees HashMap stores tree per open document",
+    "build_markdown_index returns (DocumentIndex, Option<MarkdownTree>)",
+    "close_document removes tree from md_trees map",
+    "4 new tests: stored/updated/removed/not-stored-for-structured"
   ],
   "knownIssues": [
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
@@ -28,8 +30,8 @@
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T17:04:00Z",
-    "lastTypeCheck": "2026-02-16T17:04:00Z"
+    "lastSuccessfulBuild": "2026-02-16T17:12:00Z",
+    "lastTypeCheck": "2026-02-16T17:12:00Z"
   },
   "lastCompaction": "2026-02-16T07:11:59.000Z",
   "compactionCount": 5
