@@ -1,40 +1,40 @@
 {
-  "lastUpdated": "2026-02-16T16:40:00Z",
+  "lastUpdated": "2026-02-16T16:15:30Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Triaged 23 new PR #18 review comments (9 semgrep, 9 Copilot, 5 CodeRabbit). 8 already fixed, 9 expected semgrep, 1 false positive, 4 actionable. Applied defensive FFI hardening: u32::try_from for slice length casts, written clamping from FFI, validation order fix in embed search, renamed MAX_RETRIES to MAX_ATTEMPTS. Added content_hash Rust wrapper for marky_content_hash Zig export. 61 tests pass, clippy clean.",
+    "summary": "Fixed marky-clg bug (P1): uninitialized written parameter in Zig scan FFI functions. Complete TDD workflow with RED-GREEN phases. Four scan functions (headings/links/tags/block_ids) now initialize w.*=0 before returning -2 when cap==0. All regression tests pass, 689+ total tests green.",
     "completedTasks": [
-      "Triaged 23 new PR #18 review comments into actionable/skip categories",
-      "similarity.rs: u32::try_from() for cosine and jaccard slice lengths",
-      "hash.rs: MAX_RETRIES→MAX_ATTEMPTS, written<=cap clamp, u32::try_from for text_len",
-      "embed.rs: dims validation before k==0, written clamped to k",
-      "tokens.rs: Added content_hash() wrapper with 4 FNV-1a test vectors"
+      "marky-clg: Fixed uninitialized written parameter in 4 Zig scan FFI functions",
+      "Added regression test expectations to verify written==0",
+      "RED phase: Tests failed with garbage value 2863311530",
+      "GREEN phase: Fixed all 4 functions, tests pass",
+      "Committed and pushed: 719db66"
     ],
     "blockers": [
-      "Scope guard RED: branch at ~8380 lines / 42 commits / 39+ new files",
-      "PR #18 CI checks need to pass before merge"
+      "Scope guard RED: branch at ~8786 lines / 47 commits / 43 new files"
     ],
     "nextSteps": [
-      "Merge PR #18 once CI passes",
-      "marky-qv6: Add ScanBackend and EmbeddingProvider traits to markymark-core",
-      "marky-ayb: Full CI integration for Zig"
+      "marky-9s9: Fix build.rs rerun-if-changed to watch individual Zig files",
+      "marky-4aa: Fix mem::forget leak in DocumentIndex::from_ast",
+      "marky-ams: Implement ZigScanBackend wrapping markymark-kernels FFI"
     ]
   },
   "recentChanges": [
-    "fix(kernels): defensive FFI hardening for PR #18 round 2 comments",
-    "8bf7a6b: chore(harness): checkpoint after PR #18 review fixes completion",
-    "ed84d6a: fix(brza): address PR #18 review comments"
+    "719db66: fix(kernels): initialize written parameter in scan FFI functions",
+    "5e4fc2c: feat(core): add ScanBackend and EmbeddingProvider traits",
+    "8f5f9dd: docs(readme): reflect Rust + Zig architecture"
   ],
   "knownIssues": [
-    "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch large (~8380 lines, 39+ files, 42 commits)",
-    "c_adapter.zig at 803 lines — new exports use exports_*.zig pattern to stay under limit",
+    "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations",
+    "marky-9s9: build.rs watches zig/src/ directory (add/remove) not individual file modifications",
+    "Scope guard RED: branch large (~8786 lines, 43 files, 47 commits)",
+    "c_adapter.zig at 811 lines — new exports use exports_*.zig pattern to stay under limit",
     "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T16:40:00Z",
-    "lastTypeCheck": "2026-02-16T16:40:00Z"
+    "lastSuccessfulBuild": "2026-02-16T16:15:00Z",
+    "lastTypeCheck": "2026-02-16T16:15:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
