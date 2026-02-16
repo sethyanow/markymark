@@ -354,6 +354,20 @@
         "dep: prefix in feature flag (dep:markymark-kernels) prevents implicit feature name leak",
         "Prelude re-exports trait + error types for ergonomic downstream use"
       ]
+    },
+    {
+      "id": "suc-028",
+      "timestamp": "2026-02-16T19:37:30Z",
+      "feature": "marky-9s9",
+      "type": "bugfix",
+      "approach": "Fixed build.rs rerun-if-changed to watch individual .zig files via walkdir enumeration instead of directory metadata. CodeRabbit found directory watch only triggers on add/remove (metadata changes), not file modifications. All quality gates pass.",
+      "files": ["markymark-kernels/build.rs", "markymark-kernels/Cargo.toml"],
+      "patterns": [
+        "cargo:rerun-if-changed on directories only triggers on add/remove, not file modifications",
+        "Use walkdir to enumerate individual files for precise rebuild triggers",
+        "walkdir::WalkDir + filter_map + filter pattern for file enumeration",
+        "is_some_and() preferred over map_or() for Option bool checks (clippy)"
+      ]
     }
   ]
 }
