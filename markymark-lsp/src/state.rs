@@ -10,7 +10,7 @@ use markymark_index::{
     StructuredDocumentIndex, WikiLinkEntry, XmlTagEntry,
 };
 use markymark_parser::structured::parse_structured;
-use markymark_parser::Parser;
+use markymark_parser::{byte_to_point, InputEdit, MarkdownTree, Parser};
 
 /// Detected completion trigger context based on cursor position.
 #[derive(Debug, Clone, PartialEq)]
@@ -112,15 +112,15 @@ pub struct MarkyDiagnostic {
 
 /// Describes what symbol (if any) the cursor is sitting on.
 #[derive(Debug, Clone)]
-pub enum SymbolAtPosition {
+pub enum SymbolAtPosition<'a> {
     /// A heading line.
-    Heading(HeadingEntry<'static>),
+    Heading(HeadingEntry<'a>),
     /// A wiki link.
-    WikiLink(WikiLinkEntry<'static>),
+    WikiLink(WikiLinkEntry<'a>),
     /// A markdown link.
-    MarkdownLink(MarkdownLinkEntry<'static>),
+    MarkdownLink(MarkdownLinkEntry<'a>),
     /// An XML tag.
-    XmlTag(XmlTagEntry<'static>),
+    XmlTag(XmlTagEntry<'a>),
     /// A key in a structured document (JSON, YAML, TOML, etc.).
     StructuredKey(StructuredKeyInfo),
 }
@@ -153,28 +153,86 @@ impl StructuredKeyInfo {
     }
 }
 
+/// A content change event representing either a full document replacement
+/// or an incremental text edit with LSP positions.
+#[derive(Debug, Clone)]
+pub enum DocumentChange {
+    /// Full document text replacement.
+    Full(String),
+    /// Incremental edit specified with LSP line/character positions.
+    /// Character offsets are in UTF-16 code units (as per LSP spec).
+    Incremental {
+        /// Start line (0-based).
+        start_line: u32,
+        /// Start character offset (UTF-16 code units).
+        start_character: u32,
+        /// End line (0-based).
+        end_line: u32,
+        /// End character offset (UTF-16 code units).
+        end_character: u32,
+        /// The replacement text.
+        text: String,
+    },
+}
+
 /// The internal state of the LSP server.
 ///
 /// Manages document text storage, parsed ASTs, and the realm index.
-#[derive(Default)]
+/// The parser is stored here to avoid re-creating it on every parse call.
+/// The `MarkdownTree` per document is retained for future incremental parsing.
 pub struct ServerState {
     /// Raw document text keyed by URI string.
     documents: HashMap<String, String>,
     /// The realm index for cross-document lookups.
     realm: RealmIndex,
+    /// Reusable markdown parser instance.
+    parser: Parser,
+    /// Retained tree-sitter parse trees for incremental reuse (keyed by URI string).
+    md_trees: HashMap<String, MarkdownTree>,
+}
+
+impl Default for ServerState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ServerState {
     /// Create a new empty server state.
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            documents: HashMap::new(),
+            realm: RealmIndex::default(),
+            parser: Parser::new().expect("failed to create parser"),
+            md_trees: HashMap::new(),
+        }
     }
 
     /// Parse text and build a markdown document index.
-    fn build_markdown_index(text: &str) -> DocumentIndex {
-        let mut parser = Parser::new().expect("failed to create parser");
-        let ast = parser.parse(text).expect("failed to parse document");
-        DocumentIndex::from_ast(ast)
+    ///
+    /// Returns both the index and the tree-sitter parse tree. The tree is
+    /// retained per-document for future incremental parsing.
+    fn build_markdown_index(&mut self, text: &str) -> (DocumentIndex, Option<MarkdownTree>) {
+        self.build_markdown_index_with_old_tree(text, None)
+    }
+
+    /// Parse text with optional old tree reuse and build a markdown document index.
+    ///
+    /// When `old_tree` is `Some`, tree-sitter reuses unchanged subtrees for
+    /// O(edit_size) reparsing. The old tree must have been updated via
+    /// `MarkdownTree::edit()` with all changes since it was last parsed.
+    fn build_markdown_index_with_old_tree(
+        &mut self,
+        text: &str,
+        old_tree: Option<&MarkdownTree>,
+    ) -> (DocumentIndex, Option<MarkdownTree>) {
+        let mut ast = self
+            .parser
+            .parse_with_old_tree(text, old_tree)
+            .expect("failed to parse document");
+        let md_tree = ast.take_md_tree();
+        let index = DocumentIndex::from_ast(ast);
+        (index, md_tree)
     }
 
     /// Detect document kind from URI file extension.
@@ -192,7 +250,10 @@ impl ServerState {
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                let index = Self::build_markdown_index(&text);
+                let (index, md_tree) = self.build_markdown_index(&text);
+                if let Some(tree) = md_tree {
+                    self.md_trees.insert(uri.as_str().to_string(), tree);
+                }
                 self.realm.add_document(uri, index);
             }
             Some(kind) => {
@@ -213,7 +274,13 @@ impl ServerState {
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                let index = Self::build_markdown_index(&text);
+                let (index, md_tree) = self.build_markdown_index(&text);
+                let uri_str = uri.as_str().to_string();
+                if let Some(tree) = md_tree {
+                    self.md_trees.insert(uri_str, tree);
+                } else {
+                    self.md_trees.remove(&uri_str);
+                }
                 self.realm.add_document(uri.clone(), index);
             }
             Some(kind) => {
@@ -227,9 +294,112 @@ impl ServerState {
         }
     }
 
+    /// Apply a sequence of content changes to a document, then re-parse and re-index.
+    ///
+    /// Changes are applied in order. Each change operates on the text as modified
+    /// by the previous change (per LSP spec). Supports both incremental edits
+    /// (with position range in UTF-16 code units) and full-text replacements.
+    ///
+    /// For markdown documents, incremental changes are tracked as tree-sitter
+    /// `InputEdit`s so the old parse tree can be reused for O(edit_size) reparsing.
+    pub fn apply_document_changes(&mut self, uri: &DocumentUri, changes: Vec<DocumentChange>) {
+        // Take the old tree out (if any) for incremental parsing
+        let mut old_tree = self.md_trees.remove(uri.as_str());
+
+        // Phase 1: Apply text edits and track tree-sitter InputEdits
+        let final_text = {
+            let Some(text) = self.documents.get_mut(uri.as_str()) else {
+                return;
+            };
+
+            for change in changes {
+                match change {
+                    DocumentChange::Full(new_text) => {
+                        *text = new_text;
+                        // Full replacement invalidates the old tree
+                        old_tree = None;
+                    }
+                    DocumentChange::Incremental {
+                        start_line,
+                        start_character,
+                        end_line,
+                        end_character,
+                        text: new_text,
+                    } => {
+                        let start_byte = crate::convert::lsp_position_to_byte_offset(
+                            text,
+                            start_line,
+                            start_character,
+                        )
+                        .min(text.len());
+                        let old_end_byte = crate::convert::lsp_position_to_byte_offset(
+                            text,
+                            end_line,
+                            end_character,
+                        )
+                        .min(text.len())
+                        .max(start_byte);
+
+                        // Compute tree-sitter Points BEFORE applying the text change
+                        let start_position = byte_to_point(text, start_byte);
+                        let old_end_position = byte_to_point(text, old_end_byte);
+
+                        let new_end_byte = start_byte + new_text.len();
+
+                        // Apply the text change
+                        text.replace_range(start_byte..old_end_byte, &new_text);
+
+                        // Compute new end position from the modified text
+                        let new_end_position = byte_to_point(text, new_end_byte);
+
+                        // Update the old tree so tree-sitter can reuse unchanged subtrees
+                        if let Some(ref mut tree) = old_tree {
+                            tree.edit(&InputEdit {
+                                start_byte,
+                                old_end_byte,
+                                new_end_byte,
+                                start_position,
+                                old_end_position,
+                                new_end_position,
+                            });
+                        }
+                    }
+                }
+            }
+            text.clone()
+        };
+
+        // Phase 2: Re-parse and re-index with the final text
+        self.realm.remove_document(uri);
+        let kind = Self::document_kind_from_uri(uri);
+
+        match kind {
+            Some(DocumentKind::Markdown) | None => {
+                let (index, md_tree) =
+                    self.build_markdown_index_with_old_tree(&final_text, old_tree.as_ref());
+                let uri_str = uri.as_str().to_string();
+                if let Some(tree) = md_tree {
+                    self.md_trees.insert(uri_str, tree);
+                } else {
+                    self.md_trees.remove(&uri_str);
+                }
+                self.realm.add_document(uri.clone(), index);
+            }
+            Some(kind) => {
+                if let Ok(ast) = parse_structured(&final_text, kind) {
+                    self.realm.add_structured_document(
+                        uri.clone(),
+                        StructuredDocumentIndex::from_ast(ast),
+                    );
+                }
+            }
+        }
+    }
+
     /// Handle a document being closed: remove from store and index.
     pub fn close_document(&mut self, uri: &DocumentUri) {
         self.documents.remove(uri.as_str());
+        self.md_trees.remove(uri.as_str());
         self.realm.remove_document(uri);
     }
 
@@ -254,6 +424,14 @@ impl ServerState {
         uri: &DocumentUri,
     ) -> Option<&StructuredDocumentIndex> {
         self.realm.get_structured_document(uri)
+    }
+
+    /// Get the retained tree-sitter parse tree for a document.
+    ///
+    /// Used for incremental parsing: pass the old tree to `Parser::parse_incremental`
+    /// so tree-sitter can reuse unchanged subtrees.
+    pub fn get_md_tree(&self, uri: &DocumentUri) -> Option<&MarkdownTree> {
+        self.md_trees.get(uri.as_str())
     }
 
     /// Get a reference to the realm index.
@@ -709,7 +887,11 @@ impl ServerState {
     }
 
     /// Identify what element the cursor is on.
-    pub fn symbol_at_position(&self, uri: &DocumentUri, pos: Position) -> Option<SymbolAtPosition> {
+    pub fn symbol_at_position(
+        &self,
+        uri: &DocumentUri,
+        pos: Position,
+    ) -> Option<SymbolAtPosition<'_>> {
         // Check if it's a structured document first
         if let Some(structured_index) = self.realm.get_structured_document(uri) {
             // Find the key entry whose key_range contains the cursor position.

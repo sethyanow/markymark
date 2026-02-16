@@ -1,40 +1,42 @@
 {
-  "lastUpdated": "2026-02-16T19:37:30Z",
+  "lastUpdated": "2026-02-16T23:50:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Fixed marky-9s9 (P2): build.rs rerun-if-changed now watches individual Zig files via walkdir enumeration instead of directory metadata. CodeRabbit found directory watch only triggers on add/remove, not file modifications. All quality gates pass (61 tests, clippy clean).",
+    "summary": "Closed marky-5yt epic after both child tasks completed: Ast and DocumentIndex migrated to self_cell, lifetime boundaries hardened with compile_fail tests. Checkpoint pushed to remote.",
     "completedTasks": [
-      "marky-9s9: Fixed build.rs to enumerate individual .zig files for rebuild triggers",
-      "Added walkdir build-dependency to Cargo.toml",
-      "Updated build.rs to walk zig/src/ and emit rerun-if-changed per file",
-      "Fixed clippy lint (is_some_and vs map_or)",
-      "Updated decision record dec-brza-een-002 with corrected rationale",
-      "Committed and pushed: 4db68ce"
+      "Closed marky-5yt.1: Ast migrated to self_cell owner/dependent model",
+      "Closed marky-5yt.2: DocumentIndex lifetime boundaries hardened",
+      "Closed marky-5yt parent task (both children complete)",
+      "Added regression tests: ast_self_cell.rs and document_self_cell.rs",
+      "Updated harness memory layers (decisions, rules, patterns, architecture, entities)",
+      "Quality gates: 715 tests passing, clippy clean, formatting clean",
+      "Committed and pushed checkpoint to origin/feature/mark-next"
     ],
-    "blockers": [
-      "Scope guard RED: branch at ~8835 lines / 51 commits / 43 new files"
-    ],
+    "blockers": [],
     "nextSteps": [
-      "marky-4aa: Fix mem::forget leak in DocumentIndex::from_ast",
-      "marky-ams: Implement ZigScanBackend wrapping markymark-kernels FFI"
+      "Continue with marky-luy epic tasks (arena conformance closeout)",
+      "Address marky-x3x: CodeRabbit triage for 2 critical bugs + 2 improvements",
+      "Consider splitting RED ZONE branch (80 commits, 12,851 lines, 47 files)"
     ]
   },
   "recentChanges": [
-    "4db68ce: fix(build): watch individual Zig files for rebuild triggers",
-    "719db66: fix(kernels): initialize written parameter in scan FFI functions",
-    "5e4fc2c: feat(core): add ScanBackend and EmbeddingProvider traits"
+    "marky-5yt CLOSED: self_cell migrations complete for Ast and DocumentIndex",
+    "Lifetime safety enforced at API boundaries with compile_fail doctests",
+    "No more internal 'static field storage in parser/index layers",
+    "marky-5yt.1 and marky-5yt.2 both closed successfully"
   ],
   "knownIssues": [
-    "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations",
-    "marky-9s9: build.rs watches zig/src/ directory (add/remove) not individual file modifications",
-    "Scope guard RED: branch large (~8786 lines, 43 files, 47 commits)",
-    "c_adapter.zig at 811 lines — new exports use exports_*.zig pattern to stay under limit",
-    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
+    "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
+    "marky-lkj.1: runtime_engine.zig test refactoring deferred (P4)",
+    "marky-8la: XML tag false positives in fenced code blocks",
+    "c_adapter.zig at 803 lines — new exports use exports_*.zig pattern to stay under limit",
+    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate",
+    "RED ZONE: Branch has 80 commits, 12,851 lines changed, 47 new files"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T16:15:00Z",
-    "lastTypeCheck": "2026-02-16T16:15:00Z"
+    "lastSuccessfulBuild": "2026-02-16T19:23:11Z",
+    "lastTypeCheck": "2026-02-16T19:23:11Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
