@@ -4,7 +4,9 @@
 //! byte-accurate source ranges. The [`parse_structured`] function dispatches
 //! to the appropriate parser based on [`DocumentKind`].
 
-mod json;
+mod flat;
+pub(crate) mod json;
+mod jsonl;
 mod toml;
 mod yaml;
 
@@ -21,15 +23,15 @@ pub fn parse_structured(source: &str, kind: DocumentKind) -> Result<StructuredAs
             "use the markdown parser for Markdown documents".to_string(),
         )),
         DocumentKind::Json => json::parse_json(source),
+        DocumentKind::JsonC => json::parse_json(source), // tree-sitter-json tolerates comments
+        DocumentKind::Json5 => Err(CoreError::NotImplemented(
+            "Json5 parser not yet implemented".to_string(),
+        )),
+        DocumentKind::JsonLines => jsonl::parse_jsonl(source),
         DocumentKind::Yaml => yaml::parse_yaml(source),
         DocumentKind::Toml => toml::parse_toml(source),
-        DocumentKind::JsonC
-        | DocumentKind::Json5
-        | DocumentKind::JsonLines
-        | DocumentKind::DotEnv
-        | DocumentKind::Ini => Err(CoreError::NotImplemented(format!(
-            "{kind} parser not yet implemented"
-        ))),
+        DocumentKind::DotEnv => flat::parse_flat(source, kind),
+        DocumentKind::Ini => flat::parse_flat(source, kind),
     }
 }
 
@@ -73,8 +75,42 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_structured_dispatch_unimplemented() {
+    fn test_parse_structured_dispatch_jsonl() {
+        let result = parse_structured("{\"a\": 1}\n{\"b\": 2}", DocumentKind::JsonLines);
+        assert!(result.is_ok());
+        let ast = result.unwrap();
+        assert_eq!(ast.kind, DocumentKind::JsonLines);
+        assert!(ast.keys.len() >= 2); // at least 2 line entries
+    }
+
+    #[test]
+    fn test_parse_structured_dispatch_jsonc() {
+        // JSONC is handled by the JSON parser (tree-sitter-json tolerates comments)
+        let result = parse_structured(r#"{"key": "val"}"#, DocumentKind::JsonC);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_structured_dispatch_dotenv() {
+        let result = parse_structured("KEY=value", DocumentKind::DotEnv);
+        assert!(result.is_ok());
+        let ast = result.unwrap();
+        assert_eq!(ast.kind, DocumentKind::DotEnv);
+        assert_eq!(ast.keys.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_structured_dispatch_ini() {
         let result = parse_structured("[section]\nkey = value", DocumentKind::Ini);
+        assert!(result.is_ok());
+        let ast = result.unwrap();
+        assert_eq!(ast.kind, DocumentKind::Ini);
+        assert_eq!(ast.keys.len(), 2); // section + key
+    }
+
+    #[test]
+    fn test_parse_structured_dispatch_json5_unimplemented() {
+        let result = parse_structured("{key: 'val'}", DocumentKind::Json5);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("not yet implemented"));
