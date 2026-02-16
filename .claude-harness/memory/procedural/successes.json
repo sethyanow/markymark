@@ -294,6 +294,22 @@
         "inline for over SIMD lanes: process_bracket is safe to call on mid-link positions (they won't match '[')",
         "is_escaped: count consecutive backslashes before pos, odd = escaped"
       ]
+    },
+    {
+      "id": "suc-024",
+      "timestamp": "2026-02-16T12:35:00Z",
+      "feature": "marky-ncz",
+      "type": "implementation",
+      "approach": "Ported embedding index from forge BRZA. Core EmbeddingIndex struct with ArrayListUnmanaged (0.15.2 API), page_allocator for persistent state. Brute-force cosine search with insertion-sort top-K. C ABI exports in separate exports_embed.zig to keep c_adapter.zig under 1000-line limit (+5 lines only via _ = @import wiring).",
+      "files": ["zig/src/shared/embeddings.zig", "zig/src/exports_embed.zig", "zig/src/c_adapter.zig"],
+      "patterns": [
+        "Put new C ABI exports in separate exports_*.zig files to keep c_adapter.zig under 1000 lines",
+        "_ = @import in c_adapter.zig test block pulls both tests AND export fn declarations into library",
+        "EmbeddingIndex uses page_allocator for persistent FFI-owned memory (not testing.allocator)",
+        "Search with stack buffer for k<=256 avoids heap alloc in common case",
+        "Duplicate ID semantics: replace vector in-place (memcpy), don't append",
+        "Check k==0 before null-checking result arrays to avoid false -1 on valid k=0 calls"
+      ]
     }
   ]
 }
