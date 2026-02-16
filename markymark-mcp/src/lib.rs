@@ -527,6 +527,8 @@ impl MarkymarkMcp {
                 xml_tag_count,
                 wiki_link_count,
                 markdown_link_count,
+                structured_doc_count,
+                key_path_count,
             } => Ok(CallToolResult::structured(json!(RealmStatsResponse {
                 name,
                 root_count,
@@ -535,6 +537,8 @@ impl MarkymarkMcp {
                 xml_tag_count,
                 wiki_link_count,
                 markdown_link_count,
+                structured_doc_count,
+                key_path_count,
             }))),
             CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
             other => Ok(unexpected_result_error("realm-stats", &other)),
@@ -562,6 +566,7 @@ impl MarkymarkMcp {
                 xml_tags,
                 wiki_links,
                 markdown_links,
+                ..
             } => {
                 let headings: Vec<ExportedHeadingDto> = headings
                     .into_iter()

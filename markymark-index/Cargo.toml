@@ -9,6 +9,9 @@ description = "Document indexing and cross-reference resolution for markdown wor
 keywords = ["markdown", "index", "cross-reference", "workspace"]
 categories = ["development-tools", "text-processing"]
 
+[features]
+bench-internals = []
+
 [dependencies]
 markymark-core = { version = "=0.1.0-alpha.2", path = "../markymark-core" }
 markymark-parser = { version = "=0.1.0-alpha.2", path = "../markymark-parser" }
@@ -26,6 +29,11 @@ criterion = { workspace = true }
 memory-stats = "1.2"
 libc = "0.2.182"
 
+[[bin]]
+name = "bench_roi_report"
+required-features = ["bench-internals"]
+
 [[bench]]
 name = "memory"
 harness = false
+required-features = ["bench-internals"]

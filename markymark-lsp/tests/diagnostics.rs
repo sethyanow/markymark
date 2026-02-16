@@ -441,3 +441,35 @@ fn test_self_closing_xml_tag_no_diagnostic() {
         xml_warnings.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn test_xml_like_syntax_inside_fenced_code_produces_no_xml_warning() {
+    // Rust generics inside fenced code should not trigger XML diagnostics.
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(
+        uri.clone(),
+        concat!(
+            "# Doc\n\n",
+            "```rust\n",
+            "fn wrap<T>(value: T) -> Arc<Mutex<T>> { value }\n",
+            "```\n\n",
+            "~~~rust\n",
+            "fn use_dyn(v: Box<dyn std::fmt::Display>) {}\n",
+            "~~~\n",
+        )
+        .to_string(),
+    );
+
+    let diagnostics = state.compute_diagnostics(&uri);
+    let xml_warnings: Vec<&MarkyDiagnostic> = diagnostics
+        .iter()
+        .filter(|d| d.message.contains("Unclosed XML tag"))
+        .collect();
+
+    assert!(
+        xml_warnings.is_empty(),
+        "fenced code generics should not produce XML warnings; got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}

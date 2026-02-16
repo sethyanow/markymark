@@ -2,7 +2,7 @@
 
 use markymark_core::arena::DocumentArena;
 use markymark_core::prelude::*;
-use tree_sitter::Tree;
+use tree_sitter_md::MarkdownTree;
 
 use crate::types::*;
 use tree_sitter::Node;
@@ -28,15 +28,16 @@ use tree_sitter::Node;
 pub struct Ast {
     /// Source text (owned, kept for extract functions)
     source: String,
-    /// Tree-sitter parse tree (used by extract_list_items for node walking)
-    tree: Tree,
     /// Root-level elements, allocated in arena (see struct-level safety docs).
-    /// MUST be declared (and thus dropped) before `arena` so that arena-allocated
-    /// data referenced by elements is still valid during their drop.
+    ///
+    /// **Drop order**: Must be declared before `arena` so Elements (which contain
+    /// `ArenaHashMap`s referencing the arena) are dropped while the arena is alive.
     root_elements: Vec<Element<'static>>,
-    /// Per-document arena for all allocated data.
-    /// Dropped last so arena memory outlives all borrowing fields above.
-    arena: DocumentArena,
+    /// Per-document arena for all allocated data (boxed for stable address)
+    arena: Box<DocumentArena>,
+    /// Tree-sitter-md parse tree (block + inline trees) — dropped last
+    #[allow(dead_code)]
+    md_tree: MarkdownTree,
 }
 
 impl Ast {
@@ -67,7 +68,7 @@ impl Ast {
     /// Used by `DocumentIndex` to take ownership of the arena after borrowing
     /// from it during index construction, avoiding string reallocation.
     pub fn into_arena(self) -> DocumentArena {
-        self.arena
+        *self.arena
     }
 
     /// Raw pointer to the owned [`DocumentArena`] for extraction when the
@@ -77,13 +78,13 @@ impl Ast {
     /// of the arena in a single pass via `ptr::read` + `mem::forget`.
     #[inline]
     pub fn doc_arena_ptr(&self) -> *const DocumentArena {
-        &self.arena as *const DocumentArena
+        &*self.arena as *const DocumentArena
     }
 
-    /// Create AST from tree-sitter tree.
-    pub(crate) fn from_tree(tree: Tree, source: &str) -> CoreResult<Self> {
-        let arena = DocumentArena::new();
-        let root_node = tree.root_node();
+    /// Create AST from a MarkdownTree (block + inline trees)
+    pub(crate) fn from_markdown_tree(md_tree: MarkdownTree, source: &str) -> CoreResult<Self> {
+        let arena = Box::new(DocumentArena::new());
+        let root_node = md_tree.block_tree().root_node();
 
         // SAFETY: The arena is owned by Self, so the reference is valid for Self's lifetime.
         // See struct-level safety docs for the self-referential pattern rationale.
@@ -91,35 +92,14 @@ impl Ast {
 
         let mut root_elements = Vec::new();
 
-        // Walk the tree and extract elements
-        {
-            let mut cursor = root_node.walk();
-            for child in root_node.children(&mut cursor) {
-                if let Some(element) = Element::from_node(child, source, arena_ref)? {
-                    root_elements.push(element);
-                    continue;
-                }
-
-                if child.kind() == "tight_list" || child.kind() == "loose_list" {
-                    let mut list_cursor = child.walk();
-                    for list_child in child.children(&mut list_cursor) {
-                        // Logseq-style headings: list items starting with `- # Heading`
-                        if let Some(heading) = try_logseq_heading(list_child, source, arena_ref) {
-                            root_elements.push(Element::Heading(heading));
-                            continue;
-                        }
-                        if let Some(element) = Element::from_node(list_child, source, arena_ref)? {
-                            root_elements.push(element);
-                        }
-                    }
-                }
-            }
-        }
+        // tree-sitter-md wraps content in section nodes:
+        // document → section → {atx_heading, paragraph, list, section(nested)}
+        collect_elements(root_node, source, arena_ref, &mut root_elements)?;
 
         Ok(Self {
             source: source.to_string(),
             arena,
-            tree,
+            md_tree,
             root_elements,
         })
     }
@@ -170,7 +150,7 @@ impl Ast {
 
     /// Extract all list items as references into the arena (avoids cloning ArenaHashMap).
     pub fn extract_list_items(&self) -> Vec<&ListItem<'static>> {
-        let root_node = self.tree.root_node();
+        let root_node = self.md_tree.block_tree().root_node();
         let mut items = Vec::new();
         collect_top_level_list_items(root_node, &self.source, self.arena_ref(), &mut items);
         items
@@ -207,7 +187,6 @@ impl Ast {
     }
 }
 
-#[cfg(test)]
 impl Default for Ast {
     fn default() -> Self {
         // Create a minimal empty AST for testing purposes
@@ -215,6 +194,47 @@ impl Default for Ast {
         let mut parser = crate::Parser::new().expect("parser should initialize");
         parser.parse("").expect("empty document should parse")
     }
+}
+
+/// Recursively collect elements from the block tree, descending into section nodes.
+///
+/// tree-sitter-md wraps content in `section` nodes that nest by heading level.
+/// This function flattens the section hierarchy to extract elements.
+fn collect_elements<'a>(
+    node: Node,
+    source: &str,
+    arena: &'a bumpalo::Bump,
+    elements: &mut Vec<Element<'a>>,
+) -> CoreResult<()> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        // Recurse into section nodes (tree-sitter-md's structural wrapper)
+        if child.kind() == "section" {
+            collect_elements(child, source, arena, elements)?;
+            continue;
+        }
+
+        if let Some(element) = Element::from_node(child, source, arena)? {
+            elements.push(element);
+            continue;
+        }
+
+        // tree-sitter-md uses "list" instead of tight_list/loose_list
+        if child.kind() == "list" {
+            let mut list_cursor = child.walk();
+            for list_child in child.children(&mut list_cursor) {
+                // Logseq-style headings: list items starting with `- # Heading`
+                if let Some(heading) = try_logseq_heading(list_child, source, arena) {
+                    elements.push(Element::Heading(heading));
+                    continue;
+                }
+                if let Some(element) = Element::from_node(list_child, source, arena)? {
+                    elements.push(element);
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Detect Logseq-style headings inside list items.
@@ -286,14 +306,20 @@ fn collect_top_level_list_items<'a>(
 ) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == "tight_list" || child.kind() == "loose_list" {
+        // tree-sitter-md uses "list" instead of tight_list/loose_list
+        if child.kind() == "list" {
             if let Ok(list_items) = ListItem::list_items_from_list_node(child, source, arena) {
                 // Collect references instead of cloning to avoid ArenaHashMap::clone
                 for item in list_items {
                     items.push(item);
                 }
             }
+            continue;
+        }
 
+        // Recurse into section nodes (tree-sitter-md's structural wrapper)
+        if child.kind() == "section" {
+            collect_top_level_list_items(child, source, arena, items);
             continue;
         }
 
