@@ -3,6 +3,42 @@
   "maxEntries": 50,
   "entries": [
     {
+      "id": "dec-035",
+      "timestamp": "2026-02-16T21:00:00Z",
+      "feature": "marky-ams",
+      "decision": "ZigScanBackend as zero-size struct with private submodule + pub use re-export pattern",
+      "rationale": "Zero-size because all state is in the stateless FFI calls. Private submodule keeps feature-gated code isolated; pub use at module level provides clean API surface.",
+      "alternatives": ["Separate zig_backend.rs file", "Inline in scanner.rs without submodule"],
+      "impact": "markymark-core/src/scanner.rs"
+    },
+    {
+      "id": "dec-036",
+      "timestamp": "2026-02-16T21:00:00Z",
+      "feature": "marky-ams",
+      "decision": "unsafe impl Send+Sync for ZigEmbeddingIndex with Mutex<EmbeddingIndex> inner",
+      "rationale": "EmbeddingIndex is !Send+!Sync (raw Zig pointer). Mutex ensures exclusive access, making unsafe Send+Sync sound. tower-lsp requires Send + 'static for async handlers.",
+      "alternatives": ["Per-thread index (no sharing)", "Arc<Mutex> at call site"],
+      "impact": "markymark-core/src/embeddings.rs"
+    },
+    {
+      "id": "dec-037",
+      "timestamp": "2026-02-16T21:05:00Z",
+      "feature": "marky-0oz",
+      "decision": "from_scan behind #[cfg(feature = zig-kernels)] even though ScanBackend trait is always available",
+      "rationale": "Task spec requires 'feature flag off: from_scan method does not exist (compile error if called)'. No real backend exists without the feature, so gating prevents dead code.",
+      "alternatives": ["Always available with &dyn ScanBackend", "Default feature"],
+      "impact": "markymark-index/src/document.rs"
+    },
+    {
+      "id": "dec-038",
+      "timestamp": "2026-02-16T21:05:00Z",
+      "feature": "marky-0oz",
+      "decision": "Binary search on precomputed line_starts for byte-offset-to-Position conversion",
+      "rationale": "O(n) build + O(log n) per lookup. Better than O(n) per lookup when converting many offsets from the same document. line_starts is a simple Vec<u32> of newline positions.",
+      "alternatives": ["Linear scan per offset", "Iterator-based line counting"],
+      "impact": "markymark-index/src/document.rs"
+    },
+    {
       "id": "dec-nosemgrep-001",
       "timestamp": "2026-02-16T13:12:00Z",
       "feature": "marky-8s3",
@@ -986,6 +1022,31 @@
         "self_cell/ouroboros migration (eliminates pattern entirely but large scope — deferred to marky-5yt)"
       ],
       "impact": "markymark-parser/src/ast.rs (take_arena added, into_arena+doc_arena_ptr removed), markymark-index/src/document.rs (from_ast simplified)"
+    },
+    {
+      "id": "dec-ci-ayb-001",
+      "timestamp": "2026-02-16T22:00:00Z",
+      "feature": "marky-ayb",
+      "decision": "Use dorny/paths-filter@v3 with step-level if conditions for job-level path filtering instead of workflow-level paths: or commit-message heuristics",
+      "rationale": "GitHub Actions paths: filter only works at workflow level (would make all jobs conditional). Commit-message matching is fragile. dorny/paths-filter runs fast (~2s) and gives per-job control via step if conditions.",
+      "alternatives": [
+        "Workflow-level paths: filter (affects all jobs, not just zig-kernels)",
+        "Commit message matching (fragile, easily bypassed)",
+        "Always run zig-kernels job (wastes CI minutes on non-Zig changes)"
+      ],
+      "impact": ".github/workflows/ci.yml — zig-kernels job step conditions"
+    },
+    {
+      "id": "dec-ci-ayb-002",
+      "timestamp": "2026-02-16T22:00:00Z",
+      "feature": "marky-ayb",
+      "decision": "Keep Zig install in build-and-test job (already present) rather than removing it",
+      "rationale": "markymark-kernels is in the workspace, and its build.rs requires zig binary. Removing Zig from build-and-test would break cargo build --workspace. The zig-kernels job adds feature-gated testing, not basic Zig compilation.",
+      "alternatives": [
+        "Remove Zig from build-and-test and exclude markymark-kernels (complex workspace config)",
+        "Feature-gate build.rs to skip when Zig missing (fragile)"
+      ],
+      "impact": ".github/workflows/ci.yml — build-and-test job unchanged"
     }
   ]
 }

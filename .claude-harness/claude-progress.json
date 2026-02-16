@@ -1,34 +1,34 @@
 {
-  "lastUpdated": "2026-02-16T13:12:00-08:00",
+  "lastUpdated": "2026-02-16T14:00:00-08:00",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Merged origin/main to reset scope guard baseline. Branch now GREEN: 749 lines / 3 commits / 10 files. Build passes.",
+    "summary": "Merged origin/main to reset scope guard (RED→GREEN). Implemented marky-ayb: zig-kernels CI job with platform matrix (ubuntu-latest, macos-14), dorny/paths-filter, continue-on-error. TDD with structural YAML validation test.",
     "completedTasks": [
-      "Merged origin/main (PR #19) into feature/mark-brza",
-      "Scope guard status: GREEN (was RED at 9668 lines)",
-      "Verified build passes after merge (release profile)"
+      "Merged origin/main (PR #19) — scope guard GREEN (749 lines / 3 commits)",
+      "marky-ayb: zig-kernels CI job with platform matrix, path filtering, caching",
+      "scripts/test_ci_zig_kernels.sh — 11-check structural YAML validation",
+      "All quality gates pass: 265 workspace + 61 zig-kernels tests, clippy clean"
     ],
     "blockers": [],
     "nextSteps": [
       "marky-8s3.1: Code fence exclusion map Zig kernel",
-      "marky-ayb: CI integration for Zig build step",
-      "marky-0aw: Extraction parity tests (unblocked by marky-0oz)"
+      "marky-0aw: Extraction parity tests (Zig SIMD vs tree-sitter)",
+      "marky-8s3.3: Zig SIMD fuzzy matcher for search-symbols"
     ]
   },
   "recentChanges": [
+    "27ed53f: feat(ci): add zig-kernels CI job with platform matrix",
     "a248f6b: Merge remote-tracking branch 'origin/main' into feature/mark-brza",
-    "2696947: feat(core,index): ZigScanBackend, ZigEmbeddingIndex, and DocumentIndex::from_scan",
-    "5b07bd6: fix(index): replace mem::forget leak with Ast::take_arena()"
+    "2696947: feat(core,index): ZigScanBackend, ZigEmbeddingIndex, and DocumentIndex::from_scan"
   ],
   "knownIssues": [
     "c_adapter.zig at 811 lines — new exports use exports_*.zig pattern to stay under limit",
-    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate",
     "from_scan known gaps: no XML tags, no setext headings, no frontmatter"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T13:12:00-08:00",
-    "lastTypeCheck": "2026-02-16T13:12:00-08:00"
+    "lastSuccessfulBuild": "2026-02-16T14:00:00-08:00",
+    "lastTypeCheck": "2026-02-16T14:00:00-08:00"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
