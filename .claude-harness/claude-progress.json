@@ -1,42 +1,38 @@
 {
-  "lastUpdated": "2026-02-16T13:15:00Z",
+  "lastUpdated": "2026-02-16T13:36:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Triaged PR #18 review comments (9 Copilot, 18 semgrep). Added nosemgrep inline suppressions to all 21 unsafe FFI blocks across 6 files in markymark-kernels. Verified PhantomData<*mut ()> correctly prevents Send/Sync (Copilot false positive). Created 3 beads for actionable review findings: marky-4cu (Zig doc mismatches), marky-0rf (asm_* rename), marky-qnw (entity hash edge cases).",
+    "summary": "Fixed all 3 PR #18 review comments: doc/behavior mismatches (marky-4cu), asm_*→zig_* rename (marky-0rf), entity hash edge cases (marky-qnw). All Zig tests (228+) and Rust workspace tests pass. Pushed to remote.",
     "completedTasks": [
-      "Added nosemgrep comments to embed.rs (6 blocks), similarity.rs (2), hash.rs (1), scan.rs (10), tokens.rs (1), lib.rs (1)",
-      "Verified PhantomData<*mut ()> is !Send+!Sync via rustc compilation test",
-      "Triaged 9 Copilot comments: 3 beads created, 2 dismissed (false positive + intentional)",
-      "Created PR #18 for BRZA Phase 1-4 (previous session)"
+      "marky-4cu: Fixed 5 doc/behavior mismatches across entities, similarity, and embeddings modules",
+      "marky-0rf: Renamed 3 asm_* exports to zig_* in c_adapter.zig (+ all test references)",
+      "marky-qnw: Fixed capacity==0 and text_len==0 edge cases, added 2 regression tests"
     ],
     "blockers": [
-      "Scope guard RED: branch at ~8300+ lines / 39 commits / 39+ new files",
-      "PR #18 has review comments to address (3 beads filed)"
+      "Scope guard RED: branch at ~8327 lines / 41 commits / 39+ new files",
+      "PR #18 CI checks need to pass before merge"
     ],
     "nextSteps": [
-      "marky-4cu: Fix Zig doc/behavior mismatches",
-      "marky-0rf: Rename asm_* exports to zig_* for consistent naming",
-      "marky-qnw: Fix entity hash zero-length edge cases",
+      "Merge PR #18 once CI passes",
       "marky-qv6: Add ScanBackend and EmbeddingProvider traits to markymark-core",
       "marky-ayb: Full CI integration for Zig"
     ]
   },
   "recentChanges": [
-    "nosemgrep: add inline suppressions for FFI unsafe blocks",
-    "1c58e3b: Merge remote-tracking branch origin/main into feature/mark-brza",
-    "6f48000: chore(harness): checkpoint after marky-0u5 Rust FFI wrappers completion"
+    "ed84d6a: fix(brza): address PR #18 review comments",
+    "0262dd7: chore(kernels): add nosemgrep suppressions for FFI unsafe blocks",
+    "1c58e3b: Merge remote-tracking branch origin/main into feature/mark-brza"
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch large (~8300+ lines, 39+ files, 39 commits)",
-    "PR #18 review comments: 3 beads filed (marky-4cu, marky-0rf, marky-qnw)",
+    "Scope guard RED: branch large (~8327 lines, 39+ files, 41 commits)",
     "c_adapter.zig at 803 lines — new exports use exports_*.zig pattern to stay under limit",
     "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T13:15:00Z",
-    "lastTypeCheck": "2026-02-16T13:15:00Z"
+    "lastSuccessfulBuild": "2026-02-16T13:36:00Z",
+    "lastTypeCheck": "2026-02-16T13:36:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
