@@ -34,12 +34,21 @@ fn main() {
     println!("cargo:rustc-link-lib=static=marky_kernels");
 
     // Rerun if Zig sources change (individual files, not just directory)
-    for entry in WalkDir::new(zig_dir.join("src"))
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "zig"))
-    {
-        println!("cargo:rerun-if-changed={}", entry.path().display());
+    let zig_src_dir = zig_dir.join("src");
+    for entry_result in WalkDir::new(&zig_src_dir) {
+        match entry_result {
+            Ok(entry) => {
+                if entry.path().extension().is_some_and(|ext| ext == "zig") {
+                    println!("cargo:rerun-if-changed={}", entry.path().display());
+                }
+            }
+            Err(err) => {
+                println!(
+                    "cargo:warning=Failed to enumerate entry under {}: {err}",
+                    zig_src_dir.display()
+                );
+            }
+        }
     }
     println!(
         "cargo:rerun-if-changed={}",
