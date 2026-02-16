@@ -7,6 +7,7 @@ members = [
     "markymark-lsp",
     "markymark-mcp",
     "markymark-cli",
+    "markymark-kernels",
 ]
 
 [workspace.package]

@@ -1,0 +1,149 @@
+use std::env;
+use std::path::PathBuf;
+use std::process::Command;
+
+fn main() {
+    // Locate the zig directory relative to the crate root
+    let manifest_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
+    let zig_dir = manifest_dir.join("..").join("zig");
+    let zig_dir = zig_dir
+        .canonicalize()
+        .unwrap_or_else(|e| panic!("zig/ directory not found at {}: {e}", zig_dir.display()));
+
+    // Check Zig is installed and get version
+    let zig_version = get_zig_version();
+    check_zig_version(&zig_version);
+
+    // Run zig build lib
+    build_zig_library(&zig_dir);
+
+    // Verify the library artifact exists
+    let lib_path = zig_dir.join("zig-out").join("lib");
+    let lib_file = lib_path.join("libmarky_kernels.a");
+    if !lib_file.exists() {
+        panic!(
+            "zig build lib did not produce libmarky_kernels.a at {}",
+            lib_file.display()
+        );
+    }
+
+    // Tell Cargo where to find and link the library
+    println!("cargo:rustc-link-search=native={}", lib_path.display());
+    println!("cargo:rustc-link-lib=static=marky_kernels");
+
+    // Rerun if Zig sources change
+    println!("cargo:rerun-if-changed={}", zig_dir.join("src").display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        zig_dir.join("build.zig").display()
+    );
+}
+
+/// Get the zig version string from `zig version`.
+fn get_zig_version() -> String {
+    let output = Command::new("zig")
+        .arg("version")
+        .output()
+        .unwrap_or_else(|e| {
+            panic!(
+                "Zig compiler not found. Install Zig 0.15.2+ from https://ziglang.org/download/\n\
+                 Error: {e}"
+            )
+        });
+
+    if !output.status.success() {
+        panic!(
+            "zig version failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+/// Parse and validate the Zig version is >= 0.15.2.
+fn check_zig_version(version_str: &str) {
+    // Parse "0.15.2" or "0.15.2-dev.xxxx" format
+    let version_core = version_str.split('-').next().unwrap_or(version_str);
+    let parts: Vec<u32> = version_core
+        .split('.')
+        .filter_map(|p| p.parse().ok())
+        .collect();
+
+    if parts.len() < 3 {
+        panic!(
+            "Could not parse Zig version '{version_str}'. Expected format: X.Y.Z or X.Y.Z-dev.N"
+        );
+    }
+
+    let (major, minor, patch) = (parts[0], parts[1], parts[2]);
+
+    // Require >= 0.15.2
+    let meets_minimum =
+        major > 0 || (major == 0 && minor > 15) || (major == 0 && minor == 15 && patch >= 2);
+
+    if !meets_minimum {
+        panic!(
+            "Zig 0.15.2+ required, found {version_str}. \
+             Install from https://ziglang.org/download/"
+        );
+    }
+}
+
+/// Run `zig build lib` in the zig directory.
+fn build_zig_library(zig_dir: &std::path::Path) {
+    let output = Command::new("zig")
+        .args(["build", "lib"])
+        .current_dir(zig_dir)
+        .output()
+        .unwrap_or_else(|e| panic!("Failed to run zig build lib: {e}"));
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        panic!(
+            "zig build lib failed in {}:\n\
+             --- stderr ---\n{stderr}\n\
+             --- stdout ---\n{stdout}",
+            zig_dir.display()
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_version_parse_valid() {
+        check_zig_version("0.15.2");
+        check_zig_version("0.15.3");
+        check_zig_version("0.16.0");
+        check_zig_version("1.0.0");
+        check_zig_version("2.0.0");
+    }
+
+    #[test]
+    fn test_version_parse_dev() {
+        check_zig_version("0.15.2-dev.1234+abcdef");
+    }
+
+    #[test]
+    #[should_panic(expected = "Zig 0.15.2+ required")]
+    fn test_version_too_old() {
+        check_zig_version("0.14.1");
+    }
+
+    #[test]
+    #[should_panic(expected = "Zig 0.15.2+ required")]
+    fn test_version_0_15_1() {
+        check_zig_version("0.15.1");
+    }
+
+    #[test]
+    #[should_panic(expected = "Could not parse Zig version")]
+    fn test_version_garbage() {
+        check_zig_version("not-a-version");
+    }
+}

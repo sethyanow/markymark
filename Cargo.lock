@@ -928,6 +928,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "markymark-kernels"
+version = "0.2.0"
+
+[[package]]
 name = "markymark-lsp"
 version = "0.2.0"
 dependencies = [

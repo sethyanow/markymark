@@ -9,6 +9,7 @@
     "parser": "tree-sitter 0.26.5 + tree-sitter-md 0.5.2",
     "graph": "petgraph 0.7 (StableGraph)",
     "allocator": "bumpalo 3.19.1 + hashbrown 0.16.1",
+    "simd": "Zig @Vector(16, u8) portable SIMD — compiles to NEON on Apple Silicon, SSE on x86",
     "testFramework": "cargo test + bash test scripts for plugin"
   },
   "structure": {
@@ -54,7 +55,10 @@
       "markymark-lsp/tests/ (11 files: capabilities, completion_*, diagnostics, hover, rename, etc.)",
       "markymark-mcp/tests/ (runtime_engine_tests, runtime_tools, tool_handler_tests)",
       "markymark-cli/tests/ (cli_args, smoke_lsp, smoke_mcp, lsp_methods, mcp_methods, alignment, bench)",
-      "markymark-plugin/tests/ (test_select_binary.sh, test_hooks.sh)"
+      "markymark-plugin/tests/ (test_select_binary.sh, test_hooks.sh)",
+      "zig/test/ (smoke_test.zig)",
+      "zig/src/kernels/heading_scan.zig (13 SIMD kernel tests + benchmark)",
+      "zig/src/reference/heading_scan_ref.zig (4 scalar reference tests)"
     ]
   },
   "patterns": {
@@ -75,6 +79,7 @@
         "Integration tests in crate tests/ dirs are standalone crates (no mod.rs needed)"
       ],
       "plugin": "markymark-plugin/{.claude-plugin/,bin/,scripts/,hooks/,skills/,tests/}",
+      "zig": "zig/{src/kernels/,src/reference/,src/c_adapter.zig,build.zig} — SIMD extraction kernels",
       "examples": "examples/claude-code-plugin/ (reference implementations)"
     },
     "codeStyle": {
