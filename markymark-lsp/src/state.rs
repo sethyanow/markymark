@@ -156,24 +156,35 @@ impl StructuredKeyInfo {
 /// The internal state of the LSP server.
 ///
 /// Manages document text storage, parsed ASTs, and the realm index.
-#[derive(Default)]
+/// The parser is stored here to avoid re-creating it on every parse call.
 pub struct ServerState {
     /// Raw document text keyed by URI string.
     documents: HashMap<String, String>,
     /// The realm index for cross-document lookups.
     realm: RealmIndex,
+    /// Reusable markdown parser instance.
+    parser: Parser,
+}
+
+impl Default for ServerState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ServerState {
     /// Create a new empty server state.
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            documents: HashMap::new(),
+            realm: RealmIndex::default(),
+            parser: Parser::new().expect("failed to create parser"),
+        }
     }
 
     /// Parse text and build a markdown document index.
-    fn build_markdown_index(text: &str) -> DocumentIndex {
-        let mut parser = Parser::new().expect("failed to create parser");
-        let ast = parser.parse(text).expect("failed to parse document");
+    fn build_markdown_index(&mut self, text: &str) -> DocumentIndex {
+        let ast = self.parser.parse(text).expect("failed to parse document");
         DocumentIndex::from_ast(ast)
     }
 
@@ -192,7 +203,7 @@ impl ServerState {
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                let index = Self::build_markdown_index(&text);
+                let index = self.build_markdown_index(&text);
                 self.realm.add_document(uri, index);
             }
             Some(kind) => {
@@ -213,7 +224,7 @@ impl ServerState {
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                let index = Self::build_markdown_index(&text);
+                let index = self.build_markdown_index(&text);
                 self.realm.add_document(uri.clone(), index);
             }
             Some(kind) => {
