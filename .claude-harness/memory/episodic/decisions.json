@@ -3,16 +3,16 @@
   "maxEntries": 50,
   "entries": [
     {
-      "id": "dec-001",
-      "timestamp": "2026-02-13T21:15:00Z",
-      "feature": "marky-1vb",
-      "decision": "Copy suggest-lsp.sh from examples/ rather than creating a new version",
-      "rationale": "Example already works and has tests; no need to rewrite",
+      "id": "dec-nosemgrep-001",
+      "timestamp": "2026-02-16T13:12:00Z",
+      "feature": "marky-8s3",
+      "decision": "Use nosemgrep inline comments instead of blanket crate exclusion for FFI unsafe blocks",
+      "rationale": "Each unsafe block already has a SAFETY comment explaining invariants. nosemgrep forces deliberate consideration for any new unsafe — blanket exclusion would silently accept unjustified unsafe blocks. Pragmatic: prevents tech debt while keeping the safety gate active.",
       "alternatives": [
-        "Write new hook from scratch",
-        "Symlink to examples/"
+        "Exclude markymark-kernels/ from unsafe rules entirely (easy but loses gate)",
+        "Dismiss findings on GitHub (quick but no future protection)"
       ],
-      "impact": "markymark-plugin/hooks/suggest-lsp.sh"
+      "impact": "21 nosemgrep comments across 6 files in markymark-kernels/src/"
     },
     {
       "id": "dec-002",
