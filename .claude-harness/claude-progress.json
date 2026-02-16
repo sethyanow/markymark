@@ -1,47 +1,42 @@
 {
-  "lastUpdated": "2026-02-16T18:32:00Z",
+  "lastUpdated": "2026-02-16T19:43:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed Phase 3 incremental indexing design via brainstorming skill. Used Socratic method to make 7 key design decisions. Created epic marky-77i with complete design rationale (LSP-layer orchestration, byte-range granularity, 5 independent extractors, always rebuild headings/TOC/outline, hybrid merge strategy). Created first task marky-z7e with detailed implementation checklist. Ran SRE refinement: strengthened from 3 to 5 tests, added 6 anti-patterns, documented 9 edge cases. Copied design doc to docs/plans/phase3-incremental-indexing.md. Next: close marky-g9b epic, file refactor beads, begin Phase 3 implementation.",
+    "summary": "Housekeeping session: closed marky-g9b epic (incremental parsing complete), filed and completed P0 refactor marky-gsh (server.rs 1068→844 lines via symbols.rs extraction). All 608 tests pass, clippy clean. Ready for Phase 3 implementation.",
     "completedTasks": [
-      "Brainstormed Phase 3 design with user via 7 AskUserQuestion rounds",
-      "Created epic marky-77i with immutable requirements and full design rationale",
-      "Created task marky-z7e (proof-of-concept for wiki_links incremental)",
-      "SRE refinement: strengthened task from 3 to 5 tests, added anti-patterns + edge cases",
-      "Documented design in docs/plans/phase3-incremental-indexing.md"
+      "Closed marky-g9b epic (all 3 phases of incremental parsing complete)",
+      "Filed P0 refactor bead marky-gsh for server.rs exceeding 1000-line limit",
+      "Refactored server.rs: extracted DocumentSymbol helpers to symbols.rs (235 lines)",
+      "server.rs reduced from 1068 to 844 lines — under rule-004 limit",
+      "Committed, pushed, all pre-commit hooks pass"
     ],
     "nextSteps": [
-      "Close marky-g9b epic (all child tasks done, Phase 3 epic created)",
-      "File P0 refactor bead for server.rs (1068 lines, exceeds rule-004 limit)",
+      "Begin Phase 3 implementation: execute marky-z7e (wiki_links incremental proof-of-concept)",
       "File P2 refactor bead for state.rs (996 lines, approaching limit)",
-      "Begin Phase 3 implementation: execute marky-z7e (wiki_links proof-of-concept)",
-      "Push feature/mark-next branch to remote"
+      "Consider merging feature/mark-next to reset scope guard (RED at 11K+ lines, 66 commits)"
     ]
   },
   "recentChanges": [
+    "Closed marky-g9b: incremental tree-sitter parsing epic complete",
+    "Refactored server.rs → symbols.rs extraction (marky-gsh closed)",
     "Created epic marky-77i: Phase 3 incremental indexing (10x speedup target)",
     "Created task marky-z7e: wiki_links proof-of-concept with incremental update logic",
-    "Strengthened marky-z7e via SRE review: 5 tests, 6 anti-patterns, 9 edge cases",
-    "Documented Phase 3 design decisions and approach in docs/plans/",
     "Key design: LSP-layer orchestration, byte-range granularity, 5 extractors incremental"
   ],
   "knownIssues": [
-    "server.rs at 1068 lines — EXCEEDS rule-004 hard stop (1000 lines). Needs P0 refactor bead.",
     "state.rs at 996 lines — approaching 1000-line threshold. Needs P2 refactor bead.",
-    "marky-g9b epic still open — ready to close now that Phase 3 epic exists",
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
     "marky-5yt: 'static lifetime + Box aliasing issue — blocks 6 Miri tests, needs self_cell migration",
     "marky-lkj.1: runtime_engine.rs test refactoring deferred (P4)",
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch at ~8380 lines / 42 commits / 39+ new files",
+    "Scope guard RED: branch at ~11K lines / 66 commits / 45 new files",
     "c_adapter.zig at 803 lines — new exports use exports_*.zig pattern to stay under limit",
-    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate",
-    "PR #18 CI checks need to pass before merge"
+    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T18:13:00Z",
-    "lastTypeCheck": "2026-02-16T18:13:00Z"
+    "lastSuccessfulBuild": "2026-02-16T19:42:00Z",
+    "lastTypeCheck": "2026-02-16T19:42:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
