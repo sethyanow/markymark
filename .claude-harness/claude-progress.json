@@ -1,39 +1,41 @@
 {
-  "lastUpdated": "2026-02-16T06:40:00Z",
+  "lastUpdated": "2026-02-16T06:55:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Executed first BRZA epic task: marky-ccv Zig directory scaffold. Created zig/ with build.zig (Zig 0.15.2 APIs), c_adapter.zig exporting marky_version(), placeholder modules, and directory structure. Hit multiple Zig 0.14→0.15 API breakages (addStaticLibrary→addLibrary, root_source_file→root_module, callconv(.C) removed). Resolved by reading Zig stdlib source directly. Recorded API failures in harness memory.",
+    "summary": "Executed marky-een: scaffolded markymark-kernels Rust crate with build.rs that compiles and links Zig libmarky_kernels.a. build.rs checks Zig >= 0.15.2, runs zig build lib, links static library. lib.rs wraps marky_version() as kernel_version() for linkage verification. Empty module stubs for scan/embed/similarity/tokens/hash. All quality gates passed first try.",
     "completedTasks": [
-      "marky-ccv: Scaffold zig/ directory with build.zig and src structure",
-      "build.zig produces libmarky_kernels.a with marky_version export",
-      "zig build test passes (c_adapter + smoke tests)",
-      "Recorded Zig 0.15 API failure patterns in procedural memory"
+      "marky-een: Scaffold markymark-kernels Rust crate with build.rs",
+      "build.rs: Zig version check, zig build lib invocation, static library linking",
+      "lib.rs: FFI linkage test via kernel_version() -> 0x000100",
+      "Added markymark-kernels to workspace Cargo.toml members",
+      "All quality gates: build, test, clippy -D warnings, fmt, pre-commit hooks"
     ],
     "blockers": [
-      "No blockers — 20 downstream tasks unblocked by marky-ccv"
+      "Scope guard RED: branch at 3550 lines / 19 new files — consider splitting or deferring"
     ],
     "nextSteps": [
-      "marky-een: Scaffold markymark-kernels Rust crate with build.rs (Rust FFI bridge)",
       "marky-v8r: Implement heading_scan Zig SIMD kernel (first real kernel)",
-      "Continue marky-luy arena conformance closeout (separate branch)"
+      "marky-ayb: CI integration (Zig build step in GitHub Actions) — unblocked by marky-een",
+      "marky-bgl: Port similarity and entity hash kernels from forge — unblocked by marky-een",
+      "marky-ncz: Port embedding index kernels from forge — unblocked by marky-een"
     ]
   },
   "recentChanges": [
-    "zig/build.zig: Zig 0.15.2 build system producing libmarky_kernels.a",
-    "zig/src/c_adapter.zig: marky_version() export for linkage verification",
-    "zig/src/{fixtures,harness}.zig: placeholder test modules",
-    "zig/src/{kernels,shared,reference}/: directory scaffold",
-    ".gitignore: .zig-cache/ and zig-out/ excluded"
+    "markymark-kernels/Cargo.toml: new crate for Zig FFI bindings",
+    "markymark-kernels/build.rs: Zig build orchestration with version check",
+    "markymark-kernels/src/lib.rs: kernel_version() FFI wrapper + module stubs",
+    "markymark-kernels/src/{scan,embed,similarity,tokens,hash}.rs: empty module stubs",
+    "Cargo.toml: added markymark-kernels to workspace members"
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch growing, consider splitting",
+    "Scope guard RED: branch at 3550 lines, consider splitting",
     "brza-spec.md: untracked file from forge spec reference (not committed)"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T06:40:00Z",
-    "lastTypeCheck": "2026-02-16T06:40:00Z"
+    "lastSuccessfulBuild": "2026-02-16T06:55:00Z",
+    "lastTypeCheck": "2026-02-16T06:55:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
