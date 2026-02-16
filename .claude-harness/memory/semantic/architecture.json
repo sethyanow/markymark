@@ -39,7 +39,10 @@
       "markymark-mcp/src/runtime_engine.rs (MCP RuntimeEngine: startup indexing, CoreEngine impl)",
       "markymark-mcp/src/resources.rs (MCP resource handlers)",
       "markymark-mcp/src/rename_ops.rs (MCP rename operations)",
-      "markymark-mcp/src/dto.rs (MCP data transfer objects)"
+      "markymark-mcp/src/dto.rs (MCP data transfer objects)",
+      "markymark-parser/src/structured/ (multi-format parsers: json, yaml, toml, jsonl, flat)",
+      "markymark-index/src/structured_document.rs (StructuredDocumentIndex: key-path lookup, outline)",
+      "markymark-index/src/resolution.rs (ResolvedTarget::KeyPath for structured doc cross-references)"
     ],
     "api": [
       "markymark-parser/src/lib.rs",

@@ -2,7 +2,8 @@
 //! to their target symbols within a [`RealmIndex`].
 
 use crate::realm::RealmIndex;
-use markymark_core::DocumentUri;
+use markymark_core::structured::ValueKind;
+use markymark_core::{DocumentUri, Range};
 
 /// A resolved reference target.
 #[derive(Debug, Clone)]
@@ -25,6 +26,17 @@ pub enum ResolvedTarget {
         /// The block identifier.
         id: String,
     },
+    /// Resolved to a key path within a structured document.
+    KeyPath {
+        /// The document containing the key.
+        uri: DocumentUri,
+        /// The full key path (e.g. "database.host").
+        path: String,
+        /// The value kind at this key.
+        value_kind: ValueKind,
+        /// The source range of the key.
+        range: Range,
+    },
 }
 
 /// Find a document in the realm by matching the file stem of its URI
@@ -37,6 +49,7 @@ fn find_document_by_page_name(realm: &RealmIndex, target: &str) -> Option<Docume
 ///
 /// - `[[page-name]]` → document
 /// - `[[page#heading]]` → heading in document
+/// - `[[page#key.path]]` → structured document key path
 /// - `[[#heading]]` → heading in current document (from_uri)
 pub fn resolve_wiki_link(
     realm: &RealmIndex,
@@ -60,16 +73,34 @@ pub fn resolve_wiki_link(
             let doc_uri = find_document_by_page_name(realm, target)?;
             Some(ResolvedTarget::Document(doc_uri))
         }
-        // [[page-name#heading]] - heading in another document
-        (false, Some(slug)) => {
+        // [[page-name#heading-or-keypath]] - heading or key path in another document
+        (false, Some(fragment)) => {
             let doc_uri = find_document_by_page_name(realm, target)?;
-            let doc = realm.get_document(&doc_uri)?;
-            let entry = doc.heading_by_slug(slug)?;
-            Some(ResolvedTarget::Heading {
-                uri: doc_uri,
-                slug: entry.slug.to_string(),
-                text: entry.text.to_string(),
-            })
+
+            // Try markdown heading first
+            if let Some(doc) = realm.get_document(&doc_uri) {
+                if let Some(entry) = doc.heading_by_slug(fragment) {
+                    return Some(ResolvedTarget::Heading {
+                        uri: doc_uri,
+                        slug: entry.slug.to_string(),
+                        text: entry.text.to_string(),
+                    });
+                }
+            }
+
+            // Try structured document key path
+            if let Some(st_doc) = realm.get_structured_document(&doc_uri) {
+                if let Some(entry) = st_doc.key_by_path(fragment) {
+                    return Some(ResolvedTarget::KeyPath {
+                        uri: doc_uri,
+                        path: entry.path.clone(),
+                        value_kind: entry.value_kind,
+                        range: entry.key_range,
+                    });
+                }
+            }
+
+            None
         }
         // Empty target with no heading - nothing to resolve
         (true, None) => None,
