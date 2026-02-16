@@ -1,43 +1,39 @@
 {
-  "lastUpdated": "2026-02-16T01:15:00Z",
+  "lastUpdated": "2026-02-16T06:40:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "BRZA-markymark brainstorming and SRE planning session. Investigated forge BRZA implementation (2,973 LOC Zig, 224 tests), designed full integration architecture (docs/plans/brza-markymark.md), created epic marky-8s3 with 26 tasks across 7 phases. SRE review agent updated all 26 tasks with effort estimates, success criteria, edge cases, anti-patterns. Split 3 oversized tasks into 11 subtasks (37 total). Total estimated effort: 196-254h.",
+    "summary": "Executed first BRZA epic task: marky-ccv Zig directory scaffold. Created zig/ with build.zig (Zig 0.15.2 APIs), c_adapter.zig exporting marky_version(), placeholder modules, and directory structure. Hit multiple Zig 0.14→0.15 API breakages (addStaticLibrary→addLibrary, root_source_file→root_module, callconv(.C) removed). Resolved by reading Zig stdlib source directly. Recorded API failures in harness memory.",
     "completedTasks": [
-      "Brainstormed 13 ZA application areas for markymark",
-      "Researched forge BRZA implementation via subagent",
-      "Created comprehensive spec: docs/plans/brza-markymark.md",
-      "Created epic marky-8s3 with 26 tasks and 27 dependency edges",
-      "SRE task refinement on all 26 tasks (background agent)",
-      "Split marky-8s3.2 (Aho-Corasick) into 3 subtasks",
-      "Split marky-8s3.7 (multi-format extractors) into 5 subtasks",
-      "Split marky-qv6 (core traits) into 3 subtasks",
-      "Recorded 15 architectural decisions (dec-brza-mm-001 through -015)"
+      "marky-ccv: Scaffold zig/ directory with build.zig and src structure",
+      "build.zig produces libmarky_kernels.a with marky_version export",
+      "zig build test passes (c_adapter + smoke tests)",
+      "Recorded Zig 0.15 API failure patterns in procedural memory"
     ],
     "blockers": [
-      "No blockers — epic ready for execution"
+      "No blockers — 20 downstream tasks unblocked by marky-ccv"
     ],
     "nextSteps": [
-      "Execute BRZA epic starting with marky-ccv (Zig scaffold)",
-      "Continue marky-luy arena conformance closeout (separate branch)",
-      "PR #11 still open for feature-001 arena migration"
+      "marky-een: Scaffold markymark-kernels Rust crate with build.rs (Rust FFI bridge)",
+      "marky-v8r: Implement heading_scan Zig SIMD kernel (first real kernel)",
+      "Continue marky-luy arena conformance closeout (separate branch)"
     ]
   },
   "recentChanges": [
-    "docs/plans/brza-markymark.md: comprehensive BRZA integration spec",
-    ".claude-harness/memory/episodic/decisions.json: 15 BRZA decisions added",
-    ".claude-harness/memory/procedural/successes.json: SRE review patterns added",
-    "beads: 37 tasks with SRE-reviewed designs in marky-8s3 epic"
+    "zig/build.zig: Zig 0.15.2 build system producing libmarky_kernels.a",
+    "zig/src/c_adapter.zig: marky_version() export for linkage verification",
+    "zig/src/{fixtures,harness}.zig: placeholder test modules",
+    "zig/src/{kernels,shared,reference}/: directory scaffold",
+    ".gitignore: .zig-cache/ and zig-out/ excluded"
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch at 4,236 lines, 27 commits, 16 new files",
+    "Scope guard RED: branch growing, consider splitting",
     "brza-spec.md: untracked file from forge spec reference (not committed)"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T01:15:00Z",
-    "lastTypeCheck": "2026-02-16T01:15:00Z"
+    "lastSuccessfulBuild": "2026-02-16T06:40:00Z",
+    "lastTypeCheck": "2026-02-16T06:40:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
