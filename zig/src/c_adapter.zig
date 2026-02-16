@@ -11,6 +11,12 @@ const entities = @import("shared/entities.zig");
 const quantize_mod = @import("shared/quantize.zig");
 const embeddings_mod = @import("shared/embeddings.zig");
 
+// Pull in C ABI exports from dedicated export files.
+// The _ = @import forces Zig to include these export fn declarations in the library.
+comptime {
+    _ = @import("exports_embed.zig");
+}
+
 /// Re-export types for C consumers
 pub const HeadingScan = heading_scan.HeadingScan;
 pub const LinkScan = link_scan.LinkScan;

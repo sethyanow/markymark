@@ -1,62 +1,147 @@
-//! Content hashing (FNV-1a 64-bit).
+//! Entity hash extraction (FNV-1a word hashing).
 //!
-//! Wraps the Zig `marky_content_hash` FFI function for computing
-//! deterministic content fingerprints.
+//! Wraps the Zig `zig_extract_entity_hashes` FFI function which tokenizes
+//! text on whitespace/punctuation and produces an FNV-1a u32 hash per word.
+
+use crate::scan::KernelError;
+
+/// Maximum number of retry attempts when the output buffer is too small.
+const MAX_RETRIES: u32 = 3;
+
+/// Initial buffer capacity for entity hash results.
+const INITIAL_CAP: usize = 64;
+
+// ---------------------------------------------------------------------------
+// FFI declarations
+// ---------------------------------------------------------------------------
 
 extern "C" {
-    fn marky_content_hash(text: *const u8, len: u32) -> u64;
+    fn zig_extract_entity_hashes(
+        text_ptr: *const u8,
+        text_len: u32,
+        output_ids: *mut u32,
+        capacity: u32,
+        written: *mut u32,
+    ) -> i32;
 }
 
-/// FNV offset basis (hash of empty input).
-pub const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
-/// Compute a deterministic FNV-1a 64-bit hash of the given text.
+/// Extract entity hashes from text using FNV-1a word hashing.
 ///
-/// Returns [`FNV_OFFSET_BASIS`] for empty input (the standard FNV-1a
-/// offset basis). Useful for content deduplication and change detection.
-pub fn content_hash(text: &str) -> u64 {
+/// Tokenizes text on whitespace and punctuation boundaries, then hashes each
+/// word with FNV-1a to produce a truncated u32 hash per token. Useful for
+/// entity-based similarity comparisons (e.g. Jaccard on hash sets).
+///
+/// Returns an empty vector for empty input (not an error).
+pub fn extract_entity_hashes(text: &str) -> Result<Vec<u32>, KernelError> {
     if text.is_empty() {
-        return FNV_OFFSET_BASIS;
+        return Ok(Vec::new());
     }
-    // SAFETY: text.as_ptr() is valid for text.len() bytes.
-    // marky_content_hash is a pure function with no side effects.
-    unsafe { marky_content_hash(text.as_ptr(), text.len() as u32) }
+
+    let mut buf: Vec<u32> = vec![0; INITIAL_CAP];
+    let text_bytes = text.as_bytes();
+    let text_ptr = text_bytes.as_ptr();
+    let text_len = text_bytes.len() as u32;
+
+    for _ in 0..=MAX_RETRIES {
+        let cap = buf.len() as u32;
+        let mut written: u32 = 0;
+
+        // SAFETY: text_ptr valid for text_len bytes, buf has capacity cap,
+        // written is a valid mutable reference. FFI writes at most cap u32s.
+        let rc = unsafe {
+            zig_extract_entity_hashes(text_ptr, text_len, buf.as_mut_ptr(), cap, &mut written)
+        };
+
+        match rc {
+            0 => {
+                buf.truncate(written as usize);
+                return Ok(buf);
+            }
+            -1 => return Err(KernelError::InvalidInput),
+            -2 => {
+                // Double capacity and retry
+                let new_cap = (buf.len() * 2).max(INITIAL_CAP);
+                buf.resize(new_cap, 0);
+            }
+            other => return Err(KernelError::InternalError(other)),
+        }
+    }
+
+    Err(KernelError::BufferTooSmall)
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_content_hash_deterministic() {
-        let h1 = content_hash("hello world");
-        let h2 = content_hash("hello world");
-        assert_eq!(h1, h2);
+    fn test_entity_hashes_known_text() {
+        let hashes = extract_entity_hashes("hello world").unwrap();
+        assert_eq!(hashes.len(), 2, "two words should produce two hashes");
+        // Hashes should be non-zero
+        assert_ne!(hashes[0], 0);
+        assert_ne!(hashes[1], 0);
+        // Different words should produce different hashes
+        assert_ne!(hashes[0], hashes[1]);
     }
 
     #[test]
-    fn test_content_hash_empty() {
-        assert_eq!(content_hash(""), FNV_OFFSET_BASIS);
+    fn test_entity_hashes_empty_text() {
+        let hashes = extract_entity_hashes("").unwrap();
+        assert!(hashes.is_empty());
     }
 
     #[test]
-    fn test_content_hash_distinct() {
-        let h1 = content_hash("abc");
-        let h2 = content_hash("def");
-        assert_ne!(h1, h2);
+    fn test_entity_hashes_single_word() {
+        let hashes = extract_entity_hashes("rust").unwrap();
+        assert_eq!(hashes.len(), 1);
+        assert_ne!(hashes[0], 0);
     }
 
     #[test]
-    fn test_content_hash_known_vectors() {
-        // FNV-1a known test vectors
-        assert_eq!(content_hash("a"), 0xaf63dc4c8601ec8c);
-        assert_eq!(content_hash("foobar"), 0x85944171f73967e8);
+    fn test_entity_hashes_deterministic() {
+        let h1 = extract_entity_hashes("hello world").unwrap();
+        let h2 = extract_entity_hashes("hello world").unwrap();
+        assert_eq!(h1, h2, "same input should produce same hashes");
     }
 
     #[test]
-    fn test_content_hash_nonzero() {
-        let h = content_hash("test content");
-        assert_ne!(h, 0);
-        assert_ne!(h, FNV_OFFSET_BASIS);
+    fn test_entity_hashes_punctuation_splits() {
+        // Punctuation should act as word separator
+        let hashes = extract_entity_hashes("hello,world").unwrap();
+        assert_eq!(hashes.len(), 2, "comma should split into two words");
+    }
+
+    #[test]
+    fn test_entity_hashes_multiline() {
+        let hashes = extract_entity_hashes("line one\nline two\nline three").unwrap();
+        // Should have 6 word hashes
+        assert_eq!(hashes.len(), 6);
+    }
+
+    #[test]
+    fn test_entity_hashes_whitespace_only() {
+        let hashes = extract_entity_hashes("   \t\n  ").unwrap();
+        assert!(
+            hashes.is_empty(),
+            "whitespace-only should produce no hashes"
+        );
+    }
+
+    #[test]
+    fn test_entity_hashes_large_text() {
+        // Generate text with more words than INITIAL_CAP to test buffer retry
+        let words: Vec<&str> = (0..200).map(|_| "word").collect();
+        let text = words.join(" ");
+        let hashes = extract_entity_hashes(&text).unwrap();
+        assert_eq!(hashes.len(), 200);
     }
 }
