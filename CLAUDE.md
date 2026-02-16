@@ -144,3 +144,12 @@ bd sync               # Sync with git
 - NEVER stop before pushing - that leaves work stranded locally
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
+
+## Document Intelligence
+
+This project uses markymark LSP. ALWAYS prefer LSP over reading raw files:
+- `LSP documentSymbol <file>` for structure/outline before Read
+- `LSP hover <file> <line> <col>` for heading backlinks and key path info
+- Diagnostics (broken links, duplicate headings) are reported automatically
+- Works for Markdown, JSON, YAML, TOML, .env, INI, and more
+- Only use the Read tool when you need full prose content
