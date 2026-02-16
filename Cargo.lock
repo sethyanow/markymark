@@ -902,6 +902,7 @@ dependencies = [
  "bumpalo",
  "hashbrown 0.16.1",
  "insta",
+ "markymark-kernels",
  "proptest",
  "serde",
  "serde_json",
