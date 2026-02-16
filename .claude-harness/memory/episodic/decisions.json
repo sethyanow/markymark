@@ -709,6 +709,31 @@
         "Add tree-sitter-md as direct dependency of markymark-lsp"
       ],
       "impact": "markymark-parser/src/lib.rs (pub use), markymark-lsp/src/state.rs (import from markymark_parser)"
+    },
+    {
+      "id": "dec-044",
+      "timestamp": "2026-02-16T17:45:00Z",
+      "feature": "marky-tzq",
+      "decision": "DocumentChange enum in state.rs with LSP line/character fields, conversion in convert.rs",
+      "rationale": "Sequential change application requires interleaved UTF-16→byte conversion (each edit shifts offsets for the next). Keeping conversion interleaved with text mutation means state.rs calls convert.rs per edit. DocumentChange carries raw LSP positions to avoid leaking ls_types into state module.",
+      "alternatives": [
+        "Pre-compute all byte offsets in server.rs (wrong — offsets shift after each edit)",
+        "Pass byte ranges from server.rs (requires server.rs to track evolving text)",
+        "Put conversion in state.rs directly (violates separation — convert.rs owns all LSP conversions)"
+      ],
+      "impact": "markymark-lsp/src/state.rs (DocumentChange, apply_document_changes), markymark-lsp/src/convert.rs (lsp_position_to_byte_offset)"
+    },
+    {
+      "id": "dec-045",
+      "timestamp": "2026-02-16T17:45:00Z",
+      "feature": "marky-tzq",
+      "decision": "Bounds clamping on byte offsets instead of panicking on invalid ranges",
+      "rationale": "String::replace_range panics on out-of-bounds indices. Editors should send valid ranges, but defensive clamping (.min(text.len()).max(start)) prevents crashes from edge cases or buggy clients without silently corrupting data.",
+      "alternatives": [
+        "Trust editor sends valid ranges (panics on bad input)",
+        "Return Result and propagate error to LSP response (overengineering for a notification handler)"
+      ],
+      "impact": "markymark-lsp/src/state.rs apply_document_changes()"
     }
   ]
 }
