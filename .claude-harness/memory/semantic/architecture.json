@@ -39,6 +39,7 @@
       "markymark-lsp/src/server.rs (tower-lsp LanguageServer impl, capability negotiation)",
       "markymark-lsp/src/state.rs (ServerState: document management, diagnostics, rename, refs)",
       "markymark-lsp/src/state.rs (SymbolAtPosition<'a> borrowed payloads to match index lifetimes)",
+      "markymark-lsp/src/state.rs (incremental byte-range clamp helper + warning observability for invalid edit positions)",
       "markymark-lsp/src/convert.rs (LSP type conversions)",
       "markymark-mcp/src/lib.rs (rmcp tool_router/handlers, DTOs)",
       "markymark-mcp/src/runtime_engine.rs (MCP RuntimeEngine: startup indexing, CoreEngine impl)",
@@ -58,6 +59,7 @@
       "markymark-index/tests/ (document_index, connection_graph, realm_index, resolution)",
       "markymark-core/tests/ (core_engine)",
       "markymark-lsp/tests/ (11 files: capabilities, completion_*, diagnostics, hover, rename, etc.)",
+      "markymark-lsp/tests/state_tests.rs (incremental edit parity tests incl. CRLF regression coverage)",
       "markymark-mcp/tests/ (runtime_engine_tests, runtime_tools, tool_handler_tests)",
       "markymark-cli/tests/ (cli_args, smoke_lsp, smoke_mcp, lsp_methods, mcp_methods, alignment, bench)",
       "markymark-plugin/tests/ (test_select_binary.sh, test_hooks.sh)",
@@ -103,7 +105,8 @@
         "Tier benchmark controls via MARKYMARK_BENCH_SAMPLES and MARKYMARK_BENCH_DOC_TIER to separate quick iteration from scale validation",
         "Benchmark ROI automation via bench_roi_report binary that runs benches, parses criterion estimates.json, and emits docs/benchmarks report artifacts"
         ,
-        "Expose arena-backed document/index data via lifetimes tied to &self; reserve any explicit 'static casts for ownership-transfer seams with documented SAFETY"
+        "Expose arena-backed document/index data via lifetimes tied to &self; prefer self_cell owner/dependent internals and treat explicit 'static + doc_arena_ptr() ownership-transfer seams as deprecated transition-only paths with documented SAFETY",
+        "Incremental LSP edit handling should centralize byte-range clamping and surface clamp events via warning telemetry"
       ],
       "bash": "set -euo pipefail, jq for JSON, case statements for file extension matching"
     },
@@ -111,14 +114,15 @@
       "DocumentArena wrapper preferred over raw Bump for per-document arenas (Debug, capacity)",
       "ArenaHashMap is !Send (Bump:!Sync); parser types can use it, index types must use std HashMap",
       "#[expect(lint, reason=\"...\")] preferred over #[allow(lint)] per M-LINT-OVERRIDE-EXPECT",
-      "Self-referential arena: struct owns Bump + stores refs as static; doc_arena_ptr() for ownership transfer",
+      "Self-referential arena migration path: use DocumentArena as owner with self_cell owner/dependent internals; legacy 'static + doc_arena_ptr() ownership-transfer is deprecated and should not be introduced in new code",
       "RealmIndex cross-doc maps remain owned String-backed until self_cell/ouroboros migration (marky-5yt); do not introduce borrowed Cow across sibling fields"
       ,
       "Use compile_fail doctests on public methods to lock lifetime leakage invariants during migration work",
-      "Use self_cell owner/dependent internals as a first stable migration step when replacing internal static-marked self-references"
+      "Use self_cell owner/dependent internals as a first stable migration step when replacing internal static-marked self-references",
+      "For LSP incremental edits, pair out-of-range clamping with a deterministic warning so buggy clients are observable during diagnostics"
     ]
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-16T19:23:11Z",
+  "lastUpdated": "2026-02-16T22:48:25Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

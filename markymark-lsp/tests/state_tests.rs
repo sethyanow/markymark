@@ -416,6 +416,21 @@ fn test_incremental_utf16_emoji_surrogate_pair() {
 }
 
 #[test]
+fn test_incremental_crlf_line_ending_edit_matches_full() {
+    assert_incremental_matches_full(
+        "# Title\r\n\r\nHello world\r\n",
+        DocumentChange::Incremental {
+            start_line: 2,
+            start_character: 6,
+            end_line: 2,
+            end_character: 11,
+            text: "earth".to_string(),
+        },
+        "# Title\r\n\r\nHello earth\r\n",
+    );
+}
+
+#[test]
 fn test_incremental_edit_at_document_start() {
     let mut state = ServerState::new();
     let uri = DocumentUri::new("file:///test/doc.md").unwrap();
