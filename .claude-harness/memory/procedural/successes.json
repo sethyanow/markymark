@@ -310,6 +310,22 @@
         "Duplicate ID semantics: replace vector in-place (memcpy), don't append",
         "Check k==0 before null-checking result arrays to avoid false -1 on valid k=0 calls"
       ]
+    },
+    {
+      "id": "suc-025",
+      "timestamp": "2026-02-16T12:50:00Z",
+      "feature": "marky-0u5",
+      "type": "implementation",
+      "approach": "Rust FFI wrappers for all shared BRZA kernels: embed.rs (EmbeddingIndex with opaque handle, Drop, PhantomData for !Send/!Sync), similarity.rs (cosine_similarity, jaccard_similarity), hash.rs (extract_entity_hashes with buffer retry). Reused KernelError from scan.rs. Fixed Zig exports_embed.zig linkage — test-block _ = @import doesn't export symbols, needed comptime { _ = @import(...) } at module level.",
+      "files": ["markymark-kernels/src/embed.rs", "markymark-kernels/src/similarity.rs", "markymark-kernels/src/hash.rs", "zig/src/c_adapter.zig"],
+      "patterns": [
+        "PhantomData<*mut ()> for !Send/!Sync on stable Rust (impl !Trait requires nightly)",
+        "Zig export fn in separate files needs comptime { _ = @import(...) } at module level in c_adapter.zig — test-block imports only affect tests, not library symbols",
+        "Zig sentinel values (-2.0 for cosine, -1.0 for jaccard) map to KernelError::InvalidInput on Rust side",
+        "EmbeddingIndex::search borrows ID pointers from Zig index — copy into owned Strings immediately before any mutation",
+        "Drop impl sets handle to null after destroy for idempotent double-free protection",
+        "matches!() macro for testing Result<NonPartialEq, _> instead of assert_eq!"
+      ]
     }
   ]
 }
