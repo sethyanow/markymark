@@ -121,6 +121,7 @@ mod tests {
         check_zig_version("0.15.3");
         check_zig_version("0.16.0");
         check_zig_version("1.0.0");
+        check_zig_version("2.0.0");
     }
 
     #[test]
