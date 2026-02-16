@@ -1,38 +1,37 @@
 {
-  "lastUpdated": "2026-02-16T19:23:11Z",
+  "lastUpdated": "2026-02-16T23:50:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Learners-only checkpoint for marky-5yt: executed and closed marky-5yt.1 by migrating Ast internals to self_cell owner/dependent storage, added regression test for removal of Vec<Element<'static>>, and verified parser/workspace compile paths.",
+    "summary": "Closed marky-5yt epic after both child tasks completed: Ast and DocumentIndex migrated to self_cell, lifetime boundaries hardened with compile_fail tests. Checkpoint pushed to remote.",
     "completedTasks": [
-      "Created and started child task marky-5yt.1 for Ast self_cell migration",
-      "Created follow-on child task marky-5yt.2 for DocumentIndex migration",
-      "Replaced Ast root storage with self_cell owner/dependent model in markymark-parser/src/ast.rs",
-      "Added markymark-parser/tests/ast_self_cell.rs regression test (RED -> GREEN)",
-      "Added self_cell dependency to markymark-parser/Cargo.toml",
-      "Validated with cargo test -p markymark-parser and cargo check"
+      "Closed marky-5yt.1: Ast migrated to self_cell owner/dependent model",
+      "Closed marky-5yt.2: DocumentIndex lifetime boundaries hardened",
+      "Closed marky-5yt parent task (both children complete)",
+      "Added regression tests: ast_self_cell.rs and document_self_cell.rs",
+      "Updated harness memory layers (decisions, rules, patterns, architecture, entities)",
+      "Quality gates: 715 tests passing, clippy clean, formatting clean",
+      "Committed and pushed checkpoint to origin/feature/mark-next"
     ],
-    "blockers": [
-      "DocumentIndex still stores internal &'static-backed fields and uses ptr::read + mem::forget transfer; marky-5yt.2 remains open"
-    ],
+    "blockers": [],
     "nextSteps": [
-      "Execute marky-5yt.2 to migrate DocumentIndex internals away from &'static field storage",
-      "Add regression tests first for DocumentIndex storage and ownership transfer behavior",
-      "Run markymark-index + markymark-lsp tests and Miri checks after migration"
+      "Continue with marky-luy epic tasks (arena conformance closeout)",
+      "Address marky-x3x: CodeRabbit triage for 2 critical bugs + 2 improvements",
+      "Consider splitting RED ZONE branch (80 commits, 12,851 lines, 47 files)"
     ]
   },
   "recentChanges": [
-    "Ast now uses self_cell-backed owner/dependent internal storage",
-    "Regression test enforces removal of Vec<Element<'static>> in Ast internals",
-    "marky-5yt split into executable children (marky-5yt.1 complete, marky-5yt.2 open)",
-    "Parser tests and workspace cargo check pass after Ast migration"
+    "marky-5yt CLOSED: self_cell migrations complete for Ast and DocumentIndex",
+    "Lifetime safety enforced at API boundaries with compile_fail doctests",
+    "No more internal 'static field storage in parser/index layers",
+    "marky-5yt.1 and marky-5yt.2 both closed successfully"
   ],
   "knownIssues": [
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
-    "marky-5yt: full self_cell/ouroboros internal migration still open",
     "marky-lkj.1: runtime_engine.zig test refactoring deferred (P4)",
     "marky-8la: XML tag false positives in fenced code blocks",
     "c_adapter.zig at 803 lines — new exports use exports_*.zig pattern to stay under limit",
-    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
+    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate",
+    "RED ZONE: Branch has 80 commits, 12,851 lines changed, 47 new files"
   ],
   "environmentState": {
     "devServerRunning": false,
