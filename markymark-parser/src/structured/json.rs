@@ -3,8 +3,10 @@
 //! Walks the CST to extract [`KeyEntry`] items with byte-accurate ranges.
 
 use markymark_core::structured::{DocumentKind, KeyEntry, StructuredAst, ValueKind};
-use markymark_core::{CoreError, Position, Range};
+use markymark_core::{CoreError, Range};
 use tree_sitter::{Node, Parser as TSParser};
+
+use super::byte_to_position;
 
 /// Parse a JSON document into a [`StructuredAst`].
 pub fn parse_json(source: &str) -> Result<StructuredAst, CoreError> {
@@ -168,21 +170,10 @@ fn node_to_range(node: Node, source: &str) -> Range {
     )
 }
 
-/// Convert a byte offset in source text to a [`Position`] (line, character).
-fn byte_to_position(source: &str, byte_offset: usize) -> Position {
-    let offset = byte_offset.min(source.len());
-    let prefix = &source[..offset];
-    let line = prefix.matches('\n').count() as u32;
-    let col = match prefix.rfind('\n') {
-        Some(nl) => (offset - nl - 1) as u32,
-        None => offset as u32,
-    };
-    Position::new(line, col)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use markymark_core::Position;
 
     #[test]
     fn test_parse_json_empty_object() {

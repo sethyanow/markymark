@@ -12,7 +12,21 @@ mod toml;
 mod yaml;
 
 use markymark_core::structured::{DocumentKind, StructuredAst};
-use markymark_core::CoreError;
+use markymark_core::{CoreError, Position};
+
+/// Convert a byte offset in source text to a [`Position`] (line, character).
+///
+/// Shared across all structured parsers to avoid duplication.
+pub(crate) fn byte_to_position(source: &str, byte_offset: usize) -> Position {
+    let offset = byte_offset.min(source.len());
+    let prefix = &source[..offset];
+    let line = prefix.matches('\n').count() as u32;
+    let col = match prefix.rfind('\n') {
+        Some(nl) => (offset - nl - 1) as u32,
+        None => offset as u32,
+    };
+    Position::new(line, col)
+}
 
 /// Parse a structured document into a [`StructuredAst`].
 ///
@@ -84,9 +98,16 @@ mod tests {
 
     #[test]
     fn test_parse_structured_dispatch_jsonc() {
-        // JSONC is handled by the JSON parser (tree-sitter-json tolerates comments)
-        let result = parse_structured(r#"{"key": "val"}"#, DocumentKind::JsonC);
+        // JSONC is handled by the JSON parser (tree-sitter-json tolerates comments).
+        // Use JSONC-specific syntax to verify comment tolerance.
+        let result = parse_structured(
+            "{\n  // line comment\n  \"key\": \"val\" /* block comment */\n}",
+            DocumentKind::JsonC,
+        );
         assert!(result.is_ok());
+        let ast = result.unwrap();
+        assert_eq!(ast.keys.len(), 1);
+        assert_eq!(ast.keys[0].key, "key");
     }
 
     #[test]

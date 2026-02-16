@@ -49,6 +49,7 @@ fn find_document_by_page_name(realm: &RealmIndex, target: &str) -> Option<Docume
 ///
 /// - `[[page-name]]` → document
 /// - `[[page#heading]]` → heading in document
+/// - `[[page#key.path]]` → structured document key path
 /// - `[[#heading]]` → heading in current document (from_uri)
 pub fn resolve_wiki_link(
     realm: &RealmIndex,
