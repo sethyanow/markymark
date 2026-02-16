@@ -1,0 +1,13 @@
+[package]
+name = "markymark-kernels"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Zig SIMD kernel FFI bindings for markymark"
+
+[build-dependencies]
+# No external build dependencies - build.rs uses std::process::Command
+
+[dev-dependencies]

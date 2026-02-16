@@ -7,6 +7,7 @@ members = [
     "markymark-lsp",
     "markymark-mcp",
     "markymark-cli",
+    "markymark-kernels",
 ]
 
 [workspace.package]
@@ -30,7 +31,7 @@ tower-lsp-server = "0.23"
 lsp-types = "0.97"
 
 # MCP dependencies
-rmcp = { version = "0.13", features = ["server", "transport-io"] }
+rmcp = { version = "0.15", features = ["server", "transport-io"] }
 
 # Parser dependencies
 tree-sitter = "0.26"
@@ -41,7 +42,7 @@ tree-sitter-toml-ng = "0.7"
 json5 = "0.4"
 
 # Graph and algorithms
-petgraph = "0.7"
+petgraph = "0.8"
 
 # Memory allocation
 bumpalo = { version = "3.19.1", features = ["collections", "boxed", "allocator-api2"] }

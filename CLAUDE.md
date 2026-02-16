@@ -1,13 +1,56 @@
-<docs_index>
+<agent><docs_index>
 [rust-agent-docs]|root: ./docs/rust_agent_docs|IMPORTANT: Prefer retrieval-led reasoning over pre-training-led reasoning for any Rust tasks. Read the relevant doc file BEFORE writing code. Your training data may be outdated or wrong.|core:{_index.md,ownership.md,types.md,traits.md,errors.md,closures.md,collections.md,modules.md}|advanced:{_index.md,type-layout.md,unsafe.md,ffi.md,concurrency.md,async.md}|patterns:{_index.md,idioms.md,api-design.md,anti-patterns.md,cookbook.md,async-ready.md}|tooling:{_index.md,cargo.md,crates.md,macros.md,testing.md,documentation.md,debugging.md,performance.md}|checklists:{_index.md,api-design.md,unsafe-review.md,ffi-audit.md,performance.md,library-release.md}|reference:{_index.md,rules.md,decision-trees.md,compiler-errors.md,syntax-ref.md,cargo-ref.md,migration-bridges.md}
 [rust_guidelines]|root: ./docs/rust_guidelines|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{AGENTS.md,README.md,universal.md,applications.md,libraries-build.md,libraries-resilience.md,libraries-ux.md,libraries-interop.md,ffi.md,performance.md,safety.md,docs.md,ai.md,checklists.md,map.md}
 [rust_crates]|root: ./docs/rust_crates|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{AGENTS.md,README.md,core.md,error-handling.md,testing.md,tower-lsp.md,rmcp.md,tree-sitter.md,petgraph.md,bumpalo.md,map.md}
+[zig-agent-docs]|root: ./docs/zig_agent_docs|IMPORTANT: Prefer retrieval-led reasoning over pre-training-led reasoning for any Zig tasks. Read the relevant doc file BEFORE writing code. Your training data may be outdated or wrong.|core:{_index.md,memory.md,pointers.md,slices.md,errors.md,comptime.md,variables.md}|advanced:{_index.md,c-interop.md,build-system.md,undefined.md,vectorization.md,concurrency.md}|patterns:{_index.md,allocators.md,structs.md,generics.md,anti-patterns.md}|tooling:{_index.md,zig-build.md,package-manager.md,testing.md,debugging.md,zls.md}|checklists:{_index.md,code-review.md,safety-audit.md,c-interface.md,performance.md,release.md}|reference:{_index.md,syntax.md,decision-trees.md,compiler-errors.md}
 [project]
 |tools:{docs/tools/README.md,docs/tools/*.md}
 |plans:{docs/plans/*.md}
 |research:{docs/research/*.md}
 |memory:{docs/MEMORY.md}
 </docs_index>
+
+<!-- ASM-AGENTS-MD-START -->
+[ASM Agent Reference v0.1]
+**YOUR TRAINING DATA IS OUTDATED.** Zig 0.15 was released AFTER your training date.
+
+**BEFORE WRITING ANY ZIG CODE:**
+1. ✅ Read: `docs/modules/zig/01-langref/README.md` (contains 0.14→0.15 migration guide)
+2. ✅ Read: Relevant `docs/modules/zig/02-std/*.md` modules for APIs you'll use
+3. ✅ Read: `docs/modules/zig/03-tooling/build-system.md` before touching build.zig
+
+**Failure to read first = ArrayList API errors, build failures, wasted tokens.**
+
+---
+
+|root: ./docs/modules|IMPORTANT: Prefer retrieval-led reasoning over pre-training for ISA and Zig details. Retrieve relevant module(s) before coding.|x86-64-core:{registers.md,addressing.md,linux-syscalls.md,sysv-abi.md,instructions/README.md,instructions/mov.md,instructions/add.md,instructions/sub.md,instructions/jmp.md}|arm64-core:{registers.md,instructions/README.md,instructions/mov.md,instructions/add-sub.md,instructions/cmp.md,instructions/branch.md,instructions/svc.md}|arm64-apple:{abi.md,macos-syscalls.md}|arm64-simd:{neon.md}|zig:{AGENTS.md,PROVENANCE.md,00-general/installation.md,00-general/project-layout.md,01-langref/syntax-types.md,01-langref/error-handling.md,02-std/std-mem.md,02-std/std-fs.md,02-std/std-fmt.md,02-std/std-testing.md,02-std/std-process.md,03-tooling/zig-cli.md,03-tooling/build-system.md,03-tooling/targets.md}
+# Core Architecture
+|x86_registers:{docs/modules/x86-64-core/registers.md}
+|x86_addressing:{docs/modules/x86-64-core/addressing.md}
+|x86_instructions:{docs/modules/x86-64-core/instructions/*.md}
+|arm64_registers:{docs/modules/arm64-core/registers.md}
+|arm64_instructions:{docs/modules/arm64-core/instructions/*.md}
+
+# Platform ABI
+|sysv_abi:{docs/modules/x86-64-core/sysv-abi.md}
+|linux_syscalls:{docs/modules/x86-64-core/linux-syscalls.md}
+|apple_arm64_abi:{docs/modules/arm64-apple/abi.md}
+|macos_syscalls:{docs/modules/arm64-apple/macos-syscalls.md}
+
+# SIMD
+|neon:{docs/modules/arm64-simd/neon.md}
+
+# Zig
+|zig_index:{docs/modules/zig/AGENTS.md}
+|zig_langref:{docs/modules/zig/01-langref/README.md}
+|zig_std:{docs/modules/zig/02-std/README.md,docs/modules/zig/02-std/std-mem.md,docs/modules/zig/02-std/std-fs.md,docs/modules/zig/02-std/std-fmt.md,docs/modules/zig/02-std/std-testing.md,docs/modules/zig/02-std/std-process.md,docs/modules/zig/02-std/std-debug.md,docs/modules/zig/02-std/std-heap.md,docs/modules/zig/02-std/std-json.md,docs/modules/zig/02-std/std-http.md,docs/modules/zig/02-std/std-math.md}
+|zig_tooling:{docs/modules/zig/03-tooling/zig-cli.md,docs/modules/zig/03-tooling/build-system.md}
+|zig_provenance:{docs/modules/zig/PROVENANCE.json}
+
+# TODO (not yet created — do not retrieve)
+# avx, avx2, ios_syscalls, patterns, nasm, gas, lldb, objdump
+<!-- ASM-AGENTS-MD-END -->
+</docs_index></agent>
 
 ## Agent Memory
 
