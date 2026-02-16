@@ -1,13 +1,14 @@
 {
-  "lastUpdated": "2026-02-16T14:00:00-08:00",
+  "lastUpdated": "2026-02-16T15:55:00-08:00",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Merged origin/main to reset scope guard (RED→GREEN). Implemented marky-ayb: zig-kernels CI job with platform matrix (ubuntu-latest, macos-14), dorny/paths-filter, continue-on-error. TDD with structural YAML validation test.",
+    "summary": "Fixed all 4 CodeRabbit review findings from marky-x3x: wiki link offset calculation bug, zero-width block range bug, duplicate patterns in memory, nested code fence rendering in docs.",
     "completedTasks": [
-      "Merged origin/main (PR #19) — scope guard GREEN (749 lines / 3 commits)",
-      "marky-ayb: zig-kernels CI job with platform matrix, path filtering, caching",
-      "scripts/test_ci_zig_kernels.sh — 11-check structural YAML validation",
-      "All quality gates pass: 265 workspace + 61 zig-kernels tests, clippy clean"
+      "marky-x3x: Fixed wiki link range calculation for [[target]] and [[target|alias]] formats",
+      "marky-x3x: Fixed block ID zero-width Range::new(pos, pos) to span full ^id",
+      "marky-x3x: Removed 7 duplicate entries from patterns.json",
+      "marky-x3x: Fixed nested code fence rendering in brza-markymark.md",
+      "Added 4 regression tests (TDD: RED→GREEN), full suite passes with zig-kernels"
     ],
     "blockers": [],
     "nextSteps": [
@@ -17,18 +18,19 @@
     ]
   },
   "recentChanges": [
-    "27ed53f: feat(ci): add zig-kernels CI job with platform matrix",
-    "a248f6b: Merge remote-tracking branch 'origin/main' into feature/mark-brza",
-    "2696947: feat(core,index): ZigScanBackend, ZigEmbeddingIndex, and DocumentIndex::from_scan"
+    "fix(index): wiki link offset and block ID range calculations",
+    "57e35d2: add bit to CLAUDE.md for doc intel and remove pr 18 work",
+    "1375427: chore: checkpoint session - marky-ayb CI integration complete"
   ],
   "knownIssues": [
     "c_adapter.zig at 811 lines — new exports use exports_*.zig pattern to stay under limit",
-    "from_scan known gaps: no XML tags, no setext headings, no frontmatter"
+    "from_scan known gaps: no XML tags, no setext headings, no frontmatter",
+    "Scope guard RED ZONE: 10020 lines, 60 commits, 42 new files — consider splitting branch"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T14:00:00-08:00",
-    "lastTypeCheck": "2026-02-16T14:00:00-08:00"
+    "lastSuccessfulBuild": "2026-02-16T15:55:00-08:00",
+    "lastTypeCheck": "2026-02-16T15:55:00-08:00"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4

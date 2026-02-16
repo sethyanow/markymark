@@ -388,7 +388,18 @@ impl DocumentIndex {
         if let Ok(scan_links) = backend.scan_links(text) {
             for l in scan_links {
                 let pos = byte_offset_to_position(&line_starts, l.offset);
-                let end_offset = l.offset + l.text.len() as u32 + l.target.len() as u32 + 4; // []()
+                let end_offset = match l.link_type {
+                    // [text](target) → 4 = '[' + ']' + '(' + ')'
+                    ScanLinkType::Markdown => {
+                        l.offset + l.text.len() as u32 + l.target.len() as u32 + 4
+                    }
+                    // [[target]] → 4 = '[[' + ']]'
+                    // [[target|alias]] → 5 = '[[' + '|' + ']]'
+                    ScanLinkType::Wiki if l.text != l.target => {
+                        l.offset + l.target.len() as u32 + 1 + l.text.len() as u32 + 4
+                    }
+                    ScanLinkType::Wiki => l.offset + l.target.len() as u32 + 4,
+                };
                 let end_pos = byte_offset_to_position(&line_starts, end_offset);
                 let range = Range::new(pos, end_pos);
 
@@ -450,11 +461,14 @@ impl DocumentIndex {
             for b in scan_blocks {
                 let id = arena_alloc_str(arena_ref, &b.id);
                 let pos = byte_offset_to_position(&line_starts, b.offset);
+                // ^block-id: offset points at '^', total length = 1 + id.len()
+                let end_pos =
+                    byte_offset_to_position(&line_starts, b.offset + b.id.len() as u32 + 1);
                 blocks.insert(
                     id,
                     BlockEntry {
                         id,
-                        range: Range::new(pos, pos),
+                        range: Range::new(pos, end_pos),
                     },
                 );
             }
@@ -1103,5 +1117,56 @@ mod scan_tests {
             assert_eq!(a.level, s.level);
             assert_eq!(a.slug, s.slug);
         }
+    }
+
+    // --- Bug fix tests: wiki link range calculation (marky-x3x #1) ---
+
+    #[test]
+    fn test_from_scan_wiki_link_range_no_alias() {
+        // [[My Page]] starts at byte 4 ("See " = 4 bytes)
+        // [[My Page]] = 2 + 7 + 2 = 11 bytes → range should span columns 4..15
+        let index = build_index_from_scan("See [[My Page]] here\n");
+        let wl = &index.wiki_links()[0];
+        assert_eq!(wl.target, "My Page");
+        assert_eq!(wl.range.start, Position::new(0, 4));
+        assert_eq!(wl.range.end, Position::new(0, 15));
+    }
+
+    #[test]
+    fn test_from_scan_wiki_link_range_with_alias() {
+        // [[target|display]] starts at byte 4
+        // [[target|display]] = 2 + 6 + 1 + 7 + 2 = 18 bytes → range 4..22
+        let index = build_index_from_scan("See [[target|display]] here\n");
+        let wl = &index.wiki_links()[0];
+        assert_eq!(wl.target, "target");
+        assert!(wl.alias.is_some());
+        assert_eq!(wl.alias.unwrap(), "display");
+        assert_eq!(wl.range.start, Position::new(0, 4));
+        assert_eq!(wl.range.end, Position::new(0, 22));
+    }
+
+    #[test]
+    fn test_from_scan_markdown_link_range() {
+        // [example](https://example.com) starts at byte 4
+        // [example](https://example.com) = 1 + 7 + 2 + 19 + 1 = 30 bytes → range 4..34
+        let index = build_index_from_scan("See [example](https://example.com) here\n");
+        let ml = &index.markdown_links()[0];
+        assert_eq!(ml.text, "example");
+        assert_eq!(ml.range.start, Position::new(0, 4));
+        assert_eq!(ml.range.end, Position::new(0, 34));
+    }
+
+    // --- Bug fix test: block ID range (marky-x3x #2) ---
+
+    #[test]
+    fn test_from_scan_block_id_range_nonzero_width() {
+        // "some content ^my-block\n"
+        // ^my-block starts at byte 13, length = 1 + 8 = 9 → range 13..22
+        let index = build_index_from_scan("some content ^my-block\n");
+        let block = index.block_by_id("my-block").unwrap();
+        assert_eq!(block.range.start, Position::new(0, 13));
+        assert_eq!(block.range.end, Position::new(0, 22));
+        // Crucially: range must NOT be zero-width
+        assert_ne!(block.range.start, block.range.end);
     }
 }
