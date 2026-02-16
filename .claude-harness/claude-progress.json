@@ -1,43 +1,44 @@
 {
-  "lastUpdated": "2026-02-16T08:50:00Z",
+  "lastUpdated": "2026-02-16T09:15:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Implemented marky-yo7: link_scan SIMD kernel. Uses @Vector(16, u8) to find '[' characters, then scalar state machine for bracket nesting, escaped brackets, paren-depth URL parsing, and wiki-link pipe splitting. Handles [text](url), [[target]], [[target|display]], ![alt](url). 77/77 Zig tests pass (26 new). SIMD ~1.9x speedup. Library exports 5 symbols. Committed d6bb46a.",
+    "summary": "Merged main into feature/mark-brza (resolved 4 harness JSON conflicts). Implemented marky-50d: tag_scan and block_scan SIMD kernels. tag_scan uses @Vector(16,u8) '#' detection with whitespace boundary validation. block_scan uses @Vector(16,u8) '^' detection with EOL/EOF verification. 45 new tests (122 total Zig, 398 total Rust). 7 C ABI symbols exported. All quality gates pass.",
     "completedTasks": [
-      "marky-yo7: Implemented link_scan SIMD kernel",
-      "Created zig/src/kernels/link_scan.zig (SIMD '[' detection, 15 tests + benchmark)",
-      "Created zig/src/reference/link_scan_ref.zig (scalar reference with bracket nesting, 4 tests)",
-      "Updated zig/src/c_adapter.zig (marky_scan_links export, 6 c_adapter tests)",
-      "Verified: zig build test (77/77), zig build lib (5 symbols), cargo build/test/clippy -p markymark-kernels",
-      "All 6 lefthook pre-commit hooks pass (fmt, clippy, cargo-audit, gitleaks)"
+      "Merge main (PR #13 mark-next) into feature/mark-brza — commit d30eeb3",
+      "marky-50d: Implemented tag_scan SIMD kernel (zig/src/kernels/tag_scan.zig)",
+      "marky-50d: Implemented block_scan SIMD kernel (zig/src/kernels/block_scan.zig)",
+      "Created scalar reference implementations for both kernels",
+      "Updated c_adapter.zig with marky_scan_tags and marky_scan_block_ids exports",
+      "Verified: zig build test (122/122), zig build lib (7 symbols), cargo test (398/398)",
+      "All 6 lefthook pre-commit hooks pass"
     ],
     "blockers": [
-      "Scope guard RED: branch at ~5328 lines / 25 files — consider splitting or deferring"
+      "Scope guard RED: branch at ~4154 lines / 29 files — consider splitting or deferring"
     ],
     "nextSteps": [
-      "marky-50d: Implement tag_scan and block_scan Zig SIMD kernels (ready, last blocker for marky-h1t)",
-      "marky-h1t: Write Rust FFI wrappers for extraction kernels (blocked by 50d only now)",
+      "marky-h1t: Write Rust FFI wrappers for extraction kernels (now unblocked)",
+      "marky-8s3.2: Implement single-pass multi-pattern scanner (now unblocked)",
       "marky-ayb: CI integration (Zig build step in GitHub Actions)",
-      "marky-8s3.2: Implement single-pass multi-pattern scanner"
+      "marky-8s3.1: Implement code fence exclusion map"
     ]
   },
   "recentChanges": [
-    "zig/src/kernels/link_scan.zig: SIMD link scanner for markdown and wiki-links",
-    "zig/src/reference/link_scan_ref.zig: scalar reference with bracket nesting",
-    "zig/src/c_adapter.zig: added marky_scan_links export + LinkScan type"
+    "zig/src/kernels/tag_scan.zig: SIMD '#' scanner with boundary validation",
+    "zig/src/kernels/block_scan.zig: SIMD '^' scanner with EOL verification",
+    "zig/src/reference/tag_scan_ref.zig: scalar reference + TagScan struct",
+    "zig/src/reference/block_scan_ref.zig: scalar reference + BlockIdScan struct",
+    "zig/src/c_adapter.zig: added tag_scan + block_scan imports, exports, tests"
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch at ~5328 lines / 25 files, consider splitting",
-    "brza-spec.md: untracked file from forge spec reference (not committed)",
-    "heading_scan: known false positive for headings inside code blocks (by design)",
-    "link_scan: known false positive for links inside code blocks (by design, same as heading_scan)",
+    "Scope guard RED: branch at ~4154 lines / 29 files, consider splitting",
+    "All scan kernels: known false positives inside code blocks (by design, fence_map kernel is separate task)",
     "Zig SIMD bool vectors cannot use 'or' operator — use @select(bool, ...) for element-wise OR"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T08:50:00Z",
-    "lastTypeCheck": "2026-02-16T08:50:00Z"
+    "lastSuccessfulBuild": "2026-02-16T09:15:00Z",
+    "lastTypeCheck": "2026-02-16T09:15:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
