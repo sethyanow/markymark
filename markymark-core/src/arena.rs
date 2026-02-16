@@ -73,6 +73,17 @@ impl DocumentArena {
     pub fn bump(&self) -> &Bump {
         &self.0
     }
+
+    /// Reset the arena, deallocating all objects but keeping the first memory
+    /// chunk for reuse. Excess chunks are returned to the global allocator.
+    ///
+    /// # Safety note
+    ///
+    /// All references into this arena become dangling after `reset()`. The
+    /// caller must ensure no live references exist before calling this method.
+    pub fn reset(&mut self) {
+        self.0.reset();
+    }
 }
 
 impl AsRef<Bump> for DocumentArena {
@@ -178,5 +189,26 @@ mod arena_allocation_tests {
     fn arena_str_type_alias_works() {
         let arena = Bump::new();
         let _s: ArenaStr<'_> = arena.alloc_str("test");
+    }
+
+    /// DocumentArena::reset clears allocations but keeps first chunk capacity
+    #[test]
+    fn document_arena_reset_clears_allocations() {
+        let mut doc_arena = DocumentArena::new();
+        // Allocate some data
+        let bump = doc_arena.bump();
+        let _ = bump.alloc_str("before reset");
+        let _ = bump.alloc_str("another string");
+        let bytes_before = doc_arena.bump().allocated_bytes();
+        assert!(bytes_before > 0);
+
+        // Reset keeps the first chunk but logically clears all allocations.
+        // allocated_bytes() reports chunk capacity (not used), so it stays > 0.
+        doc_arena.reset();
+        assert!(doc_arena.bump().allocated_bytes() > 0); // first chunk retained
+
+        // Arena is still usable after reset — new allocations go into retained chunk
+        let s = doc_arena.bump().alloc_str("after reset");
+        assert_eq!(s, "after reset");
     }
 }

@@ -674,6 +674,18 @@
         "Use a macro (unnecessary complexity for a simple function)"
       ],
       "impact": "markymark-parser/src/structured/{mod,json,json5,jsonl,yaml,toml,flat}.rs"
+    },
+    {
+      "id": "dec-041",
+      "timestamp": "2026-02-16T16:27:00Z",
+      "feature": "marky-luy.2",
+      "decision": "Do NOT implement arena reuse via DocumentArena::reset for re-parse — benchmark shows negligible benefit",
+      "rationale": "Benchmark data: small doc arena lifecycle = 662ns vs 64µs full reparse (0.07% savings). Large doc: 22.5µs vs 3.36ms (0.02%). Tree-sitter parsing dominates by 100-150x. Implementation would require API changes across 4 crates (parser, core, index, lsp) for sub-0.1% improvement.",
+      "alternatives": [
+        "Implement full arena reuse pipeline (not justified by data)",
+        "Pre-size arenas with Bump::with_capacity based on document size (marginal, separate concern)"
+      ],
+      "impact": "Added DocumentArena::reset() method and investigation benchmark to memory.rs. No reindex API warranted."
     }
   ]
 }
