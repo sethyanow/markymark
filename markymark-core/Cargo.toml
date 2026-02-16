@@ -9,6 +9,10 @@ description = "Core types and traits for the markymark markdown LSP and MCP serv
 keywords = ["markdown", "lsp", "parser", "types"]
 categories = ["development-tools", "text-processing"]
 
+[features]
+default = []
+zig-kernels = ["dep:markymark-kernels"]
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -16,6 +20,7 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 bumpalo = { workspace = true }
 hashbrown = { workspace = true }
+markymark-kernels = { path = "../markymark-kernels", optional = true }
 
 [dev-dependencies]
 insta = { workspace = true }
