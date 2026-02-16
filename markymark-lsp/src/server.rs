@@ -333,6 +333,19 @@ impl LanguageServer for Backend {
                     Some(ResolvedTarget::Block { uri, id }) => {
                         format!("Wiki link to block `{}` in {}", id, uri.as_str())
                     }
+                    Some(ResolvedTarget::KeyPath {
+                        uri,
+                        path,
+                        value_kind,
+                        ..
+                    }) => {
+                        format!(
+                            "Wiki link to key `{}` ({:?}) in {}",
+                            path,
+                            value_kind,
+                            uri.as_str()
+                        )
+                    }
                     None => {
                         format!("Wiki link to **{}** (unresolved)", wl.target)
                     }
@@ -648,6 +661,9 @@ fn resolved_target_to_location(
                 .map(Some)
                 .map_err(|_| tower_lsp_server::jsonrpc::Error::internal_error())
         }
+        ResolvedTarget::KeyPath { uri, range, .. } => crate::convert::to_lsp_location(uri, *range)
+            .map(Some)
+            .map_err(|_| tower_lsp_server::jsonrpc::Error::internal_error()),
     }
 }
 
