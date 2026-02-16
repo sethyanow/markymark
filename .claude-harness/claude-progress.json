@@ -1,37 +1,37 @@
 {
-  "lastUpdated": "2026-02-16T17:13:00Z",
+  "lastUpdated": "2026-02-16T17:47:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-tfd: MarkdownTree stored per document in ServerState for future incremental parsing. Ast wraps md_tree in Option with take_md_tree() method. Re-exported MarkdownTree from markymark-parser. 4 new tests, all gates green.",
+    "summary": "Completed marky-tzq: Switched LSP from FULL to INCREMENTAL text document sync. Added UTF-16→UTF-8 byte offset conversion, DocumentChange enum, apply_document_changes method. 14 new tests covering insert/delete/replace/multiline/multi-change/emoji/accented chars. All gates green, pushed.",
     "completedTasks": [
       "marky-8gp: Store Parser in ServerState — eliminates per-call Parser::new() allocation",
-      "marky-tfd: Store MarkdownTree per document — enables future incremental tree-sitter reuse"
+      "marky-tfd: Store MarkdownTree per document — enables future incremental tree-sitter reuse",
+      "marky-tzq: Switch LSP to TextDocumentSyncKind::INCREMENTAL with UTF-16 conversion"
     ],
     "blockers": [],
     "nextSteps": [
-      "marky-tzq: Switch LSP to incremental sync mode (now unblocked by marky-tfd)",
-      "marky-zan: Wire incremental parsing algorithm (blocked by marky-tzq)"
+      "marky-zan: Wire incremental parsing algorithm — edit() + parse(old_tree) (now unblocked by marky-tzq)"
     ]
   },
   "recentChanges": [
-    "Ast.md_tree wrapped in Option<MarkdownTree> for take_md_tree() extraction",
-    "MarkdownTree re-exported from markymark-parser",
-    "ServerState.md_trees HashMap stores tree per open document",
-    "build_markdown_index returns (DocumentIndex, Option<MarkdownTree>)",
-    "close_document removes tree from md_trees map",
-    "4 new tests: stored/updated/removed/not-stored-for-structured"
+    "TextDocumentSyncKind::FULL → INCREMENTAL in server capabilities",
+    "lsp_position_to_byte_offset() for UTF-16→UTF-8 conversion in convert.rs",
+    "DocumentChange enum (Full/Incremental) in state.rs",
+    "apply_document_changes() applies edits sequentially with bounds clamping",
+    "did_change maps TextDocumentContentChangeEvent to DocumentChange",
+    "14 new tests including emoji surrogate pair and accented character handling"
   ],
   "knownIssues": [
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
     "marky-5yt: 'static lifetime + Box aliasing issue — blocks 6 Miri tests, needs self_cell migration",
     "marky-lkj.1: runtime_engine.rs test refactoring deferred (P4)",
     "feature-001 (arena allocation) still in_progress on separate branch",
-    "Performance: LSP uses TextDocumentSyncKind::FULL + full reparse on every keystroke (marky-g9b)"
+    "Performance: LSP still does full reparse after incremental text sync (marky-zan needed for tree-sitter incremental)"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T17:12:00Z",
-    "lastTypeCheck": "2026-02-16T17:12:00Z"
+    "lastSuccessfulBuild": "2026-02-16T17:47:00Z",
+    "lastTypeCheck": "2026-02-16T17:47:00Z"
   },
   "lastCompaction": "2026-02-16T07:11:59.000Z",
   "compactionCount": 5
