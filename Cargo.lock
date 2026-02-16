@@ -902,6 +902,7 @@ dependencies = [
  "bumpalo",
  "hashbrown 0.16.1",
  "insta",
+ "markymark-kernels",
  "proptest",
  "serde",
  "serde_json",
@@ -930,6 +931,9 @@ dependencies = [
 [[package]]
 name = "markymark-kernels"
 version = "0.2.0"
+dependencies = [
+ "walkdir",
+]
 
 [[package]]
 name = "markymark-lsp"
