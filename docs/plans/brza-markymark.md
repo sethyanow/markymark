@@ -27,7 +27,7 @@ independently.
 
 ## 2. Layer Model (markymark-specific)
 
-```
+```text
 Layer 4 - B (Bun/TypeScript)
           |  Claude Code plugin: select-binary.sh, hooks.json
           |  Plugin lifecycle, config, marketplace registration
@@ -213,7 +213,7 @@ Same as forge BRZA:
 
 ### 5.1 Architecture
 
-```
+```text
 Document arrives (raw markdown text)
 |
 +- TIER 1: Zig SIMD Scan (zig-kernels feature)
@@ -250,7 +250,7 @@ Document arrives (raw markdown text)
 Markdown is context-sensitive. Zig SIMD scanning sees raw bytes without knowing
 whether content is inside a fenced code block or inline code:
 
-```
+```text
 # This IS a heading
 ```python
 # This is NOT a heading (inside code block)
@@ -438,7 +438,7 @@ corpus, the complement strategy is validated.
 
 ## 10. Workspace Structure
 
-```
+```text
 markymark/
 +-- zig/                           # NEW
 |   +-- build.zig                  # Produces libmarky_kernels.a

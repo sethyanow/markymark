@@ -22,8 +22,9 @@ pub fn estimate_tokens(text: [*]const u8, len: u32) u32 {
     const cr_vec: @Vector(16, u8) = @splat('\r');
 
     var pos: u32 = 0;
+    const simd_end = len - (len % chunk_size);
 
-    while (pos + chunk_size <= len) : (pos += chunk_size) {
+    while (pos < simd_end) : (pos += chunk_size) {
         const chunk: @Vector(16, u8) = buf[pos..][0..chunk_size].*;
 
         // A byte is a boundary if it matches any whitespace character
@@ -70,8 +71,9 @@ pub fn estimate_tokens(text: [*]const u8, len: u32) u32 {
 
     // Apply BPE multiplier: ~1.3 tokens per word for English text.
     // Use fixed-point: word_count * 13 / 10, rounding to nearest.
-    const tokens = (word_count * 13 + 5) / 10;
-    return tokens;
+    // Avoid u32 overflow by using u64 intermediate and clamping.
+    const scaled: u64 = (@as(u64, word_count) * 13 + 5) / 10;
+    return if (scaled > std.math.maxInt(u32)) std.math.maxInt(u32) else @intCast(scaled);
 }
 
 /// Scalar reference implementation for parity testing.
@@ -99,8 +101,9 @@ pub fn estimate_tokens_scalar(text: [*]const u8, len: u32) u32 {
 
     if (word_count == 0) return 0;
 
-    const tokens = (word_count * 13 + 5) / 10;
-    return tokens;
+    // Avoid u32 overflow by using u64 intermediate and clamping.
+    const scaled: u64 = (@as(u64, word_count) * 13 + 5) / 10;
+    return if (scaled > std.math.maxInt(u32)) std.math.maxInt(u32) else @intCast(scaled);
 }
 
 // ============================================================================
