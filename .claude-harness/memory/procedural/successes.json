@@ -426,6 +426,27 @@
         "Re-export types from the crate that owns them to avoid transitive dependency pollution",
         "Option wrapping enables take() semantics without changing struct layout significantly"
       ]
+    },
+    {
+      "id": "suc-025",
+      "timestamp": "2026-02-16T17:45:00Z",
+      "feature": "marky-tzq",
+      "type": "implementation",
+      "approach": "Incremental text sync: FULL→INCREMENTAL with UTF-16 byte offset conversion. DocumentChange enum in state.rs, lsp_position_to_byte_offset in convert.rs. Sequential change application with bounds clamping. 14 tests covering insert/delete/replace/multiline/multi-change/emoji/accented chars.",
+      "files": [
+        "markymark-lsp/src/convert.rs",
+        "markymark-lsp/src/server.rs",
+        "markymark-lsp/src/state.rs",
+        "markymark-lsp/tests/state_tests.rs",
+        "markymark-lsp/tests/capabilities.rs"
+      ],
+      "patterns": [
+        "UTF-16→UTF-8 conversion: split on \\n, strip \\r, count char.len_utf16() per char",
+        "Sequential change application — each edit operates on text after previous edit (per LSP spec)",
+        "Bounds clamping (.min(text.len()).max(start)) prevents panics from invalid ranges",
+        "Scope mutable borrow of documents map inside block before calling self.build_markdown_index",
+        "Test emoji surrogate pairs (2 UTF-16 units, 4 UTF-8 bytes) separately from BMP accented chars"
+      ]
     }
   ]
 }
