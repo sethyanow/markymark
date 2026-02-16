@@ -938,6 +938,42 @@
         "Split c_adapter.zig into c_adapter_scan.zig and c_adapter_shared.zig first (larger refactor)"
       ],
       "impact": "zig/src/exports_embed.zig — new pattern for all future C ABI exports"
+    },
+    {
+      "id": "dec-0u5-001",
+      "timestamp": "2026-02-16T12:50:00Z",
+      "feature": "marky-0u5",
+      "decision": "Reuse KernelError from scan.rs instead of defining new error type in lib.rs",
+      "rationale": "The design doc suggested defining KernelError in lib.rs, but scan.rs already has it with the exact same variants. Moving it would require changing scan.rs imports. Using crate::scan::KernelError from the new modules avoids touching working code.",
+      "alternatives": [
+        "Move KernelError to lib.rs and re-export (cleaner but changes existing code)",
+        "Define separate error types per module (more isolation but code duplication)"
+      ],
+      "impact": "similarity.rs, hash.rs, embed.rs all import from crate::scan::KernelError"
+    },
+    {
+      "id": "dec-0u5-002",
+      "timestamp": "2026-02-16T12:50:00Z",
+      "feature": "marky-0u5",
+      "decision": "Use PhantomData<*mut ()> for !Send/!Sync on EmbeddingIndex instead of negative trait impls",
+      "rationale": "impl !Send and impl !Sync require nightly Rust (feature gate negative_impls). This project uses stable Rust. PhantomData<*mut ()> achieves the same effect since raw pointers are !Send + !Sync.",
+      "alternatives": [
+        "Add rust-toolchain.toml with nightly (too disruptive)",
+        "Just document that it's not thread-safe without enforcing (unsafe)"
+      ],
+      "impact": "markymark-kernels/src/embed.rs — EmbeddingIndex struct"
+    },
+    {
+      "id": "dec-0u5-003",
+      "timestamp": "2026-02-16T12:52:00Z",
+      "feature": "marky-0u5",
+      "decision": "Fix exports_embed.zig with comptime { _ = @import } at module level in c_adapter.zig",
+      "rationale": "The previous session wired exports_embed.zig via _ = @import inside a test block. This makes export fn declarations visible during zig build test but NOT in the library build (zig build lib). Symbols were missing at link time. Moving to comptime at module level ensures exports are always included.",
+      "alternatives": [
+        "Move export fn declarations directly into c_adapter.zig (violates 1000-line limit)",
+        "Add exports_embed.zig to build.zig as separate compilation unit (more complex build)"
+      ],
+      "impact": "zig/src/c_adapter.zig — critical fix for all future exports_*.zig files"
     }
   ]
 }

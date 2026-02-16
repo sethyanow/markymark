@@ -1,41 +1,43 @@
 {
-  "lastUpdated": "2026-02-16T12:40:00Z",
+  "lastUpdated": "2026-02-16T12:55:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Ported embedding index kernel from forge BRZA (marky-ncz). Implemented EmbeddingIndex with brute-force cosine search, 6 C ABI exports in separate exports_embed.zig to keep c_adapter.zig under 1000-line limit. 30 new tests. All 226 Zig + 654 Rust tests pass.",
+    "summary": "Implemented Rust FFI wrappers for all shared BRZA kernels (marky-0u5). embed.rs with EmbeddingIndex (opaque handle, Drop, !Send/!Sync via PhantomData), similarity.rs (cosine, jaccard), hash.rs (entity extraction with buffer retry). Fixed critical Zig export linkage bug — comptime import needed at module level. 26 new tests, 56 total in markymark-kernels. All quality gates pass.",
     "completedTasks": [
-      "marky-ncz: Port embedding index kernel from forge BRZA",
-      "zig/src/shared/embeddings.zig: Core EmbeddingIndex struct (389 lines)",
-      "zig/src/exports_embed.zig: 6 C ABI exports + 18 FFI tests (370 lines)",
-      "c_adapter.zig wiring: only +5 lines (798 total)"
+      "marky-0u5: Rust FFI wrappers for shared kernels",
+      "embed.rs: EmbeddingIndex with lifecycle management (243 lines)",
+      "similarity.rs: cosine_similarity, jaccard_similarity (177 lines)",
+      "hash.rs: extract_entity_hashes with buffer retry (145 lines)",
+      "Fixed exports_embed.zig linkage: comptime { _ = @import } at module level"
     ],
     "blockers": [
-      "Scope guard RED: branch at ~7500+ lines / 39+ new files",
-      "c_adapter.zig at 798 lines — mitigated by exports_*.zig pattern"
+      "Scope guard RED: branch at ~8200+ lines / 31 commits / 39+ new files",
+      "c_adapter.zig at 803 lines — mitigated by exports_*.zig pattern"
     ],
     "nextSteps": [
-      "marky-0u5: Write Rust FFI wrappers for shared kernels (embed.rs, similarity.rs, hash.rs)",
+      "marky-8ri: Define ScanBackend and EmbeddingProvider traits in markymark-core",
+      "marky-ams: Implement ZigScanBackend wrapping markymark-kernels FFI",
+      "marky-qv6: Add ScanBackend and EmbeddingProvider traits to markymark-core",
       "marky-8s3.1: Implement code fence exclusion map Zig kernel",
-      "marky-8s3.3: Implement Zig SIMD fuzzy matcher for search-symbols",
-      "Consider creating PR for this branch soon given scope guard RED"
+      "Consider creating PR for this branch — scope guard is deep RED"
     ]
   },
   "recentChanges": [
-    "f67abe4: feat(brza): port embedding index kernel from forge BRZA (marky-ncz)",
-    "7df6813: chore(harness): checkpoint after marky-bgl shared kernels port",
-    "No open PRs."
+    "e9638aa: feat(brza): implement Rust FFI wrappers for shared BRZA kernels (marky-0u5)",
+    "5673f88: chore(harness): checkpoint after marky-ncz embedding index completion",
+    "f67abe4: feat(brza): port embedding index kernel from forge BRZA (marky-ncz)"
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch large (~7500+ lines, 39+ files)",
+    "Scope guard RED: branch large (~8200+ lines, 39+ files, 31 commits)",
     "All scan kernels: known false positives inside code blocks (fence_map kernel is separate task)",
-    "c_adapter.zig at 798 lines — new exports use exports_*.zig pattern to stay under limit",
+    "c_adapter.zig at 803 lines — new exports use exports_*.zig pattern to stay under limit",
     "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T12:40:00Z",
-    "lastTypeCheck": "2026-02-16T12:40:00Z"
+    "lastSuccessfulBuild": "2026-02-16T12:55:00Z",
+    "lastTypeCheck": "2026-02-16T12:55:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
