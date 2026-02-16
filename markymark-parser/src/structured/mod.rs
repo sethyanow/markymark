@@ -5,6 +5,7 @@
 //! to the appropriate parser based on [`DocumentKind`].
 
 mod json;
+mod yaml;
 
 use markymark_core::structured::{DocumentKind, StructuredAst};
 use markymark_core::CoreError;
@@ -19,10 +20,10 @@ pub fn parse_structured(source: &str, kind: DocumentKind) -> Result<StructuredAs
             "use the markdown parser for Markdown documents".to_string(),
         )),
         DocumentKind::Json => json::parse_json(source),
+        DocumentKind::Yaml => yaml::parse_yaml(source),
         DocumentKind::JsonC
         | DocumentKind::Json5
         | DocumentKind::JsonLines
-        | DocumentKind::Yaml
         | DocumentKind::Toml
         | DocumentKind::DotEnv
         | DocumentKind::Ini => Err(CoreError::NotImplemented(format!(
@@ -53,8 +54,17 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_structured_dispatch_yaml() {
+        let result = parse_structured("key: value", DocumentKind::Yaml);
+        assert!(result.is_ok());
+        let ast = result.unwrap();
+        assert_eq!(ast.kind, DocumentKind::Yaml);
+        assert_eq!(ast.keys.len(), 1);
+    }
+
+    #[test]
     fn test_parse_structured_dispatch_unimplemented() {
-        let result = parse_structured("key: val", DocumentKind::Yaml);
+        let result = parse_structured("# comment", DocumentKind::Toml);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("not yet implemented"));
