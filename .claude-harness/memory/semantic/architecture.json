@@ -21,6 +21,7 @@
       "markymark-core/src/engine.rs (CoreEngine trait, CoreOperation, CoreResult)",
       "markymark-core/src/arena.rs (arena helpers, allocation wrappers)",
       "markymark-parser/src/ast.rs (tree-sitter AST construction, arena ownership)",
+      "markymark-parser/src/ast.rs (AstCell self_cell owner/dependent layout for internal lifetime binding)",
       "markymark-parser/src/ast.rs (public API lifetime-bound accessors with compile_fail leakage guards)",
       "markymark-parser/src/extract.rs (regex-based extraction updated for arena-backed outputs)",
       "markymark-parser/src/types/ (elements, links, blocks, frontmatter, xml - arena-backed element types)",
@@ -53,7 +54,7 @@
       "markymark-core/src/engine.rs"
     ],
     "tests": [
-      "markymark-parser/tests/ (xml_extraction, frontmatter, tree_sitter_integration)",
+      "markymark-parser/tests/ (xml_extraction, frontmatter, tree_sitter_integration, ast_self_cell)",
       "markymark-index/tests/ (document_index, connection_graph, realm_index, resolution)",
       "markymark-core/tests/ (core_engine)",
       "markymark-lsp/tests/ (11 files: capabilities, completion_*, diagnostics, hover, rename, etc.)",
@@ -113,10 +114,11 @@
       "Self-referential arena: struct owns Bump + stores refs as static; doc_arena_ptr() for ownership transfer",
       "RealmIndex cross-doc maps remain owned String-backed until self_cell/ouroboros migration (marky-5yt); do not introduce borrowed Cow across sibling fields"
       ,
-      "Use compile_fail doctests on public methods to lock lifetime leakage invariants during migration work"
+      "Use compile_fail doctests on public methods to lock lifetime leakage invariants during migration work",
+      "Use self_cell owner/dependent internals as a first stable migration step when replacing internal static-marked self-references"
     ]
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-16T18:52:59Z",
+  "lastUpdated": "2026-02-16T19:23:11Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

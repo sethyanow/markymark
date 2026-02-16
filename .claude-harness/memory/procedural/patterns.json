@@ -52,7 +52,9 @@
       "c_adapter.zig: test { _ = @import(...); } pulls sub-module tests into the main test step without needing build.zig changes",
       "ATX closing hash trimming: trim trailing spaces, trim trailing '#', check preceding space (if no space, hashes are content), trim trailing spaces again",
       "For RealmIndex cross-doc maps, treat Cow<str> as a deferred optimization unless self-referential ownership is explicitly implemented (e.g., self_cell/ouroboros); validate with alloc_count_index_100 baseline before revisiting",
-      "When hardening lifetime safety incrementally, add compile_fail doctests first, then narrow public signatures to &self-bound lifetimes, and only then adapt downstream call sites"
+      "When hardening lifetime safety incrementally, add compile_fail doctests first, then narrow public signatures to &self-bound lifetimes, and only then adapt downstream call sites",
+      "For self-referential migrations on stable Rust, split work into Ast-first then index-layer tasks and land self_cell owner/dependent conversion in isolated checkpoints",
+      "Use a lightweight structural regression test (source-level invariant) to prevent reintroducing internal static-marked storage during multi-step lifetime migrations"
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",
@@ -68,7 +70,8 @@
       "Rust integration tests in tests/ are standalone crates \u2014 each file gets its own imports, no mod.rs needed",
       "Shared test helpers must be duplicated in tests/ files (pub(crate) not accessible from integration tests)",
       "Use exact count assertions (assert_eq!) not >= in rename/edit tests \u2014 >= masked a closing-tag rename bug",
-      "require_marksman! macro for graceful test skip when marksman unavailable in CI"
+      "require_marksman! macro for graceful test skip when marksman unavailable in CI",
+      "When running learners-only checkpoints, persist memory/progress/context files without forcing commit/push"
     ],
     "rustPatterns": [
       {
@@ -148,5 +151,5 @@
       }
     ]
   },
-  "lastUpdated": "2026-02-16T18:52:59Z"
+  "lastUpdated": "2026-02-16T19:23:11Z"
 }
