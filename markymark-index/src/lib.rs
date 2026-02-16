@@ -15,6 +15,7 @@ pub mod document;
 pub mod graph;
 pub mod realm;
 pub mod resolution;
+pub mod structured_document;
 
 #[cfg(feature = "bench-internals")]
 pub use bench_config::*;
@@ -26,3 +27,4 @@ pub use document::*;
 pub use graph::*;
 pub use realm::*;
 pub use resolution::*;
+pub use structured_document::*;

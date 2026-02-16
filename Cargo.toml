@@ -11,8 +11,9 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0-alpha.2"
+version = "0.2.0"
 edition = "2021"
+rust-version = "1.80"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/sethyanow/markymark"
 authors = ["Seth Yanow <seth@yanow.me>"]
@@ -36,6 +37,9 @@ rmcp = { version = "0.13", features = ["server", "transport-io"] }
 tree-sitter = "0.26"
 tree-sitter-md = { version = "0.5", features = ["parser"] }
 tree-sitter-json = "0.24"
+tree-sitter-yaml = "0.7"
+tree-sitter-toml-ng = "0.7"
+json5 = "0.4"
 
 # Graph and algorithms
 petgraph = "0.7"

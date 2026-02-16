@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
+use markymark_core::structured::{DocumentKind, KeyEntry, StructuredAst, ValueKind};
 use markymark_core::DocumentUri;
 use markymark_index::resolution;
-use markymark_index::{DocumentIndex, RealmIndex, ResolvedTarget};
+use markymark_index::{DocumentIndex, RealmIndex, ResolvedTarget, StructuredDocumentIndex};
 use markymark_parser::Parser;
 
 /// Helper: parse markdown source and build a DocumentIndex.
@@ -228,4 +229,111 @@ fn test_resolve_case_insensitive_page() {
         }
         other => panic!("expected Document variant, got {:?}", other),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Structured document key path resolution
+// ---------------------------------------------------------------------------
+
+fn make_key(path: &str, key: &str, depth: usize, vk: ValueKind) -> KeyEntry {
+    KeyEntry {
+        path: path.to_string(),
+        key: key.to_string(),
+        depth,
+        value_kind: vk,
+        key_range: markymark_core::Range::new(
+            markymark_core::Position::new(0, 0),
+            markymark_core::Position::new(0, 10),
+        ),
+        value_range: markymark_core::Range::new(
+            markymark_core::Position::new(0, 0),
+            markymark_core::Position::new(0, 10),
+        ),
+    }
+}
+
+#[test]
+fn test_resolve_wiki_link_to_structured_key_path() {
+    let mut realm = RealmIndex::new();
+
+    let config_uri = uri("config.json");
+    let st_index = StructuredDocumentIndex::from_ast(StructuredAst {
+        source: String::new(),
+        kind: DocumentKind::Json,
+        keys: vec![
+            make_key("database", "database", 0, ValueKind::Object),
+            make_key("database.host", "host", 1, ValueKind::String),
+            make_key("database.port", "port", 1, ValueKind::Number),
+        ],
+    });
+    realm.add_structured_document(config_uri.clone(), st_index);
+
+    let from_uri = uri("doc.md");
+
+    // [[config#database.host]] should resolve to the key path
+    let result = resolution::resolve_wiki_link(&realm, &from_uri, "config", Some("database.host"));
+    assert!(
+        result.is_some(),
+        "[[config#database.host]] should resolve to a key path"
+    );
+
+    match result.unwrap() {
+        ResolvedTarget::KeyPath {
+            uri,
+            path,
+            value_kind,
+            ..
+        } => {
+            assert_eq!(uri.as_str(), config_uri.as_str());
+            assert_eq!(path, "database.host");
+            assert_eq!(value_kind, ValueKind::String);
+        }
+        other => panic!("expected KeyPath variant, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_resolve_wiki_link_to_structured_doc_without_fragment() {
+    let mut realm = RealmIndex::new();
+
+    let config_uri = uri("config.json");
+    let st_index = StructuredDocumentIndex::from_ast(StructuredAst {
+        source: String::new(),
+        kind: DocumentKind::Json,
+        keys: vec![make_key("name", "name", 0, ValueKind::String)],
+    });
+    realm.add_structured_document(config_uri.clone(), st_index);
+
+    let from_uri = uri("doc.md");
+
+    // [[config]] should resolve to the document
+    let result = resolution::resolve_wiki_link(&realm, &from_uri, "config", None);
+    assert!(result.is_some(), "[[config]] should resolve to a document");
+
+    match result.unwrap() {
+        ResolvedTarget::Document(resolved_uri) => {
+            assert_eq!(resolved_uri.as_str(), config_uri.as_str());
+        }
+        other => panic!("expected Document variant, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_resolve_wiki_link_nonexistent_key_path() {
+    let mut realm = RealmIndex::new();
+
+    let config_uri = uri("config.yaml");
+    let st_index = StructuredDocumentIndex::from_ast(StructuredAst {
+        source: String::new(),
+        kind: DocumentKind::Yaml,
+        keys: vec![make_key("server", "server", 0, ValueKind::Object)],
+    });
+    realm.add_structured_document(config_uri, st_index);
+
+    let from_uri = uri("doc.md");
+
+    // [[config#nonexistent.path]] should not resolve
+    let result =
+        resolution::resolve_wiki_link(&realm, &from_uri, "config", Some("nonexistent.path"));
+    assert!(result.is_none(), "nonexistent key path should return None");
 }
