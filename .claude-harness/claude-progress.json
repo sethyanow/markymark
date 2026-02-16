@@ -17,6 +17,7 @@
     ]
   },
   "recentChanges": [
+    "Merged origin/main: PR #19 (mark-brza build fixes), Zig file watch fix, scan FFI init fix",
     "Closed marky-g9b: incremental tree-sitter parsing epic complete",
     "Refactored server.rs → symbols.rs extraction (marky-gsh closed)",
     "Created epic marky-77i: Phase 3 incremental indexing (10x speedup target)",
@@ -27,9 +28,9 @@
     "state.rs at 996 lines — approaching 1000-line threshold. Needs P2 refactor bead.",
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
     "marky-5yt: 'static lifetime + Box aliasing issue — blocks 6 Miri tests, needs self_cell migration",
-    "marky-lkj.1: runtime_engine.rs test refactoring deferred (P4)",
+    "marky-lkj.1: runtime_engine.zig test refactoring deferred (P4)",
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch at ~11K lines / 66 commits / 45 new files",
+    "Scope guard RED: branch at ~11K lines / 67 commits / 45 new files",
     "c_adapter.zig at 803 lines — new exports use exports_*.zig pattern to stay under limit",
     "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
   ],

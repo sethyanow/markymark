@@ -2,6 +2,20 @@
   "version": 3,
   "entries": [
     {
+      "id": "suc-027",
+      "timestamp": "2026-02-16T15:36:00Z",
+      "feature": "marky-clg",
+      "type": "bugfix",
+      "approach": "Fixed uninitialized written parameter in Zig scan FFI functions using complete TDD workflow. Wrote failing tests first (expected 0, found garbage 2863311530), then fixed all four scan functions to set w.*=0 before returning -2 when cap==0. All tests pass, CodeRabbit review comment resolved.",
+      "files": ["zig/src/c_adapter.zig"],
+      "patterns": [
+        "FFI functions must initialize all output parameters before error returns",
+        "Zig undefined variables contain garbage (0xAAAAAAAA pattern in this case)",
+        "Test RED-GREEN cycle: tests failed before fix (found garbage), passed after (found 0)",
+        "replace_all=true efficient for fixing same bug across multiple functions"
+      ]
+    },
+    {
       "id": "suc-023",
       "timestamp": "2026-02-16T11:10:00Z",
       "feature": "marky-bgl",
@@ -479,6 +493,34 @@
         "EmbeddingIndex::search borrows ID pointers from Zig index — copy into owned Strings immediately before any mutation",
         "Drop impl sets handle to null after destroy for idempotent double-free protection",
         "matches!() macro for testing Result<NonPartialEq, _> instead of assert_eq!"
+      ]
+    },
+    {
+      "id": "suc-026",
+      "timestamp": "2026-02-16T18:00:00Z",
+      "feature": "marky-8ri",
+      "type": "implementation",
+      "approach": "Trait definitions for ScanBackend and EmbeddingProvider in markymark-core. Clean TDD: wrote dummy impls inline as compile-time trait contract tests (object safety, Send+Sync). zig-kernels feature flag with optional dep on markymark-kernels. Prelude re-exports for downstream convenience.",
+      "files": ["markymark-core/src/scanner.rs", "markymark-core/src/embeddings.rs", "markymark-core/src/lib.rs", "markymark-core/Cargo.toml"],
+      "patterns": [
+        "Dummy struct impls inside #[cfg(test)] verify trait object safety + Send+Sync at compile time",
+        "EmbeddingProvider::embed_batch has default impl calling embed() sequentially — overridable for batch providers",
+        "dep: prefix in feature flag (dep:markymark-kernels) prevents implicit feature name leak",
+        "Prelude re-exports trait + error types for ergonomic downstream use"
+      ]
+    },
+    {
+      "id": "suc-028",
+      "timestamp": "2026-02-16T19:37:30Z",
+      "feature": "marky-9s9",
+      "type": "bugfix",
+      "approach": "Fixed build.rs rerun-if-changed to watch individual .zig files via walkdir enumeration instead of directory metadata. CodeRabbit found directory watch only triggers on add/remove (metadata changes), not file modifications. All quality gates pass.",
+      "files": ["markymark-kernels/build.rs", "markymark-kernels/Cargo.toml"],
+      "patterns": [
+        "cargo:rerun-if-changed on directories only triggers on add/remove, not file modifications",
+        "Use walkdir to enumerate individual files for precise rebuild triggers",
+        "walkdir::WalkDir + filter_map + filter pattern for file enumeration",
+        "is_some_and() preferred over map_or() for Option bool checks (clippy)"
       ]
     }
   ]
