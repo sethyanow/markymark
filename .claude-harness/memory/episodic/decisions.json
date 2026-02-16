@@ -974,6 +974,45 @@
         "Add exports_embed.zig to build.zig as separate compilation unit (more complex build)"
       ],
       "impact": "zig/src/c_adapter.zig — critical fix for all future exports_*.zig files"
+    },
+    {
+      "id": "dec-dist-001",
+      "timestamp": "2026-02-16T21:30:00Z",
+      "feature": "distribution-strategy",
+      "decision": "Three-pillar distribution strategy: Editor LSP (VSCode/Neovim/Zed), Knowledge Plugins (Obsidian/Logseq), Agent Tooling (MCP/Skills/SDK)",
+      "rationale": "Maps markymark engine to all three surfaces where markdown is consumed: editors, knowledge tools, and AI agents. Sequenced by effort: LSP clients are cheapest (native protocol), Obsidian medium (spawn sidecar), Logseq highest (needs HTTP transport).",
+      "alternatives": [
+        "Single pillar at a time (slower reach)",
+        "WASM-first for universal distribution (loses SIMD, high porting effort)",
+        "MCP-only (limits human user reach)"
+      ],
+      "impact": "Three new epics: marky-qyf, marky-hwc, marky-mkr — all gated on marky-ix3"
+    },
+    {
+      "id": "dec-dist-002",
+      "timestamp": "2026-02-16T21:30:00Z",
+      "feature": "distribution-strategy",
+      "decision": "Hybrid sidecar architecture: LSP stdio for editors, spawn for Obsidian, HTTP/localhost for Logseq",
+      "rationale": "Obsidian plugins run in Electron with Node APIs — can spawn child processes directly. Logseq plugins cannot spawn subprocesses. HTTP transport over localhost bridges the gap for Logseq and also unlocks web UIs, remote agents, and any non-stdio consumer.",
+      "alternatives": [
+        "WASM for all sandboxed environments (loses SIMD, filesystem access)",
+        "Sidecar only (doesn't work for Logseq without HTTP)",
+        "Companion daemon for both (unnecessary complexity for Obsidian)"
+      ],
+      "impact": "HTTP transport becomes a new feature in markymark-cli, needed before Logseq plugin"
+    },
+    {
+      "id": "dec-dist-003",
+      "timestamp": "2026-02-16T21:30:00Z",
+      "feature": "marky-ix3",
+      "decision": "Cross-language symbol bridging is the critical differentiator gating all distribution epics",
+      "rationale": "Without ix3, markymark is another markdown LSP. With ix3, it connects docs to code — a feature no existing tool provides. Three tiers: backtick spans (high confidence), code fences (medium), prose references like CamelCase/snake_case (low, heuristic-scored). SIMD entity extraction kernel can accelerate Tier 3.",
+      "alternatives": [
+        "Ship distribution without ix3 (weaker value prop)",
+        "Only Tier 1 backtick spans (safe but limited)",
+        "External grep fallback instead of built-in (simpler but less integrated)"
+      ],
+      "impact": "ix3 blocks marky-qyf, marky-hwc, marky-mkr — all three distribution epics"
     }
   ]
 }

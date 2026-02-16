@@ -1,34 +1,40 @@
 {
-  "lastUpdated": "2026-02-16T20:25:00Z",
+  "lastUpdated": "2026-02-16T21:30:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Testing session on feature/mark-testing branch. Merged feature/mark-brza (BRZA epic work) into testing branch, resolved claude-progress.json conflict. Exercised all 7 markymark MCP tools against 89 real docs (create-realm, add-root, realm-stats, get-outline, search-symbols, export-index, find-references, destroy-realm). Tested built-in LSP cross-language behavior on both Rust and Markdown files. Key finding: workspaceSymbol is the only LSP operation that returns cross-language results. Created marky-ix3 research bead for cross-language symbol bridging.",
+    "summary": "Strategic brainstorm on markymark distribution and tooling. Defined three-pillar distribution strategy: (1) Editor LSP clients (VSCode, Neovim, Zed), (2) Knowledge tool plugins (Obsidian, Logseq), (3) Agent tooling (MCP expansion, Claude Code skills, Agent SDK). Researched plugin sandbox constraints — Obsidian can spawn child processes, Logseq cannot. Decided on hybrid sidecar architecture: LSP stdio for editors, spawn for Obsidian, HTTP/localhost for Logseq. Identified ix3 (cross-language symbol bridging) as critical differentiator gating all distribution. Extended ix3 with three-tier extraction: backtick spans, code fences, prose references with confidence scoring. Created three distribution epics all depending on ix3.",
     "completedTasks": [
-      "Merged feature/mark-brza into feature/mark-testing (1 conflict resolved)",
-      "Verified build, 54+ tests, clippy clean after merge",
-      "Tested all 7 markymark MCP tools against docs/ (89 docs, 1017 headings, 435 md links, 411 XML tags)",
-      "Tested built-in LSP documentSymbol, hover, goToDefinition, findReferences, workspaceSymbol on both .rs and .md",
-      "Confirmed markymark only indexes .md files (Rust source roots silently skipped)",
-      "Created marky-ix3: research cross-language symbol bridging, linked to marky-8s3 BRZA epic"
+      "Strategic brainstorm: three-pillar distribution strategy defined",
+      "Architecture decision: hybrid sidecar (LSP/spawn/HTTP) based on platform constraints",
+      "Research: Obsidian can spawn processes (Electron/Node), Logseq cannot",
+      "Extended marky-ix3 with three-tier symbol extraction (backtick, code fence, prose)",
+      "Created marky-qyf: Editor Distribution epic (VSCode/Neovim/Zed)",
+      "Created marky-hwc: Knowledge Tool Plugins epic (Obsidian/Logseq)",
+      "Created marky-mkr: Agent Tooling epic (MCP/Skills/SDK)",
+      "Linked all three epics as dependent on marky-ix3"
     ],
     "blockers": [
-      "Scope guard RED: branch at ~9185 lines / 54 commits / 43 new files"
+      "Scope guard RED: branch at ~9185 lines / 55 commits / 43 new files"
     ],
     "nextSteps": [
-      "marky-ix3: Research cross-language symbol bridging (blocked by 8s3)",
-      "marky-4aa: Fix mem::forget leak in DocumentIndex::from_ast",
-      "marky-ams: Implement ZigScanBackend wrapping markymark-kernels FFI"
+      "Dedicated brainstorm sessions for each pillar (VSCode, Obsidian/Logseq, Agent tooling)",
+      "Dedicated MCP tooling deep dive session",
+      "marky-ix3: Implement cross-language symbol bridging (blocked by 8s3 BRZA)",
+      "HTTP transport for markymark (needed for Logseq, web UIs, remote agents)"
     ]
   },
   "recentChanges": [
-    "bea6afd: Merge feature/mark-brza into feature/mark-testing",
-    "marky-ix3: Created research bead for cross-language symbol bridging"
+    "marky-qyf: Created Editor Distribution epic",
+    "marky-hwc: Created Knowledge Tool Plugins epic",
+    "marky-mkr: Created Agent Tooling epic",
+    "marky-ix3: Extended with three-tier symbol extraction and confidence scoring",
+    "3 distribution decisions recorded to episodic memory"
   ],
   "knownIssues": [
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations",
     "markymark only indexes .md files — Rust source roots silently skipped (no error)",
     "search-symbols only matches heading text, not inline code references",
-    "Scope guard RED: branch large (~9185 lines, 43 files, 54 commits)",
+    "Scope guard RED: branch large (~9185 lines, 43 files, 55 commits)",
     "c_adapter.zig at 811 lines — new exports use exports_*.zig pattern"
   ],
   "environmentState": {
