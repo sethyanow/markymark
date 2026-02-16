@@ -1,37 +1,37 @@
 {
-  "lastUpdated": "2026-02-16T18:16:00Z",
+  "lastUpdated": "2026-02-16T18:32:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-zan quality gates and committed. All 54 test suites green, clippy clean, fmt clean. Committed feat(parser) + chore(harness). Closed marky-zan in beads. Reviewed implementation against marky-g9b epic success criteria — all pass except criterion 3 (10x speedup) which is documented as deferred to Phase 3. Identified server.rs at 1068 lines (over 1000-line hard stop) and state.rs at 996 lines (approaching). Next session: brainstorm Phase 3 incremental indexing design, file refactor beads for oversized files.",
+    "summary": "Completed Phase 3 incremental indexing design via brainstorming skill. Used Socratic method to make 7 key design decisions. Created epic marky-77i with complete design rationale (LSP-layer orchestration, byte-range granularity, 5 independent extractors, always rebuild headings/TOC/outline, hybrid merge strategy). Created first task marky-z7e with detailed implementation checklist. Ran SRE refinement: strengthened from 3 to 5 tests, added 6 anti-patterns, documented 9 edge cases. Copied design doc to docs/plans/phase3-incremental-indexing.md. Next: close marky-g9b epic, file refactor beads, begin Phase 3 implementation.",
     "completedTasks": [
-      "marky-8gp: Store Parser in ServerState (closed)",
-      "marky-tfd: Store MarkdownTree per document (closed)",
-      "marky-tzq: Switch LSP to INCREMENTAL sync (closed)",
-      "marky-zan: Wire incremental parsing edit() + parse(old_tree) (closed)"
+      "Brainstormed Phase 3 design with user via 7 AskUserQuestion rounds",
+      "Created epic marky-77i with immutable requirements and full design rationale",
+      "Created task marky-z7e (proof-of-concept for wiki_links incremental)",
+      "SRE refinement: strengthened task from 3 to 5 tests, added anti-patterns + edge cases",
+      "Documented design in docs/plans/phase3-incremental-indexing.md"
     ],
     "nextSteps": [
-      "Brainstorm Phase 3 incremental indexing design — skip AST/DocumentIndex rebuild for unchanged sections",
-      "File P0 refactor bead for server.rs (1068 lines, over 1000-line hard stop rule-004)",
-      "File P2 refactor bead for state.rs (996 lines, approaching 1000-line threshold)",
-      "Close marky-g9b epic (all child tasks done, criterion 3 deferred to Phase 3 with documented rationale)",
+      "Close marky-g9b epic (all child tasks done, Phase 3 epic created)",
+      "File P0 refactor bead for server.rs (1068 lines, exceeds rule-004 limit)",
+      "File P2 refactor bead for state.rs (996 lines, approaching limit)",
+      "Begin Phase 3 implementation: execute marky-z7e (wiki_links proof-of-concept)",
       "Push feature/mark-next branch to remote"
     ]
   },
   "recentChanges": [
-    "Committed feat(parser): wire incremental tree-sitter parsing end-to-end (marky-zan) — 93a76ba",
-    "Committed chore(harness): persist marky-zan decisions and success patterns — 1657d25",
-    "Closed marky-zan in beads with full implementation summary",
-    "Implementation review: all 6 epic success criteria assessed, 5 PASS, 1 PARTIAL (10x deferred)",
-    "Identified file size violations: server.rs 1068 lines, state.rs 996 lines"
+    "Created epic marky-77i: Phase 3 incremental indexing (10x speedup target)",
+    "Created task marky-z7e: wiki_links proof-of-concept with incremental update logic",
+    "Strengthened marky-z7e via SRE review: 5 tests, 6 anti-patterns, 9 edge cases",
+    "Documented Phase 3 design decisions and approach in docs/plans/",
+    "Key design: LSP-layer orchestration, byte-range granularity, 5 extractors incremental"
   ],
   "knownIssues": [
     "server.rs at 1068 lines — EXCEEDS rule-004 hard stop (1000 lines). Needs P0 refactor bead.",
     "state.rs at 996 lines — approaching 1000-line threshold. Needs P2 refactor bead.",
+    "marky-g9b epic still open — ready to close now that Phase 3 epic exists",
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
     "marky-5yt: 'static lifetime + Box aliasing issue — blocks 6 Miri tests, needs self_cell migration",
     "marky-lkj.1: runtime_engine.rs test refactoring deferred (P4)",
-    "tree-sitter-md incremental parse ~1.3x speedup — Phase 3 incremental indexing needed for 10x",
-    "marky-g9b epic still open — close after filing Phase 3 epic and refactor beads",
     "marky-8la: XML tag false positives in fenced code blocks",
     "Scope guard RED: branch at ~8380 lines / 42 commits / 39+ new files",
     "c_adapter.zig at 803 lines — new exports use exports_*.zig pattern to stay under limit",
