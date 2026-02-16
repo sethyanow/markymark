@@ -75,6 +75,23 @@
       "rootCause": "Harness progress file diverged between branch histories and produced a non-trivial rebase conflict during autonomous preflight sync.",
       "files": [".claude-harness/claude-progress.json"],
       "resolution": "Abort rebase, mark feature skipped in autonomous-state, and require manual conflict resolution before rerunning /claude-harness:flow feature-001 --autonomous."
+    },
+    {
+      "id": "fail-zig-015-api",
+      "timestamp": "2026-02-16T06:30:00Z",
+      "feature": "marky-ccv",
+      "type": "implementation",
+      "approach": "Used Zig 0.14.x build API patterns for 0.15.2 build.zig",
+      "errors": [
+        "addStaticLibrary does not exist in Zig 0.15.2 Build — use addLibrary with .linkage = .static",
+        "addLibrary takes root_module (not root_source_file) — must b.createModule() first",
+        "addTest also takes root_module (not root_source_file) in 0.15.2",
+        "callconv(.C) does not exist — CallingConvention.c is now a pub const; export fn gets C ABI by default",
+        "@compileError cannot concatenate with @typeName at comptime in the way attempted"
+      ],
+      "rootCause": "Pre-training knowledge has Zig 0.14.x patterns. Zig 0.15 was released after training cutoff. CLAUDE.md docs explicitly warned to read build-system.md before writing code but docs were checked too late.",
+      "files": ["zig/build.zig", "zig/src/c_adapter.zig"],
+      "resolution": "Read /Users/seth/.local/share/mise/installs/zig/0.15.2/lib/std/Build.zig source directly to find correct API signatures. Always read docs/modules/zig/ BEFORE writing any Zig code."
     }
   ]
 }

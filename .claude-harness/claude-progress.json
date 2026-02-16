@@ -1,35 +1,41 @@
 {
-  "lastUpdated": "2026-02-16T03:45:00Z",
+  "lastUpdated": "2026-02-16T07:42:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Dependency upgrade session. Bumped petgraph 0.7→0.8 (drop-in) and rmcp 0.13→0.15 (type renames only). Fixed 11 deprecation warnings in markymark-mcp by renaming *RequestParam→*RequestParams. Updated rmcp docs. All 448 tests pass, clippy clean, zero warnings.",
+    "summary": "Implemented marky-v8r: heading_scan SIMD kernel — first real markymark extraction kernel. Created scalar reference (heading_scan_ref.zig) and SIMD implementation (heading_scan.zig) using @Vector(16, u8) for 16-byte newline scanning. Added marky_scan_headings C ABI export to c_adapter.zig with null/cap validation. 13 kernel tests + 4 scalar tests + 5 c_adapter tests all passing. SIMD benchmark shows ~1.9x speedup over scalar on 10KB markdown. Committed and pushed (ac79fac).",
     "completedTasks": [
-      "Upgraded petgraph 0.7.1 → 0.8.3 (workspace Cargo.toml)",
-      "Upgraded rmcp 0.13.0 → 0.15.0 (workspace Cargo.toml)",
-      "Fixed 11 deprecation warnings in markymark-mcp/src/lib.rs",
-      "Updated docs/rust_crates/rmcp.md version references"
+      "marky-v8r: Implemented heading_scan SIMD kernel with scalar reference",
+      "Created zig/src/reference/heading_scan_ref.zig (HeadingScan struct, scan_headings_scalar, try_parse_heading)",
+      "Created zig/src/kernels/heading_scan.zig (SIMD scan_headings, 13 tests, benchmark)",
+      "Updated zig/src/c_adapter.zig (marky_scan_headings export, test imports)",
+      "Verified: zig build test, zig build lib, nm symbol check, cargo build/test -p markymark-kernels"
     ],
-    "blockers": [],
+    "blockers": [
+      "Scope guard RED: branch at 3565+ lines — consider splitting or deferring"
+    ],
     "nextSteps": [
-      "Execute BRZA epic starting with marky-ccv (Zig scaffold)",
-      "Continue marky-luy arena conformance closeout (separate branch)",
-      "PR #11 still open for feature-001 arena migration"
+      "marky-h1t: Write Rust FFI wrappers for extraction kernels (now unblocked by v8r)",
+      "marky-ayb: CI integration (Zig build step in GitHub Actions)",
+      "marky-bgl: Port similarity and entity hash kernels from forge",
+      "marky-ncz: Port embedding index kernels from forge",
+      "marky-8s3.2: Implement single-pass multi-pattern scanner (now unblocked by v8r)"
     ]
   },
   "recentChanges": [
-    "Cargo.toml: petgraph 0.7→0.8, rmcp 0.13→0.15",
-    "Cargo.lock: petgraph 0.7.1→0.8.3, rmcp 0.13.0→0.15.0",
-    "markymark-mcp/src/lib.rs: *RequestParam→*RequestParams renames",
-    "docs/rust_crates/rmcp.md: version 0.13→0.15"
+    "zig/src/kernels/heading_scan.zig: SIMD heading scanner with @Vector(16, u8)",
+    "zig/src/reference/heading_scan_ref.zig: Scalar reference implementation",
+    "zig/src/c_adapter.zig: marky_scan_headings C ABI export + kernel test imports"
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch at 4,236 lines, 27 commits, 16 new files"
+    "Scope guard RED: branch at 3565+ lines, consider splitting",
+    "brza-spec.md: untracked file from forge spec reference (not committed)",
+    "heading_scan: known false positive for headings inside code blocks (by design, tree-sitter handles context)"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T03:42:00Z",
-    "lastTypeCheck": "2026-02-16T03:42:00Z"
+    "lastSuccessfulBuild": "2026-02-16T07:42:00Z",
+    "lastTypeCheck": "2026-02-16T07:42:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
