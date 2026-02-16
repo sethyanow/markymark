@@ -18,10 +18,11 @@ pub fn estimate_tokens(text: &str) -> u32 {
     if text.is_empty() {
         return 0;
     }
+    let len = u32::try_from(text.len()).unwrap_or(u32::MAX);
     // SAFETY: text.as_ptr() is valid for text.len() bytes.
     // marky_estimate_tokens is a pure function with no side effects.
     // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
-    unsafe { marky_estimate_tokens(text.as_ptr(), text.len() as u32) }
+    unsafe { marky_estimate_tokens(text.as_ptr(), len) }
 }
 
 /// Compute a deterministic FNV-1a 64-bit hash of the given text.
@@ -29,10 +30,11 @@ pub fn estimate_tokens(text: &str) -> u32 {
 /// Returns the FNV-1a offset basis (`0xcbf29ce484222325`) for empty input.
 /// Useful for content-addressable deduplication and change detection.
 pub fn content_hash(text: &str) -> u64 {
+    let len = u32::try_from(text.len()).unwrap_or(u32::MAX);
     // SAFETY: text.as_ptr() is valid for text.len() bytes.
     // marky_content_hash is a pure function with no side effects.
     // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
-    unsafe { marky_content_hash(text.as_ptr(), text.len() as u32) }
+    unsafe { marky_content_hash(text.as_ptr(), len) }
 }
 
 #[cfg(test)]
