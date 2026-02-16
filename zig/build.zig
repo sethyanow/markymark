@@ -1,8 +1,15 @@
 const std = @import("std");
 
-// REQUIREMENT: Zig 0.15.2 or higher
-// This build file uses Zig 0.15.x APIs (addLibrary, createModule).
-// Zig 0.14.x patterns (addStaticLibrary, root_source_file in addLibrary) will not work.
+// Compile-time version gate: reject Zig < 0.15.2
+comptime {
+    const v = @import("builtin").zig_version;
+    const meets_minimum = v.major > 0 or
+        (v.major == 0 and v.minor > 15) or
+        (v.major == 0 and v.minor == 15 and v.patch >= 2);
+    if (!meets_minimum) {
+        @compileError("Zig 0.15.2+ required. This build file uses 0.15.x APIs (addLibrary, createModule).");
+    }
+}
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
