@@ -375,6 +375,23 @@
         "Move Position import to test modules when only tests use it (avoids unused import warnings)",
         "Run cargo fmt before commit when touching many files — pre-commit hook catches formatting diffs"
       ]
+    },
+    {
+      "id": "suc-022",
+      "timestamp": "2026-02-16T10:57:00Z",
+      "feature": "marky-luy.1",
+      "type": "testing",
+      "approach": "Miri arena validation: wrote 14 tests in markymark-core (no FFI deps) replicating production unsafe patterns. FakeAst/FakeIndex/FakeProperties mirror Ast/DocumentIndex/parser types. Discovered Box aliasing issue (6 tests) and mem::forget heap leak (3 tests). Key insight: Vec<&'static str> passes Miri but &'static [T] as struct field fails — Vec's drop doesn't access arena memory, but slice references create protected tags during drop.",
+      "files": [
+        "markymark-core/tests/miri_arena.rs",
+        ".github/workflows/ci.yml"
+      ],
+      "patterns": [
+        "Test unsafe patterns in FFI-free crate (markymark-core) since Miri can't run C FFI (tree-sitter)",
+        "Vec<&'static str> + Box<Arena> is Miri-safe; &'static [T] + Box<Arena> triggers Box aliasing violation",
+        "Use -Zmiri-ignore-leaks when mem::forget is intentional in the pattern being tested",
+        "Separate Miri cache key in CI to avoid polluting stable build cache"
+      ]
     }
   ]
 }

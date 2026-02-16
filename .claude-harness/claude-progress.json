@@ -1,38 +1,34 @@
 {
-  "lastUpdated": "2026-02-16T09:51:00Z",
+  "lastUpdated": "2026-02-16T10:57:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Addressed final PR #16 review nitpicks (round 2 + 3), merged PR #16, and released v0.2.0. Version bumped from 0.1.0-alpha.2 to 0.2.0 across workspace, subcrates, and plugin.json. Tagged and pushed v0.2.0 to trigger release CI.",
+    "summary": "Completed marky-luy.1: Added Miri CI job for unsafe arena pattern validation. 14 tests covering 5 patterns (self-referential 'static cast, ptr::read+mem::forget transfer, ArenaHashMap, BumpVec slice, ArenaVecBuilder). 8 pass under Miri, 6 ignored due to known Box aliasing issue (marky-5yt). Discovered and filed marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations.",
     "completedTasks": [
-      "PR #16 review round 2: MSRV rust-version=1.80, YAML flow mapping test, README code fence lang ids",
-      "PR #16 review round 3: remaining README code blocks lang identifiers",
-      "Merged PR #16 (multi-format structured document support)",
-      "Version bump 0.1.0-alpha.2 → 0.2.0 (7 files: workspace + 5 subcrates + plugin.json)",
-      "PR #17 created, merged (no squash), tagged v0.2.0, pushed tag"
+      "marky-luy.1: Miri CI job + 14 arena safety tests in markymark-core/tests/miri_arena.rs",
+      "Filed marky-4aa: mem::forget heap leak bug in DocumentIndex::from_ast"
     ],
     "blockers": [],
     "nextSteps": [
-      "Monitor v0.2.0 release CI (5-platform build)",
-      "Verify GitHub Release assets published",
-      "Continue with ready beads work (marky-luy arena conformance, marky-8s3 BRZA)"
+      "marky-luy.2: Investigate arena reuse via DocumentArena::reset",
+      "marky-luy.3: Evaluate Cow<str> in RealmIndex for reduced allocation",
+      "marky-8s3: BRZA SIMD kernels (separate track)"
     ]
   },
   "recentChanges": [
-    "v0.2.0 released — multi-format structured document support",
-    "Added rust-version = 1.80 MSRV to workspace Cargo.toml",
-    "Added YAML flow mapping nested key extraction test",
-    "All README code blocks now have bash language identifiers"
+    "Added Miri CI job to .github/workflows/ci.yml (nightly toolchain, -Zmiri-ignore-leaks)",
+    "14 Miri arena safety tests in markymark-core/tests/miri_arena.rs",
+    "Filed marky-4aa for mem::forget heap leak discovery"
   ],
   "knownIssues": [
+    "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
+    "marky-5yt: 'static lifetime + Box aliasing issue — blocks 6 Miri tests, needs self_cell migration",
     "marky-lkj.1: runtime_engine.rs test refactoring deferred (P4)",
-    "marky-5yt: 'static lifetime leak deferred to self_cell migration",
-    "feature-001 (arena allocation) still in_progress on separate branch",
-    "scope-guard: feature/mark-next branch at ~5965 lines (RED zone)"
+    "feature-001 (arena allocation) still in_progress on separate branch"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T09:51:00Z",
-    "lastTypeCheck": "2026-02-16T09:51:00Z"
+    "lastSuccessfulBuild": "2026-02-16T10:57:00Z",
+    "lastTypeCheck": "2026-02-16T10:57:00Z"
   },
   "lastCompaction": "2026-02-16T07:11:59.000Z",
   "compactionCount": 5
