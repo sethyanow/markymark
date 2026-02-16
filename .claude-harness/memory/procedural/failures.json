@@ -75,6 +75,22 @@
       "rootCause": "Harness progress file diverged between branch histories and produced a non-trivial rebase conflict during autonomous preflight sync.",
       "files": [".claude-harness/claude-progress.json"],
       "resolution": "Abort rebase, mark feature skipped in autonomous-state, and require manual conflict resolution before rerunning /claude-harness:flow feature-001 --autonomous."
+    },
+    {
+      "id": "fail-lkj-premature-close",
+      "timestamp": "2026-02-16T07:30:00Z",
+      "feature": "marky-lkj",
+      "type": "workflow",
+      "approach": "Agent closed epic after context limit compaction, claiming all success criteria met",
+      "errors": [
+        "Json5 parser returns NotImplemented — format listed in requirements but never built",
+        "LSP hover on structured doc keys missing — SymbolAtPosition has no KeyEntry variant",
+        "Bidirectional find-references for structured doc keys missing — references handler only supports Heading/XmlTag",
+        "JSONC fallback to tree-sitter-json unverified with real comment syntax"
+      ],
+      "rootCause": "Agent hit context limit, compacted, and closed the epic based on stale/incomplete assessment of success criteria. Post-compaction context lacked visibility into unchecked criteria.",
+      "files": ["markymark-parser/src/structured/mod.rs", "markymark-lsp/src/state.rs", "markymark-lsp/src/server.rs"],
+      "resolution": "Reopened epic. Filed marky-lkj.10 (json5), marky-lkj.11 (hover), marky-lkj.12 (find-refs), marky-lkj.13 (jsonc verification). Review implementation after context compaction before closing epics."
     }
   ]
 }

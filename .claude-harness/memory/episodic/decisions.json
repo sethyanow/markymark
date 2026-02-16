@@ -3,59 +3,6 @@
   "maxEntries": 50,
   "entries": [
     {
-      "id": "dec-arch-003",
-      "timestamp": "2026-02-06T21:23:00Z",
-      "feature": "architecture",
-      "decision": "tower-lsp-server v0.23 (community fork) over stale tower-lsp v0.20",
-      "rationale": "Original hasn't been updated since Aug 2023. Fork is actively maintained (Biome, Oxc, Veryl use it), supports edition 2024.",
-      "alternatives": [
-        "tower-lsp 0.20 (stale)",
-        "Custom LSP from scratch"
-      ],
-      "impact": "Import paths use tower_lsp_server::, ls_types not lsp_types",
-      "ported_from": "markdown-mcp dec-20260206-005"
-    },
-    {
-      "id": "dec-arch-004",
-      "timestamp": "2026-02-06T21:23:00Z",
-      "feature": "architecture",
-      "decision": "rmcp (official Rust MCP SDK) over async-mcp",
-      "rationale": "rmcp is official from modelcontextprotocol org (v0.13.0), has #[tool] macros, multi-transport support. async-mcp was small community crate.",
-      "alternatives": [
-        "async-mcp",
-        "mcpx",
-        "pmcp"
-      ],
-      "impact": "Workspace schemars pinned to 1.2 for rmcp compatibility",
-      "ported_from": "markdown-mcp dec-20260206-004"
-    },
-    {
-      "id": "dec-lsp-001",
-      "timestamp": "2026-02-09T21:00:00Z",
-      "feature": "feature-006",
-      "decision": "FULL text document sync mode (not INCREMENTAL) for v1 LSP server",
-      "rationale": "FULL sync is simpler \u2014 each change replaces entire document text. INCREMENTAL requires precise byte-offset/UTF-16 arithmetic. Can upgrade later if performance requires it.",
-      "alternatives": [
-        "INCREMENTAL sync",
-        "None sync"
-      ],
-      "impact": "did_change handler takes last content change. ServerState replaces entire text, re-parses, re-indexes.",
-      "ported_from": "markdown-mcp dec-2026-02-09-003"
-    },
-    {
-      "id": "dec-lsp-002",
-      "timestamp": "2026-02-09T21:00:00Z",
-      "feature": "feature-006",
-      "decision": "Separate markymark-lsp into convert/state/server modules",
-      "rationale": "Testing LanguageServer trait methods requires LSP service running. Separating state and conversions lets tests exercise core logic directly without transport.",
-      "alternatives": [
-        "Monolithic lib.rs",
-        "Test only through LSP protocol"
-      ],
-      "impact": "Tests exercise convert and state directly. Server module is thin adapter.",
-      "ported_from": "markdown-mcp dec-2026-02-09-004"
-    },
-    {
       "id": "dec-lsp-003",
       "timestamp": "2026-02-10T05:00:00Z",
       "feature": "feature-011",
@@ -244,7 +191,7 @@
         "Bundle binary in git (contradicts anti-pattern)",
         "Marketplace-only via self-hosted marketplace repo"
       ],
-      "impact": "markymark-plugin/scripts/select-binary.sh \u2014 download_binary() function added"
+      "impact": "markymark-plugin/scripts/select-binary.sh — download_binary() function added"
     },
     {
       "id": "dec-009",
@@ -445,8 +392,8 @@
       "id": "dec-025",
       "timestamp": "2026-02-15T06:30:00Z",
       "feature": "feature-001",
-      "decision": "MARKYMARK_BENCH_HEAVY=1 for 100-sample runs; default to 10\u201320 samples to avoid RAM exhaustion on index_docs_dir (918 files)",
-      "rationale": "100-sample index_docs_dir froze laptop. Real corpus bench allocates ~5.9MB \u00d7 100 iterations; default sample sizes are sufficient for most runs.",
+      "decision": "MARKYMARK_BENCH_HEAVY=1 for 100-sample runs; default to 10–20 samples to avoid RAM exhaustion on index_docs_dir (918 files)",
+      "rationale": "100-sample index_docs_dir froze laptop. Real corpus bench allocates ~5.9MB × 100 iterations; default sample sizes are sufficient for most runs.",
       "alternatives": [
         "Cap index_docs_dir at 20 samples in heavy mode",
         "Run heavy bench on CI only"
@@ -554,7 +501,7 @@
       "timestamp": "2026-02-15T04:55:00Z",
       "feature": "feature-001",
       "decision": "Use LazyLock<Regex> static compilation for all 14 regex patterns in extract.rs",
-      "rationale": "CodeRabbit flagged regex recompilation on every function call as Major issue. LazyLock compiles each regex exactly once (first access) and reuses across all calls. No crate dependency added \u2014 LazyLock is in std since Rust 1.80.",
+      "rationale": "CodeRabbit flagged regex recompilation on every function call as Major issue. LazyLock compiles each regex exactly once (first access) and reuses across all calls. No crate dependency added — LazyLock is in std since Rust 1.80.",
       "alternatives": [
         "once_cell::sync::Lazy (external crate)",
         "Thread-local regex (separate per-thread compilation)"
@@ -566,7 +513,7 @@
       "timestamp": "2026-02-15T04:55:00Z",
       "feature": "feature-001",
       "decision": "MarkdownLinkEntry.url stores base URL only (without fragment); anchor stored separately",
-      "rationale": "CodeRabbit flagged that url field duplicated anchor info. Parser already splits URL at '#' \u2014 index was re-concatenating them. Storing base URL matches parser semantics and simplifies callers (no need to strip anchor from url).",
+      "rationale": "CodeRabbit flagged that url field duplicated anchor info. Parser already splits URL at '#' — index was re-concatenating them. Storing base URL matches parser semantics and simplifies callers (no need to strip anchor from url).",
       "alternatives": [
         "Keep concatenated url (matches browser URL bar behavior)",
         "Remove anchor field entirely and only store full url"
@@ -590,7 +537,7 @@
       "timestamp": "2026-02-15T15:33:00Z",
       "feature": "feature-001",
       "decision": "Merge origin/main into feature branch (not rebase) to resolve PR #10 squash merge conflicts",
-      "rationale": "PR #10 was squash-merged to main, causing 22 conflicts with the 52-commit feature branch. Rebase failed before (fail-feature-001-rebase-20260214). Merge commit is safest \u2014 preserves all history and clearly documents integration point.",
+      "rationale": "PR #10 was squash-merged to main, causing 22 conflicts with the 52-commit feature branch. Rebase failed before (fail-feature-001-rebase-20260214). Merge commit is safest — preserves all history and clearly documents integration point.",
       "alternatives": [
         "Rebase 52 commits (failed before, rewrites hashes)",
         "Reset main to before squash merge (force push to main, risky)"
@@ -667,6 +614,66 @@
         "Use serde-only (still rejected — no source positions)"
       ],
       "impact": "marky-lkj epic design: Approach #3 now viable for JSON/YAML/TOML. .json5/.jsonl/.env/.ini/.cfg still need non-tree-sitter parsers."
+    },
+    {
+      "id": "dec-036",
+      "timestamp": "2026-02-15T17:54:05Z",
+      "feature": "marky-lkj",
+      "decision": "Defer marky-lkj.1 (test refactoring) to P4 backlog, prioritize YAML parser (marky-cqx) instead",
+      "rationale": "Test refactoring (runtime_engine.rs unit test extraction) is maintenance work that does not advance epic success criteria. YAML parser directly advances multi-format support goals and follows proven JSON parser pattern. Per epic anti-pattern \"NO upfront task tree (tasks created iteratively)\", defer non-critical maintenance.",
+      "alternatives": [
+        "Execute test refactoring first (blocks progress on core feature)",
+        "Execute both in parallel (increases scope without benefit)"
+      ],
+      "impact": "marky-lkj.1 moved to P4, marky-cqx created as next task with comprehensive SRE refinement"
+    },
+    {
+      "id": "dec-037",
+      "timestamp": "2026-02-16T07:23:00Z",
+      "feature": "marky-lkj",
+      "decision": "Stack-based depth reconstruction for key_entries_to_symbols instead of recursive parent-tracking",
+      "rationale": "Flat KeyEntry list with depth field allows O(n) single-pass tree reconstruction. Stack tracks current nesting level; when depth decreases, pop and attach children to parent. Simpler than maintaining parent indices.",
+      "alternatives": [
+        "Recursive approach building subtrees (more allocations)",
+        "Two-pass: first build parent map, then construct tree"
+      ],
+      "impact": "markymark-lsp/src/server.rs key_entries_to_symbols()"
+    },
+    {
+      "id": "dec-038",
+      "timestamp": "2026-02-16T07:23:00Z",
+      "feature": "marky-lkj",
+      "decision": "Update stale MCP test to match multi-format indexing reality instead of preserving markdown-only assertion",
+      "rationale": "workspace_with_mixed_formats_only_indexes_markdown was written before structured doc indexing existed. Now that runtime indexes JSON/YAML/.env, the test name and assertions were wrong. Renamed to workspace_with_mixed_formats_indexes_all_supported_types with correct counts.",
+      "alternatives": [
+        "Skip the test with #[ignore]",
+        "Add a separate test and leave old one failing"
+      ],
+      "impact": "markymark-mcp/tests/runtime_engine_tests.rs"
+    },
+    {
+      "id": "dec-039",
+      "timestamp": "2026-02-16T09:30:00Z",
+      "feature": "marky-b1q",
+      "decision": "Decode escape sequences in JSON5 scanner to match serde map keys",
+      "rationale": "Scanner's read_quoted_string was pushing literal backslash+char, but serde/json5 crate decodes escapes. map.get(&key_text) failed silently, falling back to Null. Must decode \\n/\\t/\\\\/\\uXXXX/etc. to match serde's output.",
+      "alternatives": [
+        "Parse untrimmed lines instead of adding offset (more complex, changes existing behavior)",
+        "Use serde key iteration order instead of source scanning (loses source-order guarantee)"
+      ],
+      "impact": "markymark-parser/src/structured/json5.rs read_quoted_string()"
+    },
+    {
+      "id": "dec-040",
+      "timestamp": "2026-02-16T09:30:00Z",
+      "feature": "marky-b1q",
+      "decision": "Extract byte_to_position to structured/mod.rs shared utility",
+      "rationale": "Six identical copies across json.rs, json5.rs, jsonl.rs, yaml.rs, toml.rs, flat.rs. Single pub(crate) function in mod.rs eliminates duplication. Position import moved to test modules where only tests use it.",
+      "alternatives": [
+        "Put in markymark-core (crosses crate boundary for parser-internal utility)",
+        "Use a macro (unnecessary complexity for a simple function)"
+      ],
+      "impact": "markymark-parser/src/structured/{mod,json,json5,jsonl,yaml,toml,flat}.rs"
     }
   ]
 }

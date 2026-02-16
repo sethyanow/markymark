@@ -7,10 +7,12 @@ use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::*;
 use tower_lsp_server::{Client, LanguageServer, LspService};
 
-use crate::state::{DiagnosticSeverity as MarkyDiagSeverity, ServerState, SymbolAtPosition};
+use crate::state::{
+    DiagnosticSeverity as MarkyDiagSeverity, ServerState, StructuredKeyInfo, SymbolAtPosition,
+};
 use markymark_core::{DocumentUri, Range as CoreRange};
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link, ResolvedTarget};
-use markymark_index::{DocumentIndex, OutlineNode, XmlTagEntry};
+use markymark_index::{DocumentIndex, OutlineNode, StructuredDocumentIndex, XmlTagEntry};
 use std::collections::HashMap;
 
 /// The LSP server backend.
@@ -186,7 +188,7 @@ impl LanguageServer for Backend {
             SymbolAtPosition::MarkdownLink(ml) => {
                 resolve_markdown_link(state.realm(), &doc_uri, ml.url, ml.anchor)
             }
-            SymbolAtPosition::Heading(_) => return Ok(None),
+            SymbolAtPosition::Heading(_) | SymbolAtPosition::StructuredKey(_) => return Ok(None),
             SymbolAtPosition::XmlTag(ref xt) => {
                 // Jump to the first occurrence of this tag name in the workspace.
                 // Sort documents by URI for deterministic ordering.
@@ -290,6 +292,95 @@ impl LanguageServer for Backend {
                     }
                 }
             }
+            SymbolAtPosition::StructuredKey(ref info) => {
+                // Direction 1: Cursor on a structured doc key -> find all markdown wiki-links
+                // that resolve to this key path in this document.
+                let key_path = &info.path;
+
+                // Optionally include the declaration (the key itself)
+                if include_declaration {
+                    if let Some(st_idx) = state.get_structured_document_index(&doc_uri) {
+                        if let Some(entry) = st_idx.key_by_path(key_path) {
+                            if let Ok(loc) =
+                                crate::convert::to_lsp_location(&doc_uri, entry.key_range)
+                            {
+                                locations.push(loc);
+                            }
+                        }
+                    }
+                }
+
+                // Search all markdown documents for wiki-links that resolve to this key path
+                for (md_uri, md_index) in iter_realm_documents(&state) {
+                    for wl in md_index.wiki_links() {
+                        if let Some(ResolvedTarget::KeyPath {
+                            uri: ref target_uri,
+                            ref path,
+                            ..
+                        }) = resolve_wiki_link(state.realm(), md_uri, wl.target, wl.heading)
+                        {
+                            if target_uri == &doc_uri && path == key_path {
+                                if let Ok(loc) = crate::convert::to_lsp_location(md_uri, wl.range) {
+                                    locations.push(loc);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            SymbolAtPosition::WikiLink(ref wl) => {
+                // Direction 2: Cursor on a wiki-link -> if it resolves to a KeyPath,
+                // find the key definition + other wiki-links referencing the same key.
+                let resolved = resolve_wiki_link(state.realm(), &doc_uri, wl.target, wl.heading);
+                match resolved {
+                    Some(ResolvedTarget::KeyPath {
+                        ref uri,
+                        ref path,
+                        range,
+                        ..
+                    }) => {
+                        let target_uri = uri.clone();
+                        let target_path = path.clone();
+
+                        // Include the key definition location
+                        if let Ok(loc) = crate::convert::to_lsp_location(&target_uri, range) {
+                            locations.push(loc);
+                        }
+
+                        // Find other wiki-links referencing the same key path
+                        for (md_uri, md_index) in iter_realm_documents(&state) {
+                            for other_wl in md_index.wiki_links() {
+                                // Skip the current wiki-link
+                                if !include_declaration
+                                    && md_uri == &doc_uri
+                                    && other_wl.range == wl.range
+                                {
+                                    continue;
+                                }
+                                if let Some(ResolvedTarget::KeyPath {
+                                    uri: ref resolved_uri,
+                                    ref path,
+                                    ..
+                                }) = resolve_wiki_link(
+                                    state.realm(),
+                                    md_uri,
+                                    other_wl.target,
+                                    other_wl.heading,
+                                ) {
+                                    if resolved_uri == &target_uri && path == &target_path {
+                                        if let Ok(loc) =
+                                            crate::convert::to_lsp_location(md_uri, other_wl.range)
+                                        {
+                                            locations.push(loc);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => return Ok(None),
+                }
+            }
             _ => return Ok(None),
         }
 
@@ -332,6 +423,19 @@ impl LanguageServer for Backend {
                     }
                     Some(ResolvedTarget::Block { uri, id }) => {
                         format!("Wiki link to block `{}` in {}", id, uri.as_str())
+                    }
+                    Some(ResolvedTarget::KeyPath {
+                        uri,
+                        path,
+                        value_kind,
+                        ..
+                    }) => {
+                        format!(
+                            "Wiki link to key `{}` ({:?}) in {}",
+                            path,
+                            value_kind,
+                            uri.as_str()
+                        )
                     }
                     None => {
                         format!("Wiki link to **{}** (unresolved)", wl.target)
@@ -385,6 +489,7 @@ impl LanguageServer for Backend {
                 }
                 lines.join("\n")
             }
+            SymbolAtPosition::StructuredKey(ref info) => structured_key_hover_markdown(info),
         };
 
         Ok(Some(Hover {
@@ -408,19 +513,27 @@ impl LanguageServer for Backend {
             Err(_) => return Ok(None),
         };
 
-        let index = match state.get_document_index(&doc_uri) {
-            Some(idx) => idx,
-            None => return Ok(None),
-        };
+        match state.get_any_document_index(&doc_uri) {
+            Some(markymark_index::AnyDocumentIndex::Markdown(index)) => {
+                let outline = index.outline();
+                let mut symbols = outline_children_to_symbols(outline.children);
+                symbols.extend(xml_tags_to_symbols(index.xml_tags()));
 
-        let outline = index.outline();
-        let mut symbols = outline_children_to_symbols(outline.children);
-        symbols.extend(xml_tags_to_symbols(index.xml_tags()));
-
-        if symbols.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(DocumentSymbolResponse::Nested(symbols)))
+                if symbols.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(DocumentSymbolResponse::Nested(symbols)))
+                }
+            }
+            Some(markymark_index::AnyDocumentIndex::Structured(index)) => {
+                let symbols = key_entries_to_symbols(index);
+                if symbols.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(DocumentSymbolResponse::Nested(symbols)))
+                }
+            }
+            None => Ok(None),
         }
     }
 
@@ -648,6 +761,9 @@ fn resolved_target_to_location(
                 .map(Some)
                 .map_err(|_| tower_lsp_server::jsonrpc::Error::internal_error())
         }
+        ResolvedTarget::KeyPath { uri, range, .. } => crate::convert::to_lsp_location(uri, *range)
+            .map(Some)
+            .map_err(|_| tower_lsp_server::jsonrpc::Error::internal_error()),
     }
 }
 
@@ -729,6 +845,16 @@ fn xml_hover_stats(state: &ServerState, tag_name: &str) -> XmlHoverStats {
     }
 }
 
+/// Build hover markdown for a structured document key.
+fn structured_key_hover_markdown(info: &StructuredKeyInfo) -> String {
+    let mut lines = Vec::new();
+    lines.push(format!("**Key:** `{}`", info.path));
+    lines.push(format!("**Type:** {:?}", info.value_kind));
+    lines.push(format!("**Depth:** {}", info.depth));
+    lines.push(format!("**Format:** {:?}", info.document_kind));
+    lines.join("\n\n")
+}
+
 fn xml_tags_to_symbols(xml_tags: &[XmlTagEntry]) -> Vec<DocumentSymbol> {
     let mut roots: Vec<XmlSymbolNode> = Vec::new();
 
@@ -787,4 +913,141 @@ fn xml_node_to_document_symbol(node: XmlSymbolNode) -> DocumentSymbol {
             Some(children)
         },
     }
+}
+
+/// Convert structured document key entries into nested LSP DocumentSymbol items.
+///
+/// Reconstructs the tree hierarchy from the flat key list using depth information,
+/// and maps each `ValueKind` to an appropriate LSP `SymbolKind`.
+fn key_entries_to_symbols(index: &StructuredDocumentIndex) -> Vec<DocumentSymbol> {
+    use markymark_core::structured::ValueKind;
+
+    fn value_kind_to_symbol_kind(vk: ValueKind) -> SymbolKind {
+        match vk {
+            ValueKind::Object => SymbolKind::OBJECT,
+            ValueKind::Array => SymbolKind::ARRAY,
+            ValueKind::String => SymbolKind::STRING,
+            ValueKind::Number => SymbolKind::NUMBER,
+            ValueKind::Boolean => SymbolKind::BOOLEAN,
+            ValueKind::Null => SymbolKind::NULL,
+        }
+    }
+
+    /// A tree node built from the flat key list.
+    struct SymbolNode {
+        name: String,
+        detail: Option<String>,
+        kind: SymbolKind,
+        range: tower_lsp_server::ls_types::Range,
+        selection_range: tower_lsp_server::ls_types::Range,
+        children: Vec<SymbolNode>,
+    }
+
+    fn to_document_symbol(node: SymbolNode) -> DocumentSymbol {
+        let children: Vec<DocumentSymbol> =
+            node.children.into_iter().map(to_document_symbol).collect();
+
+        #[expect(
+            deprecated,
+            reason = "DocumentSymbol.deprecated field is deprecated by LSP spec but struct still required"
+        )]
+        DocumentSymbol {
+            name: node.name,
+            detail: node.detail,
+            kind: node.kind,
+            tags: None,
+            deprecated: None,
+            range: node.range,
+            selection_range: node.selection_range,
+            children: if children.is_empty() {
+                None
+            } else {
+                Some(children)
+            },
+        }
+    }
+
+    let keys = index.keys();
+    if keys.is_empty() {
+        return Vec::new();
+    }
+
+    // Build tree using a stack of (depth, node) to track nesting.
+    let mut roots: Vec<SymbolNode> = Vec::new();
+    // Stack holds mutable references by index path into roots.
+    // Simpler approach: use a stack of Vec<SymbolNode> per depth level.
+    let mut stack: Vec<(usize, Vec<SymbolNode>)> = Vec::new();
+
+    for entry in keys {
+        let range = crate::convert::to_lsp_range(entry.key_range);
+        let value_range = crate::convert::to_lsp_range(entry.value_range);
+
+        // The range should span from key start to value end for full coverage.
+        let full_range = tower_lsp_server::ls_types::Range {
+            start: range.start,
+            end: if value_range.end > range.end {
+                value_range.end
+            } else {
+                range.end
+            },
+        };
+
+        let node = SymbolNode {
+            name: entry.key.clone(),
+            detail: Some(format!("{:?}", entry.value_kind)),
+            kind: value_kind_to_symbol_kind(entry.value_kind),
+            range: full_range,
+            selection_range: range,
+            children: Vec::new(),
+        };
+
+        let depth = entry.depth;
+
+        // Pop stack levels that are at or deeper than current depth,
+        // folding their children into the parent.
+        while let Some((d, _)) = stack.last() {
+            if *d >= depth {
+                let (_, children) = stack.pop().unwrap();
+                if let Some((_, parent_children)) = stack.last_mut() {
+                    if let Some(parent) = parent_children.last_mut() {
+                        parent.children = children;
+                    }
+                } else {
+                    // These are root-level nodes being finalized
+                    if let Some(root) = roots.last_mut() {
+                        root.children = children;
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
+        if depth == 0 {
+            roots.push(node);
+        } else if let Some((_, children)) = stack.last_mut() {
+            children.push(node);
+        } else {
+            // Shouldn't happen with well-formed data, but handle gracefully
+            roots.push(node);
+        }
+
+        // If this is a container type, push a new stack level for its children
+        if entry.value_kind == ValueKind::Object || entry.value_kind == ValueKind::Array {
+            stack.push((depth, Vec::new()));
+        }
+    }
+
+    // Drain remaining stack levels
+    while let Some((_, children)) = stack.pop() {
+        if let Some((_, parent_children)) = stack.last_mut() {
+            if let Some(parent) = parent_children.last_mut() {
+                parent.children = children;
+            }
+        } else if let Some(root) = roots.last_mut() {
+            root.children = children;
+        }
+    }
+
+    roots.into_iter().map(to_document_symbol).collect()
 }
