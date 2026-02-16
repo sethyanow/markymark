@@ -22,8 +22,7 @@ pub fn fnv1a_hash(data: []const u8) u64 {
 /// Output hashes are written as u32 (lower 32 bits of FNV-1a 64-bit).
 ///
 /// Returns:
-///   0  — success
-///  -1  — invalid input (null pointer, zero length)
+///   0  — success (zero length is a no-op returning 0)
 ///  -2  — buffer too small (more entities than capacity; writes as many as fit)
 pub fn extract_entity_hashes(
     text: [*]const u8,

@@ -64,9 +64,10 @@ export fn zig_embedding_index_add(
 /// Results are sorted by descending similarity score.
 ///
 /// Returns:
-///   >= 0  — number of results written
-///  -1     — invalid input (null handle/pointers, wrong dims)
-///  -2     — k == 0
+///   0   — success (actual count is written to `written`)
+///  -1   — invalid input (null handle/pointers, wrong dims)
+///  -2   — k == 0
+///  -3   — allocation failure (k > 256)
 export fn zig_embedding_index_search(
     handle: ?*anyopaque,
     query: ?[*]const f32,

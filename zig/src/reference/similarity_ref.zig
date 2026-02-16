@@ -6,7 +6,8 @@ const math = std.math;
 /// Returns the cosine of the angle between vectors a and b:
 ///   dot(a,b) / (||a|| * ||b||)
 ///
-/// Returns -2.0 on error (null pointers, zero length, zero-magnitude vector).
+/// Returns -2.0 on error (zero length or zero-magnitude vector).
+/// Note: null pointer checks are performed at the C ABI wrapper level.
 pub fn cosine_similarity(a: [*]const f32, b: [*]const f32, dims: u32) f32 {
     if (dims == 0) return -2.0;
 
@@ -36,7 +37,8 @@ pub fn cosine_similarity(a: [*]const f32, b: [*]const f32, dims: u32) f32 {
 /// Both sets MUST be sorted in ascending order.
 /// Returns |intersection| / |union| as f32.
 ///
-/// Returns -1.0 on error (null pointers).
+/// Returns -1.0 on error.
+/// Note: null pointer checks are performed at the C ABI wrapper level.
 /// Returns 0.0 for empty sets (|union| == 0).
 /// Returns 1.0 for identical sets.
 pub fn jaccard_similarity(set1: [*]const u32, set1_len: u32, set2: [*]const u32, set2_len: u32) f32 {

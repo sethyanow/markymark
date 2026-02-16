@@ -276,20 +276,21 @@ export fn zig_extract_entity_hashes(
     written: ?*u32,
 ) i32 {
     const w = written orelse return -1;
-    const t = text_ptr orelse {
-        if (text_len == 0) {
-            w.* = 0;
-            return 0;
-        }
-        return -1;
-    };
-    const o = output_ids orelse return -1;
 
+    // Zero-length text is a no-op regardless of other params
     if (text_len == 0) {
         w.* = 0;
         return 0;
     }
-    if (capacity == 0) return -2;
+
+    const t = text_ptr orelse return -1;
+
+    if (capacity == 0) {
+        w.* = 0;
+        return -2;
+    }
+
+    const o = output_ids orelse return -1;
 
     return entities.extract_entity_hashes(t, text_len, o, capacity, w);
 }
@@ -301,7 +302,7 @@ export fn zig_extract_entity_hashes(
 /// Returns:
 ///   0  — success
 ///  -1  — invalid input (null pointer, zero length, zero vector)
-export fn asm_normalize_f32_l2(
+export fn zig_normalize_f32_l2(
     input: ?[*]const f32,
     output: ?[*]f32,
     n: u32,
@@ -319,7 +320,7 @@ export fn asm_normalize_f32_l2(
 /// Returns:
 ///   0  — success
 ///  -1  — invalid input (n not divisible by 32, zero, null pointer)
-export fn asm_quantize_f32_to_q4_0(
+export fn zig_quantize_f32_to_q4_0(
     input: ?[*]const f32,
     output: ?[*]u8,
     n: u32,
@@ -337,7 +338,7 @@ export fn asm_quantize_f32_to_q4_0(
 /// Returns:
 ///   0  — success
 ///  -1  — invalid input
-export fn asm_dequantize_q4_0_to_f32(
+export fn zig_dequantize_q4_0_to_f32(
     input: ?[*]const u8,
     output: ?[*]f32,
     n: u32,
@@ -730,65 +731,80 @@ test "zig_extract_entity_hashes buffer overflow" {
     try std.testing.expectEqual(@as(u32, 2), w);
 }
 
-// -- asm_normalize_f32_l2 tests --
+test "zig_extract_entity_hashes capacity zero sets written" {
+    const text = "hello world";
+    var w: u32 = 99;
+    const rc = zig_extract_entity_hashes(text.ptr, text.len, null, 0, &w);
+    try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqual(@as(u32, 0), w);
+}
 
-test "asm_normalize_f32_l2 basic" {
+test "zig_extract_entity_hashes text_len zero ignores null output_ids" {
+    var w: u32 = 99;
+    const rc = zig_extract_entity_hashes(null, 0, null, 0, &w);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    try std.testing.expectEqual(@as(u32, 0), w);
+}
+
+// -- zig_normalize_f32_l2 tests --
+
+test "zig_normalize_f32_l2 basic" {
     const input = [_]f32{ 3.0, 4.0, 0.0, 0.0 };
     var output: [4]f32 = undefined;
-    const rc = asm_normalize_f32_l2(&input, &output, 4);
+    const rc = zig_normalize_f32_l2(&input, &output, 4);
     try std.testing.expectEqual(@as(i32, 0), rc);
     var norm_sq: f32 = 0.0;
     for (output) |v| norm_sq += v * v;
     try std.testing.expectApproxEqAbs(@as(f32, 1.0), @sqrt(norm_sq), 1e-5);
 }
 
-test "asm_normalize_f32_l2 null input" {
+test "zig_normalize_f32_l2 null input" {
     var output: [4]f32 = undefined;
-    const rc = asm_normalize_f32_l2(null, &output, 4);
+    const rc = zig_normalize_f32_l2(null, &output, 4);
     try std.testing.expectEqual(@as(i32, -1), rc);
 }
 
-test "asm_normalize_f32_l2 null output" {
+test "zig_normalize_f32_l2 null output" {
     const input = [_]f32{ 1.0, 0.0 };
-    const rc = asm_normalize_f32_l2(&input, null, 2);
+    const rc = zig_normalize_f32_l2(&input, null, 2);
     try std.testing.expectEqual(@as(i32, -1), rc);
 }
 
-test "asm_normalize_f32_l2 zero n" {
+test "zig_normalize_f32_l2 zero n" {
     const input = [_]f32{1.0};
     var output: [1]f32 = undefined;
-    const rc = asm_normalize_f32_l2(&input, &output, 0);
+    const rc = zig_normalize_f32_l2(&input, &output, 0);
     try std.testing.expectEqual(@as(i32, -1), rc);
 }
 
 // -- asm_quantize/dequantize tests --
 
-test "asm_quantize_f32_to_q4_0 basic" {
+test "zig_quantize_f32_to_q4_0 basic" {
     var input: [32]f32 = undefined;
     for (0..32) |i| {
         input[i] = (@as(f32, @floatFromInt(i)) - 16.0) / 16.0;
     }
     var q4_buf: [quantize_mod.Q4_BLOCK_BYTES]u8 = undefined;
-    const rc = asm_quantize_f32_to_q4_0(&input, &q4_buf, 32);
+    const rc = zig_quantize_f32_to_q4_0(&input, &q4_buf, 32);
     try std.testing.expectEqual(@as(i32, 0), rc);
 }
 
-test "asm_quantize_f32_to_q4_0 null input" {
+test "zig_quantize_f32_to_q4_0 null input" {
     var q4_buf: [quantize_mod.Q4_BLOCK_BYTES]u8 = undefined;
-    const rc = asm_quantize_f32_to_q4_0(null, &q4_buf, 32);
+    const rc = zig_quantize_f32_to_q4_0(null, &q4_buf, 32);
     try std.testing.expectEqual(@as(i32, -1), rc);
 }
 
-test "asm_dequantize_q4_0_to_f32 round trip" {
+test "zig_dequantize_q4_0_to_f32 round trip" {
     var input: [32]f32 = undefined;
     for (0..32) |i| {
         input[i] = (@as(f32, @floatFromInt(i)) - 16.0) / 16.0;
     }
     var q4_buf: [quantize_mod.Q4_BLOCK_BYTES]u8 = undefined;
-    _ = asm_quantize_f32_to_q4_0(&input, &q4_buf, 32);
+    _ = zig_quantize_f32_to_q4_0(&input, &q4_buf, 32);
 
     var output: [32]f32 = undefined;
-    const rc = asm_dequantize_q4_0_to_f32(&q4_buf, &output, 32);
+    const rc = zig_dequantize_q4_0_to_f32(&q4_buf, &output, 32);
     try std.testing.expectEqual(@as(i32, 0), rc);
 
     for (0..32) |i| {
@@ -797,8 +813,8 @@ test "asm_dequantize_q4_0_to_f32 round trip" {
     }
 }
 
-test "asm_dequantize_q4_0_to_f32 null input" {
+test "zig_dequantize_q4_0_to_f32 null input" {
     var output: [32]f32 = undefined;
-    const rc = asm_dequantize_q4_0_to_f32(null, &output, 32);
+    const rc = zig_dequantize_q4_0_to_f32(null, &output, 32);
     try std.testing.expectEqual(@as(i32, -1), rc);
 }

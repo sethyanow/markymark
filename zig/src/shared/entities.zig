@@ -7,8 +7,7 @@ const ref = @import("../reference/entities_ref.zig");
 /// then hashes each word with FNV-1a (lower 32 bits).
 ///
 /// Returns:
-///   0  — success
-///  -1  — invalid input (zero length)
+///   0  — success (zero length is a no-op returning 0)
 ///  -2  — buffer too small (writes as many as fit)
 pub fn extract_entity_hashes(
     text: [*]const u8,
