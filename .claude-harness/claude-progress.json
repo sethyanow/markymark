@@ -9,7 +9,6 @@
       "marky-tzq: Switch LSP to INCREMENTAL sync (closed)",
       "marky-zan: Wire incremental parsing edit() + parse(old_tree) (closed)"
     ],
-    "blockers": [],
     "nextSteps": [
       "Brainstorm Phase 3 incremental indexing design — skip AST/DocumentIndex rebuild for unchanged sections",
       "File P0 refactor bead for server.rs (1068 lines, over 1000-line hard stop rule-004)",
@@ -32,13 +31,18 @@
     "marky-5yt: 'static lifetime + Box aliasing issue — blocks 6 Miri tests, needs self_cell migration",
     "marky-lkj.1: runtime_engine.rs test refactoring deferred (P4)",
     "tree-sitter-md incremental parse ~1.3x speedup — Phase 3 incremental indexing needed for 10x",
-    "marky-g9b epic still open — close after filing Phase 3 epic and refactor beads"
+    "marky-g9b epic still open — close after filing Phase 3 epic and refactor beads",
+    "marky-8la: XML tag false positives in fenced code blocks",
+    "Scope guard RED: branch at ~8380 lines / 42 commits / 39+ new files",
+    "c_adapter.zig at 803 lines — new exports use exports_*.zig pattern to stay under limit",
+    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate",
+    "PR #18 CI checks need to pass before merge"
   ],
   "environmentState": {
     "devServerRunning": false,
     "lastSuccessfulBuild": "2026-02-16T18:13:00Z",
     "lastTypeCheck": "2026-02-16T18:13:00Z"
   },
-  "lastCompaction": "2026-02-16T07:11:59.000Z",
-  "compactionCount": 5
+  "lastCompaction": "2026-02-15T21:59:06.000Z",
+  "compactionCount": 4
 }
