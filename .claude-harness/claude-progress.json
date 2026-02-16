@@ -1,35 +1,34 @@
 {
-  "lastUpdated": "2026-02-16T07:23:00Z",
+  "lastUpdated": "2026-02-16T07:45:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-lkj.9 (LSP structured doc support) and closed marky-lkj epic. Implemented key_entries_to_symbols() for nested LSP DocumentSymbol hierarchy from flat key entries, multi-format open/change routing in state.rs, updated stale MCP test. All workspace tests GREEN, clippy clean.",
+    "summary": "Reviewed marky-lkj epic implementation after agent hit context limit and closed prematurely. Found 3 unmet success criteria: Json5 parser not implemented, LSP hover on structured doc keys missing, bidirectional find-references for structured docs missing. Reopened epic and filed 4 gap tasks.",
     "completedTasks": [
-      "Implemented key_entries_to_symbols() using stack-based depth reconstruction",
-      "Added ValueKind → SymbolKind mapping (Object, Array, String, Number, Boolean, Null)",
-      "Multi-format document detection in state.rs open_document/change_document",
-      "Added get_any_document_index/get_structured_document_index accessors",
-      "Updated document_symbol handler to dispatch on AnyDocumentIndex",
-      "3 new integration tests: JSON nested symbols, YAML symbols, empty JSON",
-      "Updated stale MCP test (workspace_with_mixed_formats_indexes_all_supported_types)",
-      "Fixed clippy warnings (collapsible else-if)",
-      "Closed marky-lkj epic — all success criteria met"
+      "Audited marky-lkj epic requirements vs actual implementation",
+      "Identified 3 unmet success criteria + 1 unverified assumption (JSONC)",
+      "Reopened marky-lkj epic with detailed gap analysis",
+      "Filed marky-lkj.10: Json5 parser (P2)",
+      "Filed marky-lkj.11: LSP hover for structured doc keys (P2)",
+      "Filed marky-lkj.12: Bidirectional find-references (P2, blocked by .11)",
+      "Filed marky-lkj.13: JSONC comment verification (P3)",
+      "Recorded premature-close failure pattern in harness memory"
     ],
     "blockers": [],
     "nextSteps": [
-      "marky-lkj.1: Refactor runtime_engine.rs test extraction (P4, deferred)",
-      "feature-001: Arena allocation still in_progress on feature/feature-001 branch",
-      "Consider marky-v8e: v1.0 product launch tasks",
-      "Consider marky-luy: Arena conformance closeout (P2)"
+      "marky-lkj.10: Implement Json5 parser using json5 crate (independent)",
+      "marky-lkj.11: Add SymbolAtPosition::KeyEntry + structured doc hover (independent)",
+      "marky-lkj.12: Bidirectional find-references (after .11)",
+      "marky-lkj.13: Verify JSONC comment handling (independent, P3)"
     ]
   },
   "recentChanges": [
-    "feat(marky-lkj.9): LSP DocumentSymbols and multi-format support (commit f073617)",
-    "Closed marky-lkj epic: multi-format document support complete"
+    "Reopened marky-lkj epic — 3 success criteria unmet",
+    "Filed marky-lkj.10/.11/.12/.13 for gap work"
   ],
   "knownIssues": [
+    "marky-lkj: Epic reopened — Json5, hover, find-refs still needed",
     "marky-lkj.1: runtime_engine.rs test refactoring deferred (P4)",
     "marky-5yt: 'static lifetime leak deferred to self_cell migration",
-    "marky-luy.1/2/3: P3 research items (Miri CI, arena reuse, Cow optimization)",
     "feature-001 (arena allocation) still in_progress on separate branch"
   ],
   "environmentState": {
