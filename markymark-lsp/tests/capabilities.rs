@@ -70,20 +70,19 @@ async fn test_capabilities_workspace_symbol_provider() {
 }
 
 #[tokio::test]
-async fn test_capabilities_sync_kind_is_full() {
-    // We use full sync for simplicity in v1 (not incremental).
+async fn test_capabilities_sync_kind_is_incremental() {
     let caps = get_capabilities().await;
     match caps.text_document_sync {
         Some(TextDocumentSyncCapability::Options(opts)) => {
             assert_eq!(
                 opts.change,
-                Some(TextDocumentSyncKind::FULL),
-                "should use FULL text document sync"
+                Some(TextDocumentSyncKind::INCREMENTAL),
+                "should use INCREMENTAL text document sync"
             );
             assert_eq!(opts.open_close, Some(true), "should support open/close");
         }
         Some(TextDocumentSyncCapability::Kind(kind)) => {
-            assert_eq!(kind, TextDocumentSyncKind::FULL);
+            assert_eq!(kind, TextDocumentSyncKind::INCREMENTAL);
         }
         None => panic!("text_document_sync should be Some"),
     }

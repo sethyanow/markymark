@@ -2,42 +2,51 @@
 
 use markymark_core::arena::DocumentArena;
 use markymark_core::prelude::*;
+use self_cell::self_cell;
 use tree_sitter_md::MarkdownTree;
 
 use crate::types::*;
 use tree_sitter::Node;
 
+#[derive(Debug)]
+struct AstOwner {
+    source: String,
+    arena: Box<DocumentArena>,
+}
+
+#[derive(Debug)]
+struct AstDependent<'a> {
+    root_elements: Vec<Element<'a>>,
+}
+
+self_cell!(
+    struct AstCell {
+        owner: AstOwner,
+
+        #[covariant]
+        dependent: AstDependent,
+    }
+
+    impl { Debug }
+);
+
 /// Abstract Syntax Tree representing a parsed markdown document.
 ///
-/// The AST owns a [`DocumentArena`] that all parsed data is allocated into,
-/// enabling efficient bulk deallocation when the AST is dropped.
+/// The AST owns a [`DocumentArena`] through a `self_cell` owner/dependent pair:
+/// - owner: source text + arena
+/// - dependent: root elements borrowing from the arena
 ///
-/// # Safety (self-referential arena pattern)
-///
-/// `root_elements` stores `Element<'static>` but the actual lifetime is the
-/// arena's lifetime. This is sound because `Self` owns the arena — the
-/// references cannot outlive the struct. The `'static` marker is a workaround
-/// for Rust's inability to express self-referential borrows.
-///
-/// All public accessors return references tied to `&self`, so data cannot
-/// outlive the struct in safe code. However, inner types contain `&'static str`
-/// fields which technically allow extracting arena references beyond `&self`.
-/// Callers **must not** store inner `&'static str` values (e.g.
-/// `heading.text()`) past the `Ast` lifetime. A future version will use
-/// `self_cell` or `ouroboros` to enforce this statically.
+/// Public accessors borrow data through `&self`, preventing arena-backed
+/// references from escaping the `Ast` lifetime in safe code.
 pub struct Ast {
-    /// Source text (owned, kept for extract functions)
-    source: String,
-    /// Root-level elements, allocated in arena (see struct-level safety docs).
-    ///
-    /// **Drop order**: Must be declared before `arena` so Elements (which contain
-    /// `ArenaHashMap`s referencing the arena) are dropped while the arena is alive.
-    root_elements: Vec<Element<'static>>,
-    /// Per-document arena for all allocated data (boxed for stable address)
-    arena: Box<DocumentArena>,
-    /// Tree-sitter-md parse tree (block + inline trees) — dropped last
-    #[allow(dead_code)]
-    md_tree: MarkdownTree,
+    /// Self-referential owner/dependent cell:
+    /// - owner: source text + arena
+    /// - dependent: root elements borrowing from owner arena
+    cell: AstCell,
+    /// Tree-sitter-md parse tree (block + inline trees).
+    /// Wrapped in `Option` so it can be taken out via [`take_md_tree`](Self::take_md_tree)
+    /// for incremental parsing reuse while letting the rest of the AST be consumed.
+    md_tree: Option<MarkdownTree>,
 }
 
 impl Ast {
@@ -47,20 +56,7 @@ impl Ast {
     /// arena and then take ownership via [`into_arena`](Self::into_arena).
     #[inline]
     pub fn arena(&self) -> &bumpalo::Bump {
-        self.arena.bump()
-    }
-
-    /// Get a `'static` reference to the inner bump allocator.
-    ///
-    /// # Safety
-    ///
-    /// The returned reference has `'static` lifetime but is only valid for
-    /// the lifetime of `self`. Sound because `self` owns the `DocumentArena`.
-    /// Callers must not let the reference escape beyond `&self` methods.
-    #[inline]
-    fn arena_ref(&self) -> &'static bumpalo::Bump {
-        // SAFETY: DocumentArena is owned by Self; reference valid for Self's lifetime.
-        unsafe { &*(self.arena.bump() as *const bumpalo::Bump) }
+        self.cell.borrow_owner().arena.bump()
     }
 
     /// Consume the AST and return its [`DocumentArena`].
@@ -68,7 +64,7 @@ impl Ast {
     /// Used by `DocumentIndex` to take ownership of the arena after borrowing
     /// from it during index construction, avoiding string reallocation.
     pub fn into_arena(self) -> DocumentArena {
-        *self.arena
+        *self.cell.into_owner().arena
     }
 
     /// Raw pointer to the owned [`DocumentArena`] for extraction when the
@@ -78,112 +74,192 @@ impl Ast {
     /// of the arena in a single pass via `ptr::read` + `mem::forget`.
     #[inline]
     pub fn doc_arena_ptr(&self) -> *const DocumentArena {
-        &*self.arena as *const DocumentArena
+        &*self.cell.borrow_owner().arena as *const DocumentArena
     }
 
     /// Create AST from a MarkdownTree (block + inline trees)
     pub(crate) fn from_markdown_tree(md_tree: MarkdownTree, source: &str) -> CoreResult<Self> {
-        let arena = Box::new(DocumentArena::new());
+        let owner = AstOwner {
+            source: source.to_string(),
+            arena: Box::new(DocumentArena::new()),
+        };
         let root_node = md_tree.block_tree().root_node();
-
-        // SAFETY: The arena is owned by Self, so the reference is valid for Self's lifetime.
-        // See struct-level safety docs for the self-referential pattern rationale.
-        let arena_ref: &'static bumpalo::Bump = unsafe { &*(arena.bump() as *const bumpalo::Bump) };
-
-        let mut root_elements = Vec::new();
-
-        // tree-sitter-md wraps content in section nodes:
-        // document → section → {atx_heading, paragraph, list, section(nested)}
-        collect_elements(root_node, source, arena_ref, &mut root_elements)?;
+        let cell = AstCell::try_new(owner, |owner| {
+            let mut root_elements = Vec::new();
+            // tree-sitter-md wraps content in section nodes:
+            // document → section → {atx_heading, paragraph, list, section(nested)}
+            collect_elements(
+                root_node,
+                &owner.source,
+                owner.arena.bump(),
+                &mut root_elements,
+            )?;
+            Ok(AstDependent { root_elements })
+        })?;
 
         Ok(Self {
-            source: source.to_string(),
-            arena,
-            md_tree,
-            root_elements,
+            cell,
+            md_tree: Some(md_tree),
         })
     }
 
     /// Get root-level elements
-    pub fn root_elements(&self) -> &[Element<'static>] {
-        &self.root_elements
+    ///
+    /// ```compile_fail
+    /// use markymark_parser::Parser;
+    ///
+    /// fn leak_heading_text() -> &'static str {
+    ///     let mut parser = Parser::new().unwrap();
+    ///     let ast = parser.parse("# Title").unwrap();
+    ///     ast.root_elements()[0].as_heading().unwrap().text()
+    /// }
+    /// ```
+    pub fn root_elements<'a>(&'a self) -> &'a [Element<'a>] {
+        self.cell.borrow_dependent().root_elements.as_slice()
     }
 
     /// Extract all wiki links from the document
-    pub fn extract_wiki_links(&self) -> Vec<WikiLink<'static>> {
-        crate::extract::extract_wiki_links(&self.root_elements, &self.source, self.arena_ref())
+    pub fn extract_wiki_links<'a>(&'a self) -> Vec<WikiLink<'a>> {
+        self.cell.with_dependent(|owner, dep| {
+            crate::extract::extract_wiki_links(
+                &dep.root_elements,
+                &owner.source,
+                owner.arena.bump(),
+            )
+        })
     }
 
     /// Extract all markdown links
-    pub fn extract_markdown_links(&self) -> Vec<MarkdownLink<'static>> {
-        crate::extract::extract_markdown_links(&self.root_elements, &self.source, self.arena_ref())
+    pub fn extract_markdown_links<'a>(&'a self) -> Vec<MarkdownLink<'a>> {
+        self.cell.with_dependent(|owner, dep| {
+            crate::extract::extract_markdown_links(
+                &dep.root_elements,
+                &owner.source,
+                owner.arena.bump(),
+            )
+        })
     }
 
     /// Extract all link definitions
-    pub fn extract_link_definitions(&self) -> Vec<LinkDefinition<'static>> {
-        crate::extract::extract_link_definitions(
-            &self.root_elements,
-            &self.source,
-            self.arena_ref(),
-        )
+    pub fn extract_link_definitions<'a>(&'a self) -> Vec<LinkDefinition<'a>> {
+        self.cell.with_dependent(|owner, dep| {
+            crate::extract::extract_link_definitions(
+                &dep.root_elements,
+                &owner.source,
+                owner.arena.bump(),
+            )
+        })
     }
 
     /// Extract all block IDs (Obsidian)
-    pub fn extract_block_ids(&self) -> Vec<BlockId<'static>> {
-        crate::extract::extract_block_ids(&self.root_elements, &self.source, self.arena_ref())
+    pub fn extract_block_ids<'a>(&'a self) -> Vec<BlockId<'a>> {
+        self.cell.with_dependent(|owner, dep| {
+            crate::extract::extract_block_ids(&dep.root_elements, &owner.source, owner.arena.bump())
+        })
     }
 
     /// Extract all block references (Logseq)
-    pub fn extract_block_refs(&self) -> Vec<BlockRef<'static>> {
-        crate::extract::extract_block_refs(&self.root_elements, &self.source, self.arena_ref())
+    pub fn extract_block_refs<'a>(&'a self) -> Vec<BlockRef<'a>> {
+        self.cell.with_dependent(|owner, dep| {
+            crate::extract::extract_block_refs(
+                &dep.root_elements,
+                &owner.source,
+                owner.arena.bump(),
+            )
+        })
     }
 
     /// Extract all tags
-    pub fn extract_tags(&self) -> Vec<Tag<'static>> {
-        crate::extract::extract_tags(&self.root_elements, &self.source, self.arena_ref())
+    pub fn extract_tags<'a>(&'a self) -> Vec<Tag<'a>> {
+        self.cell.with_dependent(|owner, dep| {
+            crate::extract::extract_tags(&dep.root_elements, &owner.source, owner.arena.bump())
+        })
     }
 
     /// Extract all embeds
-    pub fn extract_embeds(&self) -> Vec<Embed<'static>> {
-        crate::extract::extract_embeds(&self.root_elements, &self.source, self.arena_ref())
+    pub fn extract_embeds<'a>(&'a self) -> Vec<Embed<'a>> {
+        self.cell.with_dependent(|owner, dep| {
+            crate::extract::extract_embeds(&dep.root_elements, &owner.source, owner.arena.bump())
+        })
     }
 
     /// Extract all list items as references into the arena (avoids cloning ArenaHashMap).
-    pub fn extract_list_items(&self) -> Vec<&ListItem<'static>> {
-        let root_node = self.md_tree.block_tree().root_node();
+    ///
+    /// Returns an empty vec if the tree has been taken via [`take_md_tree`](Self::take_md_tree).
+    pub fn extract_list_items<'a>(&'a self) -> Vec<&'a ListItem<'a>> {
+        let md_tree = match &self.md_tree {
+            Some(t) => t,
+            None => return Vec::new(),
+        };
+        let root_node = md_tree.block_tree().root_node();
         let mut items = Vec::new();
-        collect_top_level_list_items(root_node, &self.source, self.arena_ref(), &mut items);
+        let owner = self.cell.borrow_owner();
+        collect_top_level_list_items(root_node, &owner.source, owner.arena.bump(), &mut items);
         items
     }
 
+    /// Take the `MarkdownTree` out of this AST for external storage.
+    ///
+    /// After calling this, [`extract_list_items`](Self::extract_list_items) returns empty.
+    /// All other extraction methods still work (they use `root_elements`, not the tree).
+    ///
+    /// Used by the LSP server to store the tree per-document for incremental parsing.
+    pub fn take_md_tree(&mut self) -> Option<MarkdownTree> {
+        self.md_tree.take()
+    }
+
     /// Extract all tasks
-    pub fn extract_tasks(&self) -> Vec<Task<'static>> {
-        crate::extract::extract_tasks(&self.root_elements, &self.source, self.arena_ref())
+    pub fn extract_tasks<'a>(&'a self) -> Vec<Task<'a>> {
+        self.cell.with_dependent(|owner, dep| {
+            crate::extract::extract_tasks(&dep.root_elements, &owner.source, owner.arena.bump())
+        })
     }
 
     /// Extract all callouts (Obsidian)
-    pub fn extract_callouts(&self) -> Vec<Callout<'static>> {
-        crate::extract::extract_callouts(&self.root_elements, &self.source, self.arena_ref())
+    pub fn extract_callouts<'a>(&'a self) -> Vec<Callout<'a>> {
+        self.cell.with_dependent(|owner, dep| {
+            crate::extract::extract_callouts(&dep.root_elements, &owner.source, owner.arena.bump())
+        })
     }
 
     /// Extract all query blocks (Logseq)
-    pub fn extract_query_blocks(&self) -> Vec<QueryBlock<'static>> {
-        crate::extract::extract_query_blocks(&self.root_elements, &self.source, self.arena_ref())
+    pub fn extract_query_blocks<'a>(&'a self) -> Vec<QueryBlock<'a>> {
+        self.cell.with_dependent(|owner, dep| {
+            crate::extract::extract_query_blocks(
+                &dep.root_elements,
+                &owner.source,
+                owner.arena.bump(),
+            )
+        })
     }
 
     /// Get frontmatter if present
-    pub fn frontmatter(&self) -> Option<Frontmatter<'static>> {
-        crate::extract::extract_frontmatter(&self.root_elements, &self.source, self.arena_ref())
+    pub fn frontmatter<'a>(&'a self) -> Option<Frontmatter<'a>> {
+        self.cell.with_dependent(|owner, dep| {
+            crate::extract::extract_frontmatter(
+                &dep.root_elements,
+                &owner.source,
+                owner.arena.bump(),
+            )
+        })
     }
 
     /// Get page properties (Logseq)
-    pub fn page_properties(&self) -> Option<Properties<'static>> {
-        crate::extract::extract_page_properties(&self.root_elements, &self.source, self.arena_ref())
+    pub fn page_properties<'a>(&'a self) -> Option<Properties<'a>> {
+        self.cell.with_dependent(|owner, dep| {
+            crate::extract::extract_page_properties(
+                &dep.root_elements,
+                &owner.source,
+                owner.arena.bump(),
+            )
+        })
     }
 
     /// Extract all XML/HTML tags from the document
-    pub fn extract_xml_tags(&self) -> Vec<XmlTag<'static>> {
-        crate::extract::extract_xml_tags(&self.root_elements, &self.source, self.arena_ref())
+    pub fn extract_xml_tags<'a>(&'a self) -> Vec<XmlTag<'a>> {
+        self.cell.with_dependent(|owner, dep| {
+            crate::extract::extract_xml_tags(&dep.root_elements, &owner.source, owner.arena.bump())
+        })
     }
 }
 
