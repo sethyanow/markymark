@@ -37,11 +37,13 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> Result<f32, KernelError> {
         return Err(KernelError::InvalidInput);
     }
 
+    let dims = u32::try_from(a.len()).map_err(|_| KernelError::InvalidInput)?;
+
     // SAFETY: a and b are valid slices with matching lengths.
     // zig_cosine_similarity returns -2.0 on null pointer (cannot happen here)
     // or on dims==0 (checked above).
     // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
-    let result = unsafe { zig_cosine_similarity(a.as_ptr(), b.as_ptr(), a.len() as u32) };
+    let result = unsafe { zig_cosine_similarity(a.as_ptr(), b.as_ptr(), dims) };
 
     // The Zig function returns -2.0 as a sentinel for invalid input.
     if result == -2.0 {
@@ -64,17 +66,14 @@ pub fn jaccard_similarity(set1: &[u32], set2: &[u32]) -> Result<f32, KernelError
         return Ok(0.0);
     }
 
+    let set1_len = u32::try_from(set1.len()).map_err(|_| KernelError::InvalidInput)?;
+    let set2_len = u32::try_from(set2.len()).map_err(|_| KernelError::InvalidInput)?;
+
     // SAFETY: set1 and set2 are valid slices. zig_jaccard_similarity returns
     // -1.0 on null pointer (cannot happen with valid slice pointers).
     // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
-    let result = unsafe {
-        zig_jaccard_similarity(
-            set1.as_ptr(),
-            set1.len() as u32,
-            set2.as_ptr(),
-            set2.len() as u32,
-        )
-    };
+    let result =
+        unsafe { zig_jaccard_similarity(set1.as_ptr(), set1_len, set2.as_ptr(), set2_len) };
 
     // The Zig function returns -1.0 as a sentinel for null pointers.
     if result < 0.0 {

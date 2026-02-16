@@ -5,8 +5,8 @@
 
 use crate::scan::KernelError;
 
-/// Maximum number of retry attempts when the output buffer is too small.
-const MAX_RETRIES: u32 = 3;
+/// Maximum number of buffer-grow attempts (initial + retries).
+const MAX_ATTEMPTS: u32 = 4;
 
 /// Initial buffer capacity for entity hash results.
 const INITIAL_CAP: usize = 64;
@@ -44,10 +44,10 @@ pub fn extract_entity_hashes(text: &str) -> Result<Vec<u32>, KernelError> {
     let mut buf: Vec<u32> = vec![0; INITIAL_CAP];
     let text_bytes = text.as_bytes();
     let text_ptr = text_bytes.as_ptr();
-    let text_len = text_bytes.len() as u32;
+    let text_len = u32::try_from(text_bytes.len()).map_err(|_| KernelError::InvalidInput)?;
 
-    for _ in 0..=MAX_RETRIES {
-        let cap = buf.len() as u32;
+    for _ in 0..MAX_ATTEMPTS {
+        let cap = u32::try_from(buf.len()).map_err(|_| KernelError::InvalidInput)?;
         let mut written: u32 = 0;
 
         // SAFETY: text_ptr valid for text_len bytes, buf has capacity cap,
@@ -59,7 +59,9 @@ pub fn extract_entity_hashes(text: &str) -> Result<Vec<u32>, KernelError> {
 
         match rc {
             0 => {
-                buf.truncate(written as usize);
+                // Defensive: clamp written to capacity in case of FFI contract violation
+                let n = (written).min(cap) as usize;
+                buf.truncate(n);
                 return Ok(buf);
             }
             -1 => return Err(KernelError::InvalidInput),

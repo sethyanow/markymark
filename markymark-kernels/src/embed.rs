@@ -151,11 +151,11 @@ impl EmbeddingIndex {
     /// Returns an empty vector if `k` is 0 or the index is empty.
     /// Returns `Err(InvalidInput)` if `query` length does not match dimensions.
     pub fn search(&self, query: &[f32], k: u32) -> Result<Vec<SearchResult>, KernelError> {
-        if k == 0 {
-            return Ok(Vec::new());
-        }
         if query.len() != self.dims as usize {
             return Err(KernelError::InvalidInput);
+        }
+        if k == 0 {
+            return Ok(Vec::new());
         }
 
         let mut result_ids: Vec<*const u8> = vec![std::ptr::null(); k as usize];
@@ -182,7 +182,9 @@ impl EmbeddingIndex {
 
         match rc {
             0 => {
-                let results = (0..written as usize)
+                // Defensive: clamp written to k in case of FFI contract violation
+                let written = (written).min(k) as usize;
+                let results = (0..written)
                     .map(|i| {
                         // SAFETY: The Zig index returned valid pointers into its
                         // own storage. We copy them into owned Strings immediately.
@@ -328,6 +330,13 @@ mod tests {
         let idx = EmbeddingIndex::new(4).unwrap();
         let results = idx.search(&[1.0, 0.0, 0.0, 0.0], 0).unwrap();
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_embedding_index_search_k_zero_wrong_dims() {
+        // k==0 with wrong dims should still return InvalidInput (dims checked first)
+        let idx = EmbeddingIndex::new(4).unwrap();
+        assert_eq!(idx.search(&[1.0, 0.0], 0), Err(KernelError::InvalidInput));
     }
 
     #[test]

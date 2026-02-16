@@ -1,15 +1,17 @@
 {
-  "lastUpdated": "2026-02-16T13:36:00Z",
+  "lastUpdated": "2026-02-16T16:40:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Fixed all 3 PR #18 review comments: doc/behavior mismatches (marky-4cu), asm_*→zig_* rename (marky-0rf), entity hash edge cases (marky-qnw). All Zig tests (228+) and Rust workspace tests pass. Pushed to remote.",
+    "summary": "Triaged 23 new PR #18 review comments (9 semgrep, 9 Copilot, 5 CodeRabbit). 8 already fixed, 9 expected semgrep, 1 false positive, 4 actionable. Applied defensive FFI hardening: u32::try_from for slice length casts, written clamping from FFI, validation order fix in embed search, renamed MAX_RETRIES to MAX_ATTEMPTS. Added content_hash Rust wrapper for marky_content_hash Zig export. 61 tests pass, clippy clean.",
     "completedTasks": [
-      "marky-4cu: Fixed 5 doc/behavior mismatches across entities, similarity, and embeddings modules",
-      "marky-0rf: Renamed 3 asm_* exports to zig_* in c_adapter.zig (+ all test references)",
-      "marky-qnw: Fixed capacity==0 and text_len==0 edge cases, added 2 regression tests"
+      "Triaged 23 new PR #18 review comments into actionable/skip categories",
+      "similarity.rs: u32::try_from() for cosine and jaccard slice lengths",
+      "hash.rs: MAX_RETRIES→MAX_ATTEMPTS, written<=cap clamp, u32::try_from for text_len",
+      "embed.rs: dims validation before k==0, written clamped to k",
+      "tokens.rs: Added content_hash() wrapper with 4 FNV-1a test vectors"
     ],
     "blockers": [
-      "Scope guard RED: branch at ~8327 lines / 41 commits / 39+ new files",
+      "Scope guard RED: branch at ~8380 lines / 42 commits / 39+ new files",
       "PR #18 CI checks need to pass before merge"
     ],
     "nextSteps": [
@@ -19,20 +21,20 @@
     ]
   },
   "recentChanges": [
-    "ed84d6a: fix(brza): address PR #18 review comments",
-    "0262dd7: chore(kernels): add nosemgrep suppressions for FFI unsafe blocks",
-    "1c58e3b: Merge remote-tracking branch origin/main into feature/mark-brza"
+    "fix(kernels): defensive FFI hardening for PR #18 round 2 comments",
+    "8bf7a6b: chore(harness): checkpoint after PR #18 review fixes completion",
+    "ed84d6a: fix(brza): address PR #18 review comments"
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch large (~8327 lines, 39+ files, 41 commits)",
+    "Scope guard RED: branch large (~8380 lines, 39+ files, 42 commits)",
     "c_adapter.zig at 803 lines — new exports use exports_*.zig pattern to stay under limit",
     "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T13:36:00Z",
-    "lastTypeCheck": "2026-02-16T13:36:00Z"
+    "lastSuccessfulBuild": "2026-02-16T16:40:00Z",
+    "lastTypeCheck": "2026-02-16T16:40:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
