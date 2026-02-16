@@ -1,31 +1,30 @@
 {
-  "lastUpdated": "2026-02-16T18:52:59Z",
+  "lastUpdated": "2026-02-16T19:23:11Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Checkpoint session for marky-5yt: enforced API lifetime boundaries for Ast/DocumentIndex so public access no longer leaks outward 'static references; added compile-fail regression doctests; fixed downstream LSP symbol lifetime usage.",
+    "summary": "Learners-only checkpoint for marky-5yt: executed and closed marky-5yt.1 by migrating Ast internals to self_cell owner/dependent storage, added regression test for removal of Vec<Element<'static>>, and verified parser/workspace compile paths.",
     "completedTasks": [
-      "Added compile_fail doctest on Ast::root_elements showing leaked &'static heading text must not compile",
-      "Added compile_fail doctest on DocumentIndex::headings showing leaked &'static index text must not compile",
-      "Changed Ast public accessors/extractors to return lifetimes tied to &self",
-      "Changed DocumentIndex public accessor methods to return lifetimes tied to &self",
-      "Updated DocumentIndex::from_ast internals to preserve ownership-transfer behavior with documented safety boundaries",
-      "Updated SymbolAtPosition to lifetime-parameterized form and fixed state_tests borrow pattern",
-      "Validated with cargo test -p markymark-parser, cargo test -p markymark-index, cargo test -p markymark-lsp, and cargo check"
+      "Created and started child task marky-5yt.1 for Ast self_cell migration",
+      "Created follow-on child task marky-5yt.2 for DocumentIndex migration",
+      "Replaced Ast root storage with self_cell owner/dependent model in markymark-parser/src/ast.rs",
+      "Added markymark-parser/tests/ast_self_cell.rs regression test (RED -> GREEN)",
+      "Added self_cell dependency to markymark-parser/Cargo.toml",
+      "Validated with cargo test -p markymark-parser and cargo check"
     ],
     "blockers": [
-      "Full internal self_cell/ouroboros migration is still pending; this checkpoint hardens public API boundaries first"
+      "DocumentIndex still stores internal &'static-backed fields and uses ptr::read + mem::forget transfer; marky-5yt.2 remains open"
     ],
     "nextSteps": [
-      "Decide whether to continue marky-5yt with full self_cell/ouroboros internal migration now",
-      "If continuing, prototype Ast owner+dependent cell model first, then migrate DocumentIndex",
-      "Re-run Miri-oriented arena safety tests after full migration"
+      "Execute marky-5yt.2 to migrate DocumentIndex internals away from &'static field storage",
+      "Add regression tests first for DocumentIndex storage and ownership transfer behavior",
+      "Run markymark-index + markymark-lsp tests and Miri checks after migration"
     ]
   },
   "recentChanges": [
-    "Public lifetime hardening across parser/index APIs for marky-5yt",
-    "New compile-fail doctests lock non-leakage behavior in parser/index",
-    "LSP state symbol typing switched to borrowed-lifetime enum variant payloads",
-    "Workspace check and package tests passing after lifetime changes"
+    "Ast now uses self_cell-backed owner/dependent internal storage",
+    "Regression test enforces removal of Vec<Element<'static>> in Ast internals",
+    "marky-5yt split into executable children (marky-5yt.1 complete, marky-5yt.2 open)",
+    "Parser tests and workspace cargo check pass after Ast migration"
   ],
   "knownIssues": [
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
@@ -37,8 +36,8 @@
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T18:52:59Z",
-    "lastTypeCheck": "2026-02-16T18:52:59Z"
+    "lastSuccessfulBuild": "2026-02-16T19:23:11Z",
+    "lastTypeCheck": "2026-02-16T19:23:11Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4

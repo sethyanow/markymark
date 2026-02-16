@@ -106,6 +106,26 @@
         "prevents forced 'static clones after parser/index lifetime-bound API hardening",
         "used by goto_definition/references/hover/rename flows"
       ]
+    },
+    {
+      "name": "AstCell",
+      "type": "self-referential-owner-dependent",
+      "location": "markymark-parser/src/ast.rs",
+      "relationships": [
+        "owner stores source text and DocumentArena",
+        "dependent stores root elements borrowing from owner arena",
+        "replaces previous internal Vec<Element<'static>> storage model"
+      ]
+    },
+    {
+      "name": "marky-5yt.1",
+      "type": "task",
+      "location": "beads:marky-5yt.1",
+      "relationships": [
+        "child task of marky-5yt",
+        "completes Ast-side self_cell migration",
+        "gates follow-on DocumentIndex migration in marky-5yt.2"
+      ]
     }
   ]
 }

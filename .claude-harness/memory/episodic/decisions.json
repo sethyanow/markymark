@@ -650,7 +650,43 @@
         "Reintroduce outward 'static APIs in index layer"
       ],
       "impact": "markymark-lsp/src/state.rs and markymark-lsp/tests/state_tests.rs"
+    },
+    {
+      "id": "dec-050",
+      "timestamp": "2026-02-16T19:23:11Z",
+      "feature": "marky-5yt",
+      "decision": "Split marky-5yt into child execution tasks marky-5yt.1 and marky-5yt.2",
+      "rationale": "The parent task spans two high-risk self-referential migrations; splitting enables one-task-at-a-time execution with clear checkpoints and verification boundaries.",
+      "alternatives": [
+        "Execute full Ast + DocumentIndex migration in one pass",
+        "Continue parent task without explicit child task tracking"
+      ],
+      "impact": "beads task structure for marky-5yt, execution flow and checkpointing"
+    },
+    {
+      "id": "dec-051",
+      "timestamp": "2026-02-16T19:23:11Z",
+      "feature": "marky-5yt.1",
+      "decision": "Use self_cell owner/dependent storage for Ast internals on stable Rust",
+      "rationale": "self_cell provides safe self-referential owner/dependent modeling without nightly features and removes internal Vec<Element<'static>> storage from Ast.",
+      "alternatives": [
+        "Use ouroboros for Ast first migration",
+        "Keep existing static-marked storage and rely on docs"
+      ],
+      "impact": "markymark-parser/src/ast.rs, markymark-parser/Cargo.toml, Cargo.lock"
+    },
+    {
+      "id": "dec-052",
+      "timestamp": "2026-02-16T19:23:11Z",
+      "feature": "marky-5yt.1",
+      "decision": "Add storage-level regression test enforcing Ast no longer contains Vec<Element<'static>>",
+      "rationale": "A focused test guards against accidental reintroduction of static-marked root storage during follow-on migration work.",
+      "alternatives": [
+        "Rely only on code review to prevent regressions",
+        "Delay regression test until DocumentIndex migration completes"
+      ],
+      "impact": "markymark-parser/tests/ast_self_cell.rs"
     }
   ],
-  "lastUpdated": "2026-02-16T18:52:59Z"
+  "lastUpdated": "2026-02-16T19:23:11Z"
 }
