@@ -1,42 +1,38 @@
 {
-  "lastUpdated": "2026-02-16T09:30:00Z",
+  "lastUpdated": "2026-02-16T09:51:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Addressed all 8 PR #16 review comments (marky-b1q) with TDD. Fixed critical json5 escape sequence bug, major jsonl indented line offset bug, and 5 minor items including DRY extraction of byte_to_position across 6 parsers. Updated README for v0.2 multi-format support. Discussed v0.2.0 release plan.",
+    "summary": "Addressed final PR #16 review nitpicks (round 2 + 3), merged PR #16, and released v0.2.0. Version bumped from 0.1.0-alpha.2 to 0.2.0 across workspace, subcrates, and plugin.json. Tagged and pushed v0.2.0 to trigger release CI.",
     "completedTasks": [
-      "marky-b1q: All 8 PR review items fixed — 1 critical, 2 major, 5 minor",
-      "CRITICAL: json5 escape sequence decoding (\\n, \\t, \\\\, \\uXXXX) in read_quoted_string",
-      "MAJOR: jsonl leading whitespace offset for indented lines",
-      "MAJOR: duplicate suc-017 ID fix",
-      "MINOR: DRY byte_to_position extraction to structured/mod.rs (6 copies removed)",
-      "MINOR: dead code removal, doc fix, flat.rs quoted value ranges, JSONC test update",
-      "README updated for v0.2 multi-format support"
+      "PR #16 review round 2: MSRV rust-version=1.80, YAML flow mapping test, README code fence lang ids",
+      "PR #16 review round 3: remaining README code blocks lang identifiers",
+      "Merged PR #16 (multi-format structured document support)",
+      "Version bump 0.1.0-alpha.2 → 0.2.0 (7 files: workspace + 5 subcrates + plugin.json)",
+      "PR #17 created, merged (no squash), tagged v0.2.0, pushed tag"
     ],
     "blockers": [],
     "nextSteps": [
-      "Merge PR #16 (all CI green, MERGEABLE)",
-      "Version bump to 0.2.0 (Cargo.toml + plugin.json + subcrate deps)",
-      "Tag v0.2.0 and push to trigger release CI",
-      "scope-guard: branch at 5882 lines (RED zone)"
+      "Monitor v0.2.0 release CI (5-platform build)",
+      "Verify GitHub Release assets published",
+      "Continue with ready beads work (marky-luy arena conformance, marky-8s3 BRZA)"
     ]
   },
   "recentChanges": [
-    "Fixed json5 escape sequence handling — keys with \\n/\\t/\\uXXXX now match serde map",
-    "Fixed jsonl position offsets for indented lines",
-    "Extracted shared byte_to_position utility, removing 6 identical copies",
-    "README updated: multi-format overview, structured data table, updated LSP examples",
-    "All 6 new regression tests passing, full workspace green"
+    "v0.2.0 released — multi-format structured document support",
+    "Added rust-version = 1.80 MSRV to workspace Cargo.toml",
+    "Added YAML flow mapping nested key extraction test",
+    "All README code blocks now have bash language identifiers"
   ],
   "knownIssues": [
     "marky-lkj.1: runtime_engine.rs test refactoring deferred (P4)",
     "marky-5yt: 'static lifetime leak deferred to self_cell migration",
     "feature-001 (arena allocation) still in_progress on separate branch",
-    "scope-guard: branch at 5882 lines (RED zone)"
+    "scope-guard: feature/mark-next branch at ~5965 lines (RED zone)"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T09:28:00Z",
-    "lastTypeCheck": "2026-02-16T09:28:00Z"
+    "lastSuccessfulBuild": "2026-02-16T09:51:00Z",
+    "lastTypeCheck": "2026-02-16T09:51:00Z"
   },
   "lastCompaction": "2026-02-16T07:11:59.000Z",
   "compactionCount": 5
