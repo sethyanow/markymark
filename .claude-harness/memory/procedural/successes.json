@@ -2,6 +2,19 @@
   "version": 3,
   "entries": [
     {
+      "id": "suc-021",
+      "timestamp": "2026-02-16T09:42:00Z",
+      "feature": "marky-ayb",
+      "type": "bugfix",
+      "approach": "Added .pic = true to Zig build.zig root module to fix rust-lld R_X86_64_32 relocation errors on Linux x86_64 CI. macOS/ARM didn't surface this because it uses different relocation rules.",
+      "files": ["zig/build.zig"],
+      "patterns": [
+        "Zig static libraries linked into Rust need pic=true for Linux x86_64",
+        "macOS/ARM masks PIC issues — always test Linux CI for FFI crates",
+        "PIC option goes on the Module (createModule), not the library artifact"
+      ]
+    },
+    {
       "id": "suc-001",
       "timestamp": "2026-02-13T21:15:00Z",
       "feature": "marky-1vb",
@@ -232,6 +245,22 @@
         "FNV-1a known test vectors: empty=0xcbf29ce484222325, 'a'=0xaf63dc4c8601ec8c, 'foobar'=0x85944171f73967e8",
         "Token estimation: (word_count * 13 + 5) / 10 for rounding-aware 1.3x multiplier",
         "Simple utility kernels (no buffer/written pattern) just return u32/u64 directly via export fn"
+      ]
+    },
+    {
+      "id": "suc-022",
+      "timestamp": "2026-02-16T09:57:00Z",
+      "feature": "marky-h1t",
+      "type": "implementation",
+      "approach": "Rust FFI wrappers for all 6 Zig SIMD kernels: 4 scan functions with buffer retry, 2 simple value functions. Generic call_scan_ffi<T> helper eliminates per-function boilerplate. repr(C) mirror structs match Zig extern struct layouts. safe_slice() validates UTF-8 boundaries for byte offsets from C.",
+      "files": ["markymark-kernels/src/scan.rs", "markymark-kernels/src/tokens.rs", "markymark-kernels/src/hash.rs"],
+      "patterns": [
+        "Generic FFI call helper with buffer retry eliminates per-function boilerplate for scan wrappers",
+        "repr(C) mirror structs (CHeadingScan etc) at FFI boundary, idiomatic Rust types (String, enum) in public API",
+        "safe_slice() rounds byte offsets to UTF-8 char boundaries — handles Zig returning raw byte positions",
+        "Simple value FFI functions (tokens, hash) need no buffer — just unsafe call with pointer+len",
+        "Buffer retry: start at 64, double on -2, max 3 retries — covers 512 results before giving up",
+        "Test buffer retry with 100-heading document (exceeds INITIAL_CAP of 64)"
       ]
     },
     {

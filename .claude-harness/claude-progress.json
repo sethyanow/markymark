@@ -1,46 +1,41 @@
 {
-  "lastUpdated": "2026-02-16T09:30:00Z",
+  "lastUpdated": "2026-02-16T09:57:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Addressed PR #15 CI failure and 8 review comments. Added Zig 0.15.2 to GitHub Actions via mlugg/setup-zig@v2. Fixed u32 overflow in token_estimate BPE multiplier (u64 intermediate + clamp). Fixed SIMD loop bound overflow. Fixed version gate in smoke_test.zig to accept Zig 1.0.0+. Removed unused import, fixed invalid timestamp, added code block language identifiers.",
+    "summary": "Implemented Rust FFI wrappers for all 6 Zig SIMD kernel functions (marky-h1t). scan.rs: 4 scan wrappers with generic call_scan_ffi<T> helper, exponential buffer retry, repr(C) mirror structs, safe_slice UTF-8 boundary handling. tokens.rs: estimate_tokens wrapper. hash.rs: content_hash wrapper with FNV test vectors. 30 tests pass, clippy clean, all pre-commit hooks pass.",
     "completedTasks": [
-      "Added Zig to CI workflow (.github/workflows/ci.yml) — fixes build failure",
-      "Fixed u32 overflow in token_estimate.zig (both SIMD and scalar paths)",
-      "Fixed SIMD loop bound overflow (pre-compute simd_end)",
-      "Fixed smoke_test.zig version gate to accept future major versions",
-      "Added check_zig_version(\"2.0.0\") test in build.rs",
-      "Fixed invalid timestamp in successes.json (25:10 -> 01:10)",
-      "Added language identifiers to 3 fenced code blocks in brza-markymark.md",
-      "Removed unused std import from fixtures.zig"
+      "marky-h1t: Rust FFI wrappers for extraction kernels — scan_headings, scan_links, scan_tags, scan_block_ids, estimate_tokens, content_hash",
+      "Generic call_scan_ffi<T> with exponential buffer retry (64 -> 128 -> 256 -> 512)",
+      "KernelError enum mapping FFI return codes (-1 InvalidInput, -2 BufferTooSmall)",
+      "safe_slice() UTF-8 char boundary validation for Zig byte offsets",
+      "30 integration tests covering basic, empty, many-results, offset validation"
     ],
     "blockers": [
-      "Scope guard RED: branch at ~4162 lines / 29 files — consider splitting or deferring"
+      "Scope guard RED: branch at ~10700 lines / 29 files"
     ],
     "nextSteps": [
-      "marky-h1t: Write Rust FFI wrappers for extraction kernels (now unblocked)",
-      "marky-8s3.2: Implement single-pass multi-pattern scanner (now unblocked)",
-      "marky-ayb: Remaining CI work (separate zig-kernels job, platform matrix)",
-      "marky-8s3.1: Implement code fence exclusion map"
+      "marky-ncz: Port embedding index kernels from forge BRZA",
+      "marky-bgl: Port similarity and entity hash kernels from forge BRZA",
+      "marky-0u5: Write Rust FFI wrappers for shared kernels (blocked on ncz+bgl)",
+      "marky-8s3.1: Implement code fence exclusion map",
+      "marky-ayb: CI integration improvements"
     ]
   },
   "recentChanges": [
-    ".github/workflows/ci.yml: added Zig 0.15.2 install step + cache",
-    "zig/src/kernels/token_estimate.zig: u64 overflow fix + simd_end loop bound",
-    "zig/test/smoke_test.zig: version gate accepts major > 0",
-    "markymark-kernels/build.rs: added 2.0.0 test coverage",
-    "zig/src/fixtures.zig: removed unused std import",
-    "docs/plans/brza-markymark.md: added code block language identifiers"
+    "markymark-kernels/src/scan.rs: 4 FFI scan wrappers with buffer retry + Rust types",
+    "markymark-kernels/src/tokens.rs: estimate_tokens FFI wrapper",
+    "markymark-kernels/src/hash.rs: content_hash FFI wrapper with FNV test vectors"
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch at ~4162 lines / 29 files, consider splitting",
-    "All scan kernels: known false positives inside code blocks (by design, fence_map kernel is separate task)",
+    "Scope guard RED: branch growing, consider splitting or deferring",
+    "All scan kernels: known false positives inside code blocks (fence_map kernel is separate task)",
     "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T09:30:00Z",
-    "lastTypeCheck": "2026-02-16T09:30:00Z"
+    "lastSuccessfulBuild": "2026-02-16T09:57:00Z",
+    "lastTypeCheck": "2026-02-16T09:57:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
