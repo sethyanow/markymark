@@ -126,6 +126,36 @@
         "completes Ast-side self_cell migration",
         "gates follow-on DocumentIndex migration in marky-5yt.2"
       ]
+    },
+    {
+      "name": "IncrementalByteBounds",
+      "type": "lsp-helper-struct",
+      "location": "markymark-lsp/src/state.rs",
+      "relationships": [
+        "encapsulates start/end byte offsets and clamp flags for incremental edits",
+        "used by ServerState::apply_document_changes to normalize edit ranges",
+        "covered by state.rs unit test for out-of-range positions"
+      ]
+    },
+    {
+      "name": "marky-3l6",
+      "type": "task",
+      "location": "beads:marky-3l6",
+      "relationships": [
+        "closed after implementing PR #21 non-security follow-ups",
+        "delivered CRLF incremental regression test and clamp observability",
+        "updated PR #21 with implementation response summary"
+      ]
+    },
+    {
+      "name": "marky-m8b",
+      "type": "task",
+      "location": "beads:marky-m8b",
+      "relationships": [
+        "tracks state.rs refactor into submodules to satisfy 500-line rule",
+        "follows marky-3l6 completion as structural cleanup work",
+        "targets markymark-lsp/src/state/mod.rs and focused submodules"
+      ]
     }
   ]
 }

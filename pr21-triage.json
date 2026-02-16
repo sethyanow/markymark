@@ -1,0 +1,97 @@
+{
+  "pr_number": 21,
+  "branch": "feature/mark-next",
+  "summary": {
+    "total_comments": 33,
+    "pr_level_comments": 3,
+    "review_comments": 30,
+    "security_findings": 20,
+    "bot_comments": 22,
+    "human_comments": 1
+  },
+  "critical_items": [
+    {
+      "priority": "P1",
+      "category": "Security",
+      "file": "markymark-index/src/document.rs",
+      "finding": "20 Semgrep unsafe usage detections",
+      "description": "GitHub Advanced Security flagged 20 unsafe blocks in document.rs. These are part of the marky-5yt self_cell migration.",
+      "action": "AUDIT: Review all unsafe blocks have proper SAFETY comments and are necessary for arena lifetime semantics",
+      "status": "NEEDS_REVIEW",
+      "notes": "These unsafe blocks were added as part of lifetime boundary hardening. Each should have detailed SAFETY documentation."
+    }
+  ],
+  "files_with_comments": [
+    {
+      "file": "markymark-index/src/document.rs",
+      "comment_count": 20,
+      "issue_type": "Security - unsafe usage",
+      "source": "github-advanced-security[bot]"
+    },
+    {
+      "file": "markymark-lsp/src/state.rs",
+      "comment_count": 2,
+      "issue_type": "TBD",
+      "source": "TBD"
+    },
+    {
+      "file": "markymark-lsp/tests/state_tests.rs",
+      "comment_count": 1,
+      "issue_type": "TBD",
+      "source": "TBD"
+    },
+    {
+      "file": "markymark-parser/benches/incremental.rs",
+      "comment_count": 1,
+      "issue_type": "TBD",
+      "source": "TBD"
+    },
+    {
+      "file": "markymark-parser/src/ast.rs",
+      "comment_count": 4,
+      "issue_type": "TBD",
+      "source": "TBD"
+    },
+    {
+      "file": "markymark-parser/src/lib.rs",
+      "comment_count": 1,
+      "issue_type": "TBD",
+      "source": "TBD"
+    },
+    {
+      "file": "markymark-parser/tests/tree_sitter_integration.rs",
+      "comment_count": 1,
+      "issue_type": "TBD",
+      "source": "TBD"
+    }
+  ],
+  "pr_level_comments": [
+    {
+      "user": "sethyanow",
+      "type": "checkpoint",
+      "summary": "Lifetime boundary hardening for marky-5yt pushed in commit 9a46a78 with compile-fail tests. All tests green."
+    },
+    {
+      "user": "coderabbitai[bot]",
+      "type": "review_summary",
+      "summary": "Automated review in progress - lifetime hardening across parser, index, and LSP layers with incremental parsing infrastructure"
+    }
+  ],
+  "recommendations": [
+    {
+      "priority": "P1",
+      "action": "Review unsafe blocks",
+      "details": "Use LSP to examine each unsafe block in document.rs, verify SAFETY comments are comprehensive, consider if any can be eliminated"
+    },
+    {
+      "priority": "P2",
+      "action": "Parse other file comments",
+      "details": "The 10 comments on parser/LSP files need detailed review - may contain important implementation feedback"
+    },
+    {
+      "priority": "P3",
+      "action": "Review CodeRabbit summary",
+      "details": "CodeRabbit provided comprehensive walkthrough - review for additional insights"
+    }
+  ]
+}
