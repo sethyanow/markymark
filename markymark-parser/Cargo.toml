@@ -14,6 +14,7 @@ markymark-core = { version = "=0.1.0-alpha.2", path = "../markymark-core" }
 tree-sitter = { workspace = true }
 tree-sitter-md = { workspace = true }
 tree-sitter-json = { workspace = true }
+tree-sitter-yaml = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
