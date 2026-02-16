@@ -87,6 +87,8 @@ impl CoreEngine for MockEngine {
                 xml_tag_count: 3,
                 wiki_link_count: 8,
                 markdown_link_count: 4,
+                structured_doc_count: 0,
+                key_path_count: 0,
             },
             (_, CoreOperation::DependencyGraph { realm, format }) => {
                 CoreOperationResult::DependencyGraph {
@@ -101,6 +103,7 @@ impl CoreEngine for MockEngine {
             }
             (_, CoreOperation::ExportIndex { uri }) => CoreOperationResult::DocumentExport {
                 uri: uri.clone(),
+                document_kind: None,
                 headings: vec![(
                     "Introduction".to_string(),
                     1,

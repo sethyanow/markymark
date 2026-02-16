@@ -2,27 +2,27 @@
   "entries": [
     {
       "timestamp": "2026-02-13T17:55:43Z",
-      "command": "bash examples/claude-code-plugin/tests/test_suggest_lsp.sh",
+      "command": "bash /Volumes/code/markymark/examples/claude-code-plugin/tests/test_suggest_lsp.sh",
       "error": "Exit code 1\n=== suggest-lsp.sh tests ===\nTest 1: .md file triggers suggestion\n  PASS: permissionDecision is allow",
-      "summary": "Failed: bash examples/claude-code-plugin/tests/test_suggest_lsp."
+      "summary": "Failed: bash /Volumes/code/markymark/examples/claude-code-plugin/tests/test_suggest_lsp."
     },
     {
       "timestamp": "2026-02-13T18:18:00Z",
-      "command": "bash markymark-plugin/tests/test_select_binary.sh",
+      "command": "bash /Volumes/code/markymark/markymark-plugin/tests/test_select_binary.sh",
       "error": "Exit code 1\n=== markymark-plugin tests ===\n\n\u001b[0;32mPASS\u001b[0m: select-binary.sh exists and is executable\n\u001b[0;32mPASS\u001b[0m: plugin directory structure is complete\n\u001b[0;32mPASS\u001b[0m: plugin.json is valid JSON",
-      "summary": "Failed: bash markymark-plugin/tests/test_select_binary.sh"
+      "summary": "Failed: bash /Volumes/code/markymark/markymark-plugin/tests/test_select_binary.sh"
     },
     {
       "timestamp": "2026-02-13T18:18:03Z",
-      "command": "bash markymark-plugin/tests/test_select_binary.sh 2>&1",
+      "command": "bash /Volumes/code/markymark/markymark-plugin/tests/test_select_binary.sh 2>&1",
       "error": "Exit code 1\n=== markymark-plugin tests ===\n\n\u001b[0;32mPASS\u001b[0m: select-binary.sh exists and is executable\n\u001b[0;32mPASS\u001b[0m: plugin directory structure is complete\n\u001b[0;32mPASS\u001b[0m: plugin.json is valid JSON",
-      "summary": "Failed: bash markymark-plugin/tests/test_select_binary.sh 2>&1"
+      "summary": "Failed: bash /Volumes/code/markymark/markymark-plugin/tests/test_select_binary.sh 2>&1"
     },
     {
       "timestamp": "2026-02-13T21:59:58Z",
-      "command": "bash markymark-plugin/tests/test_select_binary.sh 2>&1",
+      "command": "bash /Volumes/code/markymark/markymark-plugin/tests/test_select_binary.sh 2>&1",
       "error": "Exit code 1\n=== markymark-plugin tests (bundled binary model) ===\n\n\u001b[0;32mPASS\u001b[0m: select-binary.sh exists and is executable\n\u001b[0;32mPASS\u001b[0m: plugin directory structure is complete\n\u001b[0;32mPASS\u001b[0m: plugin.json is valid JSON\n\u001b[0;32mPASS\u001b[0m: .lsp.json uses ${CLAUDE_PLUGIN_ROOT} in command\n\u001b[0;32mPASS\u001b[0m: .mcp.json uses ${CLAUDE_PLUGIN_ROOT} in command\n\u001b[0;31mFAIL\u001b[0m: finds and executes bundled bin/markymark\n  Expected: BUNDLED\n  Got:      error: binary not found: /var/folders/yw/t8nf3ljj2tqb4w",
-      "summary": "Failed: bash markymark-plugin/tests/test_select_binary.sh 2>&1"
+      "summary": "Failed: bash /Volumes/code/markymark/markymark-plugin/tests/test_select_binary.sh 2>&1"
     },
     {
       "timestamp": "2026-02-14T03:05:13Z",
@@ -33,13 +33,13 @@
     {
       "timestamp": "2026-02-14T06:23:10Z",
       "command": "cargo clippy -p markymark-parser --all-targets -- -D warnings",
-      "error": "Exit code 101\n    Checking markymark-core v0.1.0-alpha.2 (markymark-core)\n    Checking markymark-parser v0.1.0-alpha.2 (markymark-parser)\nerror: called `iter().copied().collect()` on a slice to create a `Vec`. Calling `to_vec()` is both faster and more readable\n   --> markymark-parser/src/types.rs:634:54\n    |\n634 |             FrontmatterValue::List(list) => Some(list.iter().copied().",
+      "error": "Exit code 101\n    Checking markymark-core v0.1.0-alpha.2 (/Volumes/code/markymark/.worktrees/feature-mark-bumpalo/markymark-core)\n    Checking markymark-parser v0.1.0-alpha.2 (/Volumes/code/markymark/.worktrees/feature-mark-bumpalo/markymark-parser)\nerror: called `iter().copied().collect()` on a slice to create a `Vec`. Calling `to_vec()` is both faster and more readable\n   --> markymark-parser/src/types.rs:634:54\n    |\n634 |             FrontmatterValue::List(list) => Some(list.iter().copied().",
       "summary": "Failed: cargo clippy -p markymark-parser --all-targets -- -D warnings"
     },
     {
       "timestamp": "2026-02-14T06:29:03Z",
       "command": "cargo clippy --workspace --all-targets -- -D warnings",
-      "error": "Exit code 101\n    Checking markymark-lsp v0.1.0-alpha.2 (markymark-lsp)\n    Checking markymark-mcp v0.1.0-alpha.2 (markymark-mcp)\n    Checking markymark-index v0.1.0-alpha.2 (markymark-index)\nerror: this expression creates a reference which is immediately dereferenced by the compiler\n   --> markymark-lsp/src/server.rs:352:53\n    |",
+      "error": "Exit code 101\n    Checking markymark-lsp v0.1.0-alpha.2 (/Volumes/code/markymark/.worktrees/feature-mark-bumpalo/markymark-lsp)\n    Checking markymark-mcp v0.1.0-alpha.2 (/Volumes/code/markymark/.worktrees/feature-mark-bumpalo/markymark-mcp)\n    Checking markymark-index v0.1.0-alpha.2 (/Volumes/code/markymark/.worktrees/feature-mark-bumpalo/markymark-index)\nerror: this expression creates a reference which is immediately dereferenced by the compiler\n   --> markymark-lsp/src/server.rs:352:53\n    |",
       "summary": "Failed: cargo clippy --workspace --all-targets -- -D warnings"
     }
   ]

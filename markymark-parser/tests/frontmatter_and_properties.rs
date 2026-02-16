@@ -146,3 +146,38 @@ fn extract_logseq_query_blocks() {
     assert_eq!(queries.len(), 1);
     assert_eq!(queries[0].query_text(), "(and [[project]] (task DOING))");
 }
+
+#[test]
+fn list_item_text_includes_nested_content() {
+    // ListItem.text() returns the full span of the list_item node,
+    // including any nested child list content. Property parsing skips
+    // lines without "::", so child markers don't corrupt the map.
+    let mut parser = Parser::new().unwrap();
+    let markdown = "- Parent item\n  status:: done\n  - Child item\n";
+
+    let ast = parser.parse(markdown).unwrap();
+    let list_items = ast.extract_list_items();
+
+    assert_eq!(list_items.len(), 1);
+    let parent = list_items[0];
+
+    // text() includes the full span (parent + children)
+    let text = parent.text();
+    assert!(
+        text.contains("Parent item"),
+        "text should contain parent content"
+    );
+    assert!(
+        text.contains("Child item"),
+        "text should include nested child content"
+    );
+
+    // Properties should still parse correctly despite nested content
+    let props = parent.properties();
+    assert_eq!(*props.get("status").unwrap(), "done");
+
+    // Child list should be present
+    let children = parent.children().expect("should have children");
+    assert_eq!(children.len(), 1);
+    assert!(children[0].text().contains("Child item"));
+}
