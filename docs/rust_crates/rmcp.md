@@ -218,7 +218,7 @@ impl ServerHandler for MarkymarkMcp {
 rmcp = { version = "0.15", features = ["server", "transport-io"] }
 
 # Client connecting to child process
-rmcp = { version = "0.13", features = ["client", "transport-child-process"] }
+rmcp = { version = "0.15", features = ["client", "transport-child-process"] }
 ```
 
 The `server` feature is required for `ServerHandler`, `#[tool]`, etc. Transport features are required for the specific transport you're using.
