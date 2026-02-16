@@ -10,6 +10,9 @@ use std::collections::HashMap as StdHashMap;
 use std::fmt;
 use std::sync::Mutex;
 
+#[cfg(feature = "zig-kernels")]
+use markymark_core::scanner::{ScanBackend, ScanLinkType};
+
 /// A heading entry in the document index.
 #[derive(Debug, Clone)]
 pub struct HeadingEntry<'arena> {
@@ -331,6 +334,153 @@ impl DocumentIndex {
         }
     }
 
+    /// Build a document index from raw text using a scan backend.
+    ///
+    /// Unlike [`from_ast`](Self::from_ast), this does not parse a full AST.
+    /// The scan backend extracts headings, links, tags, and block IDs directly.
+    /// XML tags are not extracted (the scan backend does not support them).
+    #[cfg(feature = "zig-kernels")]
+    pub fn from_scan(text: &str, backend: &dyn ScanBackend) -> Self {
+        let doc_arena = DocumentArena::new();
+        // SAFETY: We own the arena and move it into the struct at the end.
+        // The 'static marker is the same self-referential pattern as from_ast.
+        let arena_ref: &'static Bump = unsafe { &*(doc_arena.bump() as *const Bump) };
+
+        // Pre-compute line starts for byte-offset -> Position conversion
+        let line_starts = byte_offset_line_starts(text);
+
+        // --- Headings ---
+        let mut headings_builder: BumpVec<'static, HeadingEntry<'static>> =
+            BumpVec::new_in(arena_ref);
+        let mut slug_to_heading = HashMap::new();
+        let mut slug_counts: StdHashMap<String, usize> = StdHashMap::new();
+
+        if let Ok(scan_headings) = backend.scan_headings(text) {
+            for h in scan_headings {
+                let base_slug = slugify(&h.text);
+                let slug_owned = dedup_slug(&base_slug, &mut slug_counts);
+                let heading_text = arena_alloc_str(arena_ref, &h.text);
+                let slug = arena_alloc_str(arena_ref, &slug_owned);
+                let pos = byte_offset_to_position(&line_starts, h.offset);
+                let end_pos = byte_offset_to_position(
+                    &line_starts,
+                    h.offset + h.text.len() as u32 + h.level as u32 + 1, // # + space
+                );
+                let idx = headings_builder.len();
+
+                slug_to_heading.insert(slug, idx);
+                headings_builder.push(HeadingEntry {
+                    text: heading_text,
+                    slug,
+                    level: h.level,
+                    range: Range::new(pos, end_pos),
+                });
+            }
+        }
+        let headings = headings_builder.into_bump_slice();
+
+        // --- Links (split into markdown and wiki) ---
+        let mut wiki_links_builder: BumpVec<'static, WikiLinkEntry<'static>> =
+            BumpVec::new_in(arena_ref);
+        let mut markdown_links_builder: BumpVec<'static, MarkdownLinkEntry<'static>> =
+            BumpVec::new_in(arena_ref);
+
+        if let Ok(scan_links) = backend.scan_links(text) {
+            for l in scan_links {
+                let pos = byte_offset_to_position(&line_starts, l.offset);
+                let end_offset = l.offset + l.text.len() as u32 + l.target.len() as u32 + 4; // []()
+                let end_pos = byte_offset_to_position(&line_starts, end_offset);
+                let range = Range::new(pos, end_pos);
+
+                match l.link_type {
+                    ScanLinkType::Wiki => {
+                        let target = arena_alloc_str(arena_ref, &l.target);
+                        // Wiki links: check for alias (target|alias format)
+                        let alias = if l.text != l.target {
+                            Some(arena_alloc_str(arena_ref, &l.text))
+                        } else {
+                            None
+                        };
+                        wiki_links_builder.push(WikiLinkEntry {
+                            target,
+                            alias,
+                            heading: None, // Scan backend doesn't parse heading fragments
+                            range,
+                        });
+                    }
+                    ScanLinkType::Markdown => {
+                        let link_text = arena_alloc_str(arena_ref, &l.text);
+                        // Split URL and anchor
+                        let (url_str, anchor) = if let Some(hash_pos) = l.target.find('#') {
+                            let url_part = &l.target[..hash_pos];
+                            let anchor_part = &l.target[hash_pos + 1..];
+                            (url_part, Some(anchor_part))
+                        } else {
+                            (l.target.as_str(), None)
+                        };
+                        let url = arena_alloc_str(arena_ref, url_str);
+                        let anchor = anchor.map(|a| arena_alloc_str(arena_ref, a));
+                        markdown_links_builder.push(MarkdownLinkEntry {
+                            text: link_text,
+                            url,
+                            anchor,
+                            range,
+                        });
+                    }
+                }
+            }
+        }
+        let wiki_links = wiki_links_builder.into_bump_slice();
+        let markdown_links = markdown_links_builder.into_bump_slice();
+
+        // --- Tags ---
+        let mut tags_builder: BumpVec<'static, TagEntry<'static>> = BumpVec::new_in(arena_ref);
+        if let Ok(scan_tags) = backend.scan_tags(text) {
+            for t in scan_tags {
+                tags_builder.push(TagEntry {
+                    name: arena_alloc_str(arena_ref, &t.name),
+                });
+            }
+        }
+        let tags = tags_builder.into_bump_slice();
+
+        // --- Block IDs ---
+        let mut blocks = HashMap::new();
+        if let Ok(scan_blocks) = backend.scan_block_ids(text) {
+            for b in scan_blocks {
+                let id = arena_alloc_str(arena_ref, &b.id);
+                let pos = byte_offset_to_position(&line_starts, b.offset);
+                blocks.insert(
+                    id,
+                    BlockEntry {
+                        id,
+                        range: Range::new(pos, pos),
+                    },
+                );
+            }
+        }
+
+        // Build TOC and outline
+        let toc = build_toc(arena_ref, headings);
+        let outline = build_outline(arena_ref, headings);
+
+        // XML tags: not supported by scan backend
+        let xml_tags: &'static [XmlTagEntry<'static>] = &[];
+
+        Self {
+            _arena: Mutex::new(doc_arena),
+            headings,
+            slug_to_heading,
+            blocks,
+            toc,
+            outline,
+            wiki_links,
+            tags,
+            markdown_links,
+            xml_tags,
+        }
+    }
+
     /// Look up a heading by its slug.
     pub fn heading_by_slug(&self, slug: &str) -> Option<&HeadingEntry<'static>> {
         self.slug_to_heading
@@ -502,6 +652,35 @@ fn build_outline<'arena>(
     }
 
     freeze_outline(arena, root)
+}
+
+// ---------------------------------------------------------------------------
+// Byte-offset to Position helpers (for scan-based construction)
+// ---------------------------------------------------------------------------
+
+/// Build a sorted list of byte offsets where each line starts.
+/// Line 0 starts at offset 0. Line N starts after the N-th newline.
+#[cfg(feature = "zig-kernels")]
+fn byte_offset_line_starts(text: &str) -> Vec<u32> {
+    let mut starts = vec![0u32];
+    for (i, b) in text.bytes().enumerate() {
+        if b == b'\n' {
+            starts.push((i + 1) as u32);
+        }
+    }
+    starts
+}
+
+/// Convert a byte offset to a Position (0-based line, 0-based character).
+#[cfg(feature = "zig-kernels")]
+fn byte_offset_to_position(line_starts: &[u32], offset: u32) -> Position {
+    // Binary search for the line containing this offset
+    let line = match line_starts.binary_search(&offset) {
+        Ok(exact) => exact,        // offset is exactly at a line start
+        Err(insert) => insert - 1, // offset is within the previous line
+    };
+    let col = offset - line_starts[line];
+    Position::new(line as u32, col)
 }
 
 #[cfg(test)]
@@ -795,5 +974,134 @@ mod arena_allocation_tests {
         // Drop the index — under Miri, leaked allocations from mem::forget
         // will be reported as errors here.
         drop(index);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Scan-based construction tests (zig-kernels only)
+// ---------------------------------------------------------------------------
+
+#[cfg(all(test, feature = "zig-kernels"))]
+mod scan_tests {
+    use super::*;
+    use markymark_core::scanner::ZigScanBackend;
+    use markymark_parser::Parser;
+
+    fn build_index_from_scan(source: &str) -> DocumentIndex {
+        let backend = ZigScanBackend;
+        DocumentIndex::from_scan(source, &backend)
+    }
+
+    fn build_index_from_ast(source: &str) -> DocumentIndex {
+        let mut parser = Parser::new().unwrap();
+        let ast = parser.parse(source).unwrap();
+        DocumentIndex::from_ast(ast)
+    }
+
+    #[test]
+    fn test_from_scan_empty_document() {
+        let index = build_index_from_scan("");
+        assert!(index.headings().is_empty());
+        assert!(index.wiki_links().is_empty());
+        assert!(index.tags().is_empty());
+        assert!(index.markdown_links().is_empty());
+        assert!(index.toc().is_empty());
+    }
+
+    #[test]
+    fn test_from_scan_single_heading() {
+        let index = build_index_from_scan("# Hello\n");
+        assert_eq!(index.headings().len(), 1);
+        assert_eq!(index.headings()[0].text, "Hello");
+        assert_eq!(index.headings()[0].level, 1);
+        assert_eq!(index.headings()[0].slug, "hello");
+    }
+
+    #[test]
+    fn test_from_scan_multiple_headings() {
+        let index = build_index_from_scan("# First\n\n## Second\n\n### Third\n");
+        assert_eq!(index.headings().len(), 3);
+        assert_eq!(index.headings()[0].level, 1);
+        assert_eq!(index.headings()[1].level, 2);
+        assert_eq!(index.headings()[2].level, 3);
+        assert!(index.heading_by_slug("first").is_some());
+        assert!(index.heading_by_slug("second").is_some());
+    }
+
+    #[test]
+    fn test_from_scan_toc_builds() {
+        let index = build_index_from_scan("# Root\n\n## Child\n\n### Grandchild\n");
+        let toc = index.toc();
+        assert_eq!(toc.len(), 3);
+        assert_eq!(toc[0].depth, 0);
+        assert_eq!(toc[1].depth, 1);
+        assert_eq!(toc[2].depth, 2);
+    }
+
+    #[test]
+    fn test_from_scan_outline_builds() {
+        let index = build_index_from_scan("# Root\n\n## Child\n");
+        let outline = index.outline();
+        assert_eq!(outline.children.len(), 1);
+        assert_eq!(outline.children[0].heading.as_ref().unwrap().text, "Root");
+    }
+
+    #[test]
+    fn test_from_scan_markdown_links() {
+        let index = build_index_from_scan("See [example](https://example.com) here\n");
+        assert_eq!(index.markdown_links().len(), 1);
+        assert_eq!(index.markdown_links()[0].text, "example");
+        assert_eq!(index.markdown_links()[0].url, "https://example.com");
+    }
+
+    #[test]
+    fn test_from_scan_wiki_links() {
+        let index = build_index_from_scan("See [[My Page]] here\n");
+        assert_eq!(index.wiki_links().len(), 1);
+        assert_eq!(index.wiki_links()[0].target, "My Page");
+    }
+
+    #[test]
+    fn test_from_scan_tags() {
+        let index = build_index_from_scan("text #topic #project\n");
+        assert!(index.tags().len() >= 2);
+        assert!(index.tags().iter().any(|t| t.name == "topic"));
+        assert!(index.tags().iter().any(|t| t.name == "project"));
+    }
+
+    #[test]
+    fn test_from_scan_block_ids() {
+        let index = build_index_from_scan("some content ^my-block\n");
+        assert!(index.block_by_id("my-block").is_some());
+    }
+
+    #[test]
+    fn test_from_scan_xml_tags_empty() {
+        // from_scan does not extract XML tags (scan backend doesn't support them)
+        let index = build_index_from_scan("<goal>Ship</goal>\n");
+        assert!(index.xml_tags().is_empty());
+    }
+
+    #[test]
+    fn test_from_ast_unchanged() {
+        // Verify from_ast still works exactly as before
+        let index = build_index_from_ast("# Heading\n\n[[Page]]\n#tag\n");
+        assert_eq!(index.headings()[0].text, "Heading");
+        assert!(!index.wiki_links().is_empty());
+        assert!(index.tags().iter().any(|t| t.name == "tag"));
+    }
+
+    #[test]
+    fn test_parity_headings() {
+        let text = "# First\n\n## Second\n\n### Third\n";
+        let ast_idx = build_index_from_ast(text);
+        let scan_idx = build_index_from_scan(text);
+
+        assert_eq!(ast_idx.headings().len(), scan_idx.headings().len());
+        for (a, s) in ast_idx.headings().iter().zip(scan_idx.headings().iter()) {
+            assert_eq!(a.text, s.text);
+            assert_eq!(a.level, s.level);
+            assert_eq!(a.slug, s.slug);
+        }
     }
 }
