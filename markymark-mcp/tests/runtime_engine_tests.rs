@@ -916,7 +916,7 @@ fn export_index_errors_for_unindexed_document() {
 }
 
 #[test]
-fn workspace_with_mixed_formats_only_indexes_markdown() {
+fn workspace_with_mixed_formats_indexes_all_supported_types() {
     let ws = TempWorkspace::new("mixed-formats");
     fs::write(ws.root().join("notes.md"), "# Notes\n").expect("md should be created");
     fs::write(ws.root().join("config.json"), r#"{"key": "val"}"#).expect("json should be created");
@@ -938,11 +938,10 @@ fn workspace_with_mixed_formats_only_indexes_markdown() {
             key_path_count,
             ..
         } => {
-            // Only the .md file should be indexed
-            assert_eq!(document_count, 1, "only markdown should be indexed");
+            assert_eq!(document_count, 4, "1 markdown + 3 structured docs");
             assert_eq!(heading_count, 1, "one heading from notes.md");
-            assert_eq!(structured_doc_count, 0, "no structured docs indexed yet");
-            assert_eq!(key_path_count, 0, "no key paths indexed yet");
+            assert_eq!(structured_doc_count, 3, "json + yaml + .env");
+            assert!(key_path_count >= 3, "at least one key per structured doc");
         }
         other => panic!("expected RealmStats result, got: {other:?}"),
     }

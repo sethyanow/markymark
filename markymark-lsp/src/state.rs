@@ -2,11 +2,14 @@
 
 use std::collections::HashMap;
 
+use markymark_core::structured::{DocumentKind, KeyEntry, ValueKind};
 use markymark_core::{DocumentUri, Position, Range};
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link};
 use markymark_index::{
-    slugify, DocumentIndex, HeadingEntry, MarkdownLinkEntry, RealmIndex, WikiLinkEntry, XmlTagEntry,
+    slugify, AnyDocumentIndex, DocumentIndex, HeadingEntry, MarkdownLinkEntry, RealmIndex,
+    StructuredDocumentIndex, WikiLinkEntry, XmlTagEntry,
 };
+use markymark_parser::structured::parse_structured;
 use markymark_parser::Parser;
 
 /// Detected completion trigger context based on cursor position.
@@ -118,6 +121,36 @@ pub enum SymbolAtPosition {
     MarkdownLink(MarkdownLinkEntry<'static>),
     /// An XML tag.
     XmlTag(XmlTagEntry<'static>),
+    /// A key in a structured document (JSON, YAML, TOML, etc.).
+    StructuredKey(StructuredKeyInfo),
+}
+
+/// Information about a structured document key at the cursor position.
+#[derive(Debug, Clone)]
+pub struct StructuredKeyInfo {
+    /// Full dotted key path (e.g. `"database.host"`).
+    pub path: String,
+    /// Leaf key name (e.g. `"host"`).
+    pub key: String,
+    /// Nesting depth (0 = top-level).
+    pub depth: usize,
+    /// Classification of the value.
+    pub value_kind: ValueKind,
+    /// The document kind (Json, Yaml, Toml, etc.).
+    pub document_kind: DocumentKind,
+}
+
+impl StructuredKeyInfo {
+    /// Build from a [`KeyEntry`] and the document kind.
+    pub fn from_key_entry(entry: &KeyEntry, kind: DocumentKind) -> Self {
+        Self {
+            path: entry.path.clone(),
+            key: entry.key.clone(),
+            depth: entry.depth,
+            value_kind: entry.value_kind,
+            document_kind: kind,
+        }
+    }
 }
 
 /// The internal state of the LSP server.
@@ -137,26 +170,61 @@ impl ServerState {
         Self::default()
     }
 
-    /// Parse text and build a document index.
-    fn build_index(text: &str) -> DocumentIndex {
+    /// Parse text and build a markdown document index.
+    fn build_markdown_index(text: &str) -> DocumentIndex {
         let mut parser = Parser::new().expect("failed to create parser");
         let ast = parser.parse(text).expect("failed to parse document");
         DocumentIndex::from_ast(ast)
     }
 
+    /// Detect document kind from URI file extension.
+    fn document_kind_from_uri(uri: &DocumentUri) -> Option<DocumentKind> {
+        uri.to_file_path()
+            .as_deref()
+            .and_then(DocumentKind::from_path)
+    }
+
     /// Handle a document being opened: store text, parse, and index.
     pub fn open_document(&mut self, uri: DocumentUri, text: String) {
-        let index = Self::build_index(&text);
-        self.documents.insert(uri.as_str().to_string(), text);
-        self.realm.add_document(uri, index);
+        let kind = Self::document_kind_from_uri(&uri);
+        self.documents
+            .insert(uri.as_str().to_string(), text.clone());
+
+        match kind {
+            Some(DocumentKind::Markdown) | None => {
+                let index = Self::build_markdown_index(&text);
+                self.realm.add_document(uri, index);
+            }
+            Some(kind) => {
+                if let Ok(ast) = parse_structured(&text, kind) {
+                    self.realm
+                        .add_structured_document(uri, StructuredDocumentIndex::from_ast(ast));
+                }
+            }
+        }
     }
 
     /// Handle a document being changed: apply changes, re-parse, re-index.
     pub fn change_document(&mut self, uri: &DocumentUri, text: String) {
         self.realm.remove_document(uri);
-        let index = Self::build_index(&text);
-        self.documents.insert(uri.as_str().to_string(), text);
-        self.realm.add_document(uri.clone(), index);
+        let kind = Self::document_kind_from_uri(uri);
+        self.documents
+            .insert(uri.as_str().to_string(), text.clone());
+
+        match kind {
+            Some(DocumentKind::Markdown) | None => {
+                let index = Self::build_markdown_index(&text);
+                self.realm.add_document(uri.clone(), index);
+            }
+            Some(kind) => {
+                if let Ok(ast) = parse_structured(&text, kind) {
+                    self.realm.add_structured_document(
+                        uri.clone(),
+                        StructuredDocumentIndex::from_ast(ast),
+                    );
+                }
+            }
+        }
     }
 
     /// Handle a document being closed: remove from store and index.
@@ -170,9 +238,22 @@ impl ServerState {
         self.documents.get(uri.as_str()).map(|s| s.as_str())
     }
 
-    /// Get the document index for a URI.
+    /// Get the markdown document index for a URI.
     pub fn get_document_index(&self, uri: &DocumentUri) -> Option<&DocumentIndex> {
         self.realm.get_document(uri)
+    }
+
+    /// Get the any-type document index for a URI.
+    pub fn get_any_document_index(&self, uri: &DocumentUri) -> Option<&AnyDocumentIndex> {
+        self.realm.get_any_document(uri)
+    }
+
+    /// Get the structured document index for a URI.
+    pub fn get_structured_document_index(
+        &self,
+        uri: &DocumentUri,
+    ) -> Option<&StructuredDocumentIndex> {
+        self.realm.get_structured_document(uri)
     }
 
     /// Get a reference to the realm index.
@@ -629,6 +710,20 @@ impl ServerState {
 
     /// Identify what element the cursor is on.
     pub fn symbol_at_position(&self, uri: &DocumentUri, pos: Position) -> Option<SymbolAtPosition> {
+        // Check if it's a structured document first
+        if let Some(structured_index) = self.realm.get_structured_document(uri) {
+            // Find the key entry whose key_range contains the cursor position.
+            // Iterate in reverse to prefer deeper (more specific) keys when nested.
+            for entry in structured_index.keys().iter().rev() {
+                if entry.key_range.contains(pos) {
+                    return Some(SymbolAtPosition::StructuredKey(
+                        StructuredKeyInfo::from_key_entry(entry, structured_index.kind()),
+                    ));
+                }
+            }
+            return None;
+        }
+
         let index = self.realm.get_document(uri)?;
 
         // Check wiki links first (most specific)

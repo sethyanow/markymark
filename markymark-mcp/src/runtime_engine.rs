@@ -7,7 +7,8 @@ use anyhow::{anyhow, bail};
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_core::structured::DocumentKind;
 use markymark_core::{CoreError, DocumentUri};
-use markymark_index::{DocumentIndex, RealmIndex};
+use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
+use markymark_parser::structured::parse_structured;
 use markymark_parser::Parser;
 
 use crate::rename_ops::{compare_ranges, rename_heading, rename_xml_tag};
@@ -82,26 +83,28 @@ fn index_root_into_realm(parser: &mut Parser, root: &Path, realm: &mut RealmData
     let documents = collect_documents(root);
 
     for (path, kind) in documents {
-        // Only index markdown documents for now; structured formats will be
-        // handled by future tasks in the multi-format epic.
-        if kind != DocumentKind::Markdown {
-            continue;
-        }
-
         let source = match fs::read_to_string(&path) {
             Ok(source) => source,
             Err(_) => continue,
         };
 
-        let ast = match parser.parse(&source) {
-            Ok(ast) => ast,
-            Err(_) => continue,
-        };
+        let uri = DocumentUri::from_file_path(&path);
 
-        realm.index.add_document(
-            DocumentUri::from_file_path(&path),
-            DocumentIndex::from_ast(ast),
-        );
+        if kind == DocumentKind::Markdown {
+            let ast = match parser.parse(&source) {
+                Ok(ast) => ast,
+                Err(_) => continue,
+            };
+            realm.index.add_document(uri, DocumentIndex::from_ast(ast));
+        } else {
+            let ast = match parse_structured(&source, kind) {
+                Ok(ast) => ast,
+                Err(_) => continue,
+            };
+            realm
+                .index
+                .add_structured_document(uri, StructuredDocumentIndex::from_ast(ast));
+        }
     }
 }
 
@@ -113,7 +116,7 @@ fn unindex_root_from_realm(root: &Path, realm: &mut RealmData) {
     // Collect URIs to remove (cannot mutate while iterating).
     let to_remove: Vec<DocumentUri> = realm
         .index
-        .iter_documents()
+        .iter_all_documents()
         .filter(|(uri, _)| uri.as_str().starts_with(prefix_str))
         .map(|(uri, _)| uri.clone())
         .collect();
@@ -130,14 +133,28 @@ impl CoreEngine for RuntimeEngine {
             CoreOperation::GetOutline { uri } => {
                 let state = self.state.read().expect("lock poisoned");
                 let realm = &state[DEFAULT_REALM].index;
-                match realm.get_document(&uri) {
-                    Some(index) => CoreOperationResult::Outline(
-                        index
-                            .headings()
-                            .iter()
-                            .map(|heading| heading.text.to_string())
-                            .collect(),
-                    ),
+                match realm.get_any_document(&uri) {
+                    Some(markymark_index::AnyDocumentIndex::Markdown(index)) => {
+                        CoreOperationResult::Outline(
+                            index
+                                .headings()
+                                .iter()
+                                .map(|heading| heading.text.to_string())
+                                .collect(),
+                        )
+                    }
+                    Some(markymark_index::AnyDocumentIndex::Structured(index)) => {
+                        CoreOperationResult::Outline(
+                            index
+                                .keys()
+                                .iter()
+                                .map(|k| {
+                                    let indent = "  ".repeat(k.depth);
+                                    format!("{indent}{}: {:?}", k.path, k.value_kind)
+                                })
+                                .collect(),
+                        )
+                    }
                     None => CoreOperationResult::Error(CoreError::Message(format!(
                         "document is not indexed: {}",
                         uri.as_str()
@@ -157,12 +174,18 @@ impl CoreEngine for RuntimeEngine {
                 let mut matches = Vec::new();
                 let query_lower = query.to_lowercase();
 
+                // Search markdown headings
                 for (uri, index) in realm.iter_documents() {
                     for heading in index.headings() {
                         if heading.text.to_lowercase().contains(&query_lower) {
                             matches.push((heading.text.to_string(), uri.clone(), heading.range));
                         }
                     }
+                }
+
+                // Search structured document key paths
+                for (uri, path, _key, _kind, range) in realm.search_key_paths(&query) {
+                    matches.push((path, uri, range));
                 }
 
                 matches.sort_by(|(name_a, uri_a, range_a), (name_b, uri_b, range_b)| {
@@ -424,8 +447,8 @@ impl CoreEngine for RuntimeEngine {
                     xml_tag_count,
                     wiki_link_count,
                     markdown_link_count,
-                    structured_doc_count: 0,
-                    key_path_count: 0,
+                    structured_doc_count: realm_data.index.structured_count(),
+                    key_path_count: realm_data.index.key_path_count(),
                 }
             }
             CoreOperation::DependencyGraph { realm, format } => {
@@ -452,8 +475,8 @@ impl CoreEngine for RuntimeEngine {
             CoreOperation::ExportIndex { uri } => {
                 let state = self.state.read().expect("lock poisoned");
                 let realm = &state[DEFAULT_REALM].index;
-                match realm.get_document(&uri) {
-                    Some(index) => {
+                match realm.get_any_document(&uri) {
+                    Some(markymark_index::AnyDocumentIndex::Markdown(index)) => {
                         let headings = index
                             .headings()
                             .iter()
@@ -491,6 +514,24 @@ impl CoreEngine for RuntimeEngine {
                             xml_tags,
                             wiki_links,
                             markdown_links,
+                        }
+                    }
+                    Some(markymark_index::AnyDocumentIndex::Structured(index)) => {
+                        // For structured docs, export key paths as "headings"
+                        // with depth as level and key range as position.
+                        let headings = index
+                            .keys()
+                            .iter()
+                            .map(|k| (k.path.clone(), (k.depth as u8) + 1, k.key_range))
+                            .collect();
+
+                        CoreOperationResult::DocumentExport {
+                            uri,
+                            document_kind: Some(index.kind()),
+                            headings,
+                            xml_tags: Vec::new(),
+                            wiki_links: Vec::new(),
+                            markdown_links: Vec::new(),
                         }
                     }
                     None => CoreOperationResult::Error(CoreError::Message(format!(

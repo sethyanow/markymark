@@ -358,3 +358,235 @@ async fn test_hover_on_unclosed_xml_tag_shows_warning() {
         _ => panic!("expected markup hover content"),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Structured document key hover
+// ---------------------------------------------------------------------------
+
+/// Helper to extract markup value from hover result.
+fn extract_hover_markdown(hover: Hover) -> String {
+    match hover.contents {
+        HoverContents::Markup(markup) => markup.value,
+        _ => panic!("expected markup hover content"),
+    }
+}
+
+#[tokio::test]
+async fn test_hover_on_json_key() {
+    let (service, _socket, _, _) = setup_workspace().await;
+    let backend = service.inner();
+
+    let json_uri: Uri = "file:///workspace/config.json".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let core_uri = DocumentUri::new("file:///workspace/config.json").unwrap();
+        state.open_document(
+            core_uri,
+            "{\n  \"database\": {\n    \"host\": \"localhost\"\n  }\n}\n".to_string(),
+        );
+    }
+
+    // Hover on "host" key (line 2, col ~5)
+    let params = HoverParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier {
+                uri: json_uri.clone(),
+            },
+            position: Position::new(2, 5), // inside "host"
+        },
+        work_done_progress_params: Default::default(),
+    };
+
+    let result = backend.hover(params).await.unwrap();
+    assert!(
+        result.is_some(),
+        "hover on JSON key should return hover info"
+    );
+    let markdown = extract_hover_markdown(result.unwrap());
+    assert!(
+        markdown.contains("database.host"),
+        "should show full path; got: {}",
+        markdown
+    );
+    assert!(
+        markdown.contains("String"),
+        "should show value type; got: {}",
+        markdown
+    );
+    assert!(
+        markdown.contains("Json"),
+        "should show document format; got: {}",
+        markdown
+    );
+}
+
+#[tokio::test]
+async fn test_hover_on_yaml_key() {
+    let (service, _socket, _, _) = setup_workspace().await;
+    let backend = service.inner();
+
+    let yaml_uri: Uri = "file:///workspace/config.yaml".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let core_uri = DocumentUri::new("file:///workspace/config.yaml").unwrap();
+        state.open_document(core_uri, "server:\n  port: 8080\n".to_string());
+    }
+
+    // Hover on "port" key (line 1, col 3)
+    let params = HoverParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier {
+                uri: yaml_uri.clone(),
+            },
+            position: Position::new(1, 3), // inside "port"
+        },
+        work_done_progress_params: Default::default(),
+    };
+
+    let result = backend.hover(params).await.unwrap();
+    assert!(
+        result.is_some(),
+        "hover on YAML key should return hover info"
+    );
+    let markdown = extract_hover_markdown(result.unwrap());
+    assert!(
+        markdown.contains("server.port"),
+        "should show full path; got: {}",
+        markdown
+    );
+    assert!(
+        markdown.contains("Number"),
+        "should show value type; got: {}",
+        markdown
+    );
+    assert!(
+        markdown.contains("Yaml"),
+        "should show document format; got: {}",
+        markdown
+    );
+}
+
+#[tokio::test]
+async fn test_hover_on_toml_key() {
+    let (service, _socket, _, _) = setup_workspace().await;
+    let backend = service.inner();
+
+    let toml_uri: Uri = "file:///workspace/config.toml".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let core_uri = DocumentUri::new("file:///workspace/config.toml").unwrap();
+        state.open_document(core_uri, "[package]\nname = \"myapp\"\n".to_string());
+    }
+
+    // Hover on "name" key (line 1, col 2)
+    let params = HoverParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier {
+                uri: toml_uri.clone(),
+            },
+            position: Position::new(1, 2), // inside "name"
+        },
+        work_done_progress_params: Default::default(),
+    };
+
+    let result = backend.hover(params).await.unwrap();
+    assert!(
+        result.is_some(),
+        "hover on TOML key should return hover info"
+    );
+    let markdown = extract_hover_markdown(result.unwrap());
+    assert!(
+        markdown.contains("package.name"),
+        "should show full path; got: {}",
+        markdown
+    );
+    assert!(
+        markdown.contains("String"),
+        "should show value type; got: {}",
+        markdown
+    );
+    assert!(
+        markdown.contains("Toml"),
+        "should show document format; got: {}",
+        markdown
+    );
+}
+
+#[tokio::test]
+async fn test_hover_on_json_non_key_returns_none() {
+    let (service, _socket, _, _) = setup_workspace().await;
+    let backend = service.inner();
+
+    let json_uri: Uri = "file:///workspace/empty.json".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let core_uri = DocumentUri::new("file:///workspace/empty.json").unwrap();
+        state.open_document(core_uri, "{\n  \"key\": \"value\"\n}\n".to_string());
+    }
+
+    // Hover on the opening brace (line 0, col 0) -- not on a key
+    let params = HoverParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier {
+                uri: json_uri.clone(),
+            },
+            position: Position::new(0, 0),
+        },
+        work_done_progress_params: Default::default(),
+    };
+
+    let result = backend.hover(params).await.unwrap();
+    assert!(
+        result.is_none(),
+        "hover on non-key position in JSON should return None"
+    );
+}
+
+#[tokio::test]
+async fn test_hover_on_json_object_key() {
+    let (service, _socket, _, _) = setup_workspace().await;
+    let backend = service.inner();
+
+    let json_uri: Uri = "file:///workspace/nested.json".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let core_uri = DocumentUri::new("file:///workspace/nested.json").unwrap();
+        state.open_document(
+            core_uri,
+            "{\n  \"database\": {\n    \"host\": \"localhost\"\n  }\n}\n".to_string(),
+        );
+    }
+
+    // Hover on "database" key (line 1, col 4) - an Object-typed key
+    let params = HoverParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier {
+                uri: json_uri.clone(),
+            },
+            position: Position::new(1, 4), // inside "database"
+        },
+        work_done_progress_params: Default::default(),
+    };
+
+    let result = backend.hover(params).await.unwrap();
+    assert!(
+        result.is_some(),
+        "hover on JSON object key should return hover info"
+    );
+    let markdown = extract_hover_markdown(result.unwrap());
+    assert!(
+        markdown.contains("database"),
+        "should show key path; got: {}",
+        markdown
+    );
+    assert!(
+        markdown.contains("Object"),
+        "should show Object type; got: {}",
+        markdown
+    );
+    assert!(
+        markdown.contains("Depth:** 0"),
+        "root key should be depth 0; got: {}",
+        markdown
+    );
+}

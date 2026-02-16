@@ -1,35 +1,43 @@
 {
-  "lastUpdated": "2026-02-16T00:57:00Z",
+  "lastUpdated": "2026-02-16T09:30:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Optimized remove_from_cross_doc_indexes from O(total indexed) to O(doc size) by looking up the document's own index for targeted key removal (marky-43i). Added 2 regression tests. 419 tests pass, zero clippy warnings.",
+    "summary": "Addressed all 8 PR #16 review comments (marky-b1q) with TDD. Fixed critical json5 escape sequence bug, major jsonl indented line offset bug, and 5 minor items including DRY extraction of byte_to_position across 6 parsers. Updated README for v0.2 multi-format support. Discussed v0.2.0 release plan.",
     "completedTasks": [
-      "Implemented targeted cross-doc index removal using per-doc reverse lookup (realm.rs)",
-      "Added test_remove_document_preserves_sibling_cross_doc_entries regression test",
-      "Added test_replace_document_via_add_cleans_old_entries regression test",
-      "Closed marky-43i bead"
+      "marky-b1q: All 8 PR review items fixed — 1 critical, 2 major, 5 minor",
+      "CRITICAL: json5 escape sequence decoding (\\n, \\t, \\\\, \\uXXXX) in read_quoted_string",
+      "MAJOR: jsonl leading whitespace offset for indented lines",
+      "MAJOR: duplicate suc-017 ID fix",
+      "MINOR: DRY byte_to_position extraction to structured/mod.rs (6 copies removed)",
+      "MINOR: dead code removal, doc fix, flat.rs quoted value ranges, JSONC test update",
+      "README updated for v0.2 multi-format support"
     ],
     "blockers": [],
     "nextSteps": [
-      "Consider merging PR #13 once reviews are addressed",
-      "Pick up next ready work from beads (bd ready)",
-      "marky-5yt: Replace 'static with self_cell/ouroboros",
-      "marky-luy: Arena conformance closeout"
+      "Merge PR #16 (all CI green, MERGEABLE)",
+      "Version bump to 0.2.0 (Cargo.toml + plugin.json + subcrate deps)",
+      "Tag v0.2.0 and push to trigger release CI",
+      "scope-guard: branch at 5882 lines (RED zone)"
     ]
   },
   "recentChanges": [
-    "realm.rs: remove_from_cross_doc_indexes now O(doc size) instead of O(total indexed)",
-    "2 new realm_index regression tests for removal correctness"
+    "Fixed json5 escape sequence handling — keys with \\n/\\t/\\uXXXX now match serde map",
+    "Fixed jsonl position offsets for indented lines",
+    "Extracted shared byte_to_position utility, removing 6 identical copies",
+    "README updated: multi-format overview, structured data table, updated LSP examples",
+    "All 6 new regression tests passing, full workspace green"
   ],
   "knownIssues": [
+    "marky-lkj.1: runtime_engine.rs test refactoring deferred (P4)",
     "marky-5yt: 'static lifetime leak deferred to self_cell migration",
-    "marky-luy.1/2/3: P3 research items (Miri CI, arena reuse, Cow optimization)"
+    "feature-001 (arena allocation) still in_progress on separate branch",
+    "scope-guard: branch at 5882 lines (RED zone)"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T00:57:00Z",
-    "lastTypeCheck": "2026-02-16T00:57:00Z"
+    "lastSuccessfulBuild": "2026-02-16T09:28:00Z",
+    "lastTypeCheck": "2026-02-16T09:28:00Z"
   },
-  "lastCompaction": "2026-02-14T10:00:10.000Z",
-  "compactionCount": 3
+  "lastCompaction": "2026-02-16T07:11:59.000Z",
+  "compactionCount": 5
 }
