@@ -13,10 +13,10 @@ use markymark_core::{CoreError, DocumentUri, Position, Range};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
-        CallToolResult, GetPromptRequestParam, GetPromptResult, ListPromptsResult,
-        ListResourceTemplatesResult, PaginatedRequestParam, ReadResourceRequestParam,
-        ReadResourceResult, ServerCapabilities, ServerInfo, SubscribeRequestParam,
-        UnsubscribeRequestParam,
+        CallToolResult, GetPromptRequestParams, GetPromptResult, ListPromptsResult,
+        ListResourceTemplatesResult, PaginatedRequestParams, ReadResourceRequestParams,
+        ReadResourceResult, ServerCapabilities, ServerInfo, SubscribeRequestParams,
+        UnsubscribeRequestParams,
     },
     service::RequestContext,
     tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler, ServiceExt,
@@ -52,7 +52,7 @@ impl ServerHandler for MarkymarkMcp {
 
     fn subscribe(
         &self,
-        request: SubscribeRequestParam,
+        request: SubscribeRequestParams,
         context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<(), McpError>> + Send + '_ {
         self.subscriptions.subscribe(request.uri, context.peer);
@@ -61,7 +61,7 @@ impl ServerHandler for MarkymarkMcp {
 
     fn unsubscribe(
         &self,
-        request: UnsubscribeRequestParam,
+        request: UnsubscribeRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<(), McpError>> + Send + '_ {
         self.subscriptions.untrack(&request.uri);
@@ -70,7 +70,7 @@ impl ServerHandler for MarkymarkMcp {
 
     fn list_prompts(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListPromptsResult, McpError>> + Send + '_ {
         std::future::ready(Ok(ListPromptsResult {
@@ -82,7 +82,7 @@ impl ServerHandler for MarkymarkMcp {
 
     fn get_prompt(
         &self,
-        request: GetPromptRequestParam,
+        request: GetPromptRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<GetPromptResult, McpError>> + Send + '_ {
         let result = self.get_prompt_by_name(&request.name, request.arguments);
@@ -91,7 +91,7 @@ impl ServerHandler for MarkymarkMcp {
 
     fn list_resource_templates(
         &self,
-        _request: Option<rmcp::model::PaginatedRequestParam>,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListResourceTemplatesResult, McpError>> + Send + '_
     {
@@ -104,7 +104,7 @@ impl ServerHandler for MarkymarkMcp {
 
     fn read_resource(
         &self,
-        request: ReadResourceRequestParam,
+        request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ReadResourceResult, McpError>> + Send + '_ {
         let result = self.read_resource_sync(&request.uri);
