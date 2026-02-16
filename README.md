@@ -77,17 +77,17 @@ LSP hover config.yaml <line> <col>
 ```
 
 **Find all references** (cross-format: wiki links resolve to structured keys):
-```
+```bash
 LSP findReferences file.md <line> <col>
 ```
 
 **Jump to definition** of a wiki link target:
-```
+```bash
 LSP goToDefinition file.md <line> <col>
 ```
 
 **Search symbols across workspace**:
-```
+```bash
 LSP workspaceSymbol "query"
 ```
 
