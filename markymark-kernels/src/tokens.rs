@@ -20,6 +20,7 @@ pub fn estimate_tokens(text: &str) -> u32 {
     }
     // SAFETY: text.as_ptr() is valid for text.len() bytes.
     // marky_estimate_tokens is a pure function with no side effects.
+    // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     unsafe { marky_estimate_tokens(text.as_ptr(), text.len() as u32) }
 }
 

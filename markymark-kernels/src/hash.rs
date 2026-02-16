@@ -52,6 +52,7 @@ pub fn extract_entity_hashes(text: &str) -> Result<Vec<u32>, KernelError> {
 
         // SAFETY: text_ptr valid for text_len bytes, buf has capacity cap,
         // written is a valid mutable reference. FFI writes at most cap u32s.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
         let rc = unsafe {
             zig_extract_entity_hashes(text_ptr, text_len, buf.as_mut_ptr(), cap, &mut written)
         };

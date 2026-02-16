@@ -94,6 +94,7 @@ impl EmbeddingIndex {
 
         // SAFETY: zig_embedding_index_create is a pure allocation function.
         // Returns null on failure (dims==0 or allocation error).
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
         let handle = unsafe { zig_embedding_index_create(dims) };
         if handle.is_null() {
             return Err(KernelError::InternalError(-3));
@@ -124,6 +125,7 @@ impl EmbeddingIndex {
 
         // SAFETY: handle is valid (created in new(), not yet destroyed).
         // id and embedding are valid slices with correct lengths.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
         let rc = unsafe {
             zig_embedding_index_add(
                 self.handle,
@@ -164,6 +166,7 @@ impl EmbeddingIndex {
         // SAFETY: handle is valid, query is a valid slice of correct length.
         // Output arrays are correctly sized to hold up to k results.
         // The returned ID pointers borrow from the index (valid until mutation).
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
         let rc = unsafe {
             zig_embedding_index_search(
                 self.handle,
@@ -183,6 +186,7 @@ impl EmbeddingIndex {
                     .map(|i| {
                         // SAFETY: The Zig index returned valid pointers into its
                         // own storage. We copy them into owned Strings immediately.
+                        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
                         let id_slice = unsafe {
                             std::slice::from_raw_parts(result_ids[i], result_id_lens[i] as usize)
                         };
@@ -208,6 +212,7 @@ impl EmbeddingIndex {
     /// Return the number of entries in the index.
     pub fn count(&self) -> u32 {
         // SAFETY: handle is valid.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
         let rc = unsafe { zig_embedding_index_count(self.handle) };
         if rc < 0 {
             0
@@ -227,6 +232,7 @@ impl Drop for EmbeddingIndex {
         if !self.handle.is_null() {
             // SAFETY: handle was created by zig_embedding_index_create and
             // has not been destroyed yet. Setting to null prevents double-free.
+            // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
             unsafe { zig_embedding_index_destroy(self.handle) };
             self.handle = std::ptr::null_mut();
         }
