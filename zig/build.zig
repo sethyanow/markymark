@@ -16,10 +16,13 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     // Root module for the static library
+    // PIC required: Rust links with -fPIC on Linux x86_64; without it,
+    // rust-lld rejects R_X86_64_32 relocations from Zig's debug.zig.
     const root_mod = b.createModule(.{
         .root_source_file = b.path("src/c_adapter.zig"),
         .target = target,
         .optimize = optimize,
+        .pic = true,
     });
 
     // Static library artifact (libmarky_kernels.a)
