@@ -1,37 +1,46 @@
 {
-  "lastUpdated": "2026-02-16T17:47:00Z",
+  "lastUpdated": "2026-02-16T18:05:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-tzq: Switched LSP from FULL to INCREMENTAL text document sync. Added UTF-16→UTF-8 byte offset conversion, DocumentChange enum, apply_document_changes method. 14 new tests covering insert/delete/replace/multiline/multi-change/emoji/accented chars. All gates green, pushed.",
+    "summary": "Implemented marky-zan: incremental tree-sitter parsing wired end-to-end. Added Parser::parse_with_old_tree() passing old MarkdownTree to tree-sitter for reuse. Wired InputEdit computation into ServerState::apply_document_changes with byte_to_point conversion. 3 new parser tests + 5 new state tests (correctness match, 100-edit stress). Added criterion benchmark. Discovery: tree-sitter-md dual block+inline grammar limits incremental speedup to ~1.3x at parse level. Full 10x+ requires Phase 3 (incremental indexing).",
     "completedTasks": [
-      "marky-8gp: Store Parser in ServerState — eliminates per-call Parser::new() allocation",
-      "marky-tfd: Store MarkdownTree per document — enables future incremental tree-sitter reuse",
-      "marky-tzq: Switch LSP to TextDocumentSyncKind::INCREMENTAL with UTF-16 conversion"
+      "marky-8gp: Store Parser in ServerState (closed in beads)",
+      "marky-tfd: Store MarkdownTree per document (closed in beads)",
+      "marky-tzq: Switch LSP to INCREMENTAL sync (closed in beads)",
+      "marky-zan: Wire incremental parsing edit() + parse(old_tree) (IN PROGRESS)"
     ],
     "blockers": [],
     "nextSteps": [
-      "marky-zan: Wire incremental parsing algorithm — edit() + parse(old_tree) (now unblocked by marky-tzq)"
+      "marky-zan REMAINING: Run full test suite (cargo test --workspace, clippy, fmt), commit and push. Benchmark written but 200kb test interrupted.",
+      "Update beads marky-zan notes with tree-sitter-md dual-grammar finding",
+      "Consider updating acceptance criterion: 10x speedup needs Phase 3 incremental indexing, not just Phase 1 incremental parsing",
+      "Close marky-zan and marky-g9b epic once all gates green"
     ]
   },
   "recentChanges": [
-    "TextDocumentSyncKind::FULL → INCREMENTAL in server capabilities",
-    "lsp_position_to_byte_offset() for UTF-16→UTF-8 conversion in convert.rs",
-    "DocumentChange enum (Full/Incremental) in state.rs",
-    "apply_document_changes() applies edits sequentially with bounds clamping",
-    "did_change maps TextDocumentContentChangeEvent to DocumentChange",
-    "14 new tests including emoji surrogate pair and accented character handling"
+    "Parser::parse_with_old_tree(&mut self, source, old_tree: Option<&MarkdownTree>) in lib.rs",
+    "Re-exported InputEdit, Point, byte_to_point from markymark-parser",
+    "Removed old parse_incremental() stub",
+    "build_markdown_index_with_old_tree() in state.rs for incremental reparse",
+    "apply_document_changes now computes InputEdit per change, calls md_tree.edit(), reparses with old tree",
+    "3 new parser tests: incremental_edit_updates_ast, incremental_parse_matches_full_reparse, incremental_100_sequential_edits",
+    "5 new state tests: insert/delete/rename heading, add wiki link, 100 sequential edits — all compare incremental vs full parse",
+    "Criterion benchmark in markymark-parser/benches/incremental.rs (scaling + pipeline)",
+    "Fixed beads: closed marky-8gp/tfd/tzq, removed incorrect deps on parent epic marky-g9b",
+    "Updated tree_sitter_integration.rs: old parse_incremental test migrated to parse_with_old_tree"
   ],
   "knownIssues": [
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
     "marky-5yt: 'static lifetime + Box aliasing issue — blocks 6 Miri tests, needs self_cell migration",
     "marky-lkj.1: runtime_engine.rs test refactoring deferred (P4)",
     "feature-001 (arena allocation) still in_progress on separate branch",
-    "Performance: LSP still does full reparse after incremental text sync (marky-zan needed for tree-sitter incremental)"
+    "tree-sitter-md incremental parse ~1.3x speedup (not 10x) — dual block+inline grammar limits gains at parse level. Full 10x needs Phase 3 incremental indexing.",
+    "MarkdownTree::edit() takes &InputEdit (single), NOT &[InputEdit] — tree-sitter.md docs were wrong, need to update"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T17:47:00Z",
-    "lastTypeCheck": "2026-02-16T17:47:00Z"
+    "lastSuccessfulBuild": "2026-02-16T18:05:00Z",
+    "lastTypeCheck": "2026-02-16T18:05:00Z"
   },
   "lastCompaction": "2026-02-16T07:11:59.000Z",
   "compactionCount": 5
