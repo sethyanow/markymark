@@ -1,7 +1,7 @@
 //! Tests for server state management (document lifecycle).
 
 use markymark_core::DocumentUri;
-use markymark_lsp::state::ServerState;
+use markymark_lsp::state::{ServerState, SymbolAtPosition};
 
 #[test]
 fn test_state_new_is_empty() {
@@ -108,4 +108,43 @@ fn test_state_wiki_links_indexed() {
     assert_eq!(links.len(), 2);
     assert_eq!(links[0].target, "other-page");
     assert_eq!(links[1].target, "another");
+}
+
+#[test]
+fn test_symbol_at_position_structured_json_key() {
+    use markymark_core::Position;
+
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/config.json").unwrap();
+    state.open_document(uri.clone(), "{\n  \"host\": \"localhost\"\n}\n".to_string());
+
+    // "host" is at line 1, characters 3..7 (inside quotes)
+    let result = state.symbol_at_position(&uri, Position::new(1, 4));
+    assert!(
+        result.is_some(),
+        "should find structured key at cursor position"
+    );
+    match result.unwrap() {
+        SymbolAtPosition::StructuredKey(info) => {
+            assert_eq!(info.key, "host");
+            assert_eq!(info.path, "host");
+        }
+        other => panic!("expected StructuredKey, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_symbol_at_position_structured_returns_none_off_key() {
+    use markymark_core::Position;
+
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/config.json").unwrap();
+    state.open_document(uri.clone(), "{\n  \"host\": \"localhost\"\n}\n".to_string());
+
+    // Position on opening brace
+    let result = state.symbol_at_position(&uri, Position::new(0, 0));
+    assert!(
+        result.is_none(),
+        "should return None when cursor is not on a key"
+    );
 }

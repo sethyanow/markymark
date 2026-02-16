@@ -7,7 +7,9 @@ use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::*;
 use tower_lsp_server::{Client, LanguageServer, LspService};
 
-use crate::state::{DiagnosticSeverity as MarkyDiagSeverity, ServerState, SymbolAtPosition};
+use crate::state::{
+    DiagnosticSeverity as MarkyDiagSeverity, ServerState, StructuredKeyInfo, SymbolAtPosition,
+};
 use markymark_core::{DocumentUri, Range as CoreRange};
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link, ResolvedTarget};
 use markymark_index::{DocumentIndex, OutlineNode, StructuredDocumentIndex, XmlTagEntry};
@@ -186,7 +188,7 @@ impl LanguageServer for Backend {
             SymbolAtPosition::MarkdownLink(ml) => {
                 resolve_markdown_link(state.realm(), &doc_uri, ml.url, ml.anchor)
             }
-            SymbolAtPosition::Heading(_) => return Ok(None),
+            SymbolAtPosition::Heading(_) | SymbolAtPosition::StructuredKey(_) => return Ok(None),
             SymbolAtPosition::XmlTag(ref xt) => {
                 // Jump to the first occurrence of this tag name in the workspace.
                 // Sort documents by URI for deterministic ordering.
@@ -288,6 +290,95 @@ impl LanguageServer for Backend {
                             }
                         }
                     }
+                }
+            }
+            SymbolAtPosition::StructuredKey(ref info) => {
+                // Direction 1: Cursor on a structured doc key -> find all markdown wiki-links
+                // that resolve to this key path in this document.
+                let key_path = &info.path;
+
+                // Optionally include the declaration (the key itself)
+                if include_declaration {
+                    if let Some(st_idx) = state.get_structured_document_index(&doc_uri) {
+                        if let Some(entry) = st_idx.key_by_path(key_path) {
+                            if let Ok(loc) =
+                                crate::convert::to_lsp_location(&doc_uri, entry.key_range)
+                            {
+                                locations.push(loc);
+                            }
+                        }
+                    }
+                }
+
+                // Search all markdown documents for wiki-links that resolve to this key path
+                for (md_uri, md_index) in iter_realm_documents(&state) {
+                    for wl in md_index.wiki_links() {
+                        if let Some(ResolvedTarget::KeyPath {
+                            uri: ref target_uri,
+                            ref path,
+                            ..
+                        }) = resolve_wiki_link(state.realm(), md_uri, wl.target, wl.heading)
+                        {
+                            if target_uri == &doc_uri && path == key_path {
+                                if let Ok(loc) = crate::convert::to_lsp_location(md_uri, wl.range) {
+                                    locations.push(loc);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            SymbolAtPosition::WikiLink(ref wl) => {
+                // Direction 2: Cursor on a wiki-link -> if it resolves to a KeyPath,
+                // find the key definition + other wiki-links referencing the same key.
+                let resolved = resolve_wiki_link(state.realm(), &doc_uri, wl.target, wl.heading);
+                match resolved {
+                    Some(ResolvedTarget::KeyPath {
+                        ref uri,
+                        ref path,
+                        range,
+                        ..
+                    }) => {
+                        let target_uri = uri.clone();
+                        let target_path = path.clone();
+
+                        // Include the key definition location
+                        if let Ok(loc) = crate::convert::to_lsp_location(&target_uri, range) {
+                            locations.push(loc);
+                        }
+
+                        // Find other wiki-links referencing the same key path
+                        for (md_uri, md_index) in iter_realm_documents(&state) {
+                            for other_wl in md_index.wiki_links() {
+                                // Skip the current wiki-link
+                                if !include_declaration
+                                    && md_uri == &doc_uri
+                                    && other_wl.range == wl.range
+                                {
+                                    continue;
+                                }
+                                if let Some(ResolvedTarget::KeyPath {
+                                    uri: ref resolved_uri,
+                                    ref path,
+                                    ..
+                                }) = resolve_wiki_link(
+                                    state.realm(),
+                                    md_uri,
+                                    other_wl.target,
+                                    other_wl.heading,
+                                ) {
+                                    if resolved_uri == &target_uri && path == &target_path {
+                                        if let Ok(loc) =
+                                            crate::convert::to_lsp_location(md_uri, other_wl.range)
+                                        {
+                                            locations.push(loc);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => return Ok(None),
                 }
             }
             _ => return Ok(None),
@@ -398,6 +489,7 @@ impl LanguageServer for Backend {
                 }
                 lines.join("\n")
             }
+            SymbolAtPosition::StructuredKey(ref info) => structured_key_hover_markdown(info),
         };
 
         Ok(Some(Hover {
@@ -751,6 +843,16 @@ fn xml_hover_stats(state: &ServerState, tag_name: &str) -> XmlHoverStats {
         document_count,
         attribute_counts,
     }
+}
+
+/// Build hover markdown for a structured document key.
+fn structured_key_hover_markdown(info: &StructuredKeyInfo) -> String {
+    let mut lines = Vec::new();
+    lines.push(format!("**Key:** `{}`", info.path));
+    lines.push(format!("**Type:** {:?}", info.value_kind));
+    lines.push(format!("**Depth:** {}", info.depth));
+    lines.push(format!("**Format:** {:?}", info.document_kind));
+    lines.join("\n\n")
 }
 
 fn xml_tags_to_symbols(xml_tags: &[XmlTagEntry]) -> Vec<DocumentSymbol> {
