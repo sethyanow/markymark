@@ -2,6 +2,22 @@
   "version": 3,
   "entries": [
     {
+      "id": "suc-023",
+      "timestamp": "2026-02-16T11:10:00Z",
+      "feature": "marky-bgl",
+      "type": "implementation",
+      "approach": "Ported 4 shared kernels from forge BRZA: similarity (SIMD @Vector(4,f32) cosine + scalar Jaccard), normalize (two-pass SIMD L2), entities (SIMD @Vector(16,u8) whitespace detection + FNV-1a), quantize (SIMD Q4_0 with absmax scaling). Each kernel has SIMD + scalar reference + parity tests. Fixed 'packed' reserved keyword issue in Zig 0.15.",
+      "files": ["zig/src/shared/similarity.zig", "zig/src/shared/normalize.zig", "zig/src/shared/entities.zig", "zig/src/shared/quantize.zig", "zig/src/c_adapter.zig"],
+      "patterns": [
+        "'packed' is a reserved keyword in Zig 0.15 — cannot use as variable name",
+        "Jaccard on sorted sets is inherently sequential (merge-join) — no SIMD benefit, delegate to scalar",
+        "For f32 SIMD, @Vector(4, f32) with @reduce(.Add) for horizontal sum is the standard pattern",
+        "Q4_0 quantization: absmax per block -> scale -> quantize to nibbles -> pack pairs into bytes",
+        "Entity extraction: SIMD finds whitespace boundaries, FNV-1a hashes each word, truncate to u32",
+        "c_adapter.zig at 793 lines — approaching 1000-line hard limit, may need split soon"
+      ]
+    },
+    {
       "id": "suc-021",
       "timestamp": "2026-02-16T09:42:00Z",
       "feature": "marky-ayb",
