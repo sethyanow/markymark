@@ -531,3 +531,190 @@ fn test_incremental_no_change_for_unknown_uri() {
 
     assert!(state.get_document_text(&uri).is_none());
 }
+
+// --- Incremental tree-sitter parsing correctness tests ---
+
+/// Helper: open a document, apply an incremental change, then compare the
+/// resulting index against a fresh full-parse index of the same final text.
+fn assert_incremental_matches_full(
+    original: &str,
+    change: DocumentChange,
+    expected_final_text: &str,
+) {
+    // Path 1: incremental (open + apply_document_changes)
+    let mut inc_state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/incr.md").unwrap();
+    inc_state.open_document(uri.clone(), original.to_string());
+    inc_state.apply_document_changes(&uri, vec![change]);
+
+    // Path 2: fresh full parse of the final text
+    let mut full_state = ServerState::new();
+    let full_uri = DocumentUri::new("file:///test/full.md").unwrap();
+    full_state.open_document(full_uri.clone(), expected_final_text.to_string());
+
+    // Verify text matches
+    assert_eq!(
+        inc_state.get_document_text(&uri).unwrap(),
+        expected_final_text,
+        "text after incremental change should match expected"
+    );
+
+    // Compare headings
+    let inc_index = inc_state.get_document_index(&uri).unwrap();
+    let full_index = full_state.get_document_index(&full_uri).unwrap();
+
+    let inc_headings: Vec<_> = inc_index
+        .headings()
+        .iter()
+        .map(|h| (h.level, h.text.to_string()))
+        .collect();
+    let full_headings: Vec<_> = full_index
+        .headings()
+        .iter()
+        .map(|h| (h.level, h.text.to_string()))
+        .collect();
+    assert_eq!(
+        inc_headings, full_headings,
+        "headings should match between incremental and full parse"
+    );
+
+    // Compare wiki links
+    let inc_wl: Vec<_> = inc_index
+        .wiki_links()
+        .iter()
+        .map(|w| w.target.to_string())
+        .collect();
+    let full_wl: Vec<_> = full_index
+        .wiki_links()
+        .iter()
+        .map(|w| w.target.to_string())
+        .collect();
+    assert_eq!(
+        inc_wl, full_wl,
+        "wiki links should match between incremental and full parse"
+    );
+}
+
+#[test]
+fn test_incremental_parse_insert_heading_matches_full() {
+    // Inserting at (2, 10) = byte 19 (the '\n' after "Some text.")
+    // Original trailing '\n' is preserved after the insertion.
+    assert_incremental_matches_full(
+        "# Hello\n\nSome text.\n",
+        DocumentChange::Incremental {
+            start_line: 2,
+            start_character: 10,
+            end_line: 2,
+            end_character: 10,
+            text: "\n\n## New Section\n".to_string(),
+        },
+        "# Hello\n\nSome text.\n\n## New Section\n\n",
+    );
+}
+
+#[test]
+fn test_incremental_parse_delete_heading_matches_full() {
+    // Deleting (2,0)..(3,0) removes "## Remove\n" (bytes 8..18)
+    // Leaves "# Keep\n\n" + "\nParagraph.\n" = triple newline between them.
+    assert_incremental_matches_full(
+        "# Keep\n\n## Remove\n\nParagraph.\n",
+        DocumentChange::Incremental {
+            start_line: 2,
+            start_character: 0,
+            end_line: 3,
+            end_character: 0,
+            text: String::new(),
+        },
+        "# Keep\n\n\nParagraph.\n",
+    );
+}
+
+#[test]
+fn test_incremental_parse_rename_heading_matches_full() {
+    assert_incremental_matches_full(
+        "# Old Name\n\nBody.\n",
+        DocumentChange::Incremental {
+            start_line: 0,
+            start_character: 2,
+            end_line: 0,
+            end_character: 10,
+            text: "New Name".to_string(),
+        },
+        "# New Name\n\nBody.\n",
+    );
+}
+
+#[test]
+fn test_incremental_parse_add_wiki_link_matches_full() {
+    assert_incremental_matches_full(
+        "# Page\n\nSome text.\n",
+        DocumentChange::Incremental {
+            start_line: 2,
+            start_character: 10,
+            end_line: 2,
+            end_character: 10,
+            text: " See [[Other Page]]".to_string(),
+        },
+        "# Page\n\nSome text. See [[Other Page]]\n",
+    );
+}
+
+#[test]
+fn test_incremental_parse_100_sequential_edits_matches_full() {
+    use markymark_lsp::state::DocumentChange;
+
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/stress.md").unwrap();
+    let mut source = "# Title\n\nContent.\n".to_string();
+    state.open_document(uri.clone(), source.clone());
+
+    // Apply 100 single-char insertions before the period
+    for i in 0..100u8 {
+        let ch = (b'a' + (i % 26)) as char;
+        // Find the '.' in the current text to know the line/character
+        let dot_pos = source.find('.').unwrap();
+        let line = source[..dot_pos].matches('\n').count() as u32;
+        let col = dot_pos - source[..dot_pos].rfind('\n').map(|p| p + 1).unwrap_or(0);
+
+        state.apply_document_changes(
+            &uri,
+            vec![DocumentChange::Incremental {
+                start_line: line,
+                start_character: col as u32,
+                end_line: line,
+                end_character: col as u32,
+                text: ch.to_string(),
+            }],
+        );
+
+        // Update our source tracker to match
+        source.insert(dot_pos, ch);
+    }
+
+    // Fresh full parse of the same final text
+    let mut full_state = ServerState::new();
+    let full_uri = DocumentUri::new("file:///test/full.md").unwrap();
+    full_state.open_document(full_uri.clone(), source.clone());
+
+    // Compare results
+    let inc_text = state.get_document_text(&uri).unwrap();
+    assert_eq!(inc_text, source.as_str());
+
+    let inc_index = state.get_document_index(&uri).unwrap();
+    let full_index = full_state.get_document_index(&full_uri).unwrap();
+
+    let inc_headings: Vec<_> = inc_index
+        .headings()
+        .iter()
+        .map(|h| (h.level, h.text.to_string()))
+        .collect();
+    let full_headings: Vec<_> = full_index
+        .headings()
+        .iter()
+        .map(|h| (h.level, h.text.to_string()))
+        .collect();
+    assert_eq!(
+        inc_headings, full_headings,
+        "100 sequential edits: headings should match"
+    );
+}

@@ -10,7 +10,7 @@ use markymark_index::{
     StructuredDocumentIndex, WikiLinkEntry, XmlTagEntry,
 };
 use markymark_parser::structured::parse_structured;
-use markymark_parser::{MarkdownTree, Parser};
+use markymark_parser::{byte_to_point, InputEdit, MarkdownTree, Parser};
 
 /// Detected completion trigger context based on cursor position.
 #[derive(Debug, Clone, PartialEq)]
@@ -213,7 +213,23 @@ impl ServerState {
     /// Returns both the index and the tree-sitter parse tree. The tree is
     /// retained per-document for future incremental parsing.
     fn build_markdown_index(&mut self, text: &str) -> (DocumentIndex, Option<MarkdownTree>) {
-        let mut ast = self.parser.parse(text).expect("failed to parse document");
+        self.build_markdown_index_with_old_tree(text, None)
+    }
+
+    /// Parse text with optional old tree reuse and build a markdown document index.
+    ///
+    /// When `old_tree` is `Some`, tree-sitter reuses unchanged subtrees for
+    /// O(edit_size) reparsing. The old tree must have been updated via
+    /// `MarkdownTree::edit()` with all changes since it was last parsed.
+    fn build_markdown_index_with_old_tree(
+        &mut self,
+        text: &str,
+        old_tree: Option<&MarkdownTree>,
+    ) -> (DocumentIndex, Option<MarkdownTree>) {
+        let mut ast = self
+            .parser
+            .parse_with_old_tree(text, old_tree)
+            .expect("failed to parse document");
         let md_tree = ast.take_md_tree();
         let index = DocumentIndex::from_ast(ast);
         (index, md_tree)
@@ -283,8 +299,14 @@ impl ServerState {
     /// Changes are applied in order. Each change operates on the text as modified
     /// by the previous change (per LSP spec). Supports both incremental edits
     /// (with position range in UTF-16 code units) and full-text replacements.
+    ///
+    /// For markdown documents, incremental changes are tracked as tree-sitter
+    /// `InputEdit`s so the old parse tree can be reused for O(edit_size) reparsing.
     pub fn apply_document_changes(&mut self, uri: &DocumentUri, changes: Vec<DocumentChange>) {
-        // Phase 1: Apply text edits
+        // Take the old tree out (if any) for incremental parsing
+        let mut old_tree = self.md_trees.remove(uri.as_str());
+
+        // Phase 1: Apply text edits and track tree-sitter InputEdits
         let final_text = {
             let Some(text) = self.documents.get_mut(uri.as_str()) else {
                 return;
@@ -294,6 +316,8 @@ impl ServerState {
                 match change {
                     DocumentChange::Full(new_text) => {
                         *text = new_text;
+                        // Full replacement invalidates the old tree
+                        old_tree = None;
                     }
                     DocumentChange::Incremental {
                         start_line,
@@ -302,20 +326,43 @@ impl ServerState {
                         end_character,
                         text: new_text,
                     } => {
-                        let start = crate::convert::lsp_position_to_byte_offset(
+                        let start_byte = crate::convert::lsp_position_to_byte_offset(
                             text,
                             start_line,
                             start_character,
                         )
                         .min(text.len());
-                        let end = crate::convert::lsp_position_to_byte_offset(
+                        let old_end_byte = crate::convert::lsp_position_to_byte_offset(
                             text,
                             end_line,
                             end_character,
                         )
                         .min(text.len())
-                        .max(start);
-                        text.replace_range(start..end, &new_text);
+                        .max(start_byte);
+
+                        // Compute tree-sitter Points BEFORE applying the text change
+                        let start_position = byte_to_point(text, start_byte);
+                        let old_end_position = byte_to_point(text, old_end_byte);
+
+                        let new_end_byte = start_byte + new_text.len();
+
+                        // Apply the text change
+                        text.replace_range(start_byte..old_end_byte, &new_text);
+
+                        // Compute new end position from the modified text
+                        let new_end_position = byte_to_point(text, new_end_byte);
+
+                        // Update the old tree so tree-sitter can reuse unchanged subtrees
+                        if let Some(ref mut tree) = old_tree {
+                            tree.edit(&InputEdit {
+                                start_byte,
+                                old_end_byte,
+                                new_end_byte,
+                                start_position,
+                                old_end_position,
+                                new_end_position,
+                            });
+                        }
                     }
                 }
             }
@@ -328,7 +375,8 @@ impl ServerState {
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                let (index, md_tree) = self.build_markdown_index(&final_text);
+                let (index, md_tree) =
+                    self.build_markdown_index_with_old_tree(&final_text, old_tree.as_ref());
                 let uri_str = uri.as_str().to_string();
                 if let Some(tree) = md_tree {
                     self.md_trees.insert(uri_str, tree);

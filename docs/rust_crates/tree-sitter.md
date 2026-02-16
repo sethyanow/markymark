@@ -287,16 +287,16 @@ impl Document {
         self.source.replace_range(start_byte..old_end_byte, new_text);
         let new_end_position = byte_to_point(&self.source, new_end_byte);
 
-        // MarkdownTree.edit() takes a slice of InputEdit
+        // MarkdownTree.edit() takes a single &InputEdit reference
         if let Some(md_tree) = &mut self.md_tree {
-            md_tree.edit(&[InputEdit {
+            md_tree.edit(&InputEdit {
                 start_byte,
                 old_end_byte,
                 new_end_byte,
                 start_position,
                 old_end_position,
                 new_end_position,
-            }]);
+            });
         }
 
         // Re-parse with old tree for incremental update

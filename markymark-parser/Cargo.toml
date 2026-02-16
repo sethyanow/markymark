@@ -26,3 +26,8 @@ bumpalo = { workspace = true }
 [dev-dependencies]
 insta = { workspace = true }
 proptest = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "incremental"
+harness = false
