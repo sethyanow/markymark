@@ -1,41 +1,41 @@
 {
-  "lastUpdated": "2026-02-16T06:55:00Z",
+  "lastUpdated": "2026-02-16T07:25:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Executed marky-een: scaffolded markymark-kernels Rust crate with build.rs that compiles and links Zig libmarky_kernels.a. build.rs checks Zig >= 0.15.2, runs zig build lib, links static library. lib.rs wraps marky_version() as kernel_version() for linkage verification. Empty module stubs for scan/embed/similarity/tokens/hash. All quality gates passed first try.",
+    "summary": "Ran hyperpowers:review-implementation on marky-ccv and marky-een. Found 3 tautological expect(true) tests in Zig scaffold and missing comptime version gate in build.zig. Fixed all gaps: removed tautological tests from fixtures.zig/harness.zig/smoke_test.zig, added comptime version gate to build.zig. All quality gates pass. Both tasks confirmed complete against bd spec.",
     "completedTasks": [
-      "marky-een: Scaffold markymark-kernels Rust crate with build.rs",
-      "build.rs: Zig version check, zig build lib invocation, static library linking",
-      "lib.rs: FFI linkage test via kernel_version() -> 0x000100",
-      "Added markymark-kernels to workspace Cargo.toml members",
-      "All quality gates: build, test, clippy -D warnings, fmt, pre-commit hooks"
+      "review-implementation: Reviewed marky-ccv (6/6 criteria met, 3 tautological tests fixed)",
+      "review-implementation: Reviewed marky-een (7/7 criteria met, all tests meaningful)",
+      "fix: Removed 3 expect(true) tautological tests from zig scaffold",
+      "fix: Added comptime version gate in build.zig (@compileError for Zig < 0.15.2)",
+      "Committed and pushed review fixes (33e8150)"
     ],
     "blockers": [
-      "Scope guard RED: branch at 3550 lines / 19 new files — consider splitting or deferring"
+      "Scope guard RED: branch at 3565 lines / 19 new files — consider splitting or deferring"
     ],
     "nextSteps": [
+      "Consider checkpoint/PR for ccv+een scaffold work before adding more",
       "marky-v8r: Implement heading_scan Zig SIMD kernel (first real kernel)",
-      "marky-ayb: CI integration (Zig build step in GitHub Actions) — unblocked by marky-een",
-      "marky-bgl: Port similarity and entity hash kernels from forge — unblocked by marky-een",
-      "marky-ncz: Port embedding index kernels from forge — unblocked by marky-een"
+      "marky-ayb: CI integration (Zig build step in GitHub Actions)",
+      "marky-bgl: Port similarity and entity hash kernels from forge",
+      "marky-ncz: Port embedding index kernels from forge"
     ]
   },
   "recentChanges": [
-    "markymark-kernels/Cargo.toml: new crate for Zig FFI bindings",
-    "markymark-kernels/build.rs: Zig build orchestration with version check",
-    "markymark-kernels/src/lib.rs: kernel_version() FFI wrapper + module stubs",
-    "markymark-kernels/src/{scan,embed,similarity,tokens,hash}.rs: empty module stubs",
-    "Cargo.toml: added markymark-kernels to workspace members"
+    "zig/build.zig: Added comptime version gate for Zig >= 0.15.2",
+    "zig/src/fixtures.zig: Removed tautological expect(true) test",
+    "zig/src/harness.zig: Removed tautological expect(true) test",
+    "zig/test/smoke_test.zig: Removed tautological expect(true) test, kept version check"
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch at 3550 lines, consider splitting",
+    "Scope guard RED: branch at 3565 lines, consider splitting",
     "brza-spec.md: untracked file from forge spec reference (not committed)"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T06:55:00Z",
-    "lastTypeCheck": "2026-02-16T06:55:00Z"
+    "lastSuccessfulBuild": "2026-02-16T07:20:00Z",
+    "lastTypeCheck": "2026-02-16T07:20:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4

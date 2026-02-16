@@ -191,6 +191,19 @@
         "cargo:rustc-link-search=native= + cargo:rustc-link-lib=static= for linking .a files",
         "Test FFI linkage with a simple version function before adding complex kernels"
       ]
+    },
+    {
+      "id": "suc-017",
+      "timestamp": "2026-02-16T07:19:00Z",
+      "feature": "marky-ccv",
+      "type": "review",
+      "approach": "review-implementation skill caught 3 tautological expect(true) tests in Zig scaffold and missing comptime version gate. Fixed all gaps, verified all quality gates pass, committed and pushed.",
+      "files": ["zig/build.zig", "zig/src/fixtures.zig", "zig/src/harness.zig", "zig/test/smoke_test.zig"],
+      "patterns": [
+        "expect(true) in placeholder modules is tautological — empty modules with only doc comments are cleaner",
+        "comptime version gate in build.zig catches wrong Zig at build time, not just test time",
+        "Review scaffold code with same rigor as production code — placeholder tests create false confidence"
+      ]
     }
   ]
 }
