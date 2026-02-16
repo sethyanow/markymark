@@ -650,6 +650,30 @@
         "Add a separate test and leave old one failing"
       ],
       "impact": "markymark-mcp/tests/runtime_engine_tests.rs"
+    },
+    {
+      "id": "dec-039",
+      "timestamp": "2026-02-16T09:30:00Z",
+      "feature": "marky-b1q",
+      "decision": "Decode escape sequences in JSON5 scanner to match serde map keys",
+      "rationale": "Scanner's read_quoted_string was pushing literal backslash+char, but serde/json5 crate decodes escapes. map.get(&key_text) failed silently, falling back to Null. Must decode \\n/\\t/\\\\/\\uXXXX/etc. to match serde's output.",
+      "alternatives": [
+        "Parse untrimmed lines instead of adding offset (more complex, changes existing behavior)",
+        "Use serde key iteration order instead of source scanning (loses source-order guarantee)"
+      ],
+      "impact": "markymark-parser/src/structured/json5.rs read_quoted_string()"
+    },
+    {
+      "id": "dec-040",
+      "timestamp": "2026-02-16T09:30:00Z",
+      "feature": "marky-b1q",
+      "decision": "Extract byte_to_position to structured/mod.rs shared utility",
+      "rationale": "Six identical copies across json.rs, json5.rs, jsonl.rs, yaml.rs, toml.rs, flat.rs. Single pub(crate) function in mod.rs eliminates duplication. Position import moved to test modules where only tests use it.",
+      "alternatives": [
+        "Put in markymark-core (crosses crate boundary for parser-internal utility)",
+        "Use a macro (unnecessary complexity for a simple function)"
+      ],
+      "impact": "markymark-parser/src/structured/{mod,json,json5,jsonl,yaml,toml,flat}.rs"
     }
   ]
 }

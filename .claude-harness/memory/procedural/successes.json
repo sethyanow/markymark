@@ -352,6 +352,29 @@
         "source-positions",
         "serde"
       ]
+    },
+    {
+      "id": "suc-021",
+      "timestamp": "2026-02-16T09:30:00Z",
+      "feature": "marky-b1q",
+      "type": "code-review",
+      "approach": "Batch PR review triage: categorized 8 comments by severity (1 critical, 2 major, 5 minor). TDD for all fixes — wrote 6 failing tests first, then implemented fixes. Combined DRY refactor (byte_to_position extraction) with bugfixes in single commit. All pre-commit hooks passed on second attempt (cargo fmt diff).",
+      "files": [
+        "markymark-parser/src/structured/json5.rs",
+        "markymark-parser/src/structured/jsonl.rs",
+        "markymark-parser/src/structured/flat.rs",
+        "markymark-parser/src/structured/mod.rs",
+        "markymark-parser/src/structured/json.rs",
+        "markymark-parser/src/structured/yaml.rs",
+        "markymark-parser/src/structured/toml.rs",
+        "markymark-parser/tests/structured_json5.rs"
+      ],
+      "patterns": [
+        "When scanner and serde parse the same input, scanner must reproduce serde's decoding for key lookup",
+        "DRY extraction during review fixes is efficient — touch the files once for both",
+        "Move Position import to test modules when only tests use it (avoids unused import warnings)",
+        "Run cargo fmt before commit when touching many files — pre-commit hook catches formatting diffs"
+      ]
     }
   ]
 }
