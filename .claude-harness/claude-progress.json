@@ -1,40 +1,41 @@
 {
-  "lastUpdated": "2026-02-16T10:30:00Z",
+  "lastUpdated": "2026-02-16T11:15:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Merged origin/main (v0.2.0 release) into feature/mark-brza. All conflicts were harness memory JSON files (no code conflicts). Resolved by keeping feature branch versions. Triaged all 27 PR #15 review comments — all actionable items were already fixed in prior commits (a8d06fd, 8522d9a). Semgrep unsafe-usage findings are expected for FFI crate.",
+    "summary": "Ported 4 shared kernels from forge BRZA (marky-bgl): similarity (SIMD cosine + scalar Jaccard), normalize (SIMD L2), entities (SIMD FNV-1a extraction), quantize (SIMD Q4_0). 8 new Zig files, 6 C ABI exports. All 647 Rust tests + Zig tests pass.",
     "completedTasks": [
-      "Merge origin/main into feature/mark-brza (v0.2.0 integration)",
-      "Resolve 5 harness memory file conflicts (ours strategy)",
-      "Triage 27 PR #15 review comments — all previously addressed",
-      "Saved PR comments as JSON for future reference"
+      "marky-bgl: Port similarity, normalize, entities, quantize kernels from forge BRZA",
+      "4 SIMD kernel implementations in zig/src/shared/",
+      "4 scalar reference implementations in zig/src/reference/",
+      "6 C ABI exports added to c_adapter.zig",
+      "Fixed Zig 0.15 'packed' reserved keyword issue"
     ],
     "blockers": [
-      "PR #15 was CONFLICTING before merge — should be clean now after push",
-      "Scope guard RED: ~5121 lines / 29 new files"
+      "Scope guard RED: branch continues to grow (~6700+ lines / 37+ new files)",
+      "c_adapter.zig at 793 lines — approaching 1000-line hard limit"
     ],
     "nextSteps": [
-      "Push merged branch to update PR #15 conflict status",
+      "marky-0u5: Write Rust FFI wrappers for shared kernels (now unblocked)",
       "marky-ncz: Port embedding index kernels from forge BRZA",
-      "marky-bgl: Port similarity and entity hash kernels from forge BRZA",
       "marky-8s3.1: Implement code fence exclusion map",
-      "marky-ayb: CI integration improvements"
+      "Consider splitting c_adapter.zig before it hits 1000 lines"
     ]
   },
   "recentChanges": [
-    "Merge commit 4576da5: integrated origin/main (v0.2.0) into feature branch",
-    "Workspace now at v0.2.0 with all dependency upgrades from main"
+    "2a356e4: feat(brza): port similarity, normalize, entities, quantize kernels (marky-bgl)",
+    "PR #15 merged. No open PRs."
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch large but net -4118 Rust lines (deletions > additions)",
+    "Scope guard RED: branch large but net deletions in Rust",
     "All scan kernels: known false positives inside code blocks (fence_map kernel is separate task)",
+    "c_adapter.zig at 793 lines — needs split before more exports added",
     "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T10:30:00Z",
-    "lastTypeCheck": "2026-02-16T10:30:00Z"
+    "lastSuccessfulBuild": "2026-02-16T11:15:00Z",
+    "lastTypeCheck": "2026-02-16T11:15:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
