@@ -1,37 +1,34 @@
 {
-  "lastUpdated": "2026-02-16T20:26:00Z",
+  "lastUpdated": "2026-02-16T13:12:00-08:00",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Short session: reviewed PR #19 comments (Greptile 5/5, Copilot nitpick), fixed walkdir error handling in build.rs per Copilot review, committed and pushed 4733c23.",
+    "summary": "Merged origin/main to reset scope guard baseline. Branch now GREEN: 749 lines / 3 commits / 10 files. Build passes.",
     "completedTasks": [
-      "Fetched and parsed PR #19 comments (3 issue-level, 1 review comment)",
-      "Fixed build.rs walkdir to log errors via cargo:warning= instead of silently ignoring",
-      "Committed and pushed: 4733c23"
+      "Merged origin/main (PR #19) into feature/mark-brza",
+      "Scope guard status: GREEN (was RED at 9668 lines)",
+      "Verified build passes after merge (release profile)"
     ],
-    "blockers": [
-      "Scope guard RED: branch at ~8858 lines / 53 commits / 43 new files"
-    ],
+    "blockers": [],
     "nextSteps": [
-      "Merge PR #19 to reduce branch scope",
-      "marky-4aa: Fix mem::forget leak in DocumentIndex::from_ast",
-      "marky-ams: Implement ZigScanBackend wrapping markymark-kernels FFI"
+      "marky-8s3.1: Code fence exclusion map Zig kernel",
+      "marky-ayb: CI integration for Zig build step",
+      "marky-0aw: Extraction parity tests (unblocked by marky-0oz)"
     ]
   },
   "recentChanges": [
-    "4733c23: fix(build): log walkdir errors instead of silently ignoring them",
-    "4db68ce: fix(build): watch individual Zig files for rebuild triggers",
-    "719db66: fix(kernels): initialize written parameter in scan FFI functions"
+    "a248f6b: Merge remote-tracking branch 'origin/main' into feature/mark-brza",
+    "2696947: feat(core,index): ZigScanBackend, ZigEmbeddingIndex, and DocumentIndex::from_scan",
+    "5b07bd6: fix(index): replace mem::forget leak with Ast::take_arena()"
   ],
   "knownIssues": [
-    "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations",
-    "Scope guard RED: branch large (~8858 lines, 43 files, 53 commits)",
     "c_adapter.zig at 811 lines — new exports use exports_*.zig pattern to stay under limit",
-    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
+    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate",
+    "from_scan known gaps: no XML tags, no setext headings, no frontmatter"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T20:23:00Z",
-    "lastTypeCheck": "2026-02-16T20:23:00Z"
+    "lastSuccessfulBuild": "2026-02-16T13:12:00-08:00",
+    "lastTypeCheck": "2026-02-16T13:12:00-08:00"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
