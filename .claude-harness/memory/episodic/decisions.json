@@ -626,6 +626,30 @@
         "Execute both in parallel (increases scope without benefit)"
       ],
       "impact": "marky-lkj.1 moved to P4, marky-cqx created as next task with comprehensive SRE refinement"
+    },
+    {
+      "id": "dec-037",
+      "timestamp": "2026-02-16T07:23:00Z",
+      "feature": "marky-lkj",
+      "decision": "Stack-based depth reconstruction for key_entries_to_symbols instead of recursive parent-tracking",
+      "rationale": "Flat KeyEntry list with depth field allows O(n) single-pass tree reconstruction. Stack tracks current nesting level; when depth decreases, pop and attach children to parent. Simpler than maintaining parent indices.",
+      "alternatives": [
+        "Recursive approach building subtrees (more allocations)",
+        "Two-pass: first build parent map, then construct tree"
+      ],
+      "impact": "markymark-lsp/src/server.rs key_entries_to_symbols()"
+    },
+    {
+      "id": "dec-038",
+      "timestamp": "2026-02-16T07:23:00Z",
+      "feature": "marky-lkj",
+      "decision": "Update stale MCP test to match multi-format indexing reality instead of preserving markdown-only assertion",
+      "rationale": "workspace_with_mixed_formats_only_indexes_markdown was written before structured doc indexing existed. Now that runtime indexes JSON/YAML/.env, the test name and assertions were wrong. Renamed to workspace_with_mixed_formats_indexes_all_supported_types with correct counts.",
+      "alternatives": [
+        "Skip the test with #[ignore]",
+        "Add a separate test and leave old one failing"
+      ],
+      "impact": "markymark-mcp/tests/runtime_engine_tests.rs"
     }
   ]
 }

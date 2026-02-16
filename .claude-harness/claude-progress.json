@@ -1,43 +1,42 @@
 {
-  "lastUpdated": "2026-02-16T06:33:00Z",
+  "lastUpdated": "2026-02-16T07:23:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Implemented YAML parser (marky-cqx) using tree-sitter-yaml 0.7, following JSON parser CST walker pattern. 25 tests all GREEN, 380 workspace tests pass, clippy clean, pre-commit hooks pass. Used DeepWiki to unblock CST structure debugging.",
+    "summary": "Completed marky-lkj.9 (LSP structured doc support) and closed marky-lkj epic. Implemented key_entries_to_symbols() for nested LSP DocumentSymbol hierarchy from flat key entries, multi-format open/change routing in state.rs, updated stale MCP test. All workspace tests GREEN, clippy clean.",
     "completedTasks": [
-      "Added tree-sitter-yaml 0.7 dependency to workspace and parser crate",
-      "Created markymark-parser/src/structured/yaml.rs (362 impl + 269 test lines)",
-      "Implemented recursive CST walker: unwrap_node, walk_value, extract_mapping_pair, walk_sequence_item",
-      "Implemented classify_value using child node kinds (string_scalar, integer_scalar, etc.)",
-      "Used root.has_error() for O(1) malformed YAML detection (replaced O(n) recursive check)",
-      "Handled anchors, aliases, block scalars, flow/block mappings and sequences",
-      "Wired YAML dispatch in structured/mod.rs",
-      "25 tests GREEN: basic, nested, sequences, value kinds, positions, multiline, anchors, merge keys, errors, stress, unicode",
-      "Closed marky-cqx in beads, pushed to remote"
+      "Implemented key_entries_to_symbols() using stack-based depth reconstruction",
+      "Added ValueKind → SymbolKind mapping (Object, Array, String, Number, Boolean, Null)",
+      "Multi-format document detection in state.rs open_document/change_document",
+      "Added get_any_document_index/get_structured_document_index accessors",
+      "Updated document_symbol handler to dispatch on AnyDocumentIndex",
+      "3 new integration tests: JSON nested symbols, YAML symbols, empty JSON",
+      "Updated stale MCP test (workspace_with_mixed_formats_indexes_all_supported_types)",
+      "Fixed clippy warnings (collapsible else-if)",
+      "Closed marky-lkj epic — all success criteria met"
     ],
     "blockers": [],
     "nextSteps": [
-      "Create TOML parser task (tree-sitter-toml-ng, same pattern as JSON/YAML)",
-      "After parsers complete: integrate into index/MCP/LSP layers (7 epic success criteria remaining)",
-      "Consider marky-luy: Arena conformance closeout (P2)",
-      "Consider marky-5yt: Replace 'static with self_cell/ouroboros (P3)"
+      "marky-lkj.1: Refactor runtime_engine.rs test extraction (P4, deferred)",
+      "feature-001: Arena allocation still in_progress on feature/feature-001 branch",
+      "Consider marky-v8e: v1.0 product launch tasks",
+      "Consider marky-luy: Arena conformance closeout (P2)"
     ]
   },
   "recentChanges": [
-    "feat(marky-cqx): implement YAML parser using tree-sitter-yaml (commit 09a8811)",
-    "Recorded suc-016 (DeepWiki for CST debugging) and suc-017 (has_error() O(1)) to harness memory"
+    "feat(marky-lkj.9): LSP DocumentSymbols and multi-format support (commit f073617)",
+    "Closed marky-lkj epic: multi-format document support complete"
   ],
   "knownIssues": [
-    "yaml.rs is 631 lines (362 impl + 269 tests) — over 500 line limit but impl alone is under",
-    "Merge key (<<) resolution deferred — indexed as regular key in v1",
-    "tree-sitter-yaml parsing ~3-7x slower than JSON for large docs (inherent grammar complexity)",
+    "marky-lkj.1: runtime_engine.rs test refactoring deferred (P4)",
     "marky-5yt: 'static lifetime leak deferred to self_cell migration",
-    "marky-luy.1/2/3: P3 research items (Miri CI, arena reuse, Cow optimization)"
+    "marky-luy.1/2/3: P3 research items (Miri CI, arena reuse, Cow optimization)",
+    "feature-001 (arena allocation) still in_progress on separate branch"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T06:32:00Z",
-    "lastTypeCheck": "2026-02-16T06:32:00Z"
+    "lastSuccessfulBuild": "2026-02-16T07:22:00Z",
+    "lastTypeCheck": "2026-02-16T07:22:00Z"
   },
-  "lastCompaction": "2026-02-16T04:11:59.000Z",
-  "compactionCount": 4
+  "lastCompaction": "2026-02-16T07:11:59.000Z",
+  "compactionCount": 5
 }
