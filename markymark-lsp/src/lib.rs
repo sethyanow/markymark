@@ -14,6 +14,7 @@
 pub mod convert;
 pub mod server;
 pub mod state;
+mod symbols;
 
 /// Run the LSP server over stdio transport.
 ///
