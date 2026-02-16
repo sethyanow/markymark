@@ -1084,7 +1084,10 @@ mod tests {
         let text = "line0\nline1\nline2\n";
         // end (line 0, char 2) is before start (line 1, char 3)
         let bounds = incremental_byte_bounds(text, 1, 3, 0, 2);
-        assert!(bounds.end_before_start, "end position should be before start");
+        assert!(
+            bounds.end_before_start,
+            "end position should be before start"
+        );
         // old_end_byte is still coerced for consistency
         assert!(bounds.old_end_byte >= bounds.start_byte);
     }
