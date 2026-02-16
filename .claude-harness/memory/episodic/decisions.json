@@ -601,7 +601,56 @@
         "Structured first, markdown later (inverse priority - misses real bottleneck)"
       ],
       "impact": "Incremental logic only in markdown path, structured formats bypass to from_ast()"
+    },
+    {
+      "id": "dec-046",
+      "timestamp": "2026-02-16T18:10:17Z",
+      "feature": "marky-luy.3",
+      "decision": "Defer Cow<str> optimization in RealmIndex::add_document until self-referential lifetime model is implemented",
+      "rationale": "RealmIndex stores DocumentIndex in self.docs and also stores cross-document lookup maps as sibling fields. Borrowing from DocumentIndex into those sibling maps would require self-referential invariants not provided by the current ownership model. Benchmark evidence from alloc_count_index_100 shows baseline 11326 heap allocations (~6.6-7.7ms), so deferral preserves correctness while retaining a measurable optimization target.",
+      "alternatives": [
+        "Partial Cow retrofit while still allocating owned copies in maps",
+        "Immediate self_cell/ouroboros refactor in this task",
+        "Arena-backed cross-doc map redesign"
+      ],
+      "impact": "markymark-index/src/realm.rs add_document cross-doc indexing strategy; follow-up tracked in marky-5yt"
+    },
+    {
+      "id": "dec-047",
+      "timestamp": "2026-02-16T18:52:59Z",
+      "feature": "marky-5yt",
+      "decision": "Use compile_fail doctests to enforce that Ast/DocumentIndex APIs cannot leak &'static references",
+      "rationale": "The task requires hardening lifetime safety. compile_fail doctests catch regressions at the API boundary and fail if leakage becomes possible again.",
+      "alternatives": [
+        "Rely on code review-only lifetime discipline",
+        "Defer tests until full self_cell migration"
+      ],
+      "impact": "markymark-parser/src/ast.rs and markymark-index/src/document.rs doctests"
+    },
+    {
+      "id": "dec-048",
+      "timestamp": "2026-02-16T18:52:59Z",
+      "feature": "marky-5yt",
+      "decision": "Change parser/index public accessors to lifetimes tied to &self while preserving internal ownership-transfer path",
+      "rationale": "This provides immediate static safety at public boundaries without destabilizing the existing arena transfer architecture in a single checkpoint.",
+      "alternatives": [
+        "Full self_cell/ouroboros migration in the same checkpoint",
+        "Keep outward 'static and rely on documentation warnings"
+      ],
+      "impact": "markymark-parser/src/ast.rs and markymark-index/src/document.rs signatures and call-sites"
+    },
+    {
+      "id": "dec-049",
+      "timestamp": "2026-02-16T18:52:59Z",
+      "feature": "marky-5yt",
+      "decision": "Parameterize SymbolAtPosition over lifetime instead of storing only 'static payloads",
+      "rationale": "LSP state symbol extraction clones index entries; after boundary hardening, forcing 'static caused borrow escape errors. A borrowed enum keeps handlers correct and compile-safe.",
+      "alternatives": [
+        "Force owned String copies into SymbolAtPosition variants",
+        "Reintroduce outward 'static APIs in index layer"
+      ],
+      "impact": "markymark-lsp/src/state.rs and markymark-lsp/tests/state_tests.rs"
     }
   ],
-  "lastUpdated": "2026-02-16T16:23:03Z"
+  "lastUpdated": "2026-02-16T18:52:59Z"
 }

@@ -119,17 +119,14 @@ fn test_symbol_at_position_structured_json_key() {
     state.open_document(uri.clone(), "{\n  \"host\": \"localhost\"\n}\n".to_string());
 
     // "host" is at line 1, characters 3..7 (inside quotes)
-    let result = state.symbol_at_position(&uri, Position::new(1, 4));
-    assert!(
-        result.is_some(),
-        "should find structured key at cursor position"
-    );
-    match result.unwrap() {
-        SymbolAtPosition::StructuredKey(info) => {
+    let symbol = state.symbol_at_position(&uri, Position::new(1, 4));
+    match symbol {
+        Some(SymbolAtPosition::StructuredKey(info)) => {
             assert_eq!(info.key, "host");
             assert_eq!(info.path, "host");
         }
-        other => panic!("expected StructuredKey, got {:?}", other),
+        Some(other) => panic!("expected StructuredKey, got {:?}", other),
+        None => panic!("should find structured key at cursor position"),
     }
 }
 

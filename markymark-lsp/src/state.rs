@@ -112,15 +112,15 @@ pub struct MarkyDiagnostic {
 
 /// Describes what symbol (if any) the cursor is sitting on.
 #[derive(Debug, Clone)]
-pub enum SymbolAtPosition {
+pub enum SymbolAtPosition<'a> {
     /// A heading line.
-    Heading(HeadingEntry<'static>),
+    Heading(HeadingEntry<'a>),
     /// A wiki link.
-    WikiLink(WikiLinkEntry<'static>),
+    WikiLink(WikiLinkEntry<'a>),
     /// A markdown link.
-    MarkdownLink(MarkdownLinkEntry<'static>),
+    MarkdownLink(MarkdownLinkEntry<'a>),
     /// An XML tag.
-    XmlTag(XmlTagEntry<'static>),
+    XmlTag(XmlTagEntry<'a>),
     /// A key in a structured document (JSON, YAML, TOML, etc.).
     StructuredKey(StructuredKeyInfo),
 }
@@ -887,7 +887,11 @@ impl ServerState {
     }
 
     /// Identify what element the cursor is on.
-    pub fn symbol_at_position(&self, uri: &DocumentUri, pos: Position) -> Option<SymbolAtPosition> {
+    pub fn symbol_at_position(
+        &self,
+        uri: &DocumentUri,
+        pos: Position,
+    ) -> Option<SymbolAtPosition<'_>> {
         // Check if it's a structured document first
         if let Some(structured_index) = self.realm.get_structured_document(uri) {
             // Find the key entry whose key_range contains the cursor position.

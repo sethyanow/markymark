@@ -51,17 +51,10 @@ impl Ast {
         self.arena.bump()
     }
 
-    /// Get a `'static` reference to the inner bump allocator.
-    ///
-    /// # Safety
-    ///
-    /// The returned reference has `'static` lifetime but is only valid for
-    /// the lifetime of `self`. Sound because `self` owns the `DocumentArena`.
-    /// Callers must not let the reference escape beyond `&self` methods.
+    /// Get a reference to the inner bump allocator tied to `&self`.
     #[inline]
-    fn arena_ref(&self) -> &'static bumpalo::Bump {
-        // SAFETY: DocumentArena is owned by Self; reference valid for Self's lifetime.
-        unsafe { &*(self.arena.bump() as *const bumpalo::Bump) }
+    fn arena_ref(&self) -> &bumpalo::Bump {
+        self.arena.bump()
     }
 
     /// Consume the AST and return its [`DocumentArena`].
@@ -106,22 +99,32 @@ impl Ast {
     }
 
     /// Get root-level elements
-    pub fn root_elements(&self) -> &[Element<'static>] {
+    ///
+    /// ```compile_fail
+    /// use markymark_parser::Parser;
+    ///
+    /// fn leak_heading_text() -> &'static str {
+    ///     let mut parser = Parser::new().unwrap();
+    ///     let ast = parser.parse("# Title").unwrap();
+    ///     ast.root_elements()[0].as_heading().unwrap().text()
+    /// }
+    /// ```
+    pub fn root_elements<'a>(&'a self) -> &'a [Element<'a>] {
         &self.root_elements
     }
 
     /// Extract all wiki links from the document
-    pub fn extract_wiki_links(&self) -> Vec<WikiLink<'static>> {
+    pub fn extract_wiki_links<'a>(&'a self) -> Vec<WikiLink<'a>> {
         crate::extract::extract_wiki_links(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all markdown links
-    pub fn extract_markdown_links(&self) -> Vec<MarkdownLink<'static>> {
+    pub fn extract_markdown_links<'a>(&'a self) -> Vec<MarkdownLink<'a>> {
         crate::extract::extract_markdown_links(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all link definitions
-    pub fn extract_link_definitions(&self) -> Vec<LinkDefinition<'static>> {
+    pub fn extract_link_definitions<'a>(&'a self) -> Vec<LinkDefinition<'a>> {
         crate::extract::extract_link_definitions(
             &self.root_elements,
             &self.source,
@@ -130,29 +133,29 @@ impl Ast {
     }
 
     /// Extract all block IDs (Obsidian)
-    pub fn extract_block_ids(&self) -> Vec<BlockId<'static>> {
+    pub fn extract_block_ids<'a>(&'a self) -> Vec<BlockId<'a>> {
         crate::extract::extract_block_ids(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all block references (Logseq)
-    pub fn extract_block_refs(&self) -> Vec<BlockRef<'static>> {
+    pub fn extract_block_refs<'a>(&'a self) -> Vec<BlockRef<'a>> {
         crate::extract::extract_block_refs(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all tags
-    pub fn extract_tags(&self) -> Vec<Tag<'static>> {
+    pub fn extract_tags<'a>(&'a self) -> Vec<Tag<'a>> {
         crate::extract::extract_tags(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all embeds
-    pub fn extract_embeds(&self) -> Vec<Embed<'static>> {
+    pub fn extract_embeds<'a>(&'a self) -> Vec<Embed<'a>> {
         crate::extract::extract_embeds(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all list items as references into the arena (avoids cloning ArenaHashMap).
     ///
     /// Returns an empty vec if the tree has been taken via [`take_md_tree`](Self::take_md_tree).
-    pub fn extract_list_items(&self) -> Vec<&ListItem<'static>> {
+    pub fn extract_list_items<'a>(&'a self) -> Vec<&'a ListItem<'a>> {
         let md_tree = match &self.md_tree {
             Some(t) => t,
             None => return Vec::new(),
@@ -174,32 +177,32 @@ impl Ast {
     }
 
     /// Extract all tasks
-    pub fn extract_tasks(&self) -> Vec<Task<'static>> {
+    pub fn extract_tasks<'a>(&'a self) -> Vec<Task<'a>> {
         crate::extract::extract_tasks(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all callouts (Obsidian)
-    pub fn extract_callouts(&self) -> Vec<Callout<'static>> {
+    pub fn extract_callouts<'a>(&'a self) -> Vec<Callout<'a>> {
         crate::extract::extract_callouts(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all query blocks (Logseq)
-    pub fn extract_query_blocks(&self) -> Vec<QueryBlock<'static>> {
+    pub fn extract_query_blocks<'a>(&'a self) -> Vec<QueryBlock<'a>> {
         crate::extract::extract_query_blocks(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Get frontmatter if present
-    pub fn frontmatter(&self) -> Option<Frontmatter<'static>> {
+    pub fn frontmatter<'a>(&'a self) -> Option<Frontmatter<'a>> {
         crate::extract::extract_frontmatter(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Get page properties (Logseq)
-    pub fn page_properties(&self) -> Option<Properties<'static>> {
+    pub fn page_properties<'a>(&'a self) -> Option<Properties<'a>> {
         crate::extract::extract_page_properties(&self.root_elements, &self.source, self.arena_ref())
     }
 
     /// Extract all XML/HTML tags from the document
-    pub fn extract_xml_tags(&self) -> Vec<XmlTag<'static>> {
+    pub fn extract_xml_tags<'a>(&'a self) -> Vec<XmlTag<'a>> {
         crate::extract::extract_xml_tags(&self.root_elements, &self.source, self.arena_ref())
     }
 }

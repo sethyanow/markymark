@@ -86,6 +86,26 @@
         "extract_xml_tags skips candidates inside fenced ranges",
         "prevents false Unclosed XML tag diagnostics for Rust generics"
       ]
+    },
+    {
+      "name": "realm-cow-deferral",
+      "type": "architecture-decision",
+      "location": "markymark-index/src/realm.rs",
+      "relationships": [
+        "cross-doc indexes keep owned String data in current model",
+        "borrowing across sibling fields requires self-referential invariants",
+        "optimization follow-up tracked in beads issue marky-5yt"
+      ]
+    },
+    {
+      "name": "SymbolAtPosition<'a>",
+      "type": "lsp-state-enum",
+      "location": "markymark-lsp/src/state.rs",
+      "relationships": [
+        "captures borrowed symbol payloads from DocumentIndex lookups",
+        "prevents forced 'static clones after parser/index lifetime-bound API hardening",
+        "used by goto_definition/references/hover/rename flows"
+      ]
     }
   ]
 }
