@@ -1,40 +1,40 @@
 {
-  "lastUpdated": "2026-02-16T19:37:30Z",
+  "lastUpdated": "2026-02-16T20:25:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Fixed marky-9s9 (P2): build.rs rerun-if-changed now watches individual Zig files via walkdir enumeration instead of directory metadata. CodeRabbit found directory watch only triggers on add/remove, not file modifications. All quality gates pass (61 tests, clippy clean).",
+    "summary": "Testing session on feature/mark-testing branch. Merged feature/mark-brza (BRZA epic work) into testing branch, resolved claude-progress.json conflict. Exercised all 7 markymark MCP tools against 89 real docs (create-realm, add-root, realm-stats, get-outline, search-symbols, export-index, find-references, destroy-realm). Tested built-in LSP cross-language behavior on both Rust and Markdown files. Key finding: workspaceSymbol is the only LSP operation that returns cross-language results. Created marky-ix3 research bead for cross-language symbol bridging.",
     "completedTasks": [
-      "marky-9s9: Fixed build.rs to enumerate individual .zig files for rebuild triggers",
-      "Added walkdir build-dependency to Cargo.toml",
-      "Updated build.rs to walk zig/src/ and emit rerun-if-changed per file",
-      "Fixed clippy lint (is_some_and vs map_or)",
-      "Updated decision record dec-brza-een-002 with corrected rationale",
-      "Committed and pushed: 4db68ce"
+      "Merged feature/mark-brza into feature/mark-testing (1 conflict resolved)",
+      "Verified build, 54+ tests, clippy clean after merge",
+      "Tested all 7 markymark MCP tools against docs/ (89 docs, 1017 headings, 435 md links, 411 XML tags)",
+      "Tested built-in LSP documentSymbol, hover, goToDefinition, findReferences, workspaceSymbol on both .rs and .md",
+      "Confirmed markymark only indexes .md files (Rust source roots silently skipped)",
+      "Created marky-ix3: research cross-language symbol bridging, linked to marky-8s3 BRZA epic"
     ],
     "blockers": [
-      "Scope guard RED: branch at ~8835 lines / 51 commits / 43 new files"
+      "Scope guard RED: branch at ~9185 lines / 54 commits / 43 new files"
     ],
     "nextSteps": [
+      "marky-ix3: Research cross-language symbol bridging (blocked by 8s3)",
       "marky-4aa: Fix mem::forget leak in DocumentIndex::from_ast",
       "marky-ams: Implement ZigScanBackend wrapping markymark-kernels FFI"
     ]
   },
   "recentChanges": [
-    "4db68ce: fix(build): watch individual Zig files for rebuild triggers",
-    "719db66: fix(kernels): initialize written parameter in scan FFI functions",
-    "5e4fc2c: feat(core): add ScanBackend and EmbeddingProvider traits"
+    "bea6afd: Merge feature/mark-brza into feature/mark-testing",
+    "marky-ix3: Created research bead for cross-language symbol bridging"
   ],
   "knownIssues": [
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations",
-    "marky-9s9: build.rs watches zig/src/ directory (add/remove) not individual file modifications",
-    "Scope guard RED: branch large (~8786 lines, 43 files, 47 commits)",
-    "c_adapter.zig at 811 lines — new exports use exports_*.zig pattern to stay under limit",
-    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
+    "markymark only indexes .md files — Rust source roots silently skipped (no error)",
+    "search-symbols only matches heading text, not inline code references",
+    "Scope guard RED: branch large (~9185 lines, 43 files, 54 commits)",
+    "c_adapter.zig at 811 lines — new exports use exports_*.zig pattern"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T16:15:00Z",
-    "lastTypeCheck": "2026-02-16T16:15:00Z"
+    "lastSuccessfulBuild": "2026-02-16T20:20:00Z",
+    "lastTypeCheck": "2026-02-16T20:20:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
