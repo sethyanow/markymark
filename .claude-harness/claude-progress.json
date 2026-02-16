@@ -1,41 +1,42 @@
 {
-  "lastUpdated": "2026-02-16T07:42:00Z",
+  "lastUpdated": "2026-02-16T08:35:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Implemented marky-v8r: heading_scan SIMD kernel — first real markymark extraction kernel. Created scalar reference (heading_scan_ref.zig) and SIMD implementation (heading_scan.zig) using @Vector(16, u8) for 16-byte newline scanning. Added marky_scan_headings C ABI export to c_adapter.zig with null/cap validation. 13 kernel tests + 4 scalar tests + 5 c_adapter tests all passing. SIMD benchmark shows ~1.9x speedup over scalar on 10KB markdown. Committed and pushed (ac79fac).",
+    "summary": "Implemented marky-59i: token_estimate and content_hash Zig kernels. token_estimate uses SIMD @Vector(16, u8) whitespace detection with 1.3x BPE multiplier for approximate token counting. content_hash implements FNV-1a 64-bit deterministic fingerprint verified against spec test vectors. Both exported via c_adapter.zig. 51/51 Zig tests pass. Committed and pushed (ebf9265).",
     "completedTasks": [
-      "marky-v8r: Implemented heading_scan SIMD kernel with scalar reference",
-      "Created zig/src/reference/heading_scan_ref.zig (HeadingScan struct, scan_headings_scalar, try_parse_heading)",
-      "Created zig/src/kernels/heading_scan.zig (SIMD scan_headings, 13 tests, benchmark)",
-      "Updated zig/src/c_adapter.zig (marky_scan_headings export, test imports)",
-      "Verified: zig build test, zig build lib, nm symbol check, cargo build/test -p markymark-kernels"
+      "marky-59i: Implemented token_estimate and content_hash Zig kernels",
+      "Created zig/src/kernels/token_estimate.zig (SIMD word boundary, scalar reference, 12 tests)",
+      "Created zig/src/kernels/content_hash.zig (FNV-1a 64-bit, 8 tests)",
+      "Updated zig/src/c_adapter.zig (marky_estimate_tokens + marky_content_hash exports, 7 c_adapter tests)",
+      "Verified: zig build test (51/51), zig build lib (4 symbols), cargo build/test/clippy -p markymark-kernels"
     ],
     "blockers": [
-      "Scope guard RED: branch at 3565+ lines — consider splitting or deferring"
+      "Scope guard RED: branch at 4568 lines / 23 files — consider splitting or deferring"
     ],
     "nextSteps": [
-      "marky-h1t: Write Rust FFI wrappers for extraction kernels (now unblocked by v8r)",
+      "marky-50d: Implement tag_scan and block_scan Zig SIMD kernels (ready, blocks marky-h1t)",
+      "marky-yo7: Implement link_scan Zig SIMD kernel (ready, blocks marky-h1t)",
+      "marky-h1t: Write Rust FFI wrappers for extraction kernels (blocked by 50d + yo7)",
       "marky-ayb: CI integration (Zig build step in GitHub Actions)",
-      "marky-bgl: Port similarity and entity hash kernels from forge",
-      "marky-ncz: Port embedding index kernels from forge",
-      "marky-8s3.2: Implement single-pass multi-pattern scanner (now unblocked by v8r)"
+      "marky-8s3.2: Implement single-pass multi-pattern scanner"
     ]
   },
   "recentChanges": [
-    "zig/src/kernels/heading_scan.zig: SIMD heading scanner with @Vector(16, u8)",
-    "zig/src/reference/heading_scan_ref.zig: Scalar reference implementation",
-    "zig/src/c_adapter.zig: marky_scan_headings C ABI export + kernel test imports"
+    "zig/src/kernels/token_estimate.zig: SIMD word boundary token estimator",
+    "zig/src/kernels/content_hash.zig: FNV-1a 64-bit content fingerprint",
+    "zig/src/c_adapter.zig: added marky_estimate_tokens + marky_content_hash exports"
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch at 3565+ lines, consider splitting",
+    "Scope guard RED: branch at 4568 lines / 23 files, consider splitting",
     "brza-spec.md: untracked file from forge spec reference (not committed)",
-    "heading_scan: known false positive for headings inside code blocks (by design, tree-sitter handles context)"
+    "heading_scan: known false positive for headings inside code blocks (by design)",
+    "Zig SIMD bool vectors cannot use 'or' operator — use @select(bool, ...) for element-wise OR"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T07:42:00Z",
-    "lastTypeCheck": "2026-02-16T07:42:00Z"
+    "lastSuccessfulBuild": "2026-02-16T08:30:00Z",
+    "lastTypeCheck": "2026-02-16T08:30:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4

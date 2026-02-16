@@ -219,6 +219,20 @@
         "ATX closing hash trimming: trim spaces, trim hashes, check preceding space, trim trailing spaces",
         "c_adapter.zig test block with _ = @import pulls kernel tests into main test step"
       ]
+    },
+    {
+      "id": "suc-019",
+      "timestamp": "2026-02-16T08:30:00Z",
+      "feature": "marky-59i",
+      "type": "implementation",
+      "approach": "Token estimate kernel: SIMD @Vector(16,u8) whitespace detection with word counting state machine + 1.3x BPE multiplier. Content hash: FNV-1a 64-bit with spec test vectors. Both simple utility kernels following established heading_scan pattern.",
+      "files": ["zig/src/kernels/token_estimate.zig", "zig/src/kernels/content_hash.zig", "zig/src/c_adapter.zig"],
+      "patterns": [
+        "Zig SIMD bool vectors cannot use 'or' operator — use @select(bool, ...) for element-wise OR",
+        "FNV-1a known test vectors: empty=0xcbf29ce484222325, 'a'=0xaf63dc4c8601ec8c, 'foobar'=0x85944171f73967e8",
+        "Token estimation: (word_count * 13 + 5) / 10 for rounding-aware 1.3x multiplier",
+        "Simple utility kernels (no buffer/written pattern) just return u32/u64 directly via export fn"
+      ]
     }
   ]
 }
