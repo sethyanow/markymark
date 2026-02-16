@@ -392,6 +392,22 @@
         "Use -Zmiri-ignore-leaks when mem::forget is intentional in the pattern being tested",
         "Separate Miri cache key in CI to avoid polluting stable build cache"
       ]
+    },
+    {
+      "id": "suc-023",
+      "timestamp": "2026-02-16T16:40:00Z",
+      "feature": "marky-luy.2",
+      "type": "investigation",
+      "approach": "Benchmark-driven investigation: wrote targeted arena lifecycle benchmarks (create+alloc+drop vs reset+alloc) alongside full reparse benchmarks. Quantified exact overhead ratio before making build/no-build decision. Saved days of wasted implementation effort.",
+      "files": [
+        "markymark-core/src/arena.rs",
+        "markymark-index/benches/memory.rs"
+      ],
+      "patterns": [
+        "Always benchmark before optimizing — arena reuse looked promising but was <0.1% of total cost",
+        "Compare micro-optimization to full pipeline cost to determine if it's worth pursuing",
+        "Closing a task with 'won't implement' + evidence is a valid and valuable outcome"
+      ]
     }
   ]
 }

@@ -1,34 +1,37 @@
 {
-  "lastUpdated": "2026-02-16T10:57:00Z",
+  "lastUpdated": "2026-02-16T16:40:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-luy.1: Added Miri CI job for unsafe arena pattern validation. 14 tests covering 5 patterns (self-referential 'static cast, ptr::read+mem::forget transfer, ArenaHashMap, BumpVec slice, ArenaVecBuilder). 8 pass under Miri, 6 ignored due to known Box aliasing issue (marky-5yt). Discovered and filed marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations.",
+    "summary": "Completed marky-luy.2 investigation: benchmarked arena reuse via DocumentArena::reset(). Results show arena lifecycle is <0.1% of total reparse cost (662ns vs 64µs small, 22.5µs vs 3.36ms large). Tree-sitter parsing dominates by 100-150x. Concluded arena reuse is not worth implementing. Added reset() method and investigation benchmarks. Filed marky-g9b epic for incremental tree-sitter parsing (the real performance opportunity) with 4 SRE-refined subtasks.",
     "completedTasks": [
-      "marky-luy.1: Miri CI job + 14 arena safety tests in markymark-core/tests/miri_arena.rs",
-      "Filed marky-4aa: mem::forget heap leak bug in DocumentIndex::from_ast"
+      "marky-luy.2: Arena reuse investigation — benchmark proves <0.1% benefit, closed as won't-implement",
+      "marky-g9b: Filed incremental tree-sitter parsing epic with SRE refinement (4 subtasks)"
     ],
     "blockers": [],
     "nextSteps": [
-      "marky-luy.2: Investigate arena reuse via DocumentArena::reset",
       "marky-luy.3: Evaluate Cow<str> in RealmIndex for reduced allocation",
+      "marky-g9b: Incremental tree-sitter parsing (marky-8gp → marky-tfd → marky-tzq → marky-zan)",
       "marky-8s3: BRZA SIMD kernels (separate track)"
     ]
   },
   "recentChanges": [
-    "Added Miri CI job to .github/workflows/ci.yml (nightly toolchain, -Zmiri-ignore-leaks)",
-    "14 Miri arena safety tests in markymark-core/tests/miri_arena.rs",
-    "Filed marky-4aa for mem::forget heap leak discovery"
+    "DocumentArena::reset() method added to markymark-core/src/arena.rs",
+    "arena_reuse_investigation benchmark group added to memory.rs",
+    "marky-luy.2 closed with benchmark evidence",
+    "marky-g9b epic created: incremental tree-sitter parsing with 4 subtasks",
+    "dec-041 recorded: do not implement arena reuse pipeline"
   ],
   "knownIssues": [
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
     "marky-5yt: 'static lifetime + Box aliasing issue — blocks 6 Miri tests, needs self_cell migration",
     "marky-lkj.1: runtime_engine.rs test refactoring deferred (P4)",
-    "feature-001 (arena allocation) still in_progress on separate branch"
+    "feature-001 (arena allocation) still in_progress on separate branch",
+    "Performance: LSP uses TextDocumentSyncKind::FULL + full reparse on every keystroke (marky-g9b)"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T10:57:00Z",
-    "lastTypeCheck": "2026-02-16T10:57:00Z"
+    "lastSuccessfulBuild": "2026-02-16T16:40:00Z",
+    "lastTypeCheck": "2026-02-16T16:40:00Z"
   },
   "lastCompaction": "2026-02-16T07:11:59.000Z",
   "compactionCount": 5
