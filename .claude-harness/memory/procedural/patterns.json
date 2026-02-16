@@ -32,7 +32,9 @@
       "docs-vs-practice audit: read doc, find all struct/field types in codebase, compare systematically. Key: test Send/Sync implications before changing types.",
       "ArenaHashMap Send constraint: always check trait bounds before adopting arena-backed collections in types stored across async boundaries.",
       "When migrating wrapper types (e.g. Bump->DocumentArena), trace all ptr::read/mem::forget usage - pointer type must match the owning type, not inner type.",
-      "When token-scanning Markdown for XML-like syntax, precompute fenced code ranges and skip tokens inside fences to avoid language-generic false positives."
+      "When token-scanning Markdown for XML-like syntax, precompute fenced code ranges and skip tokens inside fences to avoid language-generic false positives.",
+      "Stack-based depth reconstruction for flat key lists: push stack level on Object/Array, pop when depth decreases, attach children to parent. O(n) single-pass, no parent-index tracking needed.",
+      "When adding multi-format support to an existing system, update stale tests that asserted single-format behavior instead of adding #[ignore] or skipping — stale assertions mask real regressions."
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",

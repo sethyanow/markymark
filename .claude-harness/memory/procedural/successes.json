@@ -295,6 +295,26 @@
         "index",
         "backward-compat"
       ]
+    },
+    {
+      "id": "suc-018",
+      "timestamp": "2026-02-16T07:23:00Z",
+      "feature": "marky-lkj",
+      "type": "implementation",
+      "approach": "LSP multi-format integration: key_entries_to_symbols() uses stack-based depth reconstruction from flat KeyEntry list to build nested LSP DocumentSymbol hierarchy. ValueKind maps directly to SymbolKind. State.rs routes structured docs via DocumentKind detection. 3 integration tests (JSON/YAML/empty). Updated stale MCP test expecting markdown-only indexing.",
+      "files": [
+        "markymark-lsp/src/server.rs",
+        "markymark-lsp/src/state.rs",
+        "markymark-lsp/tests/document_symbol_tests.rs",
+        "markymark-mcp/tests/runtime_engine_tests.rs"
+      ],
+      "outcome": "marky-lkj epic closed — all 10 success criteria met. Multi-format support spans parser, index, MCP, LSP layers.",
+      "tags": [
+        "lsp",
+        "document-symbols",
+        "multi-format",
+        "epic-completion"
+      ]
     }
   ]
 }
