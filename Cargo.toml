@@ -47,6 +47,7 @@ petgraph = "0.8"
 # Memory allocation
 bumpalo = { version = "3.19.1", features = ["collections", "boxed", "allocator-api2"] }
 hashbrown = "0.16.1"
+self_cell = "1.2.2"
 
 # Testing
 insta = { version = "1.42", features = ["yaml"] }
