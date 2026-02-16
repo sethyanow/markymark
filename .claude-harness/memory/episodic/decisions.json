@@ -842,6 +842,30 @@
       "impact": "Dependency chain: kernels <- core <- index <- mcp"
     },
     {
+      "id": "dec-v8r-001",
+      "timestamp": "2026-02-16T07:42:00Z",
+      "feature": "marky-v8r",
+      "decision": "Hybrid SIMD-scalar heading scanner: SIMD finds newlines, scalar validates headings",
+      "rationale": "Headings are sparse in markdown. SIMD accelerates the common case (scanning prose for newlines) while scalar handles the rare case (parsing heading syntax). This avoids complex SIMD logic for # counting and space verification.",
+      "alternatives": [
+        "Full SIMD heading parsing (complex, marginal benefit for sparse headings)",
+        "Pure scalar (simpler but slower on large documents)"
+      ],
+      "impact": "zig/src/kernels/heading_scan.zig, zig/src/reference/heading_scan_ref.zig"
+    },
+    {
+      "id": "dec-v8r-002",
+      "timestamp": "2026-02-16T07:42:00Z",
+      "feature": "marky-v8r",
+      "decision": "Shared try_parse_heading between SIMD and scalar implementations",
+      "rationale": "Both SIMD and scalar paths need identical heading validation logic. Sharing the function ensures parity and reduces duplication. Made pub in reference module for SIMD module to import.",
+      "alternatives": [
+        "Duplicate validation logic in each module",
+        "Extract to shared utility module"
+      ],
+      "impact": "zig/src/reference/heading_scan_ref.zig (pub fn try_parse_heading)"
+    },
+    {
       "id": "dec-brza-mm-004",
       "timestamp": "2026-02-15T23:50:00Z",
       "feature": "marky-8s3",

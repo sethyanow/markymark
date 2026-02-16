@@ -1,41 +1,41 @@
 {
-  "lastUpdated": "2026-02-16T07:25:00Z",
+  "lastUpdated": "2026-02-16T07:42:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Ran hyperpowers:review-implementation on marky-ccv and marky-een. Found 3 tautological expect(true) tests in Zig scaffold and missing comptime version gate in build.zig. Fixed all gaps: removed tautological tests from fixtures.zig/harness.zig/smoke_test.zig, added comptime version gate to build.zig. All quality gates pass. Both tasks confirmed complete against bd spec.",
+    "summary": "Implemented marky-v8r: heading_scan SIMD kernel — first real markymark extraction kernel. Created scalar reference (heading_scan_ref.zig) and SIMD implementation (heading_scan.zig) using @Vector(16, u8) for 16-byte newline scanning. Added marky_scan_headings C ABI export to c_adapter.zig with null/cap validation. 13 kernel tests + 4 scalar tests + 5 c_adapter tests all passing. SIMD benchmark shows ~1.9x speedup over scalar on 10KB markdown. Committed and pushed (ac79fac).",
     "completedTasks": [
-      "review-implementation: Reviewed marky-ccv (6/6 criteria met, 3 tautological tests fixed)",
-      "review-implementation: Reviewed marky-een (7/7 criteria met, all tests meaningful)",
-      "fix: Removed 3 expect(true) tautological tests from zig scaffold",
-      "fix: Added comptime version gate in build.zig (@compileError for Zig < 0.15.2)",
-      "Committed and pushed review fixes (33e8150)"
+      "marky-v8r: Implemented heading_scan SIMD kernel with scalar reference",
+      "Created zig/src/reference/heading_scan_ref.zig (HeadingScan struct, scan_headings_scalar, try_parse_heading)",
+      "Created zig/src/kernels/heading_scan.zig (SIMD scan_headings, 13 tests, benchmark)",
+      "Updated zig/src/c_adapter.zig (marky_scan_headings export, test imports)",
+      "Verified: zig build test, zig build lib, nm symbol check, cargo build/test -p markymark-kernels"
     ],
     "blockers": [
-      "Scope guard RED: branch at 3565 lines / 19 new files — consider splitting or deferring"
+      "Scope guard RED: branch at 3565+ lines — consider splitting or deferring"
     ],
     "nextSteps": [
-      "Consider checkpoint/PR for ccv+een scaffold work before adding more",
-      "marky-v8r: Implement heading_scan Zig SIMD kernel (first real kernel)",
+      "marky-h1t: Write Rust FFI wrappers for extraction kernels (now unblocked by v8r)",
       "marky-ayb: CI integration (Zig build step in GitHub Actions)",
       "marky-bgl: Port similarity and entity hash kernels from forge",
-      "marky-ncz: Port embedding index kernels from forge"
+      "marky-ncz: Port embedding index kernels from forge",
+      "marky-8s3.2: Implement single-pass multi-pattern scanner (now unblocked by v8r)"
     ]
   },
   "recentChanges": [
-    "zig/build.zig: Added comptime version gate for Zig >= 0.15.2",
-    "zig/src/fixtures.zig: Removed tautological expect(true) test",
-    "zig/src/harness.zig: Removed tautological expect(true) test",
-    "zig/test/smoke_test.zig: Removed tautological expect(true) test, kept version check"
+    "zig/src/kernels/heading_scan.zig: SIMD heading scanner with @Vector(16, u8)",
+    "zig/src/reference/heading_scan_ref.zig: Scalar reference implementation",
+    "zig/src/c_adapter.zig: marky_scan_headings C ABI export + kernel test imports"
   ],
   "knownIssues": [
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch at 3565 lines, consider splitting",
-    "brza-spec.md: untracked file from forge spec reference (not committed)"
+    "Scope guard RED: branch at 3565+ lines, consider splitting",
+    "brza-spec.md: untracked file from forge spec reference (not committed)",
+    "heading_scan: known false positive for headings inside code blocks (by design, tree-sitter handles context)"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T07:20:00Z",
-    "lastTypeCheck": "2026-02-16T07:20:00Z"
+    "lastSuccessfulBuild": "2026-02-16T07:42:00Z",
+    "lastTypeCheck": "2026-02-16T07:42:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4

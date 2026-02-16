@@ -204,6 +204,21 @@
         "comptime version gate in build.zig catches wrong Zig at build time, not just test time",
         "Review scaffold code with same rigor as production code — placeholder tests create false confidence"
       ]
+    },
+    {
+      "id": "suc-018",
+      "timestamp": "2026-02-16T07:42:00Z",
+      "feature": "marky-v8r",
+      "type": "implementation",
+      "approach": "SIMD heading scanner using @Vector(16, u8) for newline detection with scalar heading validation. Shared try_parse_heading between SIMD and scalar paths ensures parity. ATX closing hash trimming per CommonMark spec. All 22 tests pass first try, ~1.9x SIMD speedup on 10KB markdown benchmark.",
+      "files": ["zig/src/kernels/heading_scan.zig", "zig/src/reference/heading_scan_ref.zig", "zig/src/c_adapter.zig"],
+      "patterns": [
+        "SIMD for sparse pattern search: use @Vector to find candidate positions (newlines), then scalar for validation",
+        "Share parsing logic between SIMD and scalar modules via pub import from reference",
+        "inline for over SIMD lane indices to check each match without extracting bitmask",
+        "ATX closing hash trimming: trim spaces, trim hashes, check preceding space, trim trailing spaces",
+        "c_adapter.zig test block with _ = @import pulls kernel tests into main test step"
+      ]
     }
   ]
 }
