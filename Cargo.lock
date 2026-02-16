@@ -966,6 +966,7 @@ name = "markymark-parser"
 version = "0.2.0"
 dependencies = [
  "bumpalo",
+ "criterion",
  "insta",
  "json5",
  "markymark-core",
