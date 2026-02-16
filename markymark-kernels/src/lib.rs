@@ -32,6 +32,7 @@ extern "C" {
 pub fn kernel_version() -> u32 {
     // SAFETY: marky_version is a pure function with no side effects,
     // exported from libmarky_kernels.a via c_adapter.zig.
+    // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     unsafe { marky_version() }
 }
 

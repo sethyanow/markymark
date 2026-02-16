@@ -2,6 +2,22 @@
   "version": 3,
   "entries": [
     {
+      "id": "suc-023",
+      "timestamp": "2026-02-16T11:10:00Z",
+      "feature": "marky-bgl",
+      "type": "implementation",
+      "approach": "Ported 4 shared kernels from forge BRZA: similarity (SIMD @Vector(4,f32) cosine + scalar Jaccard), normalize (two-pass SIMD L2), entities (SIMD @Vector(16,u8) whitespace detection + FNV-1a), quantize (SIMD Q4_0 with absmax scaling). Each kernel has SIMD + scalar reference + parity tests. Fixed 'packed' reserved keyword issue in Zig 0.15.",
+      "files": ["zig/src/shared/similarity.zig", "zig/src/shared/normalize.zig", "zig/src/shared/entities.zig", "zig/src/shared/quantize.zig", "zig/src/c_adapter.zig"],
+      "patterns": [
+        "'packed' is a reserved keyword in Zig 0.15 — cannot use as variable name",
+        "Jaccard on sorted sets is inherently sequential (merge-join) — no SIMD benefit, delegate to scalar",
+        "For f32 SIMD, @Vector(4, f32) with @reduce(.Add) for horizontal sum is the standard pattern",
+        "Q4_0 quantization: absmax per block -> scale -> quantize to nibbles -> pack pairs into bytes",
+        "Entity extraction: SIMD finds whitespace boundaries, FNV-1a hashes each word, truncate to u32",
+        "c_adapter.zig at 793 lines — approaching 1000-line hard limit, may need split soon"
+      ]
+    },
+    {
       "id": "suc-021",
       "timestamp": "2026-02-16T09:42:00Z",
       "feature": "marky-ayb",
@@ -277,6 +293,38 @@
         "Paren-depth tracking for URLs: handle url(with)parens correctly",
         "inline for over SIMD lanes: process_bracket is safe to call on mid-link positions (they won't match '[')",
         "is_escaped: count consecutive backslashes before pos, odd = escaped"
+      ]
+    },
+    {
+      "id": "suc-024",
+      "timestamp": "2026-02-16T12:35:00Z",
+      "feature": "marky-ncz",
+      "type": "implementation",
+      "approach": "Ported embedding index from forge BRZA. Core EmbeddingIndex struct with ArrayListUnmanaged (0.15.2 API), page_allocator for persistent state. Brute-force cosine search with insertion-sort top-K. C ABI exports in separate exports_embed.zig to keep c_adapter.zig under 1000-line limit (+5 lines only via _ = @import wiring).",
+      "files": ["zig/src/shared/embeddings.zig", "zig/src/exports_embed.zig", "zig/src/c_adapter.zig"],
+      "patterns": [
+        "Put new C ABI exports in separate exports_*.zig files to keep c_adapter.zig under 1000 lines",
+        "_ = @import in c_adapter.zig test block pulls both tests AND export fn declarations into library",
+        "EmbeddingIndex uses page_allocator for persistent FFI-owned memory (not testing.allocator)",
+        "Search with stack buffer for k<=256 avoids heap alloc in common case",
+        "Duplicate ID semantics: replace vector in-place (memcpy), don't append",
+        "Check k==0 before null-checking result arrays to avoid false -1 on valid k=0 calls"
+      ]
+    },
+    {
+      "id": "suc-025",
+      "timestamp": "2026-02-16T12:50:00Z",
+      "feature": "marky-0u5",
+      "type": "implementation",
+      "approach": "Rust FFI wrappers for all shared BRZA kernels: embed.rs (EmbeddingIndex with opaque handle, Drop, PhantomData for !Send/!Sync), similarity.rs (cosine_similarity, jaccard_similarity), hash.rs (extract_entity_hashes with buffer retry). Reused KernelError from scan.rs. Fixed Zig exports_embed.zig linkage — test-block _ = @import doesn't export symbols, needed comptime { _ = @import(...) } at module level.",
+      "files": ["markymark-kernels/src/embed.rs", "markymark-kernels/src/similarity.rs", "markymark-kernels/src/hash.rs", "zig/src/c_adapter.zig"],
+      "patterns": [
+        "PhantomData<*mut ()> for !Send/!Sync on stable Rust (impl !Trait requires nightly)",
+        "Zig export fn in separate files needs comptime { _ = @import(...) } at module level in c_adapter.zig — test-block imports only affect tests, not library symbols",
+        "Zig sentinel values (-2.0 for cosine, -1.0 for jaccard) map to KernelError::InvalidInput on Rust side",
+        "EmbeddingIndex::search borrows ID pointers from Zig index — copy into owned Strings immediately before any mutation",
+        "Drop impl sets handle to null after destroy for idempotent double-free protection",
+        "matches!() macro for testing Result<NonPartialEq, _> instead of assert_eq!"
       ]
     }
   ]
