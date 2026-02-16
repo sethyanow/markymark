@@ -15,6 +15,7 @@ mod types;
 
 pub use ast::Ast;
 pub use extract::*;
+pub use tree_sitter_md::MarkdownTree;
 pub use types::*;
 
 /// Markdown parser using tree-sitter

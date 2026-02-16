@@ -10,7 +10,7 @@ use markymark_index::{
     StructuredDocumentIndex, WikiLinkEntry, XmlTagEntry,
 };
 use markymark_parser::structured::parse_structured;
-use markymark_parser::Parser;
+use markymark_parser::{MarkdownTree, Parser};
 
 /// Detected completion trigger context based on cursor position.
 #[derive(Debug, Clone, PartialEq)]
@@ -157,6 +157,7 @@ impl StructuredKeyInfo {
 ///
 /// Manages document text storage, parsed ASTs, and the realm index.
 /// The parser is stored here to avoid re-creating it on every parse call.
+/// The `MarkdownTree` per document is retained for future incremental parsing.
 pub struct ServerState {
     /// Raw document text keyed by URI string.
     documents: HashMap<String, String>,
@@ -164,6 +165,8 @@ pub struct ServerState {
     realm: RealmIndex,
     /// Reusable markdown parser instance.
     parser: Parser,
+    /// Retained tree-sitter parse trees for incremental reuse (keyed by URI string).
+    md_trees: HashMap<String, MarkdownTree>,
 }
 
 impl Default for ServerState {
@@ -179,13 +182,19 @@ impl ServerState {
             documents: HashMap::new(),
             realm: RealmIndex::default(),
             parser: Parser::new().expect("failed to create parser"),
+            md_trees: HashMap::new(),
         }
     }
 
     /// Parse text and build a markdown document index.
-    fn build_markdown_index(&mut self, text: &str) -> DocumentIndex {
-        let ast = self.parser.parse(text).expect("failed to parse document");
-        DocumentIndex::from_ast(ast)
+    ///
+    /// Returns both the index and the tree-sitter parse tree. The tree is
+    /// retained per-document for future incremental parsing.
+    fn build_markdown_index(&mut self, text: &str) -> (DocumentIndex, Option<MarkdownTree>) {
+        let mut ast = self.parser.parse(text).expect("failed to parse document");
+        let md_tree = ast.take_md_tree();
+        let index = DocumentIndex::from_ast(ast);
+        (index, md_tree)
     }
 
     /// Detect document kind from URI file extension.
@@ -203,7 +212,10 @@ impl ServerState {
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                let index = self.build_markdown_index(&text);
+                let (index, md_tree) = self.build_markdown_index(&text);
+                if let Some(tree) = md_tree {
+                    self.md_trees.insert(uri.as_str().to_string(), tree);
+                }
                 self.realm.add_document(uri, index);
             }
             Some(kind) => {
@@ -224,7 +236,13 @@ impl ServerState {
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                let index = self.build_markdown_index(&text);
+                let (index, md_tree) = self.build_markdown_index(&text);
+                let uri_str = uri.as_str().to_string();
+                if let Some(tree) = md_tree {
+                    self.md_trees.insert(uri_str, tree);
+                } else {
+                    self.md_trees.remove(&uri_str);
+                }
                 self.realm.add_document(uri.clone(), index);
             }
             Some(kind) => {
@@ -241,6 +259,7 @@ impl ServerState {
     /// Handle a document being closed: remove from store and index.
     pub fn close_document(&mut self, uri: &DocumentUri) {
         self.documents.remove(uri.as_str());
+        self.md_trees.remove(uri.as_str());
         self.realm.remove_document(uri);
     }
 
@@ -265,6 +284,14 @@ impl ServerState {
         uri: &DocumentUri,
     ) -> Option<&StructuredDocumentIndex> {
         self.realm.get_structured_document(uri)
+    }
+
+    /// Get the retained tree-sitter parse tree for a document.
+    ///
+    /// Used for incremental parsing: pass the old tree to `Parser::parse_incremental`
+    /// so tree-sitter can reuse unchanged subtrees.
+    pub fn get_md_tree(&self, uri: &DocumentUri) -> Option<&MarkdownTree> {
+        self.md_trees.get(uri.as_str())
     }
 
     /// Get a reference to the realm index.

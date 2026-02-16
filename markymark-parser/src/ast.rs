@@ -35,9 +35,10 @@ pub struct Ast {
     root_elements: Vec<Element<'static>>,
     /// Per-document arena for all allocated data (boxed for stable address)
     arena: Box<DocumentArena>,
-    /// Tree-sitter-md parse tree (block + inline trees) — dropped last
-    #[allow(dead_code)]
-    md_tree: MarkdownTree,
+    /// Tree-sitter-md parse tree (block + inline trees).
+    /// Wrapped in `Option` so it can be taken out via [`take_md_tree`](Self::take_md_tree)
+    /// for incremental parsing reuse while letting the rest of the AST be consumed.
+    md_tree: Option<MarkdownTree>,
 }
 
 impl Ast {
@@ -99,7 +100,7 @@ impl Ast {
         Ok(Self {
             source: source.to_string(),
             arena,
-            md_tree,
+            md_tree: Some(md_tree),
             root_elements,
         })
     }
@@ -149,11 +150,27 @@ impl Ast {
     }
 
     /// Extract all list items as references into the arena (avoids cloning ArenaHashMap).
+    ///
+    /// Returns an empty vec if the tree has been taken via [`take_md_tree`](Self::take_md_tree).
     pub fn extract_list_items(&self) -> Vec<&ListItem<'static>> {
-        let root_node = self.md_tree.block_tree().root_node();
+        let md_tree = match &self.md_tree {
+            Some(t) => t,
+            None => return Vec::new(),
+        };
+        let root_node = md_tree.block_tree().root_node();
         let mut items = Vec::new();
         collect_top_level_list_items(root_node, &self.source, self.arena_ref(), &mut items);
         items
+    }
+
+    /// Take the `MarkdownTree` out of this AST for external storage.
+    ///
+    /// After calling this, [`extract_list_items`](Self::extract_list_items) returns empty.
+    /// All other extraction methods still work (they use `root_elements`, not the tree).
+    ///
+    /// Used by the LSP server to store the tree per-document for incremental parsing.
+    pub fn take_md_tree(&mut self) -> Option<MarkdownTree> {
+        self.md_tree.take()
     }
 
     /// Extract all tasks
