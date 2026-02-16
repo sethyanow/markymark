@@ -1,10 +1,12 @@
 const std = @import("std");
 const heading_scan = @import("kernels/heading_scan.zig");
+const link_scan = @import("kernels/link_scan.zig");
 const token_estimate = @import("kernels/token_estimate.zig");
 const content_hash_mod = @import("kernels/content_hash.zig");
 
-/// Re-export HeadingScan for C consumers
+/// Re-export types for C consumers
 pub const HeadingScan = heading_scan.HeadingScan;
+pub const LinkScan = link_scan.LinkScan;
 
 /// Version constant for markymark kernels
 /// Format: 0xMMmmpp (major, minor, patch)
@@ -59,6 +61,48 @@ export fn marky_scan_headings(
     return 0;
 }
 
+/// SIMD-accelerated link extraction.
+///
+/// Scans `text[0..len]` for markdown links [text](url) and wiki-links [[target]].
+/// Writes results into `out[0..cap]`, sets `*written` to the number found.
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointer)
+///  -2  — buffer too small (cap=0, or more links than cap)
+export fn marky_scan_links(
+    text: ?[*]const u8,
+    len: u32,
+    out: ?[*]LinkScan,
+    cap: u32,
+    written: ?*u32,
+) i32 {
+    const w = written orelse return -1;
+    const t = text orelse {
+        if (len == 0) {
+            w.* = 0;
+            return 0;
+        }
+        return -1;
+    };
+    const o = out orelse return -1;
+
+    if (len == 0) {
+        w.* = 0;
+        return 0;
+    }
+
+    if (cap == 0) return -2;
+
+    const count = link_scan.scan_links(t, len, o, cap);
+    w.* = count;
+
+    // If we filled the buffer exactly, there may be more links
+    if (count >= cap) return -2;
+
+    return 0;
+}
+
 /// Approximate BPE token count via SIMD word boundary detection.
 ///
 /// Returns approximate token count for the given text.
@@ -92,6 +136,8 @@ export fn marky_content_hash(
 test {
     _ = @import("kernels/heading_scan.zig");
     _ = @import("reference/heading_scan_ref.zig");
+    _ = @import("kernels/link_scan.zig");
+    _ = @import("reference/link_scan_ref.zig");
     _ = @import("kernels/token_estimate.zig");
     _ = @import("kernels/content_hash.zig");
 }
@@ -149,6 +195,58 @@ test "marky_scan_headings zero cap" {
     var w: u32 = undefined;
     const rc = marky_scan_headings(text.ptr, text.len, &out, 0, &w);
     try std.testing.expectEqual(@as(i32, -2), rc);
+}
+
+// -- marky_scan_links tests --
+
+test "marky_scan_links basic" {
+    const text = "[hello](url) and [[wiki]]";
+    var out: [8]LinkScan = undefined;
+    var w: u32 = undefined;
+    const rc = marky_scan_links(text.ptr, text.len, &out, 8, &w);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    try std.testing.expectEqual(@as(u32, 2), w);
+    try std.testing.expectEqual(@as(u8, 0), out[0].link_type); // markdown
+    try std.testing.expectEqual(@as(u8, 1), out[1].link_type); // wiki
+}
+
+test "marky_scan_links null text with zero len" {
+    var w: u32 = undefined;
+    var out: [4]LinkScan = undefined;
+    const rc = marky_scan_links(null, 0, &out, 4, &w);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    try std.testing.expectEqual(@as(u32, 0), w);
+}
+
+test "marky_scan_links null text with nonzero len" {
+    var w: u32 = undefined;
+    var out: [4]LinkScan = undefined;
+    const rc = marky_scan_links(null, 10, &out, 4, &w);
+    try std.testing.expectEqual(@as(i32, -1), rc);
+}
+
+test "marky_scan_links null written" {
+    const text = "[hello](url)";
+    var out: [4]LinkScan = undefined;
+    const rc = marky_scan_links(text.ptr, text.len, &out, 4, null);
+    try std.testing.expectEqual(@as(i32, -1), rc);
+}
+
+test "marky_scan_links zero cap" {
+    const text = "[hello](url)";
+    var out: [4]LinkScan = undefined;
+    var w: u32 = undefined;
+    const rc = marky_scan_links(text.ptr, text.len, &out, 0, &w);
+    try std.testing.expectEqual(@as(i32, -2), rc);
+}
+
+test "marky_scan_links buffer overflow returns -2" {
+    const text = "[a](b) [c](d) [e](f)";
+    var out: [1]LinkScan = undefined;
+    var w: u32 = undefined;
+    const rc = marky_scan_links(text.ptr, text.len, &out, 1, &w);
+    try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqual(@as(u32, 1), w);
 }
 
 // -- marky_estimate_tokens tests --
