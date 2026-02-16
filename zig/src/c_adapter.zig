@@ -9,6 +9,7 @@ const similarity = @import("shared/similarity.zig");
 const normalize = @import("shared/normalize.zig");
 const entities = @import("shared/entities.zig");
 const quantize_mod = @import("shared/quantize.zig");
+const embeddings_mod = @import("shared/embeddings.zig");
 
 /// Re-export types for C consumers
 pub const HeadingScan = heading_scan.HeadingScan;
@@ -366,6 +367,10 @@ test {
     _ = @import("reference/entities_ref.zig");
     _ = @import("shared/quantize.zig");
     _ = @import("reference/quantize_ref.zig");
+    // Embedding index (persistent data structure with lifecycle)
+    _ = @import("shared/embeddings.zig");
+    // Embedding C ABI exports + tests
+    _ = @import("exports_embed.zig");
 }
 
 test "marky_version returns expected version" {
