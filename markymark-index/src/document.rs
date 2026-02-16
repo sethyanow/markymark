@@ -5,7 +5,7 @@ use bumpalo::Bump;
 use hashbrown::HashMap;
 use markymark_core::arena::{arena_alloc_str, DocumentArena};
 use markymark_core::prelude::*;
-use markymark_parser::Ast;
+use markymark_parser::{Ast, BlockId, Element, MarkdownLink, Tag, WikiLink, XmlTag};
 use std::collections::HashMap as StdHashMap;
 use std::fmt;
 use std::sync::Mutex;
@@ -214,7 +214,12 @@ impl DocumentIndex {
         let mut slug_counts: StdHashMap<String, usize> = StdHashMap::new();
 
         // Extract headings: borrow text from AST, allocate only slug (computed)
-        for element in ast.root_elements() {
+        let root_elements: &[Element<'static>] =
+            // SAFETY: `from_ast` takes ownership of the AST's arena later in this
+            // function, so references produced from `root_elements()` remain valid
+            // for the lifetime of the resulting `DocumentIndex`.
+            unsafe { std::mem::transmute(ast.root_elements()) };
+        for element in root_elements {
             if let Some(h) = element.as_heading() {
                 let base_slug = slugify(h.text());
                 let slug_owned = dedup_slug(&base_slug, &mut slug_counts);
@@ -236,7 +241,11 @@ impl DocumentIndex {
 
         // Extract block IDs: borrow from AST, propagate source range for go-to-definition
         let mut blocks = HashMap::new();
-        for block_id in ast.extract_block_ids() {
+        let block_ids: Vec<BlockId<'static>> =
+            // SAFETY: `from_ast` transfers arena ownership into `DocumentIndex`
+            // before returning, so these references remain valid.
+            unsafe { std::mem::transmute(ast.extract_block_ids()) };
+        for block_id in block_ids {
             let id = block_id.id(); // borrow from parser arena
             blocks.insert(
                 id,
@@ -254,7 +263,11 @@ impl DocumentIndex {
         // Extract wiki links: borrow from AST
         let mut wiki_links_builder: BumpVec<'static, WikiLinkEntry<'static>> =
             BumpVec::new_in(arena_ref);
-        for wl in ast.extract_wiki_links() {
+        let wiki_links_from_ast: Vec<WikiLink<'static>> =
+            // SAFETY: `from_ast` transfers arena ownership into `DocumentIndex`
+            // before returning, so these references remain valid.
+            unsafe { std::mem::transmute(ast.extract_wiki_links()) };
+        for wl in wiki_links_from_ast {
             // Skip malformed links with no target, heading, or block
             if wl.target_page().is_none()
                 && wl.target_heading().is_none()
@@ -273,7 +286,11 @@ impl DocumentIndex {
 
         // Extract tags: borrow from AST
         let mut tags_builder: BumpVec<'static, TagEntry<'static>> = BumpVec::new_in(arena_ref);
-        for t in ast.extract_tags() {
+        let tags_from_ast: Vec<Tag<'static>> =
+            // SAFETY: `from_ast` transfers arena ownership into `DocumentIndex`
+            // before returning, so these references remain valid.
+            unsafe { std::mem::transmute(ast.extract_tags()) };
+        for t in tags_from_ast {
             tags_builder.push(TagEntry { name: t.name() });
         }
         let tags = tags_builder.into_bump_slice();
@@ -281,7 +298,11 @@ impl DocumentIndex {
         // Extract markdown links: borrow from AST (url is base only, anchor separate)
         let mut markdown_links_builder: BumpVec<'static, MarkdownLinkEntry<'static>> =
             BumpVec::new_in(arena_ref);
-        for ml in ast.extract_markdown_links() {
+        let markdown_links_from_ast: Vec<MarkdownLink<'static>> =
+            // SAFETY: `from_ast` transfers arena ownership into `DocumentIndex`
+            // before returning, so these references remain valid.
+            unsafe { std::mem::transmute(ast.extract_markdown_links()) };
+        for ml in markdown_links_from_ast {
             markdown_links_builder.push(MarkdownLinkEntry {
                 text: ml.text(),
                 url: ml.url(),
@@ -296,7 +317,11 @@ impl DocumentIndex {
         // makes ArenaHashMap !Send, breaking tower-lsp's Send requirement.
         let mut xml_tags_builder: BumpVec<'static, XmlTagEntry<'static>> =
             BumpVec::new_in(arena_ref);
-        for xt in ast.extract_xml_tags() {
+        let xml_tags_from_ast: Vec<XmlTag<'static>> =
+            // SAFETY: `from_ast` transfers arena ownership into `DocumentIndex`
+            // before returning, so these references remain valid.
+            unsafe { std::mem::transmute(ast.extract_xml_tags()) };
+        for xt in xml_tags_from_ast {
             let mut attributes = HashMap::new();
             for (k, v) in xt.attributes() {
                 attributes.insert(*k, *v); // borrow from parser arena
@@ -337,49 +362,61 @@ impl DocumentIndex {
     }
 
     /// Look up a heading by its slug.
-    pub fn heading_by_slug(&self, slug: &str) -> Option<&HeadingEntry<'static>> {
+    pub fn heading_by_slug<'a>(&'a self, slug: &str) -> Option<&'a HeadingEntry<'a>> {
         self.slug_to_heading
             .get(slug)
             .map(|&idx| &self.headings[idx])
     }
 
     /// Look up a block by its ID.
-    pub fn block_by_id(&self, id: &str) -> Option<&BlockEntry<'static>> {
+    pub fn block_by_id<'a>(&'a self, id: &str) -> Option<&'a BlockEntry<'a>> {
         self.blocks.get(id)
     }
 
     /// Get the flat table of contents.
-    pub fn toc(&self) -> &[TocEntry<'static>] {
+    pub fn toc<'a>(&'a self) -> &'a [TocEntry<'a>] {
         self.toc
     }
 
     /// Get the outline tree.
-    pub fn outline(&self) -> &OutlineNode<'static> {
+    pub fn outline<'a>(&'a self) -> &'a OutlineNode<'a> {
         &self.outline
     }
 
     /// Get all indexed headings.
-    pub fn headings(&self) -> &[HeadingEntry<'static>] {
+    ///
+    /// ```compile_fail
+    /// use markymark_index::DocumentIndex;
+    /// use markymark_parser::Parser;
+    ///
+    /// fn leak_index_text() -> &'static str {
+    ///     let mut parser = Parser::new().unwrap();
+    ///     let ast = parser.parse("# Title").unwrap();
+    ///     let index = DocumentIndex::from_ast(ast);
+    ///     index.headings()[0].text
+    /// }
+    /// ```
+    pub fn headings<'a>(&'a self) -> &'a [HeadingEntry<'a>] {
         self.headings
     }
 
     /// Get all indexed wiki links.
-    pub fn wiki_links(&self) -> &[WikiLinkEntry<'static>] {
+    pub fn wiki_links<'a>(&'a self) -> &'a [WikiLinkEntry<'a>] {
         self.wiki_links
     }
 
     /// Get all indexed tags.
-    pub fn tags(&self) -> &[TagEntry<'static>] {
+    pub fn tags<'a>(&'a self) -> &'a [TagEntry<'a>] {
         self.tags
     }
 
     /// Get all indexed markdown links.
-    pub fn markdown_links(&self) -> &[MarkdownLinkEntry<'static>] {
+    pub fn markdown_links<'a>(&'a self) -> &'a [MarkdownLinkEntry<'a>] {
         self.markdown_links
     }
 
     /// Get all indexed XML tags.
-    pub fn xml_tags(&self) -> &[XmlTagEntry<'static>] {
+    pub fn xml_tags<'a>(&'a self) -> &'a [XmlTagEntry<'a>] {
         self.xml_tags
     }
 
@@ -664,12 +701,12 @@ mod arena_allocation_tests {
     fn document_index_vecs_become_slices() {
         let index = build_index("# A\n\n## B\n\n[[Page]]\n#tag\n");
 
-        let _: &[HeadingEntry<'static>] = index.headings();
-        let _: &[TocEntry<'static>] = index.toc();
-        let _: &[WikiLinkEntry<'static>] = index.wiki_links();
-        let _: &[TagEntry<'static>] = index.tags();
-        let _: &[MarkdownLinkEntry<'static>] = index.markdown_links();
-        let _: &[XmlTagEntry<'static>] = index.xml_tags();
+        let _: &[HeadingEntry<'_>] = index.headings();
+        let _: &[TocEntry<'_>] = index.toc();
+        let _: &[WikiLinkEntry<'_>] = index.wiki_links();
+        let _: &[TagEntry<'_>] = index.tags();
+        let _: &[MarkdownLinkEntry<'_>] = index.markdown_links();
+        let _: &[XmlTagEntry<'_>] = index.xml_tags();
 
         assert!(!index.headings().is_empty());
         assert!(!index.toc().is_empty());
@@ -691,7 +728,7 @@ mod arena_allocation_tests {
         let ast = parser.parse("# Arena\n").unwrap();
         let index = DocumentIndex::from_ast(ast);
 
-        let heading: &HeadingEntry<'static> = &index.headings()[0];
+        let heading: &HeadingEntry<'_> = &index.headings()[0];
         assert_eq!(heading.text, "Arena");
     }
 
@@ -700,7 +737,7 @@ mod arena_allocation_tests {
         let index = build_index("# Root\n\n## Root\n");
 
         let heading = index.heading_by_slug("root").unwrap();
-        let _: &HeadingEntry<'static> = heading;
+        let _: &HeadingEntry<'_> = heading;
         assert_eq!(heading.text, "Root");
     }
 
@@ -708,7 +745,7 @@ mod arena_allocation_tests {
     fn toc_returns_arena_slice() {
         let index = build_index("# A\n\n## B\n\n### C\n");
 
-        let toc: &[TocEntry<'static>] = index.toc();
+        let toc: &[TocEntry<'_>] = index.toc();
         assert_eq!(toc.len(), 3);
         assert_eq!(toc[0].depth, 0);
         assert_eq!(toc[1].depth, 1);

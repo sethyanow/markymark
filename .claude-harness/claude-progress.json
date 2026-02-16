@@ -1,43 +1,44 @@
 {
-  "lastUpdated": "2026-02-16T19:43:00Z",
+  "lastUpdated": "2026-02-16T18:52:59Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Housekeeping session: closed marky-g9b epic (incremental parsing complete), filed and completed P0 refactor marky-gsh (server.rs 1068→844 lines via symbols.rs extraction). All 608 tests pass, clippy clean. Ready for Phase 3 implementation.",
+    "summary": "Checkpoint session for marky-5yt: enforced API lifetime boundaries for Ast/DocumentIndex so public access no longer leaks outward 'static references; added compile-fail regression doctests; fixed downstream LSP symbol lifetime usage.",
     "completedTasks": [
-      "Closed marky-g9b epic (all 3 phases of incremental parsing complete)",
-      "Filed P0 refactor bead marky-gsh for server.rs exceeding 1000-line limit",
-      "Refactored server.rs: extracted DocumentSymbol helpers to symbols.rs (235 lines)",
-      "server.rs reduced from 1068 to 844 lines — under rule-004 limit",
-      "Committed, pushed, all pre-commit hooks pass"
+      "Added compile_fail doctest on Ast::root_elements showing leaked &'static heading text must not compile",
+      "Added compile_fail doctest on DocumentIndex::headings showing leaked &'static index text must not compile",
+      "Changed Ast public accessors/extractors to return lifetimes tied to &self",
+      "Changed DocumentIndex public accessor methods to return lifetimes tied to &self",
+      "Updated DocumentIndex::from_ast internals to preserve ownership-transfer behavior with documented safety boundaries",
+      "Updated SymbolAtPosition to lifetime-parameterized form and fixed state_tests borrow pattern",
+      "Validated with cargo test -p markymark-parser, cargo test -p markymark-index, cargo test -p markymark-lsp, and cargo check"
+    ],
+    "blockers": [
+      "Full internal self_cell/ouroboros migration is still pending; this checkpoint hardens public API boundaries first"
     ],
     "nextSteps": [
-      "Begin Phase 3 implementation: execute marky-z7e (wiki_links incremental proof-of-concept)",
-      "File P2 refactor bead for state.rs (996 lines, approaching limit)",
-      "Consider merging feature/mark-next to reset scope guard (RED at 11K+ lines, 66 commits)"
+      "Decide whether to continue marky-5yt with full self_cell/ouroboros internal migration now",
+      "If continuing, prototype Ast owner+dependent cell model first, then migrate DocumentIndex",
+      "Re-run Miri-oriented arena safety tests after full migration"
     ]
   },
   "recentChanges": [
-    "Merged origin/main: PR #19 (mark-brza build fixes), Zig file watch fix, scan FFI init fix",
-    "Closed marky-g9b: incremental tree-sitter parsing epic complete",
-    "Refactored server.rs → symbols.rs extraction (marky-gsh closed)",
-    "Created epic marky-77i: Phase 3 incremental indexing (10x speedup target)",
-    "Created task marky-z7e: wiki_links proof-of-concept with incremental update logic",
-    "Key design: LSP-layer orchestration, byte-range granularity, 5 extractors incremental"
+    "Public lifetime hardening across parser/index APIs for marky-5yt",
+    "New compile-fail doctests lock non-leakage behavior in parser/index",
+    "LSP state symbol typing switched to borrowed-lifetime enum variant payloads",
+    "Workspace check and package tests passing after lifetime changes"
   ],
   "knownIssues": [
-    "state.rs at 996 lines — approaching 1000-line threshold. Needs P2 refactor bead.",
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
-    "marky-5yt: 'static lifetime + Box aliasing issue — blocks 6 Miri tests, needs self_cell migration",
+    "marky-5yt: full self_cell/ouroboros internal migration still open",
     "marky-lkj.1: runtime_engine.zig test refactoring deferred (P4)",
     "marky-8la: XML tag false positives in fenced code blocks",
-    "Scope guard RED: branch at ~11K lines / 67 commits / 45 new files",
     "c_adapter.zig at 803 lines — new exports use exports_*.zig pattern to stay under limit",
     "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T19:42:00Z",
-    "lastTypeCheck": "2026-02-16T19:42:00Z"
+    "lastSuccessfulBuild": "2026-02-16T18:52:59Z",
+    "lastTypeCheck": "2026-02-16T18:52:59Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
