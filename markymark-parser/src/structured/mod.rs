@@ -5,6 +5,7 @@
 //! to the appropriate parser based on [`DocumentKind`].
 
 mod json;
+mod toml;
 mod yaml;
 
 use markymark_core::structured::{DocumentKind, StructuredAst};
@@ -21,10 +22,10 @@ pub fn parse_structured(source: &str, kind: DocumentKind) -> Result<StructuredAs
         )),
         DocumentKind::Json => json::parse_json(source),
         DocumentKind::Yaml => yaml::parse_yaml(source),
+        DocumentKind::Toml => toml::parse_toml(source),
         DocumentKind::JsonC
         | DocumentKind::Json5
         | DocumentKind::JsonLines
-        | DocumentKind::Toml
         | DocumentKind::DotEnv
         | DocumentKind::Ini => Err(CoreError::NotImplemented(format!(
             "{kind} parser not yet implemented"
@@ -63,8 +64,17 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_structured_dispatch_toml() {
+        let result = parse_structured("key = \"value\"", DocumentKind::Toml);
+        assert!(result.is_ok());
+        let ast = result.unwrap();
+        assert_eq!(ast.kind, DocumentKind::Toml);
+        assert_eq!(ast.keys.len(), 1);
+    }
+
+    #[test]
     fn test_parse_structured_dispatch_unimplemented() {
-        let result = parse_structured("# comment", DocumentKind::Toml);
+        let result = parse_structured("[section]\nkey = value", DocumentKind::Ini);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("not yet implemented"));
