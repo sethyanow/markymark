@@ -408,6 +408,24 @@
         "Compare micro-optimization to full pipeline cost to determine if it's worth pursuing",
         "Closing a task with 'won't implement' + evidence is a valid and valuable outcome"
       ]
+    },
+    {
+      "id": "suc-024",
+      "timestamp": "2026-02-16T17:12:00Z",
+      "feature": "marky-tfd",
+      "type": "implementation",
+      "approach": "Minimal structural refactor: Option-wrapped md_tree in Ast with take_md_tree(), re-export MarkdownTree from parser crate, HashMap in ServerState. Zero changes to DocumentIndex or from_ast — verified from_ast never touches md_tree before proceeding.",
+      "files": [
+        "markymark-parser/src/ast.rs",
+        "markymark-parser/src/lib.rs",
+        "markymark-lsp/src/state.rs",
+        "markymark-lsp/tests/state_tests.rs"
+      ],
+      "patterns": [
+        "Verify downstream consumers don't use the field before taking it — grep from_ast for md_tree usage",
+        "Re-export types from the crate that owns them to avoid transitive dependency pollution",
+        "Option wrapping enables take() semantics without changing struct layout significantly"
+      ]
     }
   ]
 }
