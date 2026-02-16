@@ -4,7 +4,9 @@
 //! Comments start with `#` or `;`. Values are always [`ValueKind::String`].
 
 use markymark_core::structured::{DocumentKind, KeyEntry, StructuredAst, ValueKind};
-use markymark_core::{CoreError, Position, Range};
+use markymark_core::{CoreError, Range};
+
+use super::byte_to_position;
 
 /// Parse a flat config file (.env, .ini, .cfg) into a [`StructuredAst`].
 ///
@@ -70,12 +72,19 @@ pub fn parse_flat(source: &str, kind: DocumentKind) -> Result<StructuredAst, Cor
             continue;
         }
 
+        // Compute ranges using raw value length (before quote stripping)
+        let raw_value = value;
+
         // Strip surrounding quotes from value if present
-        let value = value
+        let _value = raw_value
             .strip_prefix('"')
             .and_then(|s| s.strip_suffix('"'))
-            .or_else(|| value.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))
-            .unwrap_or(value);
+            .or_else(|| {
+                raw_value
+                    .strip_prefix('\'')
+                    .and_then(|s| s.strip_suffix('\''))
+            })
+            .unwrap_or(raw_value);
 
         // Compute ranges
         let leading_whitespace = line.len() - line.trim_start().len();
@@ -86,7 +95,7 @@ pub fn parse_flat(source: &str, kind: DocumentKind) -> Result<StructuredAst, Cor
         let val_trimmed_offset =
             trimmed[sep_pos + 1..].len() - trimmed[sep_pos + 1..].trim_start().len();
         let val_start_byte = val_start_byte + val_trimmed_offset;
-        let val_end_byte = val_start_byte + value.len();
+        let val_end_byte = val_start_byte + raw_value.len();
 
         let key_range = Range::new(
             byte_to_position(source, key_start_byte),
@@ -121,21 +130,10 @@ pub fn parse_flat(source: &str, kind: DocumentKind) -> Result<StructuredAst, Cor
     })
 }
 
-/// Convert a byte offset to a Position.
-fn byte_to_position(source: &str, byte_offset: usize) -> Position {
-    let offset = byte_offset.min(source.len());
-    let prefix = &source[..offset];
-    let line = prefix.matches('\n').count() as u32;
-    let col = match prefix.rfind('\n') {
-        Some(nl) => (offset - nl - 1) as u32,
-        None => offset as u32,
-    };
-    Position::new(line, col)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use markymark_core::Position;
 
     #[test]
     fn test_parse_env_empty() {
@@ -292,6 +290,20 @@ mod tests {
         assert_eq!(roots.len(), 2);
         assert_eq!(roots[0].key, "a");
         assert_eq!(roots[1].key, "b");
+    }
+
+    #[test]
+    fn test_parse_env_quoted_value_range_includes_quotes() {
+        // Value range should span the full raw value including quotes,
+        // not just the stripped inner text.
+        let source = "NAME=\"John Doe\"";
+        let ast = parse_flat(source, DocumentKind::DotEnv).unwrap();
+
+        let entry = &ast.keys[0];
+        assert_eq!(entry.key, "NAME");
+        // Value "John Doe" with quotes: starts at byte 5 (the opening "), ends at byte 15
+        assert_eq!(entry.value_range.start, Position::new(0, 5));
+        assert_eq!(entry.value_range.end, Position::new(0, 15)); // includes closing quote
     }
 
     #[test]

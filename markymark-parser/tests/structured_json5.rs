@@ -252,3 +252,46 @@ fn test_json5_mixed_features() {
     assert_eq!(ast.keys[5].path, "features[1]");
     assert_eq!(ast.keys[5].value_kind, ValueKind::Boolean);
 }
+
+#[test]
+fn test_json5_escaped_key_newline() {
+    // Key with escape sequence: serde decodes \n to actual newline,
+    // scanner must do the same to match the serde map lookup.
+    let source = r#"{"foo\nbar": 42}"#;
+    let ast = parse_structured(source, DocumentKind::Json5).unwrap();
+
+    assert_eq!(ast.keys.len(), 1);
+    assert_eq!(ast.keys[0].key, "foo\nbar"); // decoded newline, not literal \n
+    assert_eq!(ast.keys[0].value_kind, ValueKind::Number);
+}
+
+#[test]
+fn test_json5_escaped_key_tab_and_backslash() {
+    let source = r#"{"a\tb": 1, "c\\d": 2}"#;
+    let ast = parse_structured(source, DocumentKind::Json5).unwrap();
+
+    assert_eq!(ast.keys.len(), 2);
+    assert_eq!(ast.keys[0].key, "a\tb"); // decoded tab
+    assert_eq!(ast.keys[1].key, "c\\d"); // decoded backslash
+}
+
+#[test]
+fn test_json5_escaped_key_unicode() {
+    // \u0041 is 'A'
+    let source = r#"{"k\u0041y": "val"}"#;
+    let ast = parse_structured(source, DocumentKind::Json5).unwrap();
+
+    assert_eq!(ast.keys.len(), 1);
+    assert_eq!(ast.keys[0].key, "kAy"); // \u0041 decoded to 'A'
+    assert_eq!(ast.keys[0].value_kind, ValueKind::String);
+}
+
+#[test]
+fn test_json5_escaped_single_quoted_key() {
+    // Single-quoted string with escape sequences
+    let source = "{'foo\\'bar': 1}";
+    let ast = parse_structured(source, DocumentKind::Json5).unwrap();
+
+    assert_eq!(ast.keys.len(), 1);
+    assert_eq!(ast.keys[0].key, "foo'bar"); // decoded escaped single quote
+}

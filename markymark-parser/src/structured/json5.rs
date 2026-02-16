@@ -5,7 +5,9 @@
 //! unquoted keys, single-quoted strings, trailing commas, and comments.
 
 use markymark_core::structured::{DocumentKind, KeyEntry, StructuredAst, ValueKind};
-use markymark_core::{CoreError, Position, Range};
+use markymark_core::{CoreError, Range};
+
+use super::byte_to_position;
 
 /// Parse a JSON5 document into a [`StructuredAst`].
 pub fn parse_json5(source: &str) -> Result<StructuredAst, CoreError> {
@@ -121,18 +123,51 @@ impl<'a> Scanner<'a> {
     }
 
     /// Read a quoted string (single or double), consuming the quotes.
-    /// Returns the inner text (without quotes).
+    /// Returns the inner text (without quotes), with escape sequences decoded
+    /// to match serde/json5 output (required for key lookup in the serde map).
     fn read_quoted_string(&mut self, quote: u8) -> String {
         self.advance(); // opening quote
         let mut text = String::new();
         while self.pos < self.src.len() {
             let ch = self.src[self.pos];
             if ch == b'\\' {
-                // Escaped character — include both bytes in the scan
-                text.push(ch as char);
                 self.advance();
                 if self.pos < self.src.len() {
-                    text.push(self.src[self.pos] as char);
+                    let escaped = self.src[self.pos];
+                    match escaped {
+                        b'"' => text.push('"'),
+                        b'\'' => text.push('\''),
+                        b'\\' => text.push('\\'),
+                        b'/' => text.push('/'),
+                        b'n' => text.push('\n'),
+                        b'r' => text.push('\r'),
+                        b't' => text.push('\t'),
+                        b'b' => text.push('\u{0008}'),
+                        b'f' => text.push('\u{000C}'),
+                        b'u' => {
+                            // \uXXXX unicode escape
+                            self.advance();
+                            let hex_start = self.pos;
+                            let hex_end = (self.pos + 4).min(self.src.len());
+                            let hex = &self.src[hex_start..hex_end];
+                            if hex.len() == 4 {
+                                if let Ok(s) = std::str::from_utf8(hex) {
+                                    if let Ok(code) = u32::from_str_radix(s, 16) {
+                                        if let Some(c) = char::from_u32(code) {
+                                            text.push(c);
+                                            self.pos += 4;
+                                            continue;
+                                        }
+                                    }
+                                }
+                            }
+                            // Invalid unicode escape — push literal
+                            text.push('u');
+                            continue;
+                        }
+                        // JSON5 spec: any other char after \ is itself
+                        other => text.push(other as char),
+                    }
                     self.advance();
                 }
             } else if ch == quote {
@@ -288,7 +323,7 @@ fn walk_object(
     scanner.expect(b'{');
 
     let num_keys = map.len();
-    for i in 0..num_keys {
+    for _ in 0..num_keys {
         // Read the key token from source (in source order)
         let (key_text, key_start, key_end) = scanner.read_key();
 
@@ -357,7 +392,6 @@ fn walk_object(
         if scanner.peek() == Some(b',') {
             scanner.advance();
         }
-        let _ = i;
     }
 
     scanner.skip_whitespace_and_comments();
@@ -456,18 +490,6 @@ fn classify_serde_value(value: &serde_json::Value) -> ValueKind {
         serde_json::Value::Array(_) => ValueKind::Array,
         serde_json::Value::Object(_) => ValueKind::Object,
     }
-}
-
-/// Convert a byte offset in source text to a [`Position`] (line, character).
-fn byte_to_position(source: &str, byte_offset: usize) -> Position {
-    let offset = byte_offset.min(source.len());
-    let prefix = &source[..offset];
-    let line = prefix.matches('\n').count() as u32;
-    let col = match prefix.rfind('\n') {
-        Some(nl) => (offset - nl - 1) as u32,
-        None => offset as u32,
-    };
-    Position::new(line, col)
 }
 
 #[cfg(test)]

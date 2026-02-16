@@ -6,7 +6,7 @@
 use markymark_core::structured::{DocumentKind, KeyEntry, StructuredAst, ValueKind};
 use markymark_core::{CoreError, Position, Range};
 
-use super::json;
+use super::{byte_to_position, json};
 
 /// Parse a JSONL document into a [`StructuredAst`].
 ///
@@ -23,6 +23,7 @@ pub fn parse_jsonl(source: &str) -> Result<StructuredAst, CoreError> {
             continue;
         }
 
+        let leading_ws = line.len() - line.trim_start().len();
         let index_key = format!("[{line_idx}]");
         let line_start = byte_to_position(source, line_byte_offset);
         let line_end = byte_to_position(source, line_byte_offset + line.len());
@@ -80,8 +81,16 @@ pub fn parse_jsonl(source: &str) -> Result<StructuredAst, CoreError> {
                         key: entry.key.clone(),
                         depth: entry.depth + 1,
                         value_kind: entry.value_kind,
-                        key_range: offset_range(entry.key_range, line_byte_offset, source),
-                        value_range: offset_range(entry.value_range, line_byte_offset, source),
+                        key_range: offset_range(
+                            entry.key_range,
+                            line_byte_offset + leading_ws,
+                            source,
+                        ),
+                        value_range: offset_range(
+                            entry.value_range,
+                            line_byte_offset + leading_ws,
+                            source,
+                        ),
                     });
                 }
             }
@@ -145,18 +154,6 @@ fn position_to_byte(pos: Position) -> usize {
     // JSON parser produces positions relative to single-line input
     // line is always 0, character is byte offset within the line
     pos.character as usize
-}
-
-/// Convert a byte offset to a Position in the full source.
-fn byte_to_position(source: &str, byte_offset: usize) -> Position {
-    let offset = byte_offset.min(source.len());
-    let prefix = &source[..offset];
-    let line = prefix.matches('\n').count() as u32;
-    let col = match prefix.rfind('\n') {
-        Some(nl) => (offset - nl - 1) as u32,
-        None => offset as u32,
-    };
-    Position::new(line, col)
 }
 
 #[cfg(test)]
@@ -275,5 +272,25 @@ mod tests {
 
         let line_entries: Vec<_> = ast.keys.iter().filter(|k| k.depth == 0).collect();
         assert_eq!(line_entries.len(), 500);
+    }
+
+    #[test]
+    fn test_parse_jsonl_indented_line_ranges() {
+        // Lines with leading whitespace: key ranges must account for the
+        // indentation, not just the trimmed content.
+        let source = "  {\"name\": \"Alice\"}\n  {\"name\": \"Bob\"}";
+        let ast = parse_jsonl(source).unwrap();
+
+        // Line 0: "  {\"name\": \"Alice\"}" — "name" key starts at column 3
+        let name_entries: Vec<_> = ast.keys.iter().filter(|k| k.key == "name").collect();
+        assert_eq!(name_entries.len(), 2);
+
+        // First "name" on line 0: leading 2 spaces + { + " = byte 3 for the quote
+        assert_eq!(name_entries[0].key_range.start.line, 0);
+        assert_eq!(name_entries[0].key_range.start.character, 3);
+
+        // Second "name" on line 1: leading 2 spaces + { + " = byte 3 for the quote
+        assert_eq!(name_entries[1].key_range.start.line, 1);
+        assert_eq!(name_entries[1].key_range.start.character, 3);
     }
 }

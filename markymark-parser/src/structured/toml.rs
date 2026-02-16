@@ -8,6 +8,8 @@ use markymark_core::structured::{DocumentKind, KeyEntry, StructuredAst, ValueKin
 use markymark_core::{CoreError, Position, Range};
 use tree_sitter::{Node, Parser as TSParser};
 
+use super::byte_to_position;
+
 /// Parse a TOML document into a [`StructuredAst`].
 pub fn parse_toml(source: &str) -> Result<StructuredAst, CoreError> {
     let mut parser = TSParser::new();
@@ -340,18 +342,6 @@ fn node_to_range(node: Node, source: &str) -> Range {
         byte_to_position(source, start_byte),
         byte_to_position(source, end_byte),
     )
-}
-
-/// Convert a byte offset in source text to a [`Position`] (line, character).
-fn byte_to_position(source: &str, byte_offset: usize) -> Position {
-    let offset = byte_offset.min(source.len());
-    let prefix = &source[..offset];
-    let line = prefix.matches('\n').count() as u32;
-    let col = match prefix.rfind('\n') {
-        Some(nl) => (offset - nl - 1) as u32,
-        None => offset as u32,
-    };
-    Position::new(line, col)
 }
 
 #[cfg(test)]
