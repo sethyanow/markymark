@@ -907,13 +907,13 @@
       "id": "dec-brza-een-002",
       "timestamp": "2026-02-16T06:50:00Z",
       "feature": "marky-een",
-      "decision": "rerun-if-changed set on zig/src/ directory and zig/build.zig, not individual .zig files",
-      "rationale": "Directory-level rerun-if-changed triggers on any file add/remove/modify within the directory. Avoids maintaining a list of individual zig source files as new kernels are added.",
+      "decision": "rerun-if-changed enumerates individual .zig files via walkdir, not directory watch",
+      "rationale": "Directory-level rerun-if-changed only triggers on add/remove (directory metadata changes), not file modifications. walkdir enumerates all .zig files so cargo rebuilds on any source change. Adds walkdir build-dependency.",
       "alternatives": [
-        "List each .zig file individually (maintenance burden)",
-        "No rerun-if-changed (stale builds)"
+        "Directory watch only (misses file modifications per CodeRabbit feedback)",
+        "Hardcode file list (maintenance burden as kernels added)"
       ],
-      "impact": "markymark-kernels/build.rs — rebuild triggers"
+      "impact": "markymark-kernels/build.rs lines 35-45, markymark-kernels/Cargo.toml build-dependencies"
     },
     {
       "id": "dec-ci-zig-001",
