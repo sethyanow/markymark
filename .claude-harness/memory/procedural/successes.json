@@ -368,6 +368,20 @@
         "walkdir::WalkDir + filter_map + filter pattern for file enumeration",
         "is_some_and() preferred over map_or() for Option bool checks (clippy)"
       ]
+    },
+    {
+      "id": "suc-029",
+      "timestamp": "2026-02-16T20:35:00Z",
+      "feature": "marky-4aa",
+      "type": "bugfix",
+      "approach": "Fixed mem::forget leak in DocumentIndex::from_ast via Ast::take_arena() — destructures Ast, drops root_elements first (while Box<DocumentArena> allocation is alive for ArenaHashMap &Bump references), then drops source/md_tree, then extracts DocumentArena from Box. Removed into_arena() and doc_arena_ptr() as dead code. TDD: wrote take_arena test (RED: method missing, GREEN: passes), verified all workspace tests + clippy clean.",
+      "files": ["markymark-parser/src/ast.rs", "markymark-index/src/document.rs"],
+      "patterns": [
+        "Destructure struct to control field drop order instead of ptr::read+mem::forget (which leaks all other fields)",
+        "Drop ArenaHashMap-containing fields before extracting arena from Box — Bump::deallocate is no-op so Drop is safe",
+        "Moving DocumentArena out of Box (*arena) only invalidates Box allocation, not arena chunks — &'static str refs survive",
+        "Miri can't test tree-sitter FFI — use compile-error tests (method missing) for RED phase instead"
+      ]
     }
   ]
 }
