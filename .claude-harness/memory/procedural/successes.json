@@ -177,6 +177,20 @@
         "Parallel subagents for independent splits (3 splits = 3 agents concurrently)",
         "Parent-child relationships in beads are structural, not removable with dep remove"
       ]
+    },
+    {
+      "id": "suc-016",
+      "timestamp": "2026-02-16T06:50:00Z",
+      "feature": "marky-een",
+      "type": "implementation",
+      "approach": "Rust FFI bridge crate scaffold: created markymark-kernels/ with build.rs that runs zig build lib, links libmarky_kernels.a. lib.rs wraps marky_version() extern C fn as kernel_version(). Empty module stubs for scan/embed/similarity/tokens/hash. Full quality gate passed first try.",
+      "files": ["markymark-kernels/Cargo.toml", "markymark-kernels/build.rs", "markymark-kernels/src/lib.rs"],
+      "patterns": [
+        "build.rs version check: split on '-' first to handle -dev suffix, then parse X.Y.Z",
+        "rerun-if-changed on zig/src/ and zig/build.zig triggers rebuild when Zig sources change",
+        "cargo:rustc-link-search=native= + cargo:rustc-link-lib=static= for linking .a files",
+        "Test FFI linkage with a simple version function before adding complex kernels"
+      ]
     }
   ]
 }
