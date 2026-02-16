@@ -88,7 +88,7 @@ impl LanguageServer for Backend {
                 text_document_sync: Some(TextDocumentSyncCapability::Options(
                     TextDocumentSyncOptions {
                         open_close: Some(true),
-                        change: Some(TextDocumentSyncKind::FULL),
+                        change: Some(TextDocumentSyncKind::INCREMENTAL),
                         ..Default::default()
                     },
                 )),
@@ -138,10 +138,25 @@ impl LanguageServer for Backend {
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri_str = params.text_document.uri;
         if let Ok(doc_uri) = crate::convert::from_lsp_uri(&uri_str) {
-            if let Some(change) = params.content_changes.into_iter().last() {
+            let changes: Vec<crate::state::DocumentChange> = params
+                .content_changes
+                .into_iter()
+                .map(|change| match change.range {
+                    Some(range) => crate::state::DocumentChange::Incremental {
+                        start_line: range.start.line,
+                        start_character: range.start.character,
+                        end_line: range.end.line,
+                        end_character: range.end.character,
+                        text: change.text,
+                    },
+                    None => crate::state::DocumentChange::Full(change.text),
+                })
+                .collect();
+
+            if !changes.is_empty() {
                 {
                     let mut state = self.state.write().await;
-                    state.change_document(&doc_uri, change.text);
+                    state.apply_document_changes(&doc_uri, changes);
                 }
                 self.publish_diagnostics_for(uri_str, &doc_uri).await;
             }

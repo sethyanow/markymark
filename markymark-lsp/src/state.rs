@@ -153,6 +153,28 @@ impl StructuredKeyInfo {
     }
 }
 
+/// A content change event representing either a full document replacement
+/// or an incremental text edit with LSP positions.
+#[derive(Debug, Clone)]
+pub enum DocumentChange {
+    /// Full document text replacement.
+    Full(String),
+    /// Incremental edit specified with LSP line/character positions.
+    /// Character offsets are in UTF-16 code units (as per LSP spec).
+    Incremental {
+        /// Start line (0-based).
+        start_line: u32,
+        /// Start character offset (UTF-16 code units).
+        start_character: u32,
+        /// End line (0-based).
+        end_line: u32,
+        /// End character offset (UTF-16 code units).
+        end_character: u32,
+        /// The replacement text.
+        text: String,
+    },
+}
+
 /// The internal state of the LSP server.
 ///
 /// Manages document text storage, parsed ASTs, and the realm index.
@@ -247,6 +269,76 @@ impl ServerState {
             }
             Some(kind) => {
                 if let Ok(ast) = parse_structured(&text, kind) {
+                    self.realm.add_structured_document(
+                        uri.clone(),
+                        StructuredDocumentIndex::from_ast(ast),
+                    );
+                }
+            }
+        }
+    }
+
+    /// Apply a sequence of content changes to a document, then re-parse and re-index.
+    ///
+    /// Changes are applied in order. Each change operates on the text as modified
+    /// by the previous change (per LSP spec). Supports both incremental edits
+    /// (with position range in UTF-16 code units) and full-text replacements.
+    pub fn apply_document_changes(&mut self, uri: &DocumentUri, changes: Vec<DocumentChange>) {
+        // Phase 1: Apply text edits
+        let final_text = {
+            let Some(text) = self.documents.get_mut(uri.as_str()) else {
+                return;
+            };
+
+            for change in changes {
+                match change {
+                    DocumentChange::Full(new_text) => {
+                        *text = new_text;
+                    }
+                    DocumentChange::Incremental {
+                        start_line,
+                        start_character,
+                        end_line,
+                        end_character,
+                        text: new_text,
+                    } => {
+                        let start = crate::convert::lsp_position_to_byte_offset(
+                            text,
+                            start_line,
+                            start_character,
+                        )
+                        .min(text.len());
+                        let end = crate::convert::lsp_position_to_byte_offset(
+                            text,
+                            end_line,
+                            end_character,
+                        )
+                        .min(text.len())
+                        .max(start);
+                        text.replace_range(start..end, &new_text);
+                    }
+                }
+            }
+            text.clone()
+        };
+
+        // Phase 2: Re-parse and re-index with the final text
+        self.realm.remove_document(uri);
+        let kind = Self::document_kind_from_uri(uri);
+
+        match kind {
+            Some(DocumentKind::Markdown) | None => {
+                let (index, md_tree) = self.build_markdown_index(&final_text);
+                let uri_str = uri.as_str().to_string();
+                if let Some(tree) = md_tree {
+                    self.md_trees.insert(uri_str, tree);
+                } else {
+                    self.md_trees.remove(&uri_str);
+                }
+                self.realm.add_document(uri.clone(), index);
+            }
+            Some(kind) => {
+                if let Ok(ast) = parse_structured(&final_text, kind) {
                     self.realm.add_structured_document(
                         uri.clone(),
                         StructuredDocumentIndex::from_ast(ast),
