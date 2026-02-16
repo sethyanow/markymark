@@ -122,6 +122,7 @@ impl EmbeddingIndex {
         if embedding.len() != self.dims as usize {
             return Err(KernelError::InvalidInput);
         }
+        let id_len = u32::try_from(id.len()).map_err(|_| KernelError::InvalidInput)?;
 
         // SAFETY: handle is valid (created in new(), not yet destroyed).
         // id and embedding are valid slices with correct lengths.
@@ -130,7 +131,7 @@ impl EmbeddingIndex {
             zig_embedding_index_add(
                 self.handle,
                 id.as_ptr(),
-                id.len() as u32,
+                id_len,
                 embedding.as_ptr(),
                 self.dims,
             )
