@@ -271,6 +271,30 @@
         "performance",
         "yaml"
       ]
+    },
+    {
+      "id": "suc-017",
+      "timestamp": "2026-02-16T06:45:00Z",
+      "feature": "marky-lkj",
+      "type": "implementation",
+      "approach": "Batch implementation of 5 structured parsers (TOML, JSONL, flat) using the same CST walker pattern established by JSON/YAML. All 47 new tests passed on first/second run. Backward-compatible RealmIndex integration via AnyDocumentIndex enum preserving all existing API.",
+      "files": [
+        "markymark-parser/src/structured/toml.rs",
+        "markymark-parser/src/structured/jsonl.rs",
+        "markymark-parser/src/structured/flat.rs",
+        "markymark-index/src/structured_document.rs",
+        "markymark-index/src/realm.rs",
+        "markymark-mcp/src/runtime_engine.rs"
+      ],
+      "outcome": "Parser layer complete for all formats except JSON5. Index layer integrated with AnyDocumentIndex. MCP runtime indexes structured docs at startup. Zero regressions.",
+      "tags": [
+        "tree-sitter",
+        "toml",
+        "jsonl",
+        "flat",
+        "index",
+        "backward-compat"
+      ]
     }
   ]
 }
