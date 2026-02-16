@@ -686,6 +686,29 @@
         "Pre-size arenas with Bump::with_capacity based on document size (marginal, separate concern)"
       ],
       "impact": "Added DocumentArena::reset() method and investigation benchmark to memory.rs. No reindex API warranted."
+    },
+    {
+      "id": "dec-042",
+      "timestamp": "2026-02-16T17:10:00Z",
+      "feature": "marky-tfd",
+      "decision": "Option A: Store MarkdownTree in separate HashMap in ServerState, extract from Ast via take_md_tree()",
+      "rationale": "Cleanest separation — MarkdownTree is only needed by the parser layer for incremental reuse. Storing in ServerState HashMap keeps it independent of DocumentIndex's arena ownership transfer. The Ast wraps md_tree in Option to allow taking it out before from_ast() consumes the Ast.",
+      "alternatives": [
+        "Option B: Ast::into_parts() -> (DocumentArena, MarkdownTree) — requires changing from_ast signature",
+        "Option C: Store MarkdownTree inside DocumentIndex — couples tree-sitter concerns into index layer"
+      ],
+      "impact": "markymark-parser/src/ast.rs (Option<MarkdownTree>, take_md_tree), markymark-lsp/src/state.rs (md_trees HashMap)"
+    },
+    {
+      "id": "dec-043",
+      "timestamp": "2026-02-16T17:10:00Z",
+      "feature": "marky-tfd",
+      "decision": "Re-export MarkdownTree from markymark-parser instead of adding tree-sitter-md dependency to markymark-lsp",
+      "rationale": "LSP crate doesn't need direct knowledge of tree-sitter-md internals. Re-exporting from the parser crate keeps the dependency graph clean — only parser needs to know about tree-sitter-md.",
+      "alternatives": [
+        "Add tree-sitter-md as direct dependency of markymark-lsp"
+      ],
+      "impact": "markymark-parser/src/lib.rs (pub use), markymark-lsp/src/state.rs (import from markymark_parser)"
     }
   ]
 }
