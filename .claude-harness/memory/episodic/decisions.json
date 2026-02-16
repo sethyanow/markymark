@@ -974,6 +974,18 @@
         "Add exports_embed.zig to build.zig as separate compilation unit (more complex build)"
       ],
       "impact": "zig/src/c_adapter.zig — critical fix for all future exports_*.zig files"
+    },
+    {
+      "id": "dec-034",
+      "timestamp": "2026-02-16T20:35:00Z",
+      "feature": "marky-4aa",
+      "decision": "Replace ptr::read+mem::forget pattern with Ast::take_arena() using struct destructuring for controlled drop order",
+      "rationale": "mem::forget prevents Drop on ALL Ast fields, leaking source String, root_elements Vec, md_tree MarkdownTree, and Box shell on every DocumentIndex creation. Destructuring gives ownership of each field separately, allowing explicit drop ordering: root_elements first (while Box<DocumentArena> is alive for ArenaHashMap &Bump refs), then others, then extract arena from Box.",
+      "alternatives": [
+        "ManuallyDrop + ptr::drop_in_place on each field (more unsafe, same effect)",
+        "self_cell/ouroboros migration (eliminates pattern entirely but large scope — deferred to marky-5yt)"
+      ],
+      "impact": "markymark-parser/src/ast.rs (take_arena added, into_arena+doc_arena_ptr removed), markymark-index/src/document.rs (from_ast simplified)"
     }
   ]
 }

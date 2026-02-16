@@ -200,13 +200,11 @@ impl DocumentIndex {
     /// then takes ownership of the arena. Callers pass `ast` by value;
     /// the AST is consumed and its arena is moved into the index.
     pub fn from_ast(ast: Ast) -> Self {
-        // Raw pointer to DocumentArena for ownership transfer at the end.
-        // We borrow the inner Bump for allocations, then ptr::read the whole
-        // DocumentArena and mem::forget(ast) to avoid double-free.
-        let doc_arena_ptr = ast.doc_arena_ptr();
-        // SAFETY: doc_arena_ptr is valid for the lifetime of `ast`; we cast
-        // the inner Bump to 'static because Self will own the arena.
-        let arena_ref: &'static Bump = unsafe { &*((*doc_arena_ptr).bump() as *const Bump) };
+        // Get a 'static reference to the arena's Bump allocator.
+        // SAFETY: ast owns the arena; this reference is valid for ast's lifetime.
+        // The 'static marker is a workaround for Rust's inability to express
+        // self-referential borrows — the actual lifetime is the arena's.
+        let arena_ref: &'static Bump = unsafe { &*(ast.arena() as *const Bump) };
 
         let mut headings_builder: BumpVec<'static, HeadingEntry<'static>> =
             BumpVec::new_in(arena_ref);
@@ -312,15 +310,12 @@ impl DocumentIndex {
         }
         let xml_tags = xml_tags_builder.into_bump_slice();
 
-        // Take ownership of the DocumentArena from the consumed AST.
-        //
-        // SAFETY: doc_arena_ptr was obtained at the start of this function and
-        // points at the DocumentArena field inside `ast`. All index data points
-        // into the arena's allocations; we move the arena into Self so those
-        // references remain valid. We forget `ast` to prevent its Drop from
-        // running (which would drop the DocumentArena and invalidate our refs).
-        let doc_arena = unsafe { std::ptr::read(doc_arena_ptr) };
-        std::mem::forget(ast);
+        // Transfer arena ownership from the consumed AST.
+        // take_arena() destructures the AST and drops non-arena fields in the
+        // correct order (root_elements first while Box is alive), then returns
+        // the DocumentArena. This replaces the ptr::read + mem::forget pattern
+        // which leaked source, root_elements, md_tree, and the Box shell.
+        let doc_arena = ast.take_arena();
 
         Self {
             _arena: Mutex::new(doc_arena),
@@ -740,5 +735,65 @@ mod arena_allocation_tests {
         assert_eq!(index_b.headings()[0].text, "Doc B");
         assert!(index_a.block_by_id("a").is_some());
         assert!(index_b.block_by_id("b").is_some());
+    }
+
+    /// Test that take_arena properly returns a valid arena after consuming the AST.
+    /// Exercises the safe arena transfer path that replaces ptr::read + mem::forget.
+    #[test]
+    fn take_arena_returns_valid_arena() {
+        let mut parser = Parser::new().unwrap();
+        let ast = parser
+            .parse("---\ntitle: test\n---\n# Hello\n\n[[link]]\n")
+            .unwrap();
+
+        // take_arena should consume the AST and return a usable arena
+        let arena = ast.take_arena();
+        let bump = arena.bump();
+
+        // Arena should still be valid — bump-allocated data survives transfer
+        let s = bump.alloc_str("validation");
+        assert_eq!(s, "validation");
+    }
+
+    /// Regression test for marky-4aa: mem::forget in from_ast leaks AST heap
+    /// allocations (source String, root_elements Vec, md_tree MarkdownTree,
+    /// Box<DocumentArena> shell). Under Miri, this test fails if any of those
+    /// fields are leaked.
+    ///
+    /// Run with: `cargo +nightly miri test -p markymark-index from_ast_does_not_leak`
+    #[test]
+    fn from_ast_does_not_leak() {
+        // Exercise the full extraction pipeline with rich content:
+        // - frontmatter (triggers ArenaHashMap in parser types)
+        // - headings, wiki links, tags, markdown links, block IDs
+        let source = concat!(
+            "---\n",
+            "title: Leak Test\n",
+            "tags:\n",
+            "  - alpha\n",
+            "  - beta\n",
+            "---\n",
+            "# Heading One\n",
+            "\n",
+            "Some text with a [[wiki-link]] and #tag.\n",
+            "\n",
+            "## Heading Two\n",
+            "\n",
+            "[regular link](https://example.com)\n",
+            "\n",
+            "Block content ^block-id\n",
+        );
+        let index = build_index(source);
+
+        // Verify the index was built correctly before dropping
+        assert_eq!(index.headings().len(), 2);
+        assert!(!index.wiki_links().is_empty());
+        assert!(!index.tags().is_empty());
+        assert!(!index.markdown_links().is_empty());
+        assert!(index.block_by_id("block-id").is_some());
+
+        // Drop the index — under Miri, leaked allocations from mem::forget
+        // will be reported as errors here.
+        drop(index);
     }
 }

@@ -44,7 +44,7 @@ impl Ast {
     /// Get a reference to the inner bump allocator.
     ///
     /// Callers (e.g. `DocumentIndex`) use this to allocate into the parser's
-    /// arena and then take ownership via [`into_arena`](Self::into_arena).
+    /// arena and then take ownership via [`take_arena`](Self::take_arena).
     #[inline]
     pub fn arena(&self) -> &bumpalo::Bump {
         self.arena.bump()
@@ -63,22 +63,31 @@ impl Ast {
         unsafe { &*(self.arena.bump() as *const bumpalo::Bump) }
     }
 
-    /// Consume the AST and return its [`DocumentArena`].
+    /// Consume the AST, properly dropping all non-arena fields, and return
+    /// the owned [`DocumentArena`].
     ///
-    /// Used by `DocumentIndex` to take ownership of the arena after borrowing
-    /// from it during index construction, avoiding string reallocation.
-    pub fn into_arena(self) -> DocumentArena {
-        *self.arena
-    }
-
-    /// Raw pointer to the owned [`DocumentArena`] for extraction when the
-    /// borrow checker prevents using [`into_arena`](Self::into_arena).
-    ///
-    /// Used by `DocumentIndex::from_ast` to borrow and then take ownership
-    /// of the arena in a single pass via `ptr::read` + `mem::forget`.
-    #[inline]
-    pub fn doc_arena_ptr(&self) -> *const DocumentArena {
-        &*self.arena as *const DocumentArena
+    /// Controls drop ordering to prevent use-after-free: `root_elements`
+    /// (which may contain `ArenaHashMap`s referencing the `Bump` inside the
+    /// `Box`) are dropped while the `Box<DocumentArena>` heap allocation is
+    /// still alive. This avoids both the leak from `mem::forget` and the
+    /// use-after-free from naive destructuring.
+    pub fn take_arena(self) -> DocumentArena {
+        let Ast {
+            source,
+            root_elements,
+            arena,
+            md_tree,
+        } = self;
+        // Drop root_elements first: their ArenaHashMaps hold &Bump references
+        // into the Box<DocumentArena> heap allocation, which is still alive.
+        // Bump::deallocate is a no-op, so HashMap Drop is safe here.
+        drop(root_elements);
+        drop(source);
+        drop(md_tree);
+        // Move DocumentArena out of Box — Box allocation freed.
+        // All &'static str references in index data point into arena chunks
+        // (separate heap allocations), not the Box itself, so they survive.
+        *arena
     }
 
     /// Create AST from a MarkdownTree (block + inline trees)
