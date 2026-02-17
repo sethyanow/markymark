@@ -1,6 +1,6 @@
 #[test]
 fn document_index_internal_storage_no_longer_uses_static_or_ptr_read_transfer() {
-    let source = include_str!("../src/document/mod.rs");
+    let source = include_str!("../src/document.rs");
 
     assert!(
         !source.contains("headings: &'static [HeadingEntry<'static>]"),
