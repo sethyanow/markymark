@@ -40,6 +40,16 @@
       ]
     },
     {
+      "name": "IndexView",
+      "type": "zig-kernel-view",
+      "location": "zig/src/kernels/index_serde.zig",
+      "relationships": [
+        "zero-copy view over mmap/byte-buffer index payload",
+        "validates magic/version/section bounds before exposing counters and accessors",
+        "used by exports_serde descriptor queries"
+      ]
+    },
+    {
       "name": "LinkGraph",
       "type": "zig-kernel-struct",
       "location": "zig/src/kernels/link_graph.zig",
@@ -105,6 +115,15 @@
         "measures heading/link scan, embedding search, content hash, and bulk re-index",
         "feeds report generation via target/criterion estimates",
         "implemented for beads task marky-e59"
+      ]
+    },
+    {
+      "name": "decode_query_value",
+      "type": "mcp-resource-helper",
+      "location": "markymark-mcp/src/resources.rs",
+      "relationships": [
+        "percent-decodes query parameter values before CoreOperation dispatch",
+        "supports both %XX and + space decoding semantics"
       ]
     },
     {
@@ -198,6 +217,16 @@
       ]
     },
     {
+      "name": "marky_index_serialize",
+      "type": "zig-c-abi-export",
+      "location": "zig/src/exports_serde.zig",
+      "relationships": [
+        "serializes IndexData into caller-provided buffer",
+        "returns -1 on invalid pointers and -2 on insufficient capacity",
+        "bound to Rust FFI in markymark-kernels/src/index_serde.rs"
+      ]
+    },
+    {
       "name": "marky_slugify",
       "type": "zig-c-abi-export",
       "location": "zig/src/c_adapter.zig",
@@ -205,6 +234,15 @@
         "delegates to zig/src/kernels/slug.zig",
         "returns byte count for slug output with -1/-2 error semantics",
         "covered by ABI regression tests in c_adapter.zig"
+      ]
+    },
+    {
+      "name": "mcp-prompt-realm-default",
+      "type": "prompt-contract-rule",
+      "location": "markymark-mcp/src/prompts.rs",
+      "relationships": [
+        "omitted realm argument maps to Some(\"default\")",
+        "keeps prompt argument description aligned with runtime behavior"
       ]
     },
     {
@@ -293,24 +331,6 @@
         "single-pass pending-hyphen collapse/trim logic",
         "preserves non-ASCII UTF-8 bytes during normalization",
         "used for markdown heading slug generation in BRZA track"
-      ]
-    },
-    {
-      "name": "decode_query_value",
-      "type": "mcp-resource-helper",
-      "location": "markymark-mcp/src/resources.rs",
-      "relationships": [
-        "percent-decodes query parameter values before CoreOperation dispatch",
-        "supports both %XX and + space decoding semantics"
-      ]
-    },
-    {
-      "name": "mcp-prompt-realm-default",
-      "type": "prompt-contract-rule",
-      "location": "markymark-mcp/src/prompts.rs",
-      "relationships": [
-        "omitted realm argument maps to Some(\"default\")",
-        "keeps prompt argument description aligned with runtime behavior"
       ]
     }
   ],
