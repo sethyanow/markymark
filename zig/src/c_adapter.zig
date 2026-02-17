@@ -1510,3 +1510,27 @@ test "marky_multi_scan fence_count exceeds internal buffer returns -2" {
     try std.testing.expectEqual(@as(i32, -2), rc);
     try std.testing.expectEqual(@as(u32, 0), written);
 }
+
+test "marky_multi_scan internal raw_buf overflow returns -2" {
+    // The internal raw_buf is 2048 elements. Generating >= 2048 raw scan
+    // candidates should return -2 rather than silently truncating results.
+    // Each "#x " pattern (4 bytes) produces one tag candidate.
+    // 2100 patterns = 8400 bytes, should exceed 2048 raw candidate limit.
+    const pattern_count = 2100;
+    var text_buf: [pattern_count * 4]u8 = undefined;
+    for (0..pattern_count) |i| {
+        const base = i * 4;
+        text_buf[base] = '#';
+        text_buf[base + 1] = 'a' + @as(u8, @intCast(i % 26));
+        text_buf[base + 2] = ' ';
+        text_buf[base + 3] = '\n';
+    }
+
+    var out: [4096]ScanResult = undefined;
+    var written: u32 = 0;
+
+    const rc = marky_multi_scan(&text_buf, text_buf.len, null, 0, &out, 4096, &written);
+    // Should return -2 because internal raw_buf (2048) was exceeded.
+    try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqual(@as(u32, 0), written);
+}
