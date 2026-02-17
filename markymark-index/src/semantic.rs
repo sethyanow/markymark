@@ -31,6 +31,8 @@ pub struct SearchResult {
     pub doc_uri: DocumentUri,
     /// Matched heading text.
     pub heading: String,
+    /// Matched heading level.
+    pub heading_level: u8,
     /// Similarity score.
     pub score: f32,
     /// Source range for the matched heading/section.
@@ -183,6 +185,7 @@ impl SemanticIndex {
             out.push(SearchResult {
                 doc_uri: entry.doc_uri.clone(),
                 heading: entry.heading.clone(),
+                heading_level: entry.heading_level,
                 score: candidate.score,
                 section_range: Range::new(entry.section_start, entry.section_end),
             });

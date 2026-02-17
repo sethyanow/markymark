@@ -843,7 +843,31 @@
         "Delay semantic integration until delete support exists"
       ],
       "impact": "markymark-index/src/semantic.rs, markymark-index/src/realm.rs"
+    },
+    {
+      "id": "dec-checkpoint-20260217-4",
+      "timestamp": "2026-02-17T18:49:46Z",
+      "feature": "marky-9ui",
+      "decision": "Expose semantic-search through shared core operation/result types before MCP response shaping",
+      "rationale": "Keeps transport behavior consistent and avoids MCP-only branching for semantic queries.",
+      "alternatives": [
+        "Implement semantic search as MCP-specific runtime downcast",
+        "Add semantic search only at markymark-index call sites"
+      ],
+      "impact": "markymark-core/src/engine.rs, markymark-mcp/src/lib.rs, markymark-mcp/src/runtime_engine.rs"
+    },
+    {
+      "id": "dec-checkpoint-20260217-5",
+      "timestamp": "2026-02-17T18:49:46Z",
+      "feature": "marky-9ui",
+      "decision": "Realm stats optional expansions use request flags and nullable response fields",
+      "rationale": "Preserves default payload compatibility while enabling higher-cost metrics on demand.",
+      "alternatives": [
+        "Always compute duplicate and token metrics",
+        "Create separate stats tool"
+      ],
+      "impact": "markymark-mcp/src/dto.rs, markymark-mcp/src/lib.rs, markymark-mcp/src/runtime_engine.rs"
     }
   ],
-  "lastUpdated": "2026-02-17T18:31:32Z"
+  "lastUpdated": "2026-02-17T18:49:46Z"
 }
