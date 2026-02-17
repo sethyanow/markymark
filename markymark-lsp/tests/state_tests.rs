@@ -215,6 +215,7 @@ fn test_md_tree_not_stored_for_structured_docs() {
 // ── Incremental sync tests (marky-tzq) ─────────────────────────────
 
 use markymark_lsp::state::DocumentChange;
+use std::time::{Duration, Instant};
 
 #[test]
 fn test_incremental_single_insert() {
@@ -850,4 +851,121 @@ fn edge_case_all_links_in_changed_range() {
         },
         "# T\n\n[[X]] [[Y]]\n",
     );
+}
+
+#[test]
+fn wiki_links_overlapping_incremental_edits_match_full() {
+    let mut inc_state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/overlap.md").unwrap();
+    inc_state.open_document(
+        uri.clone(),
+        "# T\n\n[[Alpha]] [[Beta]] [[Gamma]]\n".to_string(),
+    );
+
+    inc_state.apply_document_changes(
+        &uri,
+        vec![
+            DocumentChange::Incremental {
+                start_line: 2,
+                start_character: 2,
+                end_line: 2,
+                end_character: 7,
+                text: "Delta".to_string(),
+            },
+            DocumentChange::Incremental {
+                start_line: 2,
+                start_character: 2,
+                end_line: 2,
+                end_character: 7,
+                text: "Epsilon".to_string(),
+            },
+        ],
+    );
+
+    let final_text = inc_state
+        .get_document_text(&uri)
+        .expect("updated text should exist")
+        .to_string();
+
+    let mut full_state = ServerState::new();
+    let full_uri = DocumentUri::new("file:///test/overlap-full.md").unwrap();
+    full_state.open_document(full_uri.clone(), final_text);
+
+    let inc_links: Vec<_> = inc_state
+        .get_document_index(&uri)
+        .expect("incremental index should exist")
+        .wiki_links()
+        .iter()
+        .map(|w| (w.target.to_string(), w.range))
+        .collect();
+    let full_links: Vec<_> = full_state
+        .get_document_index(&full_uri)
+        .expect("full index should exist")
+        .wiki_links()
+        .iter()
+        .map(|w| (w.target.to_string(), w.range))
+        .collect();
+
+    assert_eq!(
+        inc_links, full_links,
+        "overlapping edits should produce identical wiki-link set"
+    );
+}
+
+#[test]
+#[ignore = "performance signal only; run explicitly for local benchmark evidence"]
+fn benchmark_incremental_wiki_link_edit_faster_than_full_rebuild() {
+    let uri = DocumentUri::new("file:///test/wiki-bench.md").unwrap();
+    let mut text = String::new();
+    text.push_str("# Bench\n\n");
+    for i in 0..5000 {
+        text.push_str(&format!("Line {} [[Page{}]] and [[Ref{}]]\n", i, i, i + 1));
+    }
+
+    let marker = "[[Page4000]]";
+    let marker_offset = text.find(marker).expect("marker must exist");
+    let marker_prefix = &text[..marker_offset];
+    let start_line = marker_prefix.chars().filter(|c| *c == '\n').count() as u32;
+    let line_start = marker_prefix.rfind('\n').map(|idx| idx + 1).unwrap_or(0);
+    let start_character = (marker_offset - line_start + 2) as u32;
+    let end_character = start_character + "Page400".len() as u32;
+
+    let changed = text.replacen("[[Page4000]]", "[[Renamed4000]]", 1);
+
+    let iterations = 8;
+    let mut incremental_total = Duration::ZERO;
+    let mut full_total = Duration::ZERO;
+
+    for _ in 0..iterations {
+        let mut state = ServerState::new();
+        state.open_document(uri.clone(), text.clone());
+        let start = Instant::now();
+        state.apply_document_changes(
+            &uri,
+            vec![DocumentChange::Incremental {
+                start_line,
+                start_character,
+                end_line: start_line,
+                end_character,
+                text: "Renamed4000".to_string(),
+            }],
+        );
+        incremental_total += start.elapsed();
+    }
+
+    for _ in 0..iterations {
+        let mut state = ServerState::new();
+        state.open_document(uri.clone(), text.clone());
+        let start = Instant::now();
+        state.change_document(&uri, changed.clone());
+        full_total += start.elapsed();
+    }
+
+    eprintln!(
+        "wiki benchmark totals over {} iters: incremental={:?}, full={:?}",
+        iterations, incremental_total, full_total
+    );
+
+    assert!(incremental_total > Duration::ZERO);
+    assert!(full_total > Duration::ZERO);
 }

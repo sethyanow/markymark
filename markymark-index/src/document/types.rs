@@ -60,6 +60,19 @@ pub struct WikiLinkEntry<'arena> {
     pub range: Range,
 }
 
+/// Owned wiki-link payload used by incremental merge paths before arena allocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WikiLinkOwned {
+    /// Target page name.
+    pub target: String,
+    /// Optional alias text.
+    pub alias: Option<String>,
+    /// Optional heading anchor within the target.
+    pub heading: Option<String>,
+    /// Source range.
+    pub range: Range,
+}
+
 /// A tag entry stored in the index.
 #[derive(Debug, Clone)]
 pub struct TagEntry<'arena> {
