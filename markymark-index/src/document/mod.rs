@@ -531,6 +531,7 @@ impl fmt::Debug for DocumentIndex {
             .field("headings", &dep.headings.len())
             .field("blocks", &dep.blocks.len())
             .field("toc", &dep.toc.len())
+            .field("outline", &dep.outline.children.len())
             .field("wiki_links", &dep.wiki_links.len())
             .field("tags", &dep.tags.len())
             .field("markdown_links", &dep.markdown_links.len())
