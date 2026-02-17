@@ -31,3 +31,5 @@ Thumbs.db
 zig-out/
 
 .brain
+
+brza-spec.md
