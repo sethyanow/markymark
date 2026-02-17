@@ -357,6 +357,32 @@ For complex arena usage patterns that emerged from production use:
 
 ---
 
+## Pitfalls
+
+Critical gotchas when using bumpalo. See [bumpalo/pitfalls.md](bumpalo/pitfalls.md) for full details with code examples.
+
+<pitfall>
+**Lifetime mismatch:** Data allocated in an arena cannot outlive it. Pass the arena from the caller rather than creating a local one.
+</pitfall>
+
+<pitfall>
+**No individual deallocation:** You cannot free a single allocation — only the entire arena. Design around bulk deallocation (one arena per logical unit).
+</pitfall>
+
+<pitfall>
+**Drop not called:** `Bump::alloc` does not run `Drop` on allocated values. Only allocate non-Drop types, or use `bumpalo::boxed::Box` / bumpalo collections.
+</pitfall>
+
+<pitfall>
+**Not `Sync`:** `Bump` cannot be shared across threads. Use one arena per thread.
+</pitfall>
+
+<pitfall>
+**Capacity never shrinks:** `arena.reset()` frees logically but retains capacity. Drop and recreate the arena to release memory.
+</pitfall>
+
+---
+
 ## Related
 
 - [bumpalo/advanced.md](bumpalo/advanced.md) - Advanced patterns

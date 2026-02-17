@@ -363,7 +363,7 @@ impl DocumentIndex {
             let mut markdown_links_builder = BumpVec::new_in(arena_ref);
 
             for l in scan_links {
-                let pos = byte_offset_to_position(&line_starts, l.offset);
+                let pos = helpers::byte_offset_to_position(&line_starts, l.offset);
                 let end_offset = match l.link_type {
                     ScanLinkType::Markdown => {
                         l.offset + l.text.len() as u32 + l.target.len() as u32 + 4
@@ -425,9 +425,11 @@ impl DocumentIndex {
             let mut blocks = HashMap::new();
             for b in scan_blocks {
                 let id = arena_alloc_str(arena_ref, &b.id);
-                let pos = byte_offset_to_position(&line_starts, b.offset);
-                let end_pos =
-                    byte_offset_to_position(&line_starts, b.offset + 1 + b.id.len() as u32);
+                let pos = helpers::byte_offset_to_position(&line_starts, b.offset);
+                let end_pos = helpers::byte_offset_to_position(
+                    &line_starts,
+                    b.offset + 1 + b.id.len() as u32,
+                );
                 blocks.insert(
                     id,
                     BlockEntry {
