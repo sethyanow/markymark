@@ -206,6 +206,16 @@
         "orders search-symbols by score then starts_with tie-break",
         "replaces substring contains + lexical ordering"
       ]
+    },
+    {
+      "name": "session-context-compilation",
+      "type": "harness-workflow-entity",
+      "location": ".claude-harness/sessions/{session-id}/context.json",
+      "relationships": [
+        "aggregates feature/procedural/episodic/learned memory layers",
+        "provides resume-ready context for start/checkpoint workflows",
+        "updated during memory-layer initialization and checkpoint persistence"
+      ]
     }
   ]
 }

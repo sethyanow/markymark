@@ -160,8 +160,14 @@
         "pattern": "Semantic search ranking uses score-first ordering with deterministic tie-breakers",
         "context": "search-symbols style fuzzy result ranking across many candidate symbols",
         "application": "Sort by fuzzy score desc, then starts_with preference, then lexical order to keep stable and relevant output"
+      },
+      {
+        "id": "pat-session-context-compilation",
+        "pattern": "Session context compilation loads harness memory layers in parallel and writes a session-scoped context artifact",
+        "context": "Running initialization/checkpoint workflows where fast resume context is required",
+        "application": "Read features/procedural/episodic/learned memory together, then persist consolidated data to .claude-harness/sessions/{session-id}/context.json"
       }
     ]
   },
-  "lastUpdated": "2026-02-17T16:26:59Z"
+  "lastUpdated": "2026-02-17T17:08:16Z"
 }
