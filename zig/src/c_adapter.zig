@@ -6,6 +6,7 @@ const block_scan = @import("kernels/block_scan.zig");
 const token_estimate = @import("kernels/token_estimate.zig");
 const content_hash_mod = @import("kernels/content_hash.zig");
 const fence_map = @import("kernels/fence_map.zig");
+const multi_scan = @import("kernels/multi_scan.zig");
 const similarity = @import("shared/similarity.zig");
 const normalize = @import("shared/normalize.zig");
 const entities = @import("shared/entities.zig");
@@ -24,6 +25,7 @@ pub const LinkScan = link_scan.LinkScan;
 pub const TagScan = tag_scan.TagScan;
 pub const BlockIdScan = block_scan.BlockIdScan;
 pub const FenceRange = fence_map.FenceRange;
+pub const ScanResult = multi_scan.ScanResult;
 
 /// Version constant for markymark kernels
 /// Format: 0xMMmmpp (major, minor, patch)
@@ -281,6 +283,187 @@ export fn marky_build_fence_map(
 
     if (count >= cap) return -2;
 
+    return 0;
+}
+
+fn in_fence_ranges_binary(ranges: []const FenceRange, pos: u32) bool {
+    var lo: usize = 0;
+    var hi: usize = ranges.len;
+    while (lo < hi) {
+        const mid = lo + (hi - lo) / 2;
+        const r = ranges[mid];
+        if (pos < r.start) {
+            hi = mid;
+        } else if (pos >= r.end) {
+            lo = mid + 1;
+        } else {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn extract_multi_result(
+    buf: []const u8,
+    raw: ScanResult,
+) ?ScanResult {
+    const scan_ref = @import("reference/multi_scan_ref.zig");
+
+    const ty: scan_ref.ScanType = @enumFromInt(raw.scan_type);
+
+    switch (ty) {
+        .heading => {
+            const heading_ref = @import("reference/heading_scan_ref.zig");
+            if (heading_ref.try_parse_heading(buf, raw.offset, @intCast(buf.len))) |h| {
+                return ScanResult{
+                    .offset = h.offset,
+                    .length = h.length,
+                    .scan_type = @intFromEnum(scan_ref.ScanType.heading),
+                    .extra = h.level,
+                };
+            }
+            return null;
+        },
+        .link_open => {
+            const link_ref = @import("reference/link_scan_ref.zig");
+            if (link_ref.try_parse_markdown_link(buf, raw.offset, @intCast(buf.len))) |l| {
+                const clamped_target: u8 = if (l.target_length > std.math.maxInt(u8)) std.math.maxInt(u8) else @intCast(l.target_length);
+                return ScanResult{
+                    .offset = l.offset,
+                    .length = l.text_length,
+                    .scan_type = @intFromEnum(scan_ref.ScanType.link_open),
+                    .extra = clamped_target,
+                };
+            }
+            return null;
+        },
+        .wiki_link => {
+            if (raw.offset == 0) return null;
+            const link_ref = @import("reference/link_scan_ref.zig");
+            const start = raw.offset - 1;
+            if (link_ref.try_parse_wiki_link(buf, start, @intCast(buf.len))) |l| {
+                const clamped_target: u8 = if (l.target_length > std.math.maxInt(u8)) std.math.maxInt(u8) else @intCast(l.target_length);
+                return ScanResult{
+                    .offset = l.offset,
+                    .length = l.text_length,
+                    .scan_type = @intFromEnum(scan_ref.ScanType.wiki_link),
+                    .extra = clamped_target,
+                };
+            }
+            return null;
+        },
+        .fence_backtick, .fence_tilde => {
+            // Fence markers are used to build fence maps; not emitted as indexable content.
+            return null;
+        },
+        .block_id => {
+            const block_ref = @import("reference/block_scan_ref.zig");
+            if (block_ref.try_parse_block_id(buf, raw.offset)) |b| {
+                return ScanResult{
+                    .offset = b.offset,
+                    .length = b.length,
+                    .scan_type = @intFromEnum(scan_ref.ScanType.block_id),
+                    .extra = 0,
+                };
+            }
+            return null;
+        },
+        .tag => {
+            const tag_ref = @import("reference/tag_scan_ref.zig");
+            if (tag_ref.try_parse_tag(buf, raw.offset, @intCast(buf.len))) |t| {
+                return ScanResult{
+                    .offset = t.offset,
+                    .length = t.length,
+                    .scan_type = @intFromEnum(scan_ref.ScanType.tag),
+                    .extra = 0,
+                };
+            }
+            return null;
+        },
+    }
+}
+
+/// Single-pass multi-pattern scan with fence filtering and typed extraction.
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointer)
+///  -2  — buffer too small (partial results written)
+export fn marky_multi_scan(
+    text: ?[*]const u8,
+    len: u32,
+    fence_ranges: ?[*]const FenceRange,
+    fence_count: u32,
+    results_out: ?[*]ScanResult,
+    cap: u32,
+    written: ?*u32,
+) i32 {
+    const w = written orelse return -1;
+    const t = text orelse {
+        if (len == 0) {
+            w.* = 0;
+            return 0;
+        }
+        return -1;
+    };
+    const o = results_out orelse return -1;
+
+    if (len == 0) {
+        w.* = 0;
+        return 0;
+    }
+
+    if (cap == 0) {
+        w.* = 0;
+        return -2;
+    }
+
+    var fence_buf: [256]FenceRange = undefined;
+    const fence_slice: []const FenceRange = if (fence_count == 0)
+        &[_]FenceRange{}
+    else blk: {
+        const fr = fence_ranges orelse return -1;
+        const src = fr[0..fence_count];
+
+        if (fence_count > fence_buf.len) return -1;
+
+        std.mem.copyForwards(FenceRange, fence_buf[0..fence_count], src);
+        std.mem.sort(FenceRange, fence_buf[0..fence_count], {}, struct {
+            fn lessThan(_: void, a: FenceRange, b: FenceRange) bool {
+                return a.start < b.start;
+            }
+        }.lessThan);
+
+        break :blk fence_buf[0..fence_count];
+    };
+
+    // Worst-case raw candidates can exceed cap due to rejected candidates.
+    // Use fixed stack buffer to avoid heap allocation in hot path.
+    var raw_buf: [2048]ScanResult = undefined;
+    const raw_cap: u32 = @intCast(raw_buf.len);
+    const raw_count = multi_scan.scan_multi(t, len, &raw_buf, raw_cap);
+
+    const text_slice = t[0..len];
+    var out_written: u32 = 0;
+
+    var i: u32 = 0;
+    while (i < raw_count) : (i += 1) {
+        const raw = raw_buf[i];
+
+        if (extract_multi_result(text_slice, raw)) |extracted| {
+            if (in_fence_ranges_binary(fence_slice, extracted.offset)) continue;
+
+            if (out_written >= cap) {
+                w.* = out_written;
+                return -2;
+            }
+
+            o[out_written] = extracted;
+            out_written += 1;
+        }
+    }
+
+    w.* = out_written;
     return 0;
 }
 
@@ -938,4 +1121,220 @@ test "marky_build_fence_map buffer overflow returns -2" {
     const rc = marky_build_fence_map(text.ptr, text.len, &out, 1, &w);
     try std.testing.expectEqual(@as(i32, -2), rc);
     try std.testing.expectEqual(@as(u32, 1), w);
+}
+
+fn test_in_fence_linear(ranges: []const FenceRange, pos: u32) bool {
+    for (ranges) |r| {
+        if (pos >= r.start and pos < r.end) return true;
+    }
+    return false;
+}
+
+fn test_contains_scan_result(haystack: []const ScanResult, needle: ScanResult) bool {
+    for (haystack) |item| {
+        if (item.offset == needle.offset and
+            item.length == needle.length and
+            item.scan_type == needle.scan_type and
+            item.extra == needle.extra)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+test "marky_multi_scan fence filtering basic" {
+    const scan_ref = @import("reference/multi_scan_ref.zig");
+
+    const text =
+        "# Outside\n" ++
+        "```\n" ++
+        "# Inside\n" ++
+        "[[inside]] and [inside](url) #inside ^inside\n" ++
+        "```\n" ++
+        "[outside](url) #tag\n";
+
+    var ranges: [8]FenceRange = undefined;
+    var range_written: u32 = 0;
+    const fence_rc = marky_build_fence_map(text.ptr, text.len, &ranges, 8, &range_written);
+    try std.testing.expectEqual(@as(i32, 0), fence_rc);
+    try std.testing.expectEqual(@as(u32, 1), range_written);
+
+    var out: [64]ScanResult = undefined;
+    var written: u32 = 0;
+    const rc = marky_multi_scan(text.ptr, text.len, &ranges, range_written, &out, 64, &written);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+
+    var heading_count: u32 = 0;
+    var markdown_count: u32 = 0;
+    var tag_count: u32 = 0;
+
+    for (out[0..written]) |r| {
+        const ty: scan_ref.ScanType = @enumFromInt(r.scan_type);
+        switch (ty) {
+            .heading => heading_count += 1,
+            .link_open => markdown_count += 1,
+            .tag => tag_count += 1,
+            else => {},
+        }
+    }
+
+    try std.testing.expectEqual(@as(u32, 1), heading_count);
+    try std.testing.expectEqual(@as(u32, 1), markdown_count);
+    try std.testing.expectEqual(@as(u32, 1), tag_count);
+}
+
+test "marky_multi_scan all filtered inside fences" {
+    const text =
+        "```\n" ++
+        "# Inside\n" ++
+        "[[inside]] [inside](url) #tag ^id\n" ++
+        "```\n";
+
+    var ranges: [4]FenceRange = undefined;
+    var range_written: u32 = 0;
+    const fence_rc = marky_build_fence_map(text.ptr, text.len, &ranges, 4, &range_written);
+    try std.testing.expectEqual(@as(i32, 0), fence_rc);
+    try std.testing.expectEqual(@as(u32, 1), range_written);
+
+    var out: [16]ScanResult = undefined;
+    var written: u32 = 0;
+    const rc = marky_multi_scan(text.ptr, text.len, &ranges, range_written, &out, 16, &written);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    try std.testing.expectEqual(@as(u32, 0), written);
+}
+
+test "marky_multi_scan handles unsorted fence ranges" {
+    const scan_ref = @import("reference/multi_scan_ref.zig");
+
+    const text =
+        "```\n# hidden-one\n```\n" ++
+        "# outside\n" ++
+        "```\n# hidden-two\n```\n";
+
+    var ranges: [4]FenceRange = undefined;
+    var range_written: u32 = 0;
+    try std.testing.expectEqual(@as(i32, 0), marky_build_fence_map(text.ptr, text.len, &ranges, 4, &range_written));
+    try std.testing.expectEqual(@as(u32, 2), range_written);
+
+    // Deliberately unsort the fence ranges.
+    const tmp = ranges[0];
+    ranges[0] = ranges[1];
+    ranges[1] = tmp;
+
+    var out: [16]ScanResult = undefined;
+    var written: u32 = 0;
+    try std.testing.expectEqual(@as(i32, 0), marky_multi_scan(text.ptr, text.len, &ranges, range_written, &out, 16, &written));
+
+    var heading_count: u32 = 0;
+    for (out[0..written]) |r| {
+        if (r.scan_type == @intFromEnum(scan_ref.ScanType.heading)) heading_count += 1;
+    }
+
+    // Only the outside heading should remain.
+    try std.testing.expectEqual(@as(u32, 1), heading_count);
+}
+
+test "marky_multi_scan parity with individual scans" {
+    const scan_ref = @import("reference/multi_scan_ref.zig");
+
+    const text =
+        "# Heading\n" ++
+        "[[wiki]] and [md](url) #tag\n" ++
+        "line ^block-id\n" ++
+        "```\n" ++
+        "# hidden\n" ++
+        "[hidden](url) #hidden ^hidden\n" ++
+        "```\n";
+
+    var ranges: [8]FenceRange = undefined;
+    var range_written: u32 = 0;
+    try std.testing.expectEqual(@as(i32, 0), marky_build_fence_map(text.ptr, text.len, &ranges, 8, &range_written));
+
+    var multi_out: [64]ScanResult = undefined;
+    var multi_written: u32 = 0;
+    try std.testing.expectEqual(@as(i32, 0), marky_multi_scan(text.ptr, text.len, &ranges, range_written, &multi_out, 64, &multi_written));
+
+    var headings: [16]HeadingScan = undefined;
+    var heading_written: u32 = 0;
+    try std.testing.expectEqual(@as(i32, 0), marky_scan_headings(text.ptr, text.len, &headings, 16, &heading_written));
+
+    var links: [16]LinkScan = undefined;
+    var link_written: u32 = 0;
+    try std.testing.expectEqual(@as(i32, 0), marky_scan_links(text.ptr, text.len, &links, 16, &link_written));
+
+    var tags: [16]TagScan = undefined;
+    var tag_written: u32 = 0;
+    try std.testing.expectEqual(@as(i32, 0), marky_scan_tags(text.ptr, text.len, &tags, 16, &tag_written));
+
+    var blocks: [16]BlockIdScan = undefined;
+    var block_written: u32 = 0;
+    try std.testing.expectEqual(@as(i32, 0), marky_scan_block_ids(text.ptr, text.len, &blocks, 16, &block_written));
+
+    var expected: [64]ScanResult = undefined;
+    var expected_written: u32 = 0;
+
+    for (headings[0..heading_written]) |h| {
+        if (!test_in_fence_linear(ranges[0..range_written], h.offset)) {
+            expected[expected_written] = .{
+                .offset = h.offset,
+                .length = h.length,
+                .scan_type = @intFromEnum(scan_ref.ScanType.heading),
+                .extra = h.level,
+            };
+            expected_written += 1;
+        }
+    }
+
+    for (links[0..link_written]) |l| {
+        if (!test_in_fence_linear(ranges[0..range_written], l.offset)) {
+            const ty: scan_ref.ScanType = if (l.link_type == 0) .link_open else .wiki_link;
+            expected[expected_written] = .{
+                .offset = l.offset,
+                .length = l.text_length,
+                .scan_type = @intFromEnum(ty),
+                .extra = if (l.target_length > std.math.maxInt(u8)) std.math.maxInt(u8) else @intCast(l.target_length),
+            };
+            expected_written += 1;
+        }
+    }
+
+    for (tags[0..tag_written]) |t| {
+        if (!test_in_fence_linear(ranges[0..range_written], t.offset)) {
+            expected[expected_written] = .{
+                .offset = t.offset,
+                .length = t.length,
+                .scan_type = @intFromEnum(scan_ref.ScanType.tag),
+                .extra = 0,
+            };
+            expected_written += 1;
+        }
+    }
+
+    for (blocks[0..block_written]) |b| {
+        if (!test_in_fence_linear(ranges[0..range_written], b.offset)) {
+            expected[expected_written] = .{
+                .offset = b.offset,
+                .length = b.length,
+                .scan_type = @intFromEnum(scan_ref.ScanType.block_id),
+                .extra = 0,
+            };
+            expected_written += 1;
+        }
+    }
+
+    try std.testing.expectEqual(expected_written, multi_written);
+    for (expected[0..expected_written]) |e| {
+        try std.testing.expect(test_contains_scan_result(multi_out[0..multi_written], e));
+    }
+}
+
+test "marky_multi_scan buffer overflow returns -2 partial" {
+    const text = "^a\n^b\n^c\n^d\n";
+    var out: [2]ScanResult = undefined;
+    var written: u32 = 0;
+
+    const rc = marky_multi_scan(text.ptr, text.len, null, 0, &out, 2, &written);
+    try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqual(@as(u32, 2), written);
 }

@@ -583,6 +583,20 @@
         "Bash heredoc (cat > file << 'CIEOF') for GitHub Actions YAML — Edit/Write blocked by security hook",
         "Python3 yaml.safe_load for structural YAML validation in test scripts"
       ]
+    },
+    {
+      "id": "suc-041",
+      "timestamp": "2026-02-17T07:35:00Z",
+      "feature": "marky-77m",
+      "type": "implementation",
+      "approach": "Implemented marky_multi_scan C ABI post-processing in zig/src/c_adapter.zig: raw Aho-Corasick candidates -> typed validation via reference parsers -> fence filtering -> bounded output with -2 partial semantics. Added TDD tests for fence filtering basic/all-inside/parity/overflow and unsorted fence range handling.",
+      "files": ["zig/src/c_adapter.zig"],
+      "patterns": [
+        "For multi-pattern automata with overlap outputs, parse candidates by semantic type-specific offsets (heading/tag/block/link_open at raw.offset; wiki_link at raw.offset-1)",
+        "Fence filtering should sort input ranges at API boundary before binary search to tolerate unsorted caller input",
+        "Use reference parser helpers (try_parse_heading/tag/block/link/wiki) as single source of truth for post-processing validation",
+        "Return -2 with partial written count when output cap reached instead of dropping already-validated results"
+      ]
     }
   ]
 }

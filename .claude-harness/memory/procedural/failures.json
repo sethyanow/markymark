@@ -92,6 +92,21 @@
       "rootCause": "Pre-training knowledge has Zig 0.14.x patterns. Zig 0.15 was released after training cutoff. CLAUDE.md docs explicitly warned to read build-system.md before writing code but docs were checked too late.",
       "files": ["zig/build.zig", "zig/src/c_adapter.zig"],
       "resolution": "Read /Users/seth/.local/share/mise/installs/zig/0.15.2/lib/std/Build.zig source directly to find correct API signatures. Always read docs/modules/zig/ BEFORE writing any Zig code."
+    },
+    {
+      "id": "fail-013",
+      "timestamp": "2026-02-17T07:34:00Z",
+      "feature": "marky-77m",
+      "type": "implementation",
+      "approach": "Derived candidate start offset from pattern length for all scan types in marky_multi_scan post-processing",
+      "errors": [
+        "Heading candidates failed validation because automaton already emits heading at '#' byte (not at newline byte)",
+        "Parity test missed expected heading result (expected 5, found 4)",
+        "Fence filtering basic test dropped outside heading unexpectedly"
+      ],
+      "rootCause": "Assumed all raw offsets represent last pattern byte. In current automaton output semantics, several scan types are emitted at the semantic marker byte (e.g., heading/tag at '#', block_id at '^', link_open at '['), while wiki_link needs first '[' via raw.offset-1.",
+      "files": ["zig/src/c_adapter.zig"],
+      "resolution": "Switched to type-specific candidate offsets: heading/tag/block_id/link_open at raw.offset, wiki_link at raw.offset-1. Re-ran full c_adapter test suite (304 passing)."
     }
   ]
 }
