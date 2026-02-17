@@ -448,6 +448,13 @@ export fn marky_multi_scan(
     const raw_cap: u32 = @intCast(raw_buf.len);
     const raw_count = multi_scan.scan_multi(t, len, &raw_buf, raw_cap);
 
+    // If raw candidates exceed internal buffer, results may be truncated.
+    // Return -2 to signal partial results rather than silently dropping.
+    if (raw_count >= raw_cap) {
+        w.* = 0;
+        return -2;
+    }
+
     const text_slice = t[0..len];
     var out_written: u32 = 0;
 
