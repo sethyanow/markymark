@@ -5,6 +5,7 @@ const tag_scan = @import("kernels/tag_scan.zig");
 const block_scan = @import("kernels/block_scan.zig");
 const token_estimate = @import("kernels/token_estimate.zig");
 const content_hash_mod = @import("kernels/content_hash.zig");
+const fence_map = @import("kernels/fence_map.zig");
 const similarity = @import("shared/similarity.zig");
 const normalize = @import("shared/normalize.zig");
 const entities = @import("shared/entities.zig");
@@ -22,6 +23,7 @@ pub const HeadingScan = heading_scan.HeadingScan;
 pub const LinkScan = link_scan.LinkScan;
 pub const TagScan = tag_scan.TagScan;
 pub const BlockIdScan = block_scan.BlockIdScan;
+pub const FenceRange = fence_map.FenceRange;
 
 /// Version constant for markymark kernels
 /// Format: 0xMMmmpp (major, minor, patch)
@@ -237,6 +239,51 @@ export fn marky_scan_block_ids(
     return 0;
 }
 
+/// SIMD-accelerated fence map builder.
+///
+/// Scans `text[0..len]` for fenced code blocks (triple+ backtick/tilde at
+/// column 0). Writes byte ranges into `ranges_out[0..cap]`, sets `*written`
+/// to the number of ranges found.
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointer)
+///  -2  — buffer too small (cap=0, or more ranges than cap)
+export fn marky_build_fence_map(
+    text: ?[*]const u8,
+    len: u32,
+    ranges_out: ?[*]FenceRange,
+    cap: u32,
+    written: ?*u32,
+) i32 {
+    const w = written orelse return -1;
+    const t = text orelse {
+        if (len == 0) {
+            w.* = 0;
+            return 0;
+        }
+        return -1;
+    };
+    const o = ranges_out orelse return -1;
+
+    if (len == 0) {
+        w.* = 0;
+        return 0;
+    }
+
+    if (cap == 0) {
+        w.* = 0;
+        return -2;
+    }
+
+    const count = fence_map.build_fence_map(t, len, o, cap);
+    w.* = count;
+
+    if (count >= cap) return -2;
+
+    return 0;
+}
+
 // ============================================================================
 // Shared kernel exports: similarity, normalize, entities, quantize
 // ============================================================================
@@ -377,6 +424,8 @@ test {
     _ = @import("reference/block_scan_ref.zig");
     _ = @import("kernels/token_estimate.zig");
     _ = @import("kernels/content_hash.zig");
+    _ = @import("kernels/fence_map.zig");
+    _ = @import("reference/fence_map_ref.zig");
     // Shared kernels (forked from forge BRZA)
     _ = @import("shared/similarity.zig");
     _ = @import("reference/similarity_ref.zig");
@@ -833,4 +882,57 @@ test "zig_dequantize_q4_0_to_f32 null input" {
     var output: [32]f32 = undefined;
     const rc = zig_dequantize_q4_0_to_f32(null, &output, 32);
     try std.testing.expectEqual(@as(i32, -1), rc);
+}
+
+// -- marky_build_fence_map tests --
+
+test "marky_build_fence_map basic" {
+    const text = "```\ncode here\n```\n";
+    var out: [8]FenceRange = undefined;
+    var w: u32 = undefined;
+    const rc = marky_build_fence_map(text.ptr, text.len, &out, 8, &w);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    try std.testing.expectEqual(@as(u32, 1), w);
+    try std.testing.expectEqual(@as(u32, 0), out[0].start);
+    try std.testing.expectEqual(@as(u32, text.len), out[0].end);
+}
+
+test "marky_build_fence_map null text with zero len" {
+    var w: u32 = undefined;
+    var out: [4]FenceRange = undefined;
+    const rc = marky_build_fence_map(null, 0, &out, 4, &w);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    try std.testing.expectEqual(@as(u32, 0), w);
+}
+
+test "marky_build_fence_map null text with nonzero len" {
+    var w: u32 = undefined;
+    var out: [4]FenceRange = undefined;
+    const rc = marky_build_fence_map(null, 10, &out, 4, &w);
+    try std.testing.expectEqual(@as(i32, -1), rc);
+}
+
+test "marky_build_fence_map null written" {
+    const text = "```\ncode\n```\n";
+    var out: [4]FenceRange = undefined;
+    const rc = marky_build_fence_map(text.ptr, text.len, &out, 4, null);
+    try std.testing.expectEqual(@as(i32, -1), rc);
+}
+
+test "marky_build_fence_map zero cap" {
+    const text = "```\ncode\n```\n";
+    var out: [4]FenceRange = undefined;
+    var w: u32 = undefined;
+    const rc = marky_build_fence_map(text.ptr, text.len, &out, 0, &w);
+    try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqual(@as(u32, 0), w);
+}
+
+test "marky_build_fence_map buffer overflow returns -2" {
+    const text = "```\na\n```\n```\nb\n```\n```\nc\n```\n";
+    var out: [1]FenceRange = undefined;
+    var w: u32 = undefined;
+    const rc = marky_build_fence_map(text.ptr, text.len, &out, 1, &w);
+    try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqual(@as(u32, 1), w);
 }
