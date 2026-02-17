@@ -166,13 +166,15 @@ impl MarkymarkMcp {
     }
 
     /// Request a document outline from the core engine.
-    pub fn get_outline(&self, uri: DocumentUri) -> CoreOperationResult {
-        self.engine.execute(CoreOperation::GetOutline { uri })
+    pub fn get_outline(&self, uri: DocumentUri, realm: Option<String>) -> CoreOperationResult {
+        self.engine
+            .execute(CoreOperation::GetOutline { uri, realm })
     }
 
     /// Request symbol search from the core engine.
-    pub fn search_symbols(&self, query: String) -> CoreOperationResult {
-        self.engine.execute(CoreOperation::SearchSymbols { query })
+    pub fn search_symbols(&self, query: String, realm: Option<String>) -> CoreOperationResult {
+        self.engine
+            .execute(CoreOperation::SearchSymbols { query, realm })
     }
 
     /// Request semantic search from the core engine.
@@ -192,9 +194,17 @@ impl MarkymarkMcp {
     }
 
     /// Request references at a target range.
-    pub fn find_references(&self, uri: DocumentUri, position: Range) -> CoreOperationResult {
-        self.engine
-            .execute(CoreOperation::FindReferences { uri, position })
+    pub fn find_references(
+        &self,
+        uri: DocumentUri,
+        position: Range,
+        realm: Option<String>,
+    ) -> CoreOperationResult {
+        self.engine.execute(CoreOperation::FindReferences {
+            uri,
+            position,
+            realm,
+        })
     }
 
     /// Request rename operation at a target range.
@@ -203,11 +213,13 @@ impl MarkymarkMcp {
         uri: DocumentUri,
         position: Range,
         new_name: String,
+        realm: Option<String>,
     ) -> CoreOperationResult {
         self.engine.execute(CoreOperation::Rename {
             uri,
             position,
             new_name,
+            realm,
         })
     }
 
@@ -243,7 +255,7 @@ impl MarkymarkMcp {
             Err(err) => return Ok(tool_error(&err.code, err.message)),
         };
 
-        match self.get_outline(uri) {
+        match self.get_outline(uri, params.0.realm.clone()) {
             CoreOperationResult::Outline(headings) => {
                 Ok(CallToolResult::structured(json!(OutlineResponse {
                     uri: params.0.uri,
@@ -272,7 +284,7 @@ impl MarkymarkMcp {
             ));
         }
 
-        match self.search_symbols(query.clone()) {
+        match self.search_symbols(query.clone(), params.0.realm.clone()) {
             CoreOperationResult::Symbols(symbols) => {
                 let mut mapped: Vec<SymbolMatchDto> = symbols
                     .into_iter()
@@ -364,7 +376,7 @@ impl MarkymarkMcp {
             Position::new(params.0.line, params.0.character),
         );
 
-        match self.find_references(uri, position) {
+        match self.find_references(uri, position, params.0.realm.clone()) {
             CoreOperationResult::Locations(locations) => {
                 let mut mapped: Vec<LocationDto> = locations
                     .into_iter()
@@ -412,7 +424,7 @@ impl MarkymarkMcp {
             Position::new(params.0.line, params.0.character),
         );
 
-        match self.rename(uri, position, new_name) {
+        match self.rename(uri, position, new_name, params.0.realm.clone()) {
             CoreOperationResult::WorkspaceEdit(edits) => {
                 let mut changes: Vec<DocumentEditDto> = edits
                     .into_iter()
@@ -645,7 +657,10 @@ impl MarkymarkMcp {
             Err(err) => return Ok(tool_error(&err.code, err.message)),
         };
 
-        match self.engine.execute(CoreOperation::ExportIndex { uri }) {
+        match self.engine.execute(CoreOperation::ExportIndex {
+            uri,
+            realm: params.0.realm.clone(),
+        }) {
             CoreOperationResult::DocumentExport {
                 uri,
                 headings,

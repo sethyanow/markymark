@@ -102,6 +102,7 @@ fn indexes_markdown_and_returns_deterministic_symbols() {
 
     let outline = engine.execute(CoreOperation::GetOutline {
         uri: DocumentUri::from_file_path(&first),
+        realm: None,
     });
     match outline {
         CoreOperationResult::Outline(headings) => {
@@ -112,6 +113,7 @@ fn indexes_markdown_and_returns_deterministic_symbols() {
 
     let symbols = engine.execute(CoreOperation::SearchSymbols {
         query: "a".to_string(),
+        realm: None,
     });
     match symbols {
         CoreOperationResult::Symbols(matches) => {
@@ -139,6 +141,7 @@ fn search_symbols_prefers_prefix_over_plain_substring() {
 
     let symbols = engine.execute(CoreOperation::SearchSymbols {
         query: "st".to_string(),
+        realm: None,
     });
 
     match symbols {
@@ -161,6 +164,7 @@ fn search_symbols_matches_case_insensitively() {
 
     let symbols = engine.execute(CoreOperation::SearchSymbols {
         query: "ST".to_string(),
+        realm: None,
     });
 
     match symbols {
@@ -183,6 +187,7 @@ fn search_symbols_supports_subsequence_matching() {
 
     let symbols = engine.execute(CoreOperation::SearchSymbols {
         query: "stp".to_string(),
+        realm: None,
     });
 
     match symbols {
@@ -205,6 +210,7 @@ fn search_symbols_returns_no_results_when_query_cannot_be_matched() {
 
     let symbols = engine.execute(CoreOperation::SearchSymbols {
         query: "zzz".to_string(),
+        realm: None,
     });
 
     match symbols {
@@ -230,6 +236,7 @@ fn find_references_returns_wiki_link_refs_to_heading() {
     let result = engine.execute(CoreOperation::FindReferences {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 3), Position::new(2, 3)),
+        realm: None,
     });
 
     match result {
@@ -272,6 +279,7 @@ fn find_references_returns_markdown_link_refs_to_heading() {
     let result = engine.execute(CoreOperation::FindReferences {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 4), Position::new(2, 4)),
+        realm: None,
     });
 
     match result {
@@ -303,6 +311,7 @@ fn find_references_returns_xml_tag_refs_across_documents() {
     let result = engine.execute(CoreOperation::FindReferences {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 1), Position::new(2, 1)),
+        realm: None,
     });
 
     match result {
@@ -331,6 +340,7 @@ fn find_references_returns_error_for_unknown_document() {
     let result = engine.execute(CoreOperation::FindReferences {
         uri: DocumentUri::from_file_path(&unknown),
         position: Range::new(Position::new(0, 2), Position::new(0, 2)),
+        realm: None,
     });
 
     match result {
@@ -351,6 +361,7 @@ fn find_references_returns_error_for_position_without_symbol() {
     let result = engine.execute(CoreOperation::FindReferences {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 2), Position::new(2, 2)),
+        realm: None,
     });
 
     match result {
@@ -403,6 +414,7 @@ fn rename_heading_edits_heading_text_and_wiki_link_and_markdown_anchor() {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 3), Position::new(2, 3)),
         new_name: "Installation".to_string(),
+        realm: None,
     });
 
     let edits = flatten_workspace_edit(result);
@@ -439,6 +451,7 @@ fn rename_xml_tag_edits_open_and_close_tags_across_documents() {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 1), Position::new(2, 1)),
         new_name: "tool".to_string(),
+        realm: None,
     });
 
     let edits = flatten_workspace_edit(result);
@@ -467,6 +480,7 @@ fn rename_self_closing_xml_tag_edits_only_open_tag() {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 1), Position::new(2, 1)),
         new_name: "hr".to_string(),
+        realm: None,
     });
 
     let edits = flatten_workspace_edit(result);
@@ -493,6 +507,7 @@ fn rename_returns_error_for_unknown_document() {
         uri: DocumentUri::from_file_path(&unknown),
         position: Range::new(Position::new(0, 2), Position::new(0, 2)),
         new_name: "NewName".to_string(),
+        realm: None,
     });
 
     match result {
@@ -514,6 +529,7 @@ fn rename_returns_error_for_position_without_renameable_symbol() {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 2), Position::new(2, 2)),
         new_name: "Whatever".to_string(),
+        realm: None,
     });
 
     match result {
@@ -832,6 +848,7 @@ fn skips_non_utf8_documents_without_failing_startup() {
 
     let outline = engine.execute(CoreOperation::GetOutline {
         uri: DocumentUri::from_file_path(&good),
+        realm: None,
     });
     match outline {
         CoreOperationResult::Outline(headings) => assert_eq!(headings, vec!["Intro"]),
@@ -1081,7 +1098,10 @@ fn export_index_returns_full_document_data() {
         RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
 
     let uri = DocumentUri::from_file_path(&doc);
-    let result = engine.execute(CoreOperation::ExportIndex { uri: uri.clone() });
+    let result = engine.execute(CoreOperation::ExportIndex {
+        uri: uri.clone(),
+        realm: None,
+    });
 
     match result {
         CoreOperationResult::DocumentExport {
@@ -1121,6 +1141,7 @@ fn export_index_errors_for_unindexed_document() {
 
     let result = engine.execute(CoreOperation::ExportIndex {
         uri: DocumentUri::from_file_path(&ws.root().join("nonexistent.md")),
+        realm: None,
     });
 
     match result {
@@ -1173,7 +1194,10 @@ fn export_index_returns_empty_lists_for_minimal_document() {
         RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
 
     let uri = DocumentUri::from_file_path(&doc);
-    let result = engine.execute(CoreOperation::ExportIndex { uri: uri.clone() });
+    let result = engine.execute(CoreOperation::ExportIndex {
+        uri: uri.clone(),
+        realm: None,
+    });
 
     match result {
         CoreOperationResult::DocumentExport {

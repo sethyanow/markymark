@@ -12,6 +12,9 @@ use markymark_core::{Position, Range};
 pub struct OutlineRequest {
     /// Document URI (`file://...`) to inspect.
     pub uri: String,
+    /// Realm to query. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
 }
 
 /// Response payload for `get-outline`.
@@ -28,6 +31,9 @@ pub struct OutlineResponse {
 pub struct SearchSymbolsRequest {
     /// Query text to match against symbols.
     pub query: String,
+    /// Realm to query. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
 }
 
 /// Position payload in MCP responses.
@@ -116,6 +122,9 @@ pub struct FindReferencesRequest {
     pub line: u32,
     /// 0-based character offset of the symbol.
     pub character: u32,
+    /// Realm to query. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
 }
 
 /// Location payload in MCP responses.
@@ -147,6 +156,9 @@ pub struct RenameRequest {
     pub character: u32,
     /// New name for the symbol.
     pub new_name: String,
+    /// Realm to query. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
 }
 
 /// A single text edit within a document.
@@ -269,6 +281,9 @@ pub struct RealmStatsResponse {
 pub struct ExportIndexRequest {
     /// Document URI (`file://...`) to export.
     pub uri: String,
+    /// Realm to query. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
 }
 
 /// A heading entry in an exported document index.
