@@ -21,7 +21,7 @@ impl MarkymarkMcp {
         vec![
             ResourceTemplate {
                 raw: RawResourceTemplate {
-                    uri_template: "markymark://outline/{uri}".to_string(),
+                    uri_template: "markymark://outline/{uri}?realm={realm}".to_string(),
                     name: "document-outline".to_string(),
                     title: Some("Document Outline".to_string()),
                     description: Some(
@@ -34,7 +34,7 @@ impl MarkymarkMcp {
             },
             ResourceTemplate {
                 raw: RawResourceTemplate {
-                    uri_template: "markymark://symbols?query={query}".to_string(),
+                    uri_template: "markymark://symbols?query={query}&realm={realm}".to_string(),
                     name: "symbol-search".to_string(),
                     title: Some("Symbol Search".to_string()),
                     description: Some(
@@ -89,11 +89,14 @@ impl MarkymarkMcp {
         resource_uri: &str,
         doc_uri_str: &str,
     ) -> Result<Vec<ResourceContents>, McpError> {
+        // Strip any query params (e.g. ?realm=x) from the doc URI before parsing.
+        let doc_uri_str = doc_uri_str.split('?').next().unwrap_or(doc_uri_str);
+        let realm = extract_query_param(resource_uri, "realm");
         let doc_uri = DocumentUri::new(doc_uri_str)
             .map_err(|e| McpError::invalid_params(format!("invalid document URI: {e}"), None))?;
         match self.engine.execute(CoreOperation::GetOutline {
             uri: doc_uri,
-            realm: None,
+            realm,
         }) {
             CoreOperationResult::Outline(headings) => {
                 let json = serde_json::to_string_pretty(&headings)
@@ -124,9 +127,10 @@ impl MarkymarkMcp {
                 None,
             ));
         }
+        let realm = extract_query_param(resource_uri, "realm");
         match self
             .engine
-            .execute(CoreOperation::SearchSymbols { query, realm: None })
+            .execute(CoreOperation::SearchSymbols { query, realm })
         {
             CoreOperationResult::Symbols(symbols) => {
                 let mapped: Vec<_> = symbols

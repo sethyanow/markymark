@@ -105,7 +105,11 @@ fn explain_link_prompt_has_required_arguments() {
         .expect("explain-link not found");
 
     let args = explain.arguments.as_ref().expect("should have arguments");
-    assert_eq!(args.len(), 2);
+    assert_eq!(
+        args.len(),
+        3,
+        "explain-link should have 3 args (uri, target, realm)"
+    );
 
     let uri_arg = args.iter().find(|a| a.name == "uri").expect("missing uri");
     assert_eq!(uri_arg.required, Some(true));
@@ -115,6 +119,12 @@ fn explain_link_prompt_has_required_arguments() {
         .find(|a| a.name == "target")
         .expect("missing target");
     assert_eq!(target_arg.required, Some(true));
+
+    let realm_arg = args
+        .iter()
+        .find(|a| a.name == "realm")
+        .expect("missing realm");
+    assert_eq!(realm_arg.required, Some(false), "realm should be optional");
 }
 
 #[test]
@@ -127,7 +137,11 @@ fn suggest_references_prompt_has_required_arguments() {
         .expect("suggest-references not found");
 
     let args = suggest.arguments.as_ref().expect("should have arguments");
-    assert_eq!(args.len(), 3);
+    assert_eq!(
+        args.len(),
+        4,
+        "suggest-references should have 4 args (uri, line, character, realm)"
+    );
 
     let uri_arg = args.iter().find(|a| a.name == "uri").expect("missing uri");
     assert_eq!(uri_arg.required, Some(true));
@@ -143,6 +157,12 @@ fn suggest_references_prompt_has_required_arguments() {
         .find(|a| a.name == "character")
         .expect("missing character");
     assert_eq!(char_arg.required, Some(true));
+
+    let realm_arg = args
+        .iter()
+        .find(|a| a.name == "realm")
+        .expect("missing realm");
+    assert_eq!(realm_arg.required, Some(false), "realm should be optional");
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +307,44 @@ fn suggest_references_fails_on_non_file_uri() {
         Some(args.as_object().unwrap().clone()),
     );
     assert!(result.is_err(), "should fail with non-file URI");
+}
+
+// ---------------------------------------------------------------------------
+// realm threading
+// ---------------------------------------------------------------------------
+
+#[test]
+fn explain_link_with_explicit_realm_succeeds() {
+    let mcp = make_mcp();
+    let args = json!({
+        "uri": "file:///vault/notes.md",
+        "target": "other-page#section",
+        "realm": "my-vault"
+    });
+    let result = mcp.get_prompt_by_name("explain-link", Some(args.as_object().unwrap().clone()));
+    assert!(
+        result.is_ok(),
+        "explain-link should succeed with explicit realm arg"
+    );
+}
+
+#[test]
+fn suggest_references_with_explicit_realm_succeeds() {
+    let mcp = make_mcp();
+    let args = json!({
+        "uri": "file:///vault/notes.md",
+        "line": 0,
+        "character": 5,
+        "realm": "my-vault"
+    });
+    let result = mcp.get_prompt_by_name(
+        "suggest-references",
+        Some(args.as_object().unwrap().clone()),
+    );
+    assert!(
+        result.is_ok(),
+        "suggest-references should succeed with explicit realm arg"
+    );
 }
 
 // ---------------------------------------------------------------------------
