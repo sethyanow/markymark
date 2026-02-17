@@ -4,7 +4,7 @@
     "codePatterns": [
       "Arena migration works best as phased TDD: infrastructure -> parser types -> parser GREEN tests -> index types -> index GREEN tests",
       "ArenaHashMap Send constraint: always check trait bounds before adopting arena-backed collections in types stored across async boundaries.",
-      "Avoid cloning ArenaHashMap with bumpalo allocator — causes SIGSEGV. Return Vec<&T> of arena refs instead of Vec<T> when T contains ArenaHashMap",
+      "Avoid cloning ArenaHashMap with bumpalo allocator \u2014 causes SIGSEGV. Return Vec<&T> of arena refs instead of Vec<T> when T contains ArenaHashMap",
       "Benchmark ROI workflow: expose env-tiered controls (samples + doc counts), run synthetic_scale per tier, parse criterion estimates.json, and persist markdown report artifact for decision reviews",
       "Benchmark real corpus: use MARKYMARK_BENCH_EPSTEIN for epstein path when running from worktree without fixture; MARKYMARK_BENCH_HEAVY=1 for 100 samples (RAM-heavy for index_docs_dir); keep baseline worktree for pre/post comparison",
       "ChildGuard RAII for process cleanup in integration tests",
@@ -19,16 +19,16 @@
       "For gitleaks staged negative testing, use a synthetic token that matches built-in regex exactly (e.g., ghp_ + 36 chars)",
       "Hook scripts receive JSON on stdin, output JSON to stdout, use exit 0 for no-op on non-matching files",
       "Keep Semgrep rule scope high-signal by excluding tests/** and validating with repo-wide scan excluding dedicated fixtures",
-      "LSP Content-Length framing vs MCP line-delimited JSON — NEVER mix them",
+      "LSP Content-Length framing vs MCP line-delimited JSON \u2014 NEVER mix them",
       "Plugin hooks use hooks.json with {description, hooks: {EventName: [{matcher, hooks: [{type, command, timeout}]}]}} structure",
       "Range containment for nested XML document symbols",
       "RealmIndex cross-doc lookups: use owned ResolvedHeading/ResolvedBlock copies, populate on add_document, clear on remove_document",
-      "Regex-extracted types (BlockId, etc.) should carry source Range from full_match for go-to-definition — use byte offset to line/char conversion (same pattern as wiki_links, markdown_links)",
+      "Regex-extracted types (BlockId, etc.) should carry source Range from full_match for go-to-definition \u2014 use byte offset to line/char conversion (same pattern as wiki_links, markdown_links)",
       "Run local SAST baseline (cargo audit, cargo deny, semgrep) before enabling new CI workflow to establish signal baseline",
       "Security CI for this repo is advisory-only with continue-on-error on each scan job",
       "Single-pass stack tokenizer for XML extraction (not multi-regex)",
       "Test files follow pass/fail counter pattern with colored output and exit 1 on any failure",
-      "Use bumpalo Vec::new_in(arena).into_bump_slice() for empty arena slice, not &[] — literal &[] is stack-local and causes UAF when returned",
+      "Use bumpalo Vec::new_in(arena).into_bump_slice() for empty arena slice, not &[] \u2014 literal &[] is stack-local and causes UAF when returned",
       "Use slugify(heading.text) for duplicate detection, not heading.slug",
       "When cargo-deny config fails, validate against installed tool version schema before assuming policy error",
       "When extraction has dual paths (e.g. extract_list_items vs collect_top_level_list_items), remove dead extract_* if Ast uses the arena-driven path; plan invalidation is allowed",
@@ -37,6 +37,7 @@
       "When teammate implementer crashes, reassign narrow-scope blocker to test-writer to preserve momentum",
       "When writing bd --design content with markdown backticks, use heredoc file + bd update to avoid shell command substitution",
       "convert/state/server module separation in markymark-lsp for testability",
+      "Use bumpalo Vec::new_in(arena).into_bump_slice() for empty arena slice, not &[] \u2014 literal &[] has 'static lifetime which mismatches 'arena and can mask lifetime bugs in arena-backed types",
       "docs-vs-practice audit: read doc, find all struct/field types in codebase, compare systematically. Key: test Send/Sync implications before changing types.",
       "lefthook command values containing colons/braces must be YAML-quoted to avoid parse errors",
       "rmcp CallToolResult::structured and structured_error for MCP payloads",
@@ -48,7 +49,8 @@
       "When hardening lifetime safety incrementally, add compile_fail doctests first, then narrow public signatures to &self-bound lifetimes, and only then adapt downstream call sites",
       "For self-referential migrations on stable Rust, split work into Ast-first then index-layer tasks and land self_cell owner/dependent conversion in isolated checkpoints",
       "Use a lightweight structural regression test (source-level invariant) to prevent reintroducing internal static-marked storage during multi-step lifetime migrations",
-      "Safe refactoring workflow for large file splits: (1) convert to module directory, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit cycle maintains green tests throughout. Final validation: all tests pass + line count reduction verified"
+      "For LSP incremental text edits, centralize UTF-16/line to byte-range normalization in one helper and emit warning telemetry when clamping invalid ranges",
+      "When review triage flags line-ending edge cases, add parity tests that compare incremental parse outputs against full parse outputs on CRLF fixtures"
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",
@@ -61,9 +63,9 @@
       "Checkpoint updates must include claude-progress, working-context, and memory layer persistence",
       "Existing tests use set -euo pipefail - be aware this causes early abort on command failures in non-conditional contexts",
       "Plugin directory is markymark-plugin/ with .claude-plugin/plugin.json manifest",
-      "Rust integration tests in tests/ are standalone crates — each file gets its own imports, no mod.rs needed",
+      "Rust integration tests in tests/ are standalone crates \u2014 each file gets its own imports, no mod.rs needed",
       "Shared test helpers must be duplicated in tests/ files (pub(crate) not accessible from integration tests)",
-      "Use exact count assertions (assert_eq!) not >= in rename/edit tests — >= masked a closing-tag rename bug",
+      "Use exact count assertions (assert_eq!) not >= in rename/edit tests \u2014 >= masked a closing-tag rename bug",
       "require_marksman! macro for graceful test skip when marksman unavailable in CI",
       "When running learners-only checkpoints, persist memory/progress/context files without forcing commit/push"
     ],
@@ -145,5 +147,5 @@
       }
     ]
   },
-  "lastUpdated": "2026-02-16T19:23:11Z"
+  "lastUpdated": "2026-02-16T22:48:25Z"
 }

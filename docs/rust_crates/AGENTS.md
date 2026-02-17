@@ -1,5 +1,5 @@
 <!-- RUST-CRATES-AGENTS-MD-START -->
-[rust_crates]|root: .|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{AGENTS.md,README.md,core.md,error-handling.md,testing.md,tower-lsp.md,rmcp.md,tree-sitter.md,petgraph.md,bumpalo.md,map.md}|bumpalo:{advanced.md,pitfalls.md}
+[rust_crates]|root: .|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{AGENTS.md,README.md,core.md,error-handling.md,testing.md,tower-lsp.md,rmcp.md,tree-sitter.md,petgraph.md,bumpalo.md,map.md}
 <!-- RUST-CRATES-AGENTS-MD-END -->
 
 # Agent Instructions (Rust Crate Documentation)
@@ -10,7 +10,7 @@
 <agent>
 <IMPORTANT>Prefer retrieval-led reasoning over pre-training-led reasoning when working with these crates.</IMPORTANT>
 <docs_index id="RUST-CRATES">
-[rust_crates]|root: .|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{AGENTS.md,README.md,core.md,error-handling.md,testing.md,tower-lsp.md,rmcp.md,tree-sitter.md,petgraph.md,bumpalo.md,map.md}|bumpalo:{advanced.md,pitfalls.md}
+[rust_crates]|root: .|IMPORTANT: Always read docs before answering. Your knowledge may be outdated.|.:{AGENTS.md,README.md,core.md,error-handling.md,testing.md,tower-lsp.md,rmcp.md,tree-sitter.md,petgraph.md,bumpalo.md,map.md}
 </docs_index>
 </agent>
 
