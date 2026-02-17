@@ -126,6 +126,96 @@ fn indexes_markdown_and_returns_deterministic_symbols() {
 }
 
 #[test]
+fn search_symbols_prefers_prefix_over_plain_substring() {
+    let ws = TempWorkspace::new("search-symbols-fuzzy-prefix");
+    let first = ws.root().join("a.md");
+    let second = ws.root().join("b.md");
+
+    fs::write(&first, "# setup\n# stage\n").expect("first markdown should be created");
+    fs::write(&second, "# close\n").expect("second markdown should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let symbols = engine.execute(CoreOperation::SearchSymbols {
+        query: "st".to_string(),
+    });
+
+    match symbols {
+        CoreOperationResult::Symbols(matches) => {
+            let names: Vec<_> = matches.into_iter().map(|(name, _, _)| name).collect();
+            assert_eq!(names, vec!["stage".to_string(), "setup".to_string()]);
+        }
+        other => panic!("expected symbol matches, got: {other:?}"),
+    }
+}
+
+#[test]
+fn search_symbols_matches_case_insensitively() {
+    let ws = TempWorkspace::new("search-symbols-fuzzy-case");
+    let file = ws.root().join("case.md");
+    fs::write(&file, "# Setup\n# stage\n").expect("markdown should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let symbols = engine.execute(CoreOperation::SearchSymbols {
+        query: "ST".to_string(),
+    });
+
+    match symbols {
+        CoreOperationResult::Symbols(matches) => {
+            let names: Vec<_> = matches.into_iter().map(|(name, _, _)| name).collect();
+            assert_eq!(names, vec!["stage".to_string(), "Setup".to_string()]);
+        }
+        other => panic!("expected symbol matches, got: {other:?}"),
+    }
+}
+
+#[test]
+fn search_symbols_supports_subsequence_matching() {
+    let ws = TempWorkspace::new("search-symbols-fuzzy-subseq");
+    let file = ws.root().join("subseq.md");
+    fs::write(&file, "# setup\n# stop\n").expect("markdown should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let symbols = engine.execute(CoreOperation::SearchSymbols {
+        query: "stp".to_string(),
+    });
+
+    match symbols {
+        CoreOperationResult::Symbols(matches) => {
+            let names: Vec<_> = matches.into_iter().map(|(name, _, _)| name).collect();
+            assert_eq!(names, vec!["stop".to_string(), "setup".to_string()]);
+        }
+        other => panic!("expected symbol matches, got: {other:?}"),
+    }
+}
+
+#[test]
+fn search_symbols_returns_no_results_when_query_cannot_be_matched() {
+    let ws = TempWorkspace::new("search-symbols-fuzzy-none");
+    let file = ws.root().join("none.md");
+    fs::write(&file, "# setup\n# stage\n").expect("markdown should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let symbols = engine.execute(CoreOperation::SearchSymbols {
+        query: "zzz".to_string(),
+    });
+
+    match symbols {
+        CoreOperationResult::Symbols(matches) => {
+            assert!(matches.is_empty(), "expected no fuzzy matches");
+        }
+        other => panic!("expected symbol matches, got: {other:?}"),
+    }
+}
+
+#[test]
 fn find_references_returns_wiki_link_refs_to_heading() {
     let ws = TempWorkspace::new("find-refs-heading");
     let a = ws.root().join("a.md");
