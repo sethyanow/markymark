@@ -1,6 +1,7 @@
 #![cfg(feature = "embeddings")]
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use markymark_core::prelude::{EmbedError, EmbeddingProvider};
@@ -46,6 +47,37 @@ impl EmbeddingProvider for FailingEmbeddingProvider {
         Err(EmbedError::ProviderUnavailable(
             "provider unavailable".to_string(),
         ))
+    }
+
+    fn dimensions(&self) -> u32 {
+        5
+    }
+}
+
+#[derive(Debug)]
+struct FailOnNthEmbeddingProvider {
+    fail_on: usize,
+    calls: AtomicUsize,
+}
+
+impl FailOnNthEmbeddingProvider {
+    fn new(fail_on: usize) -> Self {
+        Self {
+            fail_on,
+            calls: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl EmbeddingProvider for FailOnNthEmbeddingProvider {
+    fn embed(&self, _text: &str) -> Result<Vec<f32>, EmbedError> {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+        if call == self.fail_on {
+            return Err(EmbedError::ProviderUnavailable(
+                "provider unavailable".to_string(),
+            ));
+        }
+        Ok(vec![1.0; 5])
     }
 
     fn dimensions(&self) -> u32 {
@@ -127,6 +159,33 @@ fn test_embedding_provider_failure_propagates() {
         .expect_err("expected provider failure");
 
     assert!(matches!(err, EmbedError::ProviderUnavailable(_)));
+}
+
+#[test]
+fn test_add_document_failure_does_not_leave_partial_entries() {
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(FailOnNthEmbeddingProvider::new(2));
+    let mut index = SemanticIndex::new(provider).expect("semantic index should initialize");
+
+    let err = index
+        .add_document(
+            uri("partial.md"),
+            &index_from("# First Heading\n\n## Second Heading"),
+        )
+        .expect_err("expected provider failure on second heading");
+    assert!(matches!(err, EmbedError::ProviderUnavailable(_)));
+
+    assert_eq!(
+        index.entry_count(),
+        0,
+        "failed add_document should not commit partial semantic entries",
+    );
+    let results = index
+        .search("first", 10, 0.0)
+        .expect("search after failed add_document should succeed");
+    assert!(
+        results.is_empty(),
+        "failed add_document should not leak stale semantic matches",
+    );
 }
 
 #[test]

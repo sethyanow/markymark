@@ -20,6 +20,8 @@ enum MockMode {
     Happy,
     CoreError,
     UnsortedSymbols,
+    #[cfg(feature = "semantic-search")]
+    RejectLargeTopK,
 }
 
 impl CoreEngine for MockEngine {
@@ -103,6 +105,24 @@ impl CoreEngine for MockEngine {
                     None
                 },
             },
+            #[cfg(feature = "semantic-search")]
+            (MockMode::RejectLargeTopK, CoreOperation::SemanticSearch { top_k, .. }) => {
+                if top_k > 100 {
+                    return CoreOperationResult::Error(CoreError::Message(
+                        "top_k exceeds test limit".to_string(),
+                    ));
+                }
+                CoreOperationResult::SemanticMatches(vec![
+                    markymark_core::engine::SemanticSearchMatch {
+                        doc_uri: DocumentUri::from_file_path(Path::new("/vault/notes.md")),
+                        heading: "Intro".to_string(),
+                        heading_level: 1,
+                        score: 0.81234,
+                        section_range: Range::new(Position::new(0, 0), Position::new(0, 5)),
+                        section_preview: "Intro section preview".to_string(),
+                    },
+                ])
+            }
             (_, CoreOperation::SemanticSearch { .. }) => {
                 #[cfg(feature = "semantic-search")]
                 {
@@ -726,6 +746,20 @@ fn registers_semantic_search_tool() {
     );
 }
 
+#[cfg(not(feature = "semantic-search"))]
+#[test]
+fn does_not_register_semantic_search_tool_without_feature() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let tools = mcp.list_tools();
+    let names: Vec<_> = tools.iter().map(|t| t.name.as_ref()).collect();
+    assert!(
+        !names.contains(&"semantic-search"),
+        "semantic-search tool should be hidden when feature is disabled"
+    );
+}
+
 #[cfg(feature = "semantic-search")]
 #[tokio::test]
 async fn semantic_search_tool_returns_structured_results() {
@@ -748,6 +782,27 @@ async fn semantic_search_tool_returns_structured_results() {
     assert_eq!(payload.results.len(), 1);
     assert!(payload.results[0].score > 0.0);
     assert!(payload.results[0].section_preview.len() <= 200);
+}
+
+#[cfg(feature = "semantic-search")]
+#[tokio::test]
+async fn semantic_search_tool_clamps_top_k() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::RejectLargeTopK,
+    }));
+    let result = mcp
+        .semantic_search_tool(Parameters(SemanticSearchRequest {
+            query: "intro".to_string(),
+            realm: Some("default".to_string()),
+            top_k: Some(50_000),
+            min_score: Some(0.5),
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: SemanticSearchResponse = result.into_typed().expect("typed response");
+    assert_eq!(payload.results.len(), 1);
 }
 
 // --- export-index tool tests ---

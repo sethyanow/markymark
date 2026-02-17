@@ -95,6 +95,7 @@ impl SemanticIndex {
         self.remove_document(&uri);
 
         let mut ids = Vec::new();
+        let mut pending_entries = Vec::new();
         let mut token_set = BTreeSet::new();
 
         if index.headings().is_empty() {
@@ -104,7 +105,7 @@ impl SemanticIndex {
             self.index.add(&id, &embedding)?;
 
             token_set.extend(token_hashes(&fallback_heading));
-            self.entries_by_id.insert(
+            pending_entries.push((
                 id.clone(),
                 SemanticEntry {
                     doc_uri: uri.clone(),
@@ -113,7 +114,7 @@ impl SemanticIndex {
                     section_start: Position::new(0, 0),
                     section_end: Position::new(0, 0),
                 },
-            );
+            ));
             ids.push(id);
         } else {
             for (i, heading) in index.headings().iter().enumerate() {
@@ -123,7 +124,7 @@ impl SemanticIndex {
                 self.index.add(&id, &embedding)?;
 
                 token_set.extend(token_hashes(&embedding_input));
-                self.entries_by_id.insert(
+                pending_entries.push((
                     id.clone(),
                     SemanticEntry {
                         doc_uri: uri.clone(),
@@ -132,11 +133,14 @@ impl SemanticIndex {
                         section_start: heading.range.start,
                         section_end: heading.range.end,
                     },
-                );
+                ));
                 ids.push(id);
             }
         }
 
+        for (id, entry) in pending_entries {
+            self.entries_by_id.insert(id, entry);
+        }
         self.doc_to_ids.insert(uri.clone(), ids);
         self.doc_token_sets.insert(uri, token_set);
         Ok(())

@@ -1,28 +1,26 @@
 {
-  "lastUpdated": "2026-02-17T19:27:45Z",
+  "lastUpdated": "2026-02-17T20:18:08Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Closed marky-e59 with a new BRZA benchmark suite and report (heading/link/embedding/hash/bulk re-index).",
+    "summary": "Fixed semantic-search review findings: capped top_k, made semantic index writes transactional, and hid semantic-search from non-feature MCP tool listings.",
     "completedTasks": [
-      "Added criterion benchmark suite at markymark-kernels/benches/brza_kernels.rs",
-      "Added benchmark crate wiring in markymark-kernels/Cargo.toml and lockfile update",
-      "Executed BRZA benchmarks and captured criterion mean estimates",
-      "Published report docs/benchmarks/brza-markymark-benchmarks.md",
-      "Closed beads task marky-e59"
+      "Capped semantic-search top_k at MCP boundary in markymark-mcp/src/lib.rs",
+      "Made SemanticIndex::add_document commit metadata atomically in markymark-index/src/semantic.rs",
+      "Removed semantic-search route from MCP tool router when feature is disabled",
+      "Added regression tests for non-feature tool visibility, top_k clamping, and partial-write rollback",
+      "Verified with cargo fmt + targeted markymark-index/markymark-mcp test suites"
     ],
-    "blockers": [
-      "Benchmark targets missed for link_scan vs regex, content_hash vs md5, and embedding search at 100K entries"
-    ],
+    "blockers": [],
     "nextSteps": [
-      "Execute marky-8s3.6 (binary index serialization format)",
-      "Create optimization follow-ups for 100K embedding search latency",
-      "Optimize link_scan and content_hash kernels to hit BRZA target ratios"
+      "Run full workspace quality gates if this branch is being prepared for merge",
+      "Continue BRZA backlog work (e.g. marky-8s3.6 binary index serialization)",
+      "Optionally update/open PR with this checkpoint commit"
     ]
   },
   "recentChanges": [
-    "Added BRZA benchmark suite in markymark-kernels",
-    "Generated docs/benchmarks/brza-markymark-benchmarks.md",
-    "Persisted marky-e59 checkpoint state and memory updates"
+    "semantic-search top_k capped to prevent unbounded allocation pressure",
+    "semantic-search tool hidden in non-semantic-search builds",
+    "SemanticIndex add_document now stages entries before commit"
   ],
   "knownIssues": [
     "marky-ktt (P1): Unsafe transmute audit from marky-5yt migration",
@@ -32,8 +30,8 @@
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-17T19:27:45Z",
-    "lastTypeCheck": "2026-02-17T19:27:45Z"
+    "lastSuccessfulBuild": "2026-02-17T20:18:08Z",
+    "lastTypeCheck": "2026-02-17T20:18:08Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4

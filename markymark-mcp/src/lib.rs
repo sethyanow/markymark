@@ -33,6 +33,8 @@ mod subscriptions;
 pub use dto::*;
 pub use runtime_engine::RuntimeEngine;
 
+const SEMANTIC_SEARCH_MAX_TOP_K: u32 = 100;
+
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for MarkymarkMcp {
     fn get_info(&self) -> ServerInfo {
@@ -126,9 +128,19 @@ pub struct MarkymarkMcp {
 impl MarkymarkMcp {
     /// Construct an MCP facade from a shared core engine implementation.
     pub fn new(engine: Arc<dyn CoreEngine>) -> Self {
+        #[cfg(feature = "semantic-search")]
+        let tool_router = Self::tool_router();
+
+        #[cfg(not(feature = "semantic-search"))]
+        let tool_router = {
+            let mut router = Self::tool_router();
+            router.remove_route("semantic-search");
+            router
+        };
+
         Self {
             engine,
-            tool_router: Self::tool_router(),
+            tool_router,
             subscriptions: subscriptions::SubscriptionTracker::new(),
         }
     }
@@ -307,7 +319,7 @@ impl MarkymarkMcp {
             .map(|name| name.trim().to_string())
             .filter(|name| !name.is_empty());
         let realm_name = realm.clone().unwrap_or_else(|| "default".to_string());
-        let top_k = params.0.top_k.unwrap_or(10);
+        let top_k = params.0.top_k.unwrap_or(10).min(SEMANTIC_SEARCH_MAX_TOP_K);
         let min_score = params.0.min_score.unwrap_or(0.5).clamp(0.0, 1.0);
 
         match self.semantic_search(query.clone(), realm, top_k, min_score) {

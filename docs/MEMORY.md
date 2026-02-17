@@ -358,3 +358,23 @@ Implemented `markymark-kernels/benches/brza_kernels.rs` and produced
 - content_hash vs md5: FNV-1a path slower than md5 baseline on tested sizes
 
 **Lesson:** BRZA gains are highly workload-dependent. SIMD extraction + scan-path indexing wins are clear, but hash/link kernels and large-scale embedding search need targeted optimization instead of assumed blanket speedups.
+
+### 2026-02-17: Review follow-up fixes for semantic-search robustness
+
+Addressed three review findings across MCP + semantic index:
+
+- Capped `semantic-search` `top_k` in `markymark-mcp/src/lib.rs` (`SEMANTIC_SEARCH_MAX_TOP_K = 100`) before forwarding to core to prevent unbounded result-buffer allocation pressure.
+- Hid `semantic-search` from tool capability discovery when feature is disabled by removing the route from `ToolRouter` in `MarkymarkMcp::new` under `#[cfg(not(feature = "semantic-search"))]`.
+- Made `SemanticIndex::add_document` transactional in `markymark-index/src/semantic.rs` by staging `entries_by_id` updates and committing only after all heading embeddings/index inserts succeed.
+
+Added regression coverage:
+- `markymark-index/tests/semantic_index.rs`: `test_add_document_failure_does_not_leave_partial_entries`.
+- `markymark-mcp/tests/tool_handler_tests.rs`:
+  - `does_not_register_semantic_search_tool_without_feature`
+  - `semantic_search_tool_clamps_top_k`
+
+Verification commands that passed:
+- `cargo fmt --all --check`
+- `cargo test -p markymark-index --features embeddings --test semantic_index`
+- `cargo test -p markymark-mcp --test tool_handler_tests`
+- `cargo test -p markymark-mcp --features semantic-search --test tool_handler_tests`
