@@ -40,6 +40,7 @@
       "markymark-index/src/bin/bench_roi_report.rs (tiered benchmark orchestration and ROI report writer)",
       "markymark-lsp/src/server.rs (tower-lsp LanguageServer impl, capability negotiation)",
       "markymark-lsp/src/state.rs (ServerState: document management, diagnostics, rename, refs)",
+      "markymark-lsp/src/state.rs (pending InputEdit batch tracking and incremental markdown index routing scaffolding)",
       "markymark-lsp/src/state.rs (SymbolAtPosition<'a> borrowed payloads to match index lifetimes)",
       "markymark-lsp/src/state.rs (incremental byte-range clamp helper + warning observability for invalid edit positions)",
       "markymark-lsp/src/convert.rs (LSP type conversions)",
@@ -50,7 +51,9 @@
       "markymark-mcp/src/dto.rs (MCP data transfer objects)",
       "markymark-parser/src/structured/ (multi-format parsers: json, yaml, toml, jsonl, flat)",
       "markymark-index/src/structured_document.rs (StructuredDocumentIndex: key-path lookup, outline)",
-      "markymark-index/src/resolution.rs (ResolvedTarget::KeyPath for structured doc cross-references)"
+      "markymark-index/src/resolution.rs (ResolvedTarget::KeyPath for structured doc cross-references)",
+      "markymark-mcp/src/prompts.rs (prompt realm argument normalization to explicit default realm)",
+      "markymark-mcp/src/resources.rs (query param extraction with percent-decoding before core dispatch)"
     ],
     "api": [
       "markymark-parser/src/lib.rs",
@@ -62,6 +65,7 @@
       "markymark-core/tests/ (core_engine)",
       "markymark-lsp/tests/ (11 files: capabilities, completion_*, diagnostics, hover, rename, etc.)",
       "markymark-lsp/tests/state_tests.rs (incremental edit parity tests incl. CRLF regression coverage)",
+      "markymark-lsp/tests/state_tests.rs (wiki-link incremental edge-case coverage: parity, unchanged ranges, neighbor shifts, empty edits)",
       "markymark-mcp/tests/ (runtime_engine_tests, runtime_tools, tool_handler_tests)",
       "markymark-cli/tests/ (cli_args, smoke_lsp, smoke_mcp, lsp_methods, mcp_methods, alignment, bench)",
       "markymark-plugin/tests/ (test_select_binary.sh, test_hooks.sh)",
@@ -107,7 +111,9 @@
         "Tier benchmark controls via MARKYMARK_BENCH_SAMPLES and MARKYMARK_BENCH_DOC_TIER to separate quick iteration from scale validation",
         "Benchmark ROI automation via bench_roi_report binary that runs benches, parses criterion estimates.json, and emits docs/benchmarks report artifacts",
         "Expose arena-backed document/index data via lifetimes tied to &self; prefer self_cell owner/dependent internals and treat explicit 'static + doc_arena_ptr() ownership-transfer seams as deprecated transition-only paths with documented SAFETY",
-        "Incremental LSP edit handling should centralize byte-range clamping and surface clamp events via warning telemetry"
+        "Incremental LSP edit handling should centralize byte-range clamping and surface clamp events via warning telemetry",
+        "Incremental wiki-link work should start with parity/edge tests before selective merge optimizations",
+        "When prompt arguments document defaults, enforce that default explicitly at handler boundary before dispatching CoreOperation"
       ],
       "bash": "set -euo pipefail, jq for JSON, case statements for file extension matching"
     },
@@ -119,10 +125,11 @@
       "RealmIndex cross-doc maps remain owned String-backed until self_cell/ouroboros migration (marky-5yt); do not introduce borrowed Cow across sibling fields",
       "Use compile_fail doctests on public methods to lock lifetime leakage invariants during migration work",
       "Use self_cell owner/dependent internals as a first stable migration step when replacing internal static-marked self-references",
-      "For LSP incremental edits, pair out-of-range clamping with a deterministic warning so buggy clients are observable during diagnostics"
+      "For LSP incremental edits, pair out-of-range clamping with a deterministic warning so buggy clients are observable during diagnostics",
+      "Use pending InputEdit lifecycle tracking in ServerState as shared incremental infrastructure before extractor-specific merge logic"
     ]
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-17T05:57:00Z",
+  "lastUpdated": "2026-02-17T19:04:15Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

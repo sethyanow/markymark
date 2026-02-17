@@ -2,40 +2,45 @@
   "lastUpdated": "2026-02-17T21:38:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Triaged PR #28 review comments (CodeRabbit, Greptile, GHAS, Copilot). Implemented marky-r7j and marky-0g6: threaded optional realm parameter through MCP prompts.rs (explain-link, suggest-references) and resources.rs (outline, symbols). TDD: confirmed RED before implementation, GREEN after. All workspace tests pass. Pushed commit 35c1c14.",
+    "summary": "Triaged PR #28 review comments and verified MCP prompt/resource realm handling end-to-end, including explicit default realm forwarding and percent-decoded query propagation with regression coverage.",
     "completedTasks": [
       "Fetched and triaged all PR #28 review comments via GitHub API",
       "Created beads issues: marky-r7j (prompts realm), marky-0g6 (resources realm), marky-16m (GHAS temp-dir + boundary-unwrap), marky-w85 (non-existent realm test)",
       "Updated marky-77x notes with Greptile incremental overlap check findings",
       "marky-r7j: added optional realm PromptArgument to explain-link and suggest-references; threaded into ExportIndex and FindReferences",
       "marky-0g6: parse realm query param from resource URI in GetOutline and SearchSymbols; strip ?realm= from doc URI before DocumentUri::new; updated URI templates",
+      "Validated prompt realm default behavior against runtime and prompt handlers",
+      "Updated prompt handlers to pass explicit default realm when realm argument is omitted",
+      "Updated shared resource query extraction to percent-decode values before forwarding",
+      "Extended MCP tests to assert realm propagation and decoded query handling",
       "TDD: 4 tests confirmed RED before implementation; all GREEN after",
-      "Full workspace tests pass (zero failures)",
-      "Closed marky-r7j and marky-0g6, pushed, synced beads"
+      "Ran focused verification for prompt/resource handlers and workspace tests"
     ],
-    "blockers": [],
+    "blockers": [
+      "No blockers in this checkpoint scope"
+    ],
     "nextSteps": [
-      "marky-16m (P2): Fix GHAS findings — switch tests to tempfile::TempDir, add expect() messages at boundary unwraps",
+      "marky-16m (P2): Fix GHAS findings (tempfile::TempDir in tests, boundary unwrap expect messages)",
       "marky-w85 (P3): Add non-existent realm error path test in runtime_engine_tests",
-      "marky-77x (P2): Implement true wiki_links selective merge; fix incomplete overlap check in state.rs:289",
+      "marky-77x (P2): Implement true wiki_links selective merge and resolve overlap check gap in state.rs",
       "marky-ktt (P1): Audit unsafe transmute in DocumentIndex from marky-5yt migration",
-      "marky-m8b (P3): Refactor state.rs into submodules"
+      "Run full workspace quality gates (fmt --check, clippy --workspace, test --workspace)"
     ]
   },
   "recentChanges": [
     "35c1c14: fix(mcp): thread realm through prompts and resources (marky-r7j, marky-0g6)",
     "c1441c6: fix(markymark-d7r): add optional realm param to per-document MCP operations",
-    "46c648f: fix: resolve merge conflicts in claude-harness memory files",
-    "prompts.rs: explain-link and suggest-references now accept optional realm arg",
-    "resources.rs: outline and symbol-search templates expose realm; handlers parse it from URI",
-    "PR #28 triage complete — 4 beads issues filed from review findings"
+    "markymark-mcp prompt handlers now default omitted realm to 'default' explicitly",
+    "markymark-mcp extract_query_param now percent-decodes returned values",
+    "resource_handler_tests assert realm propagation and decoding",
+    "prompt_handler_tests assert default realm forwarding when realm arg is omitted"
   ],
   "knownIssues": [
-    "marky-16m (P2): GHAS Semgrep findings — temp_dir usage in tests, boundary-unwrap in tests",
+    "marky-16m (P2): GHAS Semgrep findings (temp_dir usage in tests, boundary-unwrap in tests)",
     "marky-ktt (P1): Unsafe transmute audit from marky-5yt migration",
-    "marky-77x (P2): wiki_links incremental merge unimplemented; state.rs:289 overlap check incomplete",
-    "c_adapter.zig at 811 lines — new exports use exports_*.zig pattern",
-    "from_scan known gaps: no XML tags, no setext headings, no frontmatter"
+    "marky-77x (P2): wiki_links incremental merge unimplemented; state.rs overlap check incomplete",
+    "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
+    "marky-8la: XML tag false positives in fenced code blocks"
   ],
   "environmentState": {
     "devServerRunning": false,
