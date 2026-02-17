@@ -428,6 +428,88 @@ fn bench_concurrent_index_8_threads(c: &mut Criterion) {
     });
 }
 
+/// Investigation: measure arena creation+destruction overhead in isolation.
+/// Compares: (a) Bump::new() + drop, (b) Bump::reset() reuse, (c) full reparse.
+/// This quantifies how much of the reparse cost is arena lifecycle vs parsing/indexing.
+fn bench_arena_reuse_investigation(c: &mut Criterion) {
+    use bumpalo::Bump;
+
+    let content = sample_doc(0);
+    let content_large = (0..50)
+        .map(|i| sample_doc(i))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let mut group = c.benchmark_group("arena_reuse_investigation");
+
+    // (a) Cost of Bump::new() + drop — arena lifecycle overhead
+    group.bench_function("arena_create_drop_small", |b| {
+        b.iter(|| {
+            let arena = Bump::new();
+            // Simulate typical small doc allocation pattern
+            for i in 0..20 {
+                let _ = arena.alloc_str(&format!("heading-{}", i));
+            }
+            black_box(&arena);
+            drop(arena);
+        })
+    });
+
+    // (b) Cost of Bump::reset() — reuse pattern
+    group.bench_function("arena_reset_reuse_small", |b| {
+        let mut arena = Bump::new();
+        b.iter(|| {
+            arena.reset();
+            for i in 0..20 {
+                let _ = arena.alloc_str(&format!("heading-{}", i));
+            }
+            black_box(&arena);
+        })
+    });
+
+    // (c) Full reparse — to show the ratio
+    group.bench_function("full_reparse_small", |b| {
+        b.iter(|| {
+            let index = reparse_single_document(&content);
+            black_box(index.headings().len())
+        })
+    });
+
+    // (d) Arena lifecycle for larger allocation pattern
+    group.bench_function("arena_create_drop_large", |b| {
+        b.iter(|| {
+            let arena = Bump::new();
+            for i in 0..500 {
+                let _ = arena.alloc_str(&format!("heading-slug-{}-with-longer-text", i));
+            }
+            black_box(&arena);
+            drop(arena);
+        })
+    });
+
+    // (e) Arena reuse for larger allocation pattern
+    group.bench_function("arena_reset_reuse_large", |b| {
+        let mut arena = Bump::new();
+        b.iter(|| {
+            arena.reset();
+            for i in 0..500 {
+                let _ = arena.alloc_str(&format!("heading-slug-{}-with-longer-text", i));
+            }
+            black_box(&arena);
+        })
+    });
+
+    // (f) Full reparse of large doc
+    group.bench_function("full_reparse_large", |b| {
+        b.iter(|| {
+            let index = reparse_single_document(&content_large);
+            black_box(index.headings().len())
+        })
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_index_10_docs,
@@ -441,5 +523,6 @@ criterion_group!(
     bench_allocation_count_index_100,
     bench_concurrent_index_4_threads,
     bench_concurrent_index_8_threads,
+    bench_arena_reuse_investigation,
 );
 criterion_main!(benches);

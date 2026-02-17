@@ -1,36 +1,42 @@
 {
-  "lastUpdated": "2026-02-16T15:55:00-08:00",
+  "lastUpdated": "2026-02-16T23:50:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Fixed all 4 CodeRabbit review findings from marky-x3x: wiki link offset calculation bug, zero-width block range bug, duplicate patterns in memory, nested code fence rendering in docs.",
+    "summary": "Closed marky-5yt epic after both child tasks completed: Ast and DocumentIndex migrated to self_cell, lifetime boundaries hardened with compile_fail tests. Checkpoint pushed to remote.",
     "completedTasks": [
-      "marky-x3x: Fixed wiki link range calculation for [[target]] and [[target|alias]] formats",
-      "marky-x3x: Fixed block ID zero-width Range::new(pos, pos) to span full ^id",
-      "marky-x3x: Removed 7 duplicate entries from patterns.json",
-      "marky-x3x: Fixed nested code fence rendering in brza-markymark.md",
-      "Added 4 regression tests (TDD: RED→GREEN), full suite passes with zig-kernels"
+      "Closed marky-5yt.1: Ast migrated to self_cell owner/dependent model",
+      "Closed marky-5yt.2: DocumentIndex lifetime boundaries hardened",
+      "Closed marky-5yt parent task (both children complete)",
+      "Added regression tests: ast_self_cell.rs and document_self_cell.rs",
+      "Updated harness memory layers (decisions, rules, patterns, architecture, entities)",
+      "Quality gates: 715 tests passing, clippy clean, formatting clean",
+      "Committed and pushed checkpoint to origin/feature/mark-next"
     ],
     "blockers": [],
     "nextSteps": [
-      "marky-8s3.1: Code fence exclusion map Zig kernel",
-      "marky-0aw: Extraction parity tests (Zig SIMD vs tree-sitter)",
-      "marky-8s3.3: Zig SIMD fuzzy matcher for search-symbols"
+      "Continue with marky-luy epic tasks (arena conformance closeout)",
+      "Address marky-x3x: CodeRabbit triage for 2 critical bugs + 2 improvements",
+      "Consider splitting RED ZONE branch (80 commits, 12,851 lines, 47 files)"
     ]
   },
   "recentChanges": [
-    "fix(index): wiki link offset and block ID range calculations",
-    "57e35d2: add bit to CLAUDE.md for doc intel and remove pr 18 work",
-    "1375427: chore: checkpoint session - marky-ayb CI integration complete"
+    "marky-5yt CLOSED: self_cell migrations complete for Ast and DocumentIndex",
+    "Lifetime safety enforced at API boundaries with compile_fail doctests",
+    "No more internal 'static field storage in parser/index layers",
+    "marky-5yt.1 and marky-5yt.2 both closed successfully"
   ],
   "knownIssues": [
-    "c_adapter.zig at 811 lines — new exports use exports_*.zig pattern to stay under limit",
-    "from_scan known gaps: no XML tags, no setext headings, no frontmatter",
-    "Scope guard RED ZONE: 10020 lines, 60 commits, 42 new files — consider splitting branch"
+    "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
+    "marky-lkj.1: runtime_engine.zig test refactoring deferred (P4)",
+    "marky-8la: XML tag false positives in fenced code blocks",
+    "c_adapter.zig at 803 lines — new exports use exports_*.zig pattern to stay under limit",
+    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate",
+    "RED ZONE: Branch has 80 commits, 12,851 lines changed, 47 new files"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T15:55:00-08:00",
-    "lastTypeCheck": "2026-02-16T15:55:00-08:00"
+    "lastSuccessfulBuild": "2026-02-16T19:23:11Z",
+    "lastTypeCheck": "2026-02-16T19:23:11Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4

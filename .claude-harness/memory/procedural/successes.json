@@ -285,6 +285,26 @@
       "timestamp": "2026-02-16T07:42:00Z",
       "feature": "marky-v8r",
       "type": "implementation",
+      "approach": "LSP multi-format integration: key_entries_to_symbols() uses stack-based depth reconstruction from flat KeyEntry list to build nested LSP DocumentSymbol hierarchy. ValueKind maps directly to SymbolKind. State.rs routes structured docs via DocumentKind detection. 3 integration tests (JSON/YAML/empty). Updated stale MCP test expecting markdown-only indexing.",
+      "files": [
+        "markymark-lsp/src/server.rs",
+        "markymark-lsp/src/state.rs",
+        "markymark-lsp/tests/document_symbol_tests.rs",
+        "markymark-mcp/tests/runtime_engine_tests.rs"
+      ],
+      "outcome": "marky-lkj epic closed — all 10 success criteria met. Multi-format support spans parser, index, MCP, LSP layers.",
+      "tags": [
+        "lsp",
+        "document-symbols",
+        "multi-format",
+        "epic-completion"
+      ]
+    },
+    {
+      "id": "suc-027",
+      "timestamp": "2026-02-16T07:42:00Z",
+      "feature": "marky-v8r",
+      "type": "implementation",
       "approach": "SIMD heading scanner using @Vector(16, u8) for newline detection with scalar heading validation. Shared try_parse_heading between SIMD and scalar paths ensures parity. ATX closing hash trimming per CommonMark spec. All 22 tests pass first try, ~1.9x SIMD speedup on 10KB markdown benchmark.",
       "files": ["zig/src/kernels/heading_scan.zig", "zig/src/reference/heading_scan_ref.zig", "zig/src/c_adapter.zig"],
       "patterns": [
@@ -330,6 +350,24 @@
       "timestamp": "2026-02-16T08:47:00Z",
       "feature": "marky-yo7",
       "type": "implementation",
+      "approach": "JSON5 parser: two-phase design \u2014 json5 crate (serde) for structure validation + custom Scanner for byte-accurate source positions. Scanner drives iteration in source order and looks up keys in serde map. Handles unquoted identifiers, single-quoted strings, comments, trailing commas, escaped characters.",
+      "files": [
+        "markymark-parser/src/structured/json5.rs",
+        "markymark-parser/tests/structured_json5.rs"
+      ],
+      "outcome": "16 integration + 7 unit tests. Byte-accurate positions verified. serde_json::Map key ordering solved via source-order scanning.",
+      "tags": [
+        "json5",
+        "parser",
+        "source-positions",
+        "serde"
+      ]
+    },
+    {
+      "id": "suc-028",
+      "timestamp": "2026-02-16T08:47:00Z",
+      "feature": "marky-yo7",
+      "type": "implementation",
       "approach": "Link scanner kernel: SIMD @Vector(16,u8) '[' detection with scalar state machine for bracket nesting, escaped brackets, paren-depth URL parsing, and wiki-link pipe splitting. Shared parsing functions between SIMD and scalar via ref module. process_bracket() safe to re-call on consumed positions.",
       "files": ["zig/src/kernels/link_scan.zig", "zig/src/reference/link_scan_ref.zig", "zig/src/c_adapter.zig"],
       "patterns": [
@@ -342,7 +380,81 @@
       ]
     },
     {
+      "id": "suc-029",
+      "timestamp": "2026-02-16T09:30:00Z",
+      "feature": "marky-b1q",
+      "type": "code-review",
+      "approach": "Batch PR review triage: categorized 8 comments by severity (1 critical, 2 major, 5 minor). TDD for all fixes \u2014 wrote 6 failing tests first, then implemented fixes. Combined DRY refactor (byte_to_position extraction) with bugfixes in single commit. All pre-commit hooks passed on second attempt (cargo fmt diff).",
+      "files": [
+        "markymark-parser/src/structured/json5.rs",
+        "markymark-parser/src/structured/jsonl.rs",
+        "markymark-parser/src/structured/flat.rs",
+        "markymark-parser/src/structured/mod.rs",
+        "markymark-parser/src/structured/json.rs",
+        "markymark-parser/src/structured/yaml.rs",
+        "markymark-parser/src/structured/toml.rs",
+        "markymark-parser/tests/structured_json5.rs"
+      ],
+      "patterns": [
+        "When scanner and serde parse the same input, scanner must reproduce serde's decoding for key lookup",
+        "DRY extraction during review fixes is efficient \u2014 touch the files once for both",
+        "Move Position import to test modules when only tests use it (avoids unused import warnings)",
+        "Run cargo fmt before commit when touching many files \u2014 pre-commit hook catches formatting diffs"
+      ]
+    },
+    {
+      "id": "suc-030",
+      "timestamp": "2026-02-16T10:57:00Z",
+      "feature": "marky-luy.1",
+      "type": "testing",
+      "approach": "Miri arena validation: wrote 14 tests in markymark-core (no FFI deps) replicating production unsafe patterns. FakeAst/FakeIndex/FakeProperties mirror Ast/DocumentIndex/parser types. Discovered Box aliasing issue (6 tests) and mem::forget heap leak (3 tests). Key insight: Vec<&'static str> passes Miri but &'static [T] as struct field fails \u2014 Vec's drop doesn't access arena memory, but slice references create protected tags during drop.",
+      "files": [
+        "markymark-core/tests/miri_arena.rs",
+        ".github/workflows/ci.yml"
+      ],
+      "patterns": [
+        "Test unsafe patterns in FFI-free crate (markymark-core) since Miri can't run C FFI (tree-sitter)",
+        "Vec<&'static str> + Box<Arena> is Miri-safe; &'static [T] + Box<Arena> triggers Box aliasing violation",
+        "Use -Zmiri-ignore-leaks when mem::forget is intentional in the pattern being tested",
+        "Separate Miri cache key in CI to avoid polluting stable build cache"
+      ]
+    },
+    {
+      "id": "suc-031",
+      "timestamp": "2026-02-16T16:40:00Z",
+      "feature": "marky-luy.2",
+      "type": "investigation",
+      "approach": "Benchmark-driven investigation: wrote targeted arena lifecycle benchmarks (create+alloc+drop vs reset+alloc) alongside full reparse benchmarks. Quantified exact overhead ratio before making build/no-build decision. Saved days of wasted implementation effort.",
+      "files": [
+        "markymark-core/src/arena.rs",
+        "markymark-index/benches/memory.rs"
+      ],
+      "patterns": [
+        "Always benchmark before optimizing \u2014 arena reuse looked promising but was <0.1% of total cost",
+        "Compare micro-optimization to full pipeline cost to determine if it's worth pursuing",
+        "Closing a task with 'won't implement' + evidence is a valid and valuable outcome"
+      ]
+    },
+    {
       "id": "suc-024",
+      "timestamp": "2026-02-16T17:12:00Z",
+      "feature": "marky-tfd",
+      "type": "implementation",
+      "approach": "Minimal structural refactor: Option-wrapped md_tree in Ast with take_md_tree(), re-export MarkdownTree from parser crate, HashMap in ServerState. Zero changes to DocumentIndex or from_ast \u2014 verified from_ast never touches md_tree before proceeding.",
+      "files": [
+        "markymark-parser/src/ast.rs",
+        "markymark-parser/src/lib.rs",
+        "markymark-lsp/src/state.rs",
+        "markymark-lsp/tests/state_tests.rs"
+      ],
+      "patterns": [
+        "Verify downstream consumers don't use the field before taking it \u2014 grep from_ast for md_tree usage",
+        "Re-export types from the crate that owns them to avoid transitive dependency pollution",
+        "Option wrapping enables take() semantics without changing struct layout significantly"
+      ]
+    },
+    {
+      "id": "suc-032",
       "timestamp": "2026-02-16T12:35:00Z",
       "feature": "marky-ncz",
       "type": "implementation",
@@ -359,6 +471,48 @@
     },
     {
       "id": "suc-025",
+      "timestamp": "2026-02-16T17:45:00Z",
+      "feature": "marky-tzq",
+      "type": "implementation",
+      "approach": "Incremental text sync: FULL\u2192INCREMENTAL with UTF-16 byte offset conversion. DocumentChange enum in state.rs, lsp_position_to_byte_offset in convert.rs. Sequential change application with bounds clamping. 14 tests covering insert/delete/replace/multiline/multi-change/emoji/accented chars.",
+      "files": [
+        "markymark-lsp/src/convert.rs",
+        "markymark-lsp/src/server.rs",
+        "markymark-lsp/src/state.rs",
+        "markymark-lsp/tests/state_tests.rs",
+        "markymark-lsp/tests/capabilities.rs"
+      ],
+      "patterns": [
+        "UTF-16\u2192UTF-8 conversion: split on \\n, strip \\r, count char.len_utf16() per char",
+        "Sequential change application \u2014 each edit operates on text after previous edit (per LSP spec)",
+        "Bounds clamping (.min(text.len()).max(start)) prevents panics from invalid ranges",
+        "Scope mutable borrow of documents map inside block before calling self.build_markdown_index",
+        "Test emoji surrogate pairs (2 UTF-16 units, 4 UTF-8 bytes) separately from BMP accented chars"
+      ]
+    },
+    {
+      "id": "suc-026",
+      "timestamp": "2026-02-16T18:05:00Z",
+      "feature": "marky-zan",
+      "type": "implementation",
+      "approach": "Incremental tree-sitter parsing wired end-to-end: Parser::parse_with_old_tree passes MarkdownTree to tree-sitter, ServerState::apply_document_changes computes InputEdit per incremental change with byte_to_point, calls md_tree.edit() sequentially, then reparses with old_tree. Full DocumentChange::Full invalidates tree. 8 new tests verify correctness (incremental matches full reparse) and stress (100 sequential edits). Criterion benchmark added.",
+      "files": [
+        "markymark-parser/src/lib.rs",
+        "markymark-lsp/src/state.rs",
+        "markymark-parser/tests/tree_sitter_integration.rs",
+        "markymark-lsp/tests/state_tests.rs",
+        "markymark-parser/benches/incremental.rs"
+      ],
+      "patterns": [
+        "byte_to_point helper: count newlines in prefix for row, rfind newline for column",
+        "Take old_tree from HashMap before mutable borrow of documents (ownership separation)",
+        "Full text replacement sets old_tree=None (invalidates tree)",
+        "Compute Points BEFORE apply text change, new_end Point AFTER",
+        "Re-export InputEdit and Point from parser crate to avoid tree-sitter dep in LSP crate"
+      ]
+    },
+    {
+      "id": "suc-033",
       "timestamp": "2026-02-16T12:50:00Z",
       "feature": "marky-0u5",
       "type": "implementation",
@@ -374,7 +528,7 @@
       ]
     },
     {
-      "id": "suc-026",
+      "id": "suc-027",
       "timestamp": "2026-02-16T18:00:00Z",
       "feature": "marky-8ri",
       "type": "implementation",

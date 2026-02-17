@@ -9,7 +9,7 @@
       "description": "Migrate markymark-parser and markymark-index types from owned String/Vec/HashMap to arena-allocated equivalents using bumpalo. Hybrid ownership model: per-document Bump for parsed content, realm-level owned storage for cross-doc index lookups.",
       "github": {
         "issueNumber": 6,
-        "prNumber": 11,
+        "prNumber": 21,
         "branch": "feature/feature-001"
       },
       "beadsEpic": "marky-g9t",

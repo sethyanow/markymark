@@ -119,17 +119,14 @@ fn test_symbol_at_position_structured_json_key() {
     state.open_document(uri.clone(), "{\n  \"host\": \"localhost\"\n}\n".to_string());
 
     // "host" is at line 1, characters 3..7 (inside quotes)
-    let result = state.symbol_at_position(&uri, Position::new(1, 4));
-    assert!(
-        result.is_some(),
-        "should find structured key at cursor position"
-    );
-    match result.unwrap() {
-        SymbolAtPosition::StructuredKey(info) => {
+    let symbol = state.symbol_at_position(&uri, Position::new(1, 4));
+    match symbol {
+        Some(SymbolAtPosition::StructuredKey(info)) => {
             assert_eq!(info.key, "host");
             assert_eq!(info.path, "host");
         }
-        other => panic!("expected StructuredKey, got {:?}", other),
+        Some(other) => panic!("expected StructuredKey, got {:?}", other),
+        None => panic!("should find structured key at cursor position"),
     }
 }
 
@@ -146,5 +143,575 @@ fn test_symbol_at_position_structured_returns_none_off_key() {
     assert!(
         result.is_none(),
         "should return None when cursor is not on a key"
+    );
+}
+
+// ── MarkdownTree storage tests (marky-tfd) ──────────────────────────
+
+#[test]
+fn test_md_tree_stored_on_open() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Hello\n\nWorld".to_string());
+
+    assert!(
+        state.get_md_tree(&uri).is_some(),
+        "MarkdownTree should be stored after opening a markdown document"
+    );
+}
+
+#[test]
+fn test_md_tree_updated_on_change() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Hello".to_string());
+
+    // Verify tree reflects original document (1 section in block tree root)
+    let tree1 = state.get_md_tree(&uri).unwrap();
+    let root1 = tree1.block_tree().root_node();
+    let child_count_before = root1.child_count();
+
+    state.change_document(&uri, "# Changed\n\n## Added\n\n## Third".to_string());
+
+    let tree2 = state.get_md_tree(&uri);
+    assert!(
+        tree2.is_some(),
+        "MarkdownTree should still exist after change"
+    );
+    let root2 = tree2.unwrap().block_tree().root_node();
+    // More headings → more section nodes in tree-sitter-md's block tree
+    assert!(
+        root2.child_count() >= child_count_before,
+        "tree should reflect updated document structure"
+    );
+}
+
+#[test]
+fn test_md_tree_removed_on_close() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Hello".to_string());
+    assert!(state.get_md_tree(&uri).is_some());
+
+    state.close_document(&uri);
+    assert!(
+        state.get_md_tree(&uri).is_none(),
+        "MarkdownTree should be removed when document is closed"
+    );
+}
+
+#[test]
+fn test_md_tree_not_stored_for_structured_docs() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/config.json").unwrap();
+    state.open_document(uri.clone(), "{\"key\": \"value\"}\n".to_string());
+
+    assert!(
+        state.get_md_tree(&uri).is_none(),
+        "MarkdownTree should not be stored for non-markdown documents"
+    );
+}
+
+// ── Incremental sync tests (marky-tzq) ─────────────────────────────
+
+use markymark_lsp::state::DocumentChange;
+
+#[test]
+fn test_incremental_single_insert() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Hello\n\nWorld".to_string());
+
+    // Insert " there" after "Hello" (line 0, char 7 = end of "# Hello")
+    state.apply_document_changes(
+        &uri,
+        vec![DocumentChange::Incremental {
+            start_line: 0,
+            start_character: 7,
+            end_line: 0,
+            end_character: 7,
+            text: " there".to_string(),
+        }],
+    );
+
+    assert_eq!(
+        state.get_document_text(&uri),
+        Some("# Hello there\n\nWorld")
+    );
+}
+
+#[test]
+fn test_incremental_single_delete() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Hello World\n\nText".to_string());
+
+    // Delete " World" (line 0, chars 7..13)
+    state.apply_document_changes(
+        &uri,
+        vec![DocumentChange::Incremental {
+            start_line: 0,
+            start_character: 7,
+            end_line: 0,
+            end_character: 13,
+            text: String::new(),
+        }],
+    );
+
+    assert_eq!(state.get_document_text(&uri), Some("# Hello\n\nText"));
+}
+
+#[test]
+fn test_incremental_single_replace() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Old Title\n\nBody".to_string());
+
+    // Replace "Old Title" with "New Title" (line 0, chars 2..11)
+    state.apply_document_changes(
+        &uri,
+        vec![DocumentChange::Incremental {
+            start_line: 0,
+            start_character: 2,
+            end_line: 0,
+            end_character: 11,
+            text: "New Title".to_string(),
+        }],
+    );
+
+    assert_eq!(state.get_document_text(&uri), Some("# New Title\n\nBody"));
+    // Verify index was updated
+    let index = state.get_document_index(&uri).unwrap();
+    assert_eq!(index.headings()[0].text, "New Title");
+}
+
+#[test]
+fn test_incremental_multiline_replace() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Title\n\nLine 1\nLine 2\nLine 3".to_string());
+
+    // Replace "Line 1\nLine 2" with "Replaced" (line 2 char 0 to line 3 char 6)
+    state.apply_document_changes(
+        &uri,
+        vec![DocumentChange::Incremental {
+            start_line: 2,
+            start_character: 0,
+            end_line: 3,
+            end_character: 6,
+            text: "Replaced".to_string(),
+        }],
+    );
+
+    assert_eq!(
+        state.get_document_text(&uri),
+        Some("# Title\n\nReplaced\nLine 3")
+    );
+}
+
+#[test]
+fn test_incremental_multiple_changes_in_sequence() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Title\n\nHello world".to_string());
+
+    // Two changes applied in order:
+    // 1) replace "world" (chars 6..11 on line 2) with "earth"
+    //    text becomes: "# Title\n\nHello earth"
+    // 2) insert "!" at end of line 2 (char 11 after "earth")
+    //    text becomes: "# Title\n\nHello earth!"
+    state.apply_document_changes(
+        &uri,
+        vec![
+            DocumentChange::Incremental {
+                start_line: 2,
+                start_character: 6,
+                end_line: 2,
+                end_character: 11,
+                text: "earth".to_string(),
+            },
+            DocumentChange::Incremental {
+                start_line: 2,
+                start_character: 11,
+                end_line: 2,
+                end_character: 11,
+                text: "!".to_string(),
+            },
+        ],
+    );
+
+    assert_eq!(
+        state.get_document_text(&uri),
+        Some("# Title\n\nHello earth!")
+    );
+}
+
+#[test]
+fn test_incremental_full_replacement_fallback() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Old\n\nContent".to_string());
+
+    // Full replacement (no range = full text swap)
+    state.apply_document_changes(
+        &uri,
+        vec![DocumentChange::Full(
+            "# Brand New\n\nDifferent content".to_string(),
+        )],
+    );
+
+    assert_eq!(
+        state.get_document_text(&uri),
+        Some("# Brand New\n\nDifferent content")
+    );
+    let index = state.get_document_index(&uri).unwrap();
+    assert_eq!(index.headings()[0].text, "Brand New");
+}
+
+#[test]
+fn test_incremental_utf16_accented_char() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    // "café" — é is U+00E9 (1 UTF-16 code unit, 2 UTF-8 bytes)
+    state.open_document(uri.clone(), "# café\n\nText".to_string());
+
+    // "# café" in UTF-16: # (1) + space (1) + c (1) + a (1) + f (1) + é (1) = 6 units
+    // Insert "!" at end of heading (UTF-16 offset 6)
+    state.apply_document_changes(
+        &uri,
+        vec![DocumentChange::Incremental {
+            start_line: 0,
+            start_character: 6,
+            end_line: 0,
+            end_character: 6,
+            text: "!".to_string(),
+        }],
+    );
+
+    assert_eq!(state.get_document_text(&uri), Some("# café!\n\nText"));
+}
+
+#[test]
+fn test_incremental_utf16_emoji_surrogate_pair() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    // 🎉 is U+1F389 (2 UTF-16 code units / surrogate pair, 4 UTF-8 bytes)
+    state.open_document(uri.clone(), "# 🎉 Party\n\nText".to_string());
+
+    // "# 🎉 Party" in UTF-16: # (1) + space (1) + 🎉 (2) + space (1) + P (1) + a (1) + r (1) + t (1) + y (1) = 10 units
+    // "Party" starts at UTF-16 offset 5, ends at 10
+    // Replace "Party" with "Time"
+    state.apply_document_changes(
+        &uri,
+        vec![DocumentChange::Incremental {
+            start_line: 0,
+            start_character: 5,
+            end_line: 0,
+            end_character: 10,
+            text: "Time".to_string(),
+        }],
+    );
+
+    assert_eq!(state.get_document_text(&uri), Some("# 🎉 Time\n\nText"));
+}
+
+#[test]
+fn test_incremental_edit_at_document_start() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "Hello".to_string());
+
+    // Insert "# " at the very beginning
+    state.apply_document_changes(
+        &uri,
+        vec![DocumentChange::Incremental {
+            start_line: 0,
+            start_character: 0,
+            end_line: 0,
+            end_character: 0,
+            text: "# ".to_string(),
+        }],
+    );
+
+    assert_eq!(state.get_document_text(&uri), Some("# Hello"));
+}
+
+#[test]
+fn test_incremental_edit_at_document_end() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Title".to_string());
+
+    // Append new paragraph at end (line 0, char 7 = end of "# Title")
+    state.apply_document_changes(
+        &uri,
+        vec![DocumentChange::Incremental {
+            start_line: 0,
+            start_character: 7,
+            end_line: 0,
+            end_character: 7,
+            text: "\n\nNew paragraph".to_string(),
+        }],
+    );
+
+    assert_eq!(
+        state.get_document_text(&uri),
+        Some("# Title\n\nNew paragraph")
+    );
+}
+
+#[test]
+fn test_incremental_index_updated_after_changes() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# One\n\nSome text".to_string());
+
+    // Add a second heading after "Some text" (line 2, char 9)
+    state.apply_document_changes(
+        &uri,
+        vec![DocumentChange::Incremental {
+            start_line: 2,
+            start_character: 9,
+            end_line: 2,
+            end_character: 9,
+            text: "\n\n## Two".to_string(),
+        }],
+    );
+
+    let index = state.get_document_index(&uri).unwrap();
+    assert_eq!(index.headings().len(), 2);
+    assert_eq!(index.headings()[0].text, "One");
+    assert_eq!(index.headings()[1].text, "Two");
+}
+
+#[test]
+fn test_incremental_md_tree_updated() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
+    state.open_document(uri.clone(), "# Hello".to_string());
+
+    assert!(state.get_md_tree(&uri).is_some());
+
+    state.apply_document_changes(
+        &uri,
+        vec![DocumentChange::Incremental {
+            start_line: 0,
+            start_character: 7,
+            end_line: 0,
+            end_character: 7,
+            text: "\n\n## Sub".to_string(),
+        }],
+    );
+
+    assert!(
+        state.get_md_tree(&uri).is_some(),
+        "MarkdownTree should be updated after incremental change"
+    );
+}
+
+#[test]
+fn test_incremental_no_change_for_unknown_uri() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/unknown.md").unwrap();
+
+    // Should not panic — gracefully handles missing document
+    state.apply_document_changes(
+        &uri,
+        vec![DocumentChange::Incremental {
+            start_line: 0,
+            start_character: 0,
+            end_line: 0,
+            end_character: 5,
+            text: "hello".to_string(),
+        }],
+    );
+
+    assert!(state.get_document_text(&uri).is_none());
+}
+
+// --- Incremental tree-sitter parsing correctness tests ---
+
+/// Helper: open a document, apply an incremental change, then compare the
+/// resulting index against a fresh full-parse index of the same final text.
+fn assert_incremental_matches_full(
+    original: &str,
+    change: DocumentChange,
+    expected_final_text: &str,
+) {
+    // Path 1: incremental (open + apply_document_changes)
+    let mut inc_state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/incr.md").unwrap();
+    inc_state.open_document(uri.clone(), original.to_string());
+    inc_state.apply_document_changes(&uri, vec![change]);
+
+    // Path 2: fresh full parse of the final text
+    let mut full_state = ServerState::new();
+    let full_uri = DocumentUri::new("file:///test/full.md").unwrap();
+    full_state.open_document(full_uri.clone(), expected_final_text.to_string());
+
+    // Verify text matches
+    assert_eq!(
+        inc_state.get_document_text(&uri).unwrap(),
+        expected_final_text,
+        "text after incremental change should match expected"
+    );
+
+    // Compare headings
+    let inc_index = inc_state.get_document_index(&uri).unwrap();
+    let full_index = full_state.get_document_index(&full_uri).unwrap();
+
+    let inc_headings: Vec<_> = inc_index
+        .headings()
+        .iter()
+        .map(|h| (h.level, h.text.to_string()))
+        .collect();
+    let full_headings: Vec<_> = full_index
+        .headings()
+        .iter()
+        .map(|h| (h.level, h.text.to_string()))
+        .collect();
+    assert_eq!(
+        inc_headings, full_headings,
+        "headings should match between incremental and full parse"
+    );
+
+    // Compare wiki links
+    let inc_wl: Vec<_> = inc_index
+        .wiki_links()
+        .iter()
+        .map(|w| w.target.to_string())
+        .collect();
+    let full_wl: Vec<_> = full_index
+        .wiki_links()
+        .iter()
+        .map(|w| w.target.to_string())
+        .collect();
+    assert_eq!(
+        inc_wl, full_wl,
+        "wiki links should match between incremental and full parse"
+    );
+}
+
+#[test]
+fn test_incremental_parse_insert_heading_matches_full() {
+    // Inserting at (2, 10) = byte 19 (the '\n' after "Some text.")
+    // Original trailing '\n' is preserved after the insertion.
+    assert_incremental_matches_full(
+        "# Hello\n\nSome text.\n",
+        DocumentChange::Incremental {
+            start_line: 2,
+            start_character: 10,
+            end_line: 2,
+            end_character: 10,
+            text: "\n\n## New Section\n".to_string(),
+        },
+        "# Hello\n\nSome text.\n\n## New Section\n\n",
+    );
+}
+
+#[test]
+fn test_incremental_parse_delete_heading_matches_full() {
+    // Deleting (2,0)..(3,0) removes "## Remove\n" (bytes 8..18)
+    // Leaves "# Keep\n\n" + "\nParagraph.\n" = triple newline between them.
+    assert_incremental_matches_full(
+        "# Keep\n\n## Remove\n\nParagraph.\n",
+        DocumentChange::Incremental {
+            start_line: 2,
+            start_character: 0,
+            end_line: 3,
+            end_character: 0,
+            text: String::new(),
+        },
+        "# Keep\n\n\nParagraph.\n",
+    );
+}
+
+#[test]
+fn test_incremental_parse_rename_heading_matches_full() {
+    assert_incremental_matches_full(
+        "# Old Name\n\nBody.\n",
+        DocumentChange::Incremental {
+            start_line: 0,
+            start_character: 2,
+            end_line: 0,
+            end_character: 10,
+            text: "New Name".to_string(),
+        },
+        "# New Name\n\nBody.\n",
+    );
+}
+
+#[test]
+fn test_incremental_parse_add_wiki_link_matches_full() {
+    assert_incremental_matches_full(
+        "# Page\n\nSome text.\n",
+        DocumentChange::Incremental {
+            start_line: 2,
+            start_character: 10,
+            end_line: 2,
+            end_character: 10,
+            text: " See [[Other Page]]".to_string(),
+        },
+        "# Page\n\nSome text. See [[Other Page]]\n",
+    );
+}
+
+#[test]
+fn test_incremental_parse_100_sequential_edits_matches_full() {
+    use markymark_lsp::state::DocumentChange;
+
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/stress.md").unwrap();
+    let mut source = "# Title\n\nContent.\n".to_string();
+    state.open_document(uri.clone(), source.clone());
+
+    // Apply 100 single-char insertions before the period
+    for i in 0..100u8 {
+        let ch = (b'a' + (i % 26)) as char;
+        // Find the '.' in the current text to know the line/character
+        let dot_pos = source.find('.').unwrap();
+        let line = source[..dot_pos].matches('\n').count() as u32;
+        let col = dot_pos - source[..dot_pos].rfind('\n').map(|p| p + 1).unwrap_or(0);
+
+        state.apply_document_changes(
+            &uri,
+            vec![DocumentChange::Incremental {
+                start_line: line,
+                start_character: col as u32,
+                end_line: line,
+                end_character: col as u32,
+                text: ch.to_string(),
+            }],
+        );
+
+        // Update our source tracker to match
+        source.insert(dot_pos, ch);
+    }
+
+    // Fresh full parse of the same final text
+    let mut full_state = ServerState::new();
+    let full_uri = DocumentUri::new("file:///test/full.md").unwrap();
+    full_state.open_document(full_uri.clone(), source.clone());
+
+    // Compare results
+    let inc_text = state.get_document_text(&uri).unwrap();
+    assert_eq!(inc_text, source.as_str());
+
+    let inc_index = state.get_document_index(&uri).unwrap();
+    let full_index = full_state.get_document_index(&full_uri).unwrap();
+
+    let inc_headings: Vec<_> = inc_index
+        .headings()
+        .iter()
+        .map(|h| (h.level, h.text.to_string()))
+        .collect();
+    let full_headings: Vec<_> = full_index
+        .headings()
+        .iter()
+        .map(|h| (h.level, h.text.to_string()))
+        .collect();
+    assert_eq!(
+        inc_headings, full_headings,
+        "100 sequential edits: headings should match"
     );
 }
