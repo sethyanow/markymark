@@ -1,28 +1,30 @@
 {
-  "lastUpdated": "2026-02-16T22:48:25Z",
+  "lastUpdated": "2026-02-17T09:20:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed and closed marky-3l6: implemented remaining PR #21 parser/LSP follow-ups (CRLF incremental regression test + incremental range clamp observability), updated triage notes, and posted PR response summary.",
+    "summary": "Completed and closed marky-z7e: implemented incremental wiki-link indexing scaffolding in LSP state, added 5 regression tests, and created follow-up task marky-77x for true selective merge.",
     "completedTasks": [
-      "Added test_incremental_crlf_line_ending_edit_matches_full in markymark-lsp/tests/state_tests.rs",
-      "Added incremental_byte_bounds/position_was_clamped helper path in markymark-lsp/src/state.rs",
-      "Added unit test for clamped-range detection in state.rs",
-      "Ran quality gates for touched crate: cargo test -p markymark-lsp and cargo fmt --check",
-      "Posted PR #21 follow-up comment and closed bead marky-3l6",
-      "Created new refactor bead marky-m8b for state.rs module split follow-up"
+      "Added pending_edits tracking to ServerState and wired incremental markdown index entrypoint",
+      "Added pending_edit_count visibility helper for incremental-state tests",
+      "Added 5 wiki-link incremental regression tests in markymark-lsp/tests/state_tests.rs",
+      "Ran quality gates: cargo fmt --all --check, cargo clippy --workspace --all-targets -- -D warnings, cargo test --workspace",
+      "Closed bead marky-z7e",
+      "Created and linked follow-up bead marky-77x for real selective wiki_links merge"
     ],
-    "blockers": [],
+    "blockers": [
+      "Current incremental wiki-link path still falls back to full DocumentIndex::from_ast rebuild; selective merge remains to be implemented in marky-77x."
+    ],
     "nextSteps": [
-      "Land checkpoint commit containing memory persistence and LSP follow-up changes",
-      "Execute marky-m8b refactor: split markymark-lsp/src/state.rs into submodules with tests kept green",
-      "Continue remaining feature-001 closeout items and pending PR #21 follow-up hygiene"
+      "Implement marky-77x selective wiki-link merge (purge + re-extract + neighbor validation + merge)",
+      "Benchmark wiki-link incremental path against full rebuild baseline",
+      "Keep state.rs module-size follow-up visible (marky-m8b) while adding incremental logic"
     ]
   },
   "recentChanges": [
-    "marky-3l6 CLOSED: triaged comments converted to concrete code/test updates",
-    "CRLF incremental edit parity now regression-tested in markymark-lsp",
-    "Incremental edit clamping now emits warning telemetry for observability",
-    "Follow-up refactor task opened: marky-m8b for state.rs submodule split"
+    "marky-z7e CLOSED: incremental wiki-link proof-of-concept delivered with tests",
+    "ServerState now tracks pending InputEdit batches across apply/reindex lifecycle",
+    "New state test coverage for wiki-link incremental parity and edge cases",
+    "Follow-up task created: marky-77x for true selective merge implementation"
   ],
   "knownIssues": [
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
