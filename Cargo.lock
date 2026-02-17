@@ -961,6 +961,7 @@ dependencies = [
  "insta",
  "markymark-core",
  "markymark-index",
+ "markymark-kernels",
  "markymark-parser",
  "rmcp",
  "schemars",

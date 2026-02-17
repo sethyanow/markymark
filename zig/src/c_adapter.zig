@@ -502,6 +502,22 @@ export fn zig_jaccard_similarity(
     return similarity.jaccard_similarity(s1, set1_len, s2, set2_len);
 }
 
+/// Fuzzy match score between query and candidate strings.
+///
+/// Returns:
+///   >=0 — score (0 means no match)
+///   -1  — invalid input (null pointer)
+export fn marky_fuzzy_match(
+    query: ?[*]const u8,
+    query_len: u32,
+    candidate: ?[*]const u8,
+    candidate_len: u32,
+) i32 {
+    const q = query orelse return -1;
+    const c = candidate orelse return -1;
+    return similarity.fuzzy_match_score(q, query_len, c, candidate_len);
+}
+
 /// SIMD-accelerated entity hash extraction.
 ///
 /// Scans text for words, produces FNV-1a u32 hash for each.
@@ -938,6 +954,37 @@ test "zig_jaccard_similarity null set2" {
     const s1 = [_]u32{1};
     const result = zig_jaccard_similarity(&s1, 1, null, 1);
     try std.testing.expectEqual(@as(f32, -1.0), result);
+}
+
+test "marky_fuzzy_match prefix scores higher than substring" {
+    const prefix = marky_fuzzy_match("st".ptr, 2, "stage".ptr, 5);
+    const substring = marky_fuzzy_match("st".ptr, 2, "setup".ptr, 5);
+
+    try std.testing.expect(prefix > 0);
+    try std.testing.expect(substring > 0);
+    try std.testing.expect(prefix > substring);
+}
+
+test "marky_fuzzy_match is case-insensitive" {
+    const score = marky_fuzzy_match("ST".ptr, 2, "Setup".ptr, 5);
+    try std.testing.expect(score > 0);
+}
+
+test "marky_fuzzy_match supports subsequence" {
+    const score = marky_fuzzy_match("stp".ptr, 3, "setup".ptr, 5);
+    try std.testing.expect(score > 0);
+}
+
+test "marky_fuzzy_match no match returns zero" {
+    const score = marky_fuzzy_match("zzz".ptr, 3, "setup".ptr, 5);
+    try std.testing.expectEqual(@as(i32, 0), score);
+}
+
+test "marky_fuzzy_match null input returns -1" {
+    const score1 = marky_fuzzy_match(null, 1, "setup".ptr, 5);
+    const score2 = marky_fuzzy_match("st".ptr, 2, null, 5);
+    try std.testing.expectEqual(@as(i32, -1), score1);
+    try std.testing.expectEqual(@as(i32, -1), score2);
 }
 
 // -- zig_extract_entity_hashes tests --

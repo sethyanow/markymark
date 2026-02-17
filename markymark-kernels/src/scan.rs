@@ -121,6 +121,13 @@ extern "C" {
         cap: u32,
         written: *mut u32,
     ) -> i32;
+
+    fn marky_fuzzy_match(
+        query: *const u8,
+        query_len: u32,
+        candidate: *const u8,
+        candidate_len: u32,
+    ) -> i32;
 }
 
 // ---------------------------------------------------------------------------
@@ -176,6 +183,15 @@ pub struct BlockIdScan {
     pub id: String,
     /// Byte offset of the `^` in the source.
     pub offset: u32,
+}
+
+/// Result of fuzzy matching a query against a candidate symbol.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FuzzyMatch {
+    /// Integer score where 0 means no match and higher is better.
+    pub score: i32,
+    /// True when the match begins at candidate position 0.
+    pub starts_with: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -378,6 +394,42 @@ pub fn scan_block_ids(text: &str) -> Result<Vec<BlockIdScan>, KernelError> {
     Ok(results)
 }
 
+/// Fuzzy-match a query against a candidate symbol string.
+///
+/// Returns a score where 0 means no match and higher means a stronger match.
+/// Prefix matches are marked via `starts_with` for caller-side tie-breaking.
+pub fn fuzzy_match(query: &str, candidate: &str) -> Result<FuzzyMatch, KernelError> {
+    if query.is_empty() || candidate.is_empty() {
+        return Ok(FuzzyMatch {
+            score: 0,
+            starts_with: false,
+        });
+    }
+
+    // SAFETY: Pointers are valid for their respective byte lengths for this call.
+    // FFI function does not mutate input buffers.
+    // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+    let score = unsafe {
+        marky_fuzzy_match(
+            query.as_ptr(),
+            query.len() as u32,
+            candidate.as_ptr(),
+            candidate.len() as u32,
+        )
+    };
+
+    if score < 0 {
+        return Err(KernelError::InvalidInput);
+    }
+
+    let starts_with = query
+        .chars()
+        .zip(candidate.chars())
+        .all(|(q, c)| q.eq_ignore_ascii_case(&c));
+
+    Ok(FuzzyMatch { score, starts_with })
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -522,6 +574,40 @@ mod tests {
         let text = "^id more text\n";
         let results = scan_block_ids(text).unwrap();
         assert!(results.is_empty());
+    }
+
+    // -- fuzzy_match tests --
+
+    #[test]
+    fn test_fuzzy_match_prefix_scores_higher_than_substring() {
+        let prefix = fuzzy_match("st", "stage").unwrap();
+        let substring = fuzzy_match("st", "setup").unwrap();
+
+        assert!(prefix.score > 0);
+        assert!(substring.score > 0);
+        assert!(prefix.score > substring.score);
+        assert!(prefix.starts_with);
+        assert!(!substring.starts_with);
+    }
+
+    #[test]
+    fn test_fuzzy_match_is_case_insensitive() {
+        let mixed = fuzzy_match("ST", "Setup").unwrap();
+        assert!(mixed.score > 0);
+        assert!(!mixed.starts_with);
+    }
+
+    #[test]
+    fn test_fuzzy_match_supports_subsequence() {
+        let subseq = fuzzy_match("stp", "setup").unwrap();
+        assert!(subseq.score > 0);
+    }
+
+    #[test]
+    fn test_fuzzy_match_returns_zero_for_non_match() {
+        let no_match = fuzzy_match("zzz", "setup").unwrap();
+        assert_eq!(no_match.score, 0);
+        assert!(!no_match.starts_with);
     }
 
     // -- safe_slice tests --
