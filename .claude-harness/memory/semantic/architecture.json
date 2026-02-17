@@ -37,6 +37,7 @@
       "markymark-index/src/resolution.rs (ResolvedTarget::KeyPath for structured doc cross-references)",
       "markymark-index/src/resolution.rs (wiki link / markdown link resolution)",
       "markymark-index/src/semantic.rs (SemanticIndex embedding-backed search and duplicate detection)",
+      "markymark-index/src/semantic.rs (compute_fetch_k bounded overfetch helper)",
       "markymark-index/src/semantic.rs (transactional semantic entry staging on add_document)",
       "markymark-index/src/structured_document.rs (StructuredDocumentIndex: key-path lookup, outline)",
       "markymark-index/tests/extraction_parity.rs (AST-vs-scan corpus parity harness with report-path exclusion to prevent self-referential metrics)",
@@ -53,6 +54,7 @@
       "markymark-mcp/src/rename_ops.rs (MCP rename operations)",
       "markymark-mcp/src/resources.rs (MCP resource handlers)",
       "markymark-mcp/src/runtime_engine.rs (MCP RuntimeEngine: startup indexing, CoreEngine impl)",
+      "markymark-mcp/src/runtime_engine.rs (byte-safe preview truncation + token observability)",
       "markymark-mcp/src/runtime_engine.rs (search-symbols ranking uses fuzzy-score ordering via markymark-kernels)",
       "markymark-mcp/tests/tool_handler_tests.rs (semantic-search visibility/clamping regressions)",
       "markymark-parser/src/ast.rs (AstCell self_cell owner/dependent layout for internal lifetime binding)",
@@ -61,9 +63,12 @@
       "markymark-parser/src/extract.rs (regex-based extraction updated for arena-backed outputs)",
       "markymark-parser/src/structured/ (multi-format parsers: json, yaml, toml, jsonl, flat)",
       "markymark-parser/src/types/ (elements, links, blocks, frontmatter, xml - arena-backed element types)",
+      "pr29-comments.json (PR #29 comment/review snapshot for checkpoint)",
+      "pr29-triage.json (PR #29 triage dispositions and action tracking)",
       "zig/src/c_adapter.zig (C ABI entrypoint wiring modular exports via comptime imports)",
       "zig/src/exports_graph.zig (opaque-handle graph lifecycle and query C ABI exports)",
       "zig/src/kernels/link_graph.zig (adjacency-map link graph engine with orphan/broken-chain/PageRank/connectivity operations)",
+      "zig/src/kernels/link_graph.zig (pre-reservation to avoid HashMap pointer invalidation)",
       "zig/src/kernels/slug.zig (single-pass heading slug generation kernel with UTF-8 passthrough)"
     ],
     "api": [
@@ -142,6 +147,6 @@
     ]
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-17T20:18:08Z",
+  "lastUpdated": "2026-02-17T20:45:28Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

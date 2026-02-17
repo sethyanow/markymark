@@ -63,6 +63,8 @@ pub struct SemanticIndex {
     doc_token_sets: HashMap<DocumentUri, BTreeSet<u32>>,
 }
 
+const FETCH_OVERFETCH_MULTIPLIER: u32 = 4;
+
 impl SemanticIndex {
     /// Create a semantic index using the provided embedding backend.
     pub fn new(provider: Arc<dyn EmbeddingProvider>) -> Result<Self, EmbedError> {
@@ -174,7 +176,7 @@ impl SemanticIndex {
         let query_embedding = self.provider.embed(query)?;
         let score_floor = min_score.clamp(0.0, 1.0);
 
-        let fetch_k = self.index.count().max(top_k);
+        let fetch_k = compute_fetch_k(self.index.count(), top_k);
         let raw = self.index.search(&query_embedding, fetch_k)?;
 
         let mut out = Vec::new();
@@ -268,6 +270,14 @@ fn token_hashes(text: &str) -> Vec<u32> {
         .collect()
 }
 
+fn compute_fetch_k(index_count: u32, top_k: u32) -> u32 {
+    if index_count == 0 || top_k == 0 {
+        return 0;
+    }
+    let overfetch = top_k.saturating_mul(FETCH_OVERFETCH_MULTIPLIER);
+    index_count.min(overfetch.max(top_k))
+}
+
 fn fnv1a32(text: &str) -> u32 {
     const OFFSET: u32 = 0x811c9dc5;
     const PRIME: u32 = 0x0100_0193;
@@ -292,5 +302,25 @@ fn jaccard_similarity(a: &BTreeSet<u32>, b: &BTreeSet<u32>) -> f32 {
         0.0
     } else {
         intersection / union
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute_fetch_k;
+
+    #[test]
+    fn compute_fetch_k_limits_overfetch_for_small_top_k() {
+        assert_eq!(compute_fetch_k(1_000, 5), 20);
+    }
+
+    #[test]
+    fn compute_fetch_k_never_exceeds_index_count() {
+        assert_eq!(compute_fetch_k(17, 8), 17);
+    }
+
+    #[test]
+    fn compute_fetch_k_handles_empty_index() {
+        assert_eq!(compute_fetch_k(0, 8), 0);
     }
 }

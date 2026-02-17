@@ -628,7 +628,15 @@ impl CoreEngine for RuntimeEngine {
                 };
 
                 let total_tokens = if include_token_counts {
-                    Some(total_tokens_for_realm(&realm_data.index))
+                    let (total, unreadable_docs) = total_tokens_for_realm(&realm_data.index);
+                    if unreadable_docs > 0 {
+                        eprintln!(
+                            "warning: token count omitted for realm '{realm}' due to {unreadable_docs} unreadable documents"
+                        );
+                        None
+                    } else {
+                        Some(total)
+                    }
                 } else {
                     None
                 };
@@ -740,13 +748,24 @@ impl CoreEngine for RuntimeEngine {
     }
 }
 
-fn total_tokens_for_realm(realm: &RealmIndex) -> u64 {
-    realm
-        .iter_all_documents()
-        .filter_map(|(uri, _)| uri.to_file_path())
-        .filter_map(|path| fs::read_to_string(path).ok())
-        .map(|source| u64::from(tokens::estimate_tokens(&source)))
-        .sum()
+fn total_tokens_for_realm(realm: &RealmIndex) -> (u64, usize) {
+    let mut total_tokens = 0_u64;
+    let mut unreadable_docs = 0_usize;
+    for (uri, _) in realm.iter_all_documents() {
+        let Some(path) = uri.to_file_path() else {
+            unreadable_docs += 1;
+            continue;
+        };
+        match fs::read_to_string(path) {
+            Ok(source) => {
+                total_tokens += u64::from(tokens::estimate_tokens(&source));
+            }
+            Err(_) => {
+                unreadable_docs += 1;
+            }
+        }
+    }
+    (total_tokens, unreadable_docs)
 }
 
 #[cfg(feature = "semantic-search")]
@@ -783,12 +802,12 @@ fn byte_offset_for_line(source: &str, line: u32) -> Option<usize> {
 
 #[cfg(feature = "semantic-search")]
 fn truncate_preview(text: &str) -> String {
-    text.chars()
-        .take(200)
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+    const MAX_PREVIEW_BYTES: usize = 200;
+    let mut end = text.len().min(MAX_PREVIEW_BYTES);
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text[..end].split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn validate_workspace_root(root: &Path) -> anyhow::Result<()> {

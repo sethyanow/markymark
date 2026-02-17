@@ -422,10 +422,12 @@ pub fn fuzzy_match(query: &str, candidate: &str) -> Result<FuzzyMatch, KernelErr
         return Err(KernelError::InvalidInput);
     }
 
-    let starts_with = query
-        .chars()
-        .zip(candidate.chars())
-        .all(|(q, c)| q.eq_ignore_ascii_case(&c));
+    let starts_with = score > 0
+        && candidate.chars().count() >= query.chars().count()
+        && query
+            .chars()
+            .zip(candidate.chars())
+            .all(|(q, c)| q.eq_ignore_ascii_case(&c));
 
     Ok(FuzzyMatch { score, starts_with })
 }
@@ -606,6 +608,13 @@ mod tests {
     #[test]
     fn test_fuzzy_match_returns_zero_for_non_match() {
         let no_match = fuzzy_match("zzz", "setup").unwrap();
+        assert_eq!(no_match.score, 0);
+        assert!(!no_match.starts_with);
+    }
+
+    #[test]
+    fn test_fuzzy_match_query_longer_than_candidate_is_not_prefix() {
+        let no_match = fuzzy_match("setup", "set").unwrap();
         assert_eq!(no_match.score, 0);
         assert!(!no_match.starts_with);
     }

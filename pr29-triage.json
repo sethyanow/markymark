@@ -1,0 +1,156 @@
+{
+  "pr_number": 29,
+  "branch": "feature/mark-brza",
+  "source_file": "pr29-comments.json",
+  "generated_at": "2026-02-17T20:26:00Z",
+  "summary": {
+    "total_items": 15,
+    "issue_comments": 4,
+    "reviews": 2,
+    "review_comments": 9,
+    "code_issues_identified": 9,
+    "actionable": 5,
+    "already_fixed": 5,
+    "false_positive": 2,
+    "defer": 2
+  },
+  "critical_items": [
+    {
+      "id": 2818755766,
+      "priority": "P1",
+      "category": "Memory Safety",
+      "file": "zig/src/kernels/link_graph.zig",
+      "line": 70,
+      "finding": "Potential hashmap pointer invalidation during addDocument target insertion",
+      "disposition": "actionable",
+      "status": "OPEN",
+      "rationale": "`node` pointer is captured from `self.nodes` then `getOrPut` is called in-loop. HashMap growth can invalidate value pointers before later `node.outbound.appendAssumeCapacity` writes.",
+      "recommended_action": "Reserve map capacity for possible target inserts before capturing node pointer, or reacquire pointer after each insertion."
+    }
+  ],
+  "triage": [
+    {
+      "id": 2818755204,
+      "user": "Copilot",
+      "file": "zig/src/shared/similarity.zig",
+      "line": 136,
+      "priority": "P3",
+      "category": "Fuzzy Match Scoring",
+      "disposition": "false_positive",
+      "rationale": "Prefix bonus is awarded only when candidate prefix bytes case-insensitively equal query bytes. Reported subsequence gap example does not trigger prefix bonus in current code."
+    },
+    {
+      "id": 2818755242,
+      "user": "Copilot",
+      "file": "markymark-kernels/src/scan.rs",
+      "line": 429,
+      "priority": "P3",
+      "category": "Fuzzy Match Metadata",
+      "disposition": "actionable",
+      "rationale": "Current starts_with logic could return true when query is longer than candidate because zip truncates; hardened as actionable correctness fix.",
+      "recommended_action": "Implemented: gate starts_with on positive score and candidate length >= query length before prefix char comparison."
+    },
+    {
+      "id": 2818755265,
+      "user": "Copilot",
+      "file": "markymark-mcp/src/runtime_engine.rs",
+      "line": 108,
+      "priority": "P3",
+      "category": "Embedding Quality",
+      "disposition": "defer",
+      "rationale": "This is a design-quality suggestion about hash embedding fidelity, not a correctness defect in the current dev/test provider."
+    },
+    {
+      "id": 2818755275,
+      "user": "Copilot",
+      "file": "markymark-mcp/src/runtime_engine.rs",
+      "line": 750,
+      "priority": "P3",
+      "category": "Observability",
+      "disposition": "actionable",
+      "rationale": "Token counting silently drops unreadable files. Stats output can become misleading without any signal.",
+      "recommended_action": "Count read failures and include an error counter or warning in realm stats response."
+    },
+    {
+      "id": 2818755291,
+      "user": "Copilot",
+      "file": "markymark-mcp/src/runtime_engine.rs",
+      "line": 764,
+      "priority": "P3",
+      "category": "I/O Performance",
+      "disposition": "defer",
+      "rationale": "Full-file read for preview is inefficient on large files, but current behavior is functionally correct and bounded by preview truncation."
+    },
+    {
+      "id": 2818755811,
+      "user": "greptile-apps[bot]",
+      "file": "markymark-index/src/semantic.rs",
+      "line": 178,
+      "priority": "P2",
+      "category": "Search Performance",
+      "disposition": "actionable",
+      "rationale": "`fetch_k = count.max(top_k)` overfetches to full corpus whenever corpus size exceeds `top_k`, forcing O(n) scoring every query.",
+      "recommended_action": "Bound overfetch (e.g., `min(count, top_k * N)`) and optionally retry if stale-id filtering underfills."
+    },
+    {
+      "id": 2818755869,
+      "user": "greptile-apps[bot]",
+      "file": "markymark-mcp/src/runtime_engine.rs",
+      "line": 97,
+      "priority": "P3",
+      "category": "Determinism",
+      "disposition": "defer",
+      "rationale": "`DefaultHasher` instability matters if persisted embeddings cross toolchain versions. Current implementation appears runtime-only; risk is future-facing but valid to track."
+    },
+    {
+      "id": 2818756128,
+      "user": "greptile-apps[bot]",
+      "file": "markymark-mcp/src/runtime_engine.rs",
+      "line": 791,
+      "priority": "P2",
+      "category": "Unicode/Length Semantics",
+      "disposition": "actionable",
+      "rationale": "Implementation truncates by codepoints, while test asserts byte length (`len() <= 200`). This is inconsistent and can fail with multibyte content.",
+      "recommended_action": "Pick one contract: byte cap or codepoint cap; then align implementation and tests/docs to that contract."
+    }
+  ],
+  "non_issue_comments": [
+    {
+      "type": "review_summary",
+      "user": "copilot-pull-request-reviewer[bot]",
+      "id": 3815924754
+    },
+    {
+      "type": "review_summary",
+      "user": "greptile-apps[bot]",
+      "id": 3815925315
+    },
+    {
+      "type": "review_summary",
+      "user": "greptile-apps[bot]",
+      "id": 3916734017
+    },
+    {
+      "type": "duplicate_comment",
+      "user": "greptile-apps[bot]",
+      "id": 3916734762,
+      "note": "Duplicates truncate_preview concern already captured as review comment 2818756128"
+    },
+    {
+      "type": "automation_notice",
+      "user": "coderabbitai[bot]",
+      "id": 3916886275
+    },
+    {
+      "type": "checkpoint_update",
+      "user": "sethyanow",
+      "id": 3916887471
+    }
+  ],
+  "next_actions": [
+    "Done: fix P1 link_graph pointer invalidation before merge.",
+    "Done: addressed semantic overfetch in markymark-index semantic search path.",
+    "Done: resolved preview truncation contract mismatch (bytes vs codepoints) and updated tests.",
+    "Done: added token-count read-failure observability to realm stats."
+  ]
+}

@@ -1007,6 +1007,64 @@ fn semantic_search_returns_ranked_matches() {
     }
 }
 
+#[cfg(feature = "semantic-search")]
+#[test]
+fn semantic_search_preview_stays_within_200_bytes_for_unicode() {
+    let ws = TempWorkspace::new("semantic-search-unicode-preview");
+    let unicode_doc = ws.root().join("unicode.md");
+    let long_emoji = "😀".repeat(260);
+    fs::write(&unicode_doc, format!("# Unicode\n\n{}\n", long_emoji))
+        .expect("unicode markdown should exist");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let result = engine.execute(CoreOperation::SemanticSearch {
+        query: "unicode".to_string(),
+        realm: None,
+        top_k: 1,
+        min_score: 0.0,
+    });
+
+    match result {
+        CoreOperationResult::SemanticMatches(matches) => {
+            assert!(!matches.is_empty(), "expected at least one semantic match");
+            assert!(
+                matches[0].section_preview.len() <= 200,
+                "preview should be truncated to <= 200 bytes"
+            );
+        }
+        other => panic!("expected SemanticMatches result, got: {other:?}"),
+    }
+}
+
+#[test]
+fn realm_stats_token_count_is_none_when_source_files_are_missing() {
+    let ws = TempWorkspace::new("realm-stats-missing-source");
+    let doc = ws.root().join("missing-after-index.md");
+    fs::write(&doc, "# Title\n\nsome content\n").expect("doc should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    fs::remove_file(&doc).expect("doc should be removable after indexing");
+
+    let result = engine.execute(CoreOperation::RealmStats {
+        realm: "default".to_string(),
+        check_duplicates: false,
+        include_token_counts: true,
+    });
+
+    match result {
+        CoreOperationResult::RealmStats { total_tokens, .. } => {
+            assert!(
+                total_tokens.is_none(),
+                "token count should be omitted when indexed files are unreadable"
+            );
+        }
+        other => panic!("expected RealmStats result, got: {other:?}"),
+    }
+}
+
 // --- export-index integration tests ---
 
 #[test]

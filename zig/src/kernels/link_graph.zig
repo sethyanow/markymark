@@ -67,6 +67,11 @@ pub const LinkGraph = struct {
             }) catch return -3;
         }
 
+        // Reserve potential target insertions before capturing `node` pointer.
+        // This prevents hashmap growth from invalidating the pointer mid-loop.
+        const target_cap: u32 = @intCast(targets.len);
+        self.nodes.ensureUnusedCapacity(self.allocator, target_cap) catch return -3;
+
         const node = self.nodes.getPtr(doc_id).?;
 
         // Add outbound edges
@@ -653,6 +658,23 @@ test "large graph performance" {
     const rc = graph.findOrphans(&out, 8);
     try std.testing.expectEqual(@as(i32, 1), rc);
     try std.testing.expectEqual(@as(u32, 0), out[0]);
+}
+
+test "addDocument preserves source node when inserting many new targets" {
+    var graph = LinkGraph.init(std.testing.allocator);
+    defer graph.deinit();
+
+    var targets: [256]u32 = undefined;
+    for (0..targets.len) |i| {
+        targets[i] = @as(u32, @intCast(i + 2));
+    }
+
+    try std.testing.expectEqual(@as(i32, 0), graph.addDocument(1, targets[0..]));
+    const node = graph.nodes.getPtr(1).?;
+    try std.testing.expectEqual(targets.len, node.outbound.items.len);
+    for (targets, 0..) |target, idx| {
+        try std.testing.expectEqual(target, node.outbound.items[idx]);
+    }
 }
 
 test "empty graph pagerank returns 0" {
