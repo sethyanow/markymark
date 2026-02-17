@@ -426,7 +426,10 @@ export fn marky_multi_scan(
         const fr = fence_ranges orelse return -1;
         const src = fr[0..fence_count];
 
-        if (fence_count > fence_buf.len) return -1;
+        if (fence_count > fence_buf.len) {
+            w.* = 0;
+            return -2; // Internal buffer too small
+        }
 
         std.mem.copyForwards(FenceRange, fence_buf[0..fence_count], src);
         std.mem.sort(FenceRange, fence_buf[0..fence_count], {}, struct {
@@ -1389,4 +1392,20 @@ test "marky_multi_scan buffer overflow returns -2 partial" {
     const rc = marky_multi_scan(text.ptr, text.len, null, 0, &out, 2, &written);
     try std.testing.expectEqual(@as(i32, -2), rc);
     try std.testing.expectEqual(@as(u32, 2), written);
+}
+
+test "marky_multi_scan fence_count exceeds internal buffer returns -2" {
+    // 257 fence ranges exceeds the 256-entry internal stack buffer.
+    // Should return -2 (buffer too small), not -1 (invalid input).
+    const text = "hello";
+    var dummy_fences: [257]FenceRange = undefined;
+    for (&dummy_fences, 0..) |*f, i| {
+        f.* = FenceRange{ .start = @intCast(i * 2), .end = @intCast(i * 2 + 1) };
+    }
+    var out: [1]ScanResult = undefined;
+    var written: u32 = 0;
+
+    const rc = marky_multi_scan(text.ptr, text.len, &dummy_fences, 257, &out, 1, &written);
+    try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqual(@as(u32, 0), written);
 }
