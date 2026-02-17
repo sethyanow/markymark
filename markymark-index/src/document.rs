@@ -218,9 +218,13 @@ impl DocumentIndex {
         let arena_ptr: *const DocumentArena = &*arena_guard as *const DocumentArena;
         drop(arena_guard);
 
-        // SAFETY: `arena_ptr` points to the `DocumentArena` stored inside the
-        // owner mutex. The owner outlives all dependent borrows and we never
-        // mutate or move the arena after construction.
+        // SAFETY:
+        // 1) `DocumentOwner.arena` is initialized exactly once before
+        //    `DocumentIndexCell::try_new` and remains owned by the cell owner.
+        // 2) The `DocumentArena` is never moved and is treated as immutable
+        //    after construction; dependent values only borrow from it.
+        // 3) `arena_ref` is only used during `from_ast` construction while
+        //    building the dependent. It must not be used after construction.
         unsafe { (*arena_ptr).bump() }
     }
 

@@ -67,11 +67,12 @@ impl Ast {
         *self.cell.into_owner().arena
     }
 
-    /// Raw pointer to the owned [`DocumentArena`] for extraction when the
-    /// borrow checker prevents using [`into_arena`](Self::into_arena).
+    /// Raw pointer accessor for the owned [`DocumentArena`].
     ///
-    /// Used by `DocumentIndex::from_ast` to borrow and then take ownership
-    /// of the arena in a single pass via `ptr::read` + `mem::forget`.
+    /// This is a low-level, unsafe-oriented escape hatch retained for legacy
+    /// or advanced integrations. For normal ownership transfer, prefer
+    /// [`into_arena`](Self::into_arena) or pass the `Ast` directly to
+    /// `DocumentIndex::from_ast`.
     #[inline]
     pub fn doc_arena_ptr(&self) -> *const DocumentArena {
         &*self.cell.borrow_owner().arena as *const DocumentArena
