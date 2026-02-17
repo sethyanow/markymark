@@ -55,7 +55,8 @@
       "markymark-mcp/src/dto.rs (MCP data transfer objects)",
       "markymark-parser/src/structured/ (multi-format parsers: json, yaml, toml, jsonl, flat)",
       "markymark-index/src/structured_document.rs (StructuredDocumentIndex: key-path lookup, outline)",
-      "markymark-index/src/resolution.rs (ResolvedTarget::KeyPath for structured doc cross-references)"
+      "markymark-index/src/resolution.rs (ResolvedTarget::KeyPath for structured doc cross-references)",
+      ".claude-harness/sessions/{session-id}/context.json (compiled session memory context for fast resume)"
     ],
     "api": [
       "markymark-parser/src/lib.rs",
@@ -129,6 +130,6 @@
     ]
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-17T16:26:59Z",
+  "lastUpdated": "2026-02-17T17:08:16Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

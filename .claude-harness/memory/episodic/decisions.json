@@ -795,7 +795,19 @@
         "Place all graph exports directly in c_adapter.zig"
       ],
       "impact": "zig/src/kernels/link_graph.zig, zig/src/exports_graph.zig, zig/src/c_adapter.zig"
+    },
+    {
+      "id": "dec-062",
+      "timestamp": "2026-02-17T17:08:16Z",
+      "feature": "session-checkpoint",
+      "decision": "Run checkpoint as memory-only persistence when no active feature is queued",
+      "rationale": "Preserves resumable progress and memory continuity without introducing unrelated source-code changes.",
+      "alternatives": [
+        "Skip checkpoint persistence entirely",
+        "Start a new feature implementation before persisting session memory"
+      ],
+      "impact": ".claude-harness/claude-progress.json, .claude-harness/sessions/20260216-215715/working-context.json, memory layer metadata"
     }
   ],
-  "lastUpdated": "2026-02-17T16:26:59Z"
+  "lastUpdated": "2026-02-17T17:08:16Z"
 }
