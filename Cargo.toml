@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.80"
 license = "MIT OR Apache-2.0"
@@ -47,6 +47,7 @@ petgraph = "0.8"
 # Memory allocation
 bumpalo = { version = "3.19.1", features = ["collections", "boxed", "allocator-api2"] }
 hashbrown = "0.16.1"
+self_cell = "1.2.2"
 
 # Testing
 insta = { version = "1.42", features = ["yaml"] }

@@ -2,17 +2,23 @@
   "lastUpdated": "2026-02-17T04:45:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Merged origin/main (PR #21 self_cell refactor + incremental parsing) into feature/mark-brza. Fixed merge artifacts (duplicate YAML key, CI path filter). Restored DocumentIndex::from_scan() on self_cell architecture (marky-b6v).",
+    "summary": "Merged origin/main (PR #21 self_cell refactor + incremental parsing) into feature/mark-brza. Fixed merge artifacts. Restored DocumentIndex::from_scan() on self_cell architecture (marky-b6v). Completed marky-3l6: implemented remaining PR #21 parser/LSP follow-ups (CRLF incremental regression test + incremental range clamp observability).",
     "completedTasks": [
       "Merge origin/main into feature/mark-brza (self_cell, incremental parsing, Miri CI)",
       "Fixed duplicate alignment: YAML key in ci.yml (merge artifact)",
       "Added markymark-index/** to zig-kernels CI path filter",
       "marky-b6v: Restored from_scan() using DocumentOwner/DocumentIndexCell self_cell pattern",
       "All 16 scan_tests pass including 4 bug-fix regression tests",
-      "Quality gates: all tests pass, clippy clean, fmt clean, audit clean"
+      "Quality gates: all tests pass, clippy clean, fmt clean, audit clean",
+      "marky-3l6: Added test_incremental_crlf_line_ending_edit_matches_full in markymark-lsp/tests/state_tests.rs",
+      "marky-3l6: Added incremental_byte_bounds/position_was_clamped helper path in markymark-lsp/src/state.rs",
+      "marky-3l6: Added unit test for clamped-range detection in state.rs",
+      "marky-3l6: Posted PR #21 follow-up comment and closed bead",
+      "Created new refactor bead marky-m8b for state.rs module split follow-up"
     ],
     "blockers": [],
     "nextSteps": [
+      "Resolve merge conflicts (3 harness files)",
       "marky-3w5 (P1): Refactor document.rs — 1203 lines, past 1000-line hard stop",
       "marky-ktt (P1): Audit unsafe transmute in DocumentIndex from marky-5yt migration",
       "marky-8s3.1: Code fence exclusion map Zig kernel",
@@ -23,7 +29,11 @@
     "Merge commit 6db8852: integrated self_cell + incremental parsing from main",
     "ce90cdc: feat(index): restore from_scan() on self_cell architecture (marky-b6v)",
     "from_scan now uses self_cell closure pattern — no more &'static lifetime hacks",
-    "CI has zig-kernels job + Miri job + markymark-index/** path filter"
+    "CI has zig-kernels job + Miri job + markymark-index/** path filter",
+    "marky-3l6 CLOSED: triaged comments converted to concrete code/test updates",
+    "CRLF incremental edit parity now regression-tested in markymark-lsp",
+    "Incremental edit clamping now emits warning telemetry for observability",
+    "Follow-up refactor task opened: marky-m8b for state.rs submodule split"
   ],
   "knownIssues": [
     "marky-3w5 (P1): document.rs at 1203 lines — needs submodule split",

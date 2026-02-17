@@ -689,6 +689,8 @@
     },
     {
       "id": "dec-053",
+    {
+      "id": "dec-053",
       "timestamp": "2026-02-17T04:44:00Z",
       "feature": "marky-b6v",
       "decision": "Restore from_scan() on self_cell architecture using identical DocumentOwner/DocumentIndexCell pattern as from_ast",
@@ -697,7 +699,43 @@
         "Keep old &static pattern in from_scan only (inconsistent, unsafe)",
         "Defer from_scan restoration until document.rs refactor (blocks BRZA work)"
       ],
-      "impact": "markymark-index/src/document.rs \u2014 from_scan, byte_offset helpers, 16 scan_tests"
+      "impact": "markymark-index/src/document.rs — from_scan, byte_offset helpers, 16 scan_tests"
+    },
+    {
+      "id": "dec-054",
+      "timestamp": "2026-02-16T22:48:25Z",
+      "feature": "marky-3l6",
+      "decision": "Centralize incremental edit range clamping in helper and emit warning telemetry when clamping occurs",
+      "rationale": "Out-of-range LSP edit positions should not crash apply_document_changes, but silent clamping hides buggy clients. A shared helper keeps range logic consistent and warning output adds observability.",
+      "alternatives": [
+        "Keep inline .min/.max clamping without warning output",
+        "Reject out-of-range edits and propagate errors through LSP path"
+      ],
+      "impact": "markymark-lsp/src/state.rs incremental edit path and unit tests"
+    },
+    {
+      "id": "dec-055",
+      "timestamp": "2026-02-16T22:48:25Z",
+      "feature": "feature-001",
+      "decision": "Track oversized ServerState module as explicit refactor follow-up (marky-m8b)",
+      "rationale": "state.rs exceeds the 500-line threshold and mixes concerns. Capturing the refactor as a dedicated bead preserves momentum while keeping current bugfix/review scope tight.",
+      "alternatives": [
+        "Refactor state.rs immediately within the review-follow-up task",
+        "Leave the oversized module untracked for later"
+      ],
+      "impact": "beads task marky-m8b and planned markymark-lsp/src/state/* module split"
+    },
+    {
+      "id": "dec-056",
+      "timestamp": "2026-02-16T22:48:25Z",
+      "feature": "marky-3l6",
+      "decision": "Add CRLF incremental edit parity regression test in markymark-lsp state tests",
+      "rationale": "Review triage identified CRLF coverage as a valid gap. A parity test that compares incremental parsing output against full parse output prevents regressions in CRLF line-ending handling.",
+      "alternatives": [
+        "Rely on existing LF-only incremental tests",
+        "Defer CRLF coverage to a future parser stress-test task"
+      ],
+      "impact": "markymark-lsp/tests/state_tests.rs"
     }
   ],
   "lastUpdated": "2026-02-17T04:44:00Z"

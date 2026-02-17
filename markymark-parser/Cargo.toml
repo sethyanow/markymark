@@ -10,7 +10,7 @@ keywords = ["markdown", "parser", "tree-sitter", "obsidian"]
 categories = ["parsing", "text-processing"]
 
 [dependencies]
-markymark-core = { version = "0.2.0", path = "../markymark-core" }
+markymark-core = { version = "0.3.0", path = "../markymark-core" }
 tree-sitter = { workspace = true }
 tree-sitter-md = { workspace = true }
 tree-sitter-json = { workspace = true }
@@ -22,7 +22,7 @@ json5 = { workspace = true }
 thiserror = { workspace = true }
 regex = { workspace = true }
 bumpalo = { workspace = true }
-self_cell = "1.2.2"
+self_cell = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
