@@ -99,6 +99,21 @@ impl DocumentIndex {
     /// Extracts owned intermediate records, moves the parser arena into this
     /// index, and allocates the final index entries in one arena-backed pass.
     pub fn from_ast(ast: Ast) -> Self {
+        Self::from_ast_with_wiki_links_opt(ast, None)
+    }
+
+    /// Build a document index from a parsed AST while overriding wiki-links.
+    ///
+    /// This is used by incremental reindexing paths that already computed
+    /// a selective wiki-link merge and want to avoid full re-extraction.
+    pub fn from_ast_with_wiki_links(ast: Ast, wiki_links: Vec<WikiLinkOwned>) -> Self {
+        Self::from_ast_with_wiki_links_opt(ast, Some(wiki_links))
+    }
+
+    fn from_ast_with_wiki_links_opt(
+        ast: Ast,
+        wiki_links_override: Option<Vec<WikiLinkOwned>>,
+    ) -> Self {
         #[derive(Debug)]
         struct HeadingOwned {
             text: String,
@@ -108,13 +123,6 @@ impl DocumentIndex {
         #[derive(Debug)]
         struct BlockOwned {
             id: String,
-            range: Range,
-        }
-        #[derive(Debug)]
-        struct WikiLinkOwned {
-            target: String,
-            alias: Option<String>,
-            heading: Option<String>,
             range: Range,
         }
         #[derive(Debug)]
@@ -156,22 +164,27 @@ impl DocumentIndex {
             });
         }
 
-        let mut wiki_links_owned = Vec::new();
-        for wl in ast.extract_wiki_links() {
-            if wl.target_page().is_none()
-                && wl.target_heading().is_none()
-                && wl.target_block_id().is_none()
-            {
-                continue;
-            }
+        let wiki_links_owned = if let Some(wiki_links_override) = wiki_links_override {
+            wiki_links_override
+        } else {
+            let mut wiki_links_owned = Vec::new();
+            for wl in ast.extract_wiki_links() {
+                if wl.target_page().is_none()
+                    && wl.target_heading().is_none()
+                    && wl.target_block_id().is_none()
+                {
+                    continue;
+                }
 
-            wiki_links_owned.push(WikiLinkOwned {
-                target: wl.target_page().unwrap_or("").to_string(),
-                alias: wl.alias().map(str::to_string),
-                heading: wl.target_heading().map(str::to_string),
-                range: wl.range(),
-            });
-        }
+                wiki_links_owned.push(WikiLinkOwned {
+                    target: wl.target_page().unwrap_or("").to_string(),
+                    alias: wl.alias().map(str::to_string),
+                    heading: wl.target_heading().map(str::to_string),
+                    range: wl.range(),
+                });
+            }
+            wiki_links_owned
+        };
 
         let mut tags_owned = Vec::new();
         for tag in ast.extract_tags() {
@@ -247,7 +260,7 @@ impl DocumentIndex {
             let outline = helpers::build_outline(arena_ref, headings);
 
             let mut wiki_links_builder = BumpVec::new_in(arena_ref);
-            for wl in wiki_links_owned {
+            for wl in &wiki_links_owned {
                 wiki_links_builder.push(WikiLinkEntry {
                     target: arena_alloc_str(arena_ref, &wl.target),
                     alias: wl.alias.as_deref().map(|a| arena_alloc_str(arena_ref, a)),

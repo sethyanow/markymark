@@ -291,3 +291,21 @@ When auditing a doc corpus with markymark:
   - `cargo fmt --all`
   - `cargo test -p markymark-mcp --test resource_handler_tests`
   - `cargo test -p markymark-mcp --test prompt_handler_tests`
+
+### 2026-02-17: marky-77x true wiki-link selective merge checkpoint
+
+- Added `WikiLinkOwned` owned payload type and `DocumentIndex::from_ast_with_wiki_links(...)` to allow incremental wiki-link merge injection without changing heading/TOC/outline rebuild behavior.
+- Replaced LSP incremental scaffolding no-op with real merge flow:
+  - track old wiki-link payloads from prior index
+  - extract new wiki-links from updated AST
+  - merge by preserving unaffected old links and replacing affected neighborhood links (range intersection + after-edit + neighbor window checks)
+  - avoid dead `_wiki_links_need_update` computation and wire decision into constructor path.
+- Added coverage in `markymark-lsp/tests/state_tests.rs`:
+  - overlapping edit parity test for incremental wiki-link updates
+  - ignored benchmark-style performance test printing totals for incremental vs full rebuild.
+- Verification run:
+  - `cargo fmt --all --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `cargo test -p markymark-lsp --test state_tests benchmark_incremental_wiki_link_edit_faster_than_full_rebuild -- --ignored --nocapture`
+- Observed benchmark output (8 iterations): incremental `10.531780375s` vs full `10.598508041s`.

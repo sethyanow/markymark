@@ -7,7 +7,7 @@ use markymark_core::{DocumentUri, Position, Range};
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link};
 use markymark_index::{
     slugify, AnyDocumentIndex, DocumentIndex, HeadingEntry, MarkdownLinkEntry, RealmIndex,
-    StructuredDocumentIndex, WikiLinkEntry, XmlTagEntry,
+    StructuredDocumentIndex, WikiLinkEntry, WikiLinkOwned, XmlTagEntry,
 };
 use markymark_parser::structured::parse_structured;
 use markymark_parser::{byte_to_point, InputEdit, MarkdownTree, Parser};
@@ -265,31 +265,108 @@ impl ServerState {
         self.build_markdown_index_with_old_tree(text, None, None, &[])
     }
 
-    fn wiki_links_need_update(old_wiki_ranges: &[Range], pending_edits: &[InputEdit]) -> bool {
-        old_wiki_ranges.iter().any(|range| {
-            pending_edits.iter().any(|edit| {
-                let edit_start_line = edit.start_position.row as u32;
-                let edit_start_col = edit.start_position.column as u32;
-                let edit_end_line = edit.old_end_position.row as u32;
-                let edit_end_col = edit.old_end_position.column as u32;
+    fn pos_key(line: u32, character: u32) -> u64 {
+        ((line as u64) << 32) | character as u64
+    }
 
-                if range.end.line < edit_start_line || range.start.line > edit_end_line {
-                    return false;
-                }
+    fn range_intersects_edit(range: Range, edit: &InputEdit) -> bool {
+        let range_start = (range.start.line, range.start.character);
+        let range_end = (range.end.line, range.end.character);
+        let edit_start = (
+            edit.start_position.row as u32,
+            edit.start_position.column as u32,
+        );
+        let edit_end = (
+            edit.old_end_position.row as u32,
+            edit.old_end_position.column as u32,
+        );
 
-                if edit_start_line == edit_end_line && range.start.line == edit_start_line {
-                    let link_start = range.start.character;
-                    let link_end = range.end.character;
-                    return link_start < edit_end_col && link_end > edit_start_col;
-                }
+        range_start < edit_end && range_end > edit_start
+    }
 
-                true
-            })
+    fn range_is_after_edit_start(range: Range, edit: &InputEdit) -> bool {
+        let range_end = (range.end.line, range.end.character);
+        let edit_start = (
+            edit.start_position.row as u32,
+            edit.start_position.column as u32,
+        );
+        range_end > edit_start
+    }
+
+    fn range_within_neighbor_window(range: Range, edit: &InputEdit, window_chars: u32) -> bool {
+        let range_start_key = Self::pos_key(range.start.line, range.start.character);
+        let range_end_key = Self::pos_key(range.end.line, range.end.character);
+        let edit_start_key = Self::pos_key(
+            edit.start_position.row as u32,
+            edit.start_position.column as u32,
+        );
+        let edit_end_key = Self::pos_key(
+            edit.old_end_position.row as u32,
+            edit.old_end_position.column as u32,
+        );
+
+        range_start_key <= edit_end_key.saturating_add(window_chars as u64)
+            && range_end_key.saturating_add(window_chars as u64) >= edit_start_key
+    }
+
+    fn wiki_link_affected_by_edits(range: Range, pending_edits: &[InputEdit]) -> bool {
+        pending_edits.iter().any(|edit| {
+            Self::range_intersects_edit(range, edit)
+                || Self::range_is_after_edit_start(range, edit)
+                || Self::range_within_neighbor_window(range, edit, 100)
         })
     }
 
+    fn wiki_links_need_update(
+        old_wiki_links: &[WikiLinkOwned],
+        pending_edits: &[InputEdit],
+    ) -> bool {
+        old_wiki_links
+            .iter()
+            .any(|link| Self::wiki_link_affected_by_edits(link.range, pending_edits))
+    }
+
+    fn extract_wiki_links_owned(ast: &markymark_parser::Ast) -> Vec<WikiLinkOwned> {
+        ast.extract_wiki_links()
+            .into_iter()
+            .filter(|wl| {
+                wl.target_page().is_some()
+                    || wl.target_heading().is_some()
+                    || wl.target_block_id().is_some()
+            })
+            .map(|wl| WikiLinkOwned {
+                target: wl.target_page().unwrap_or("").to_string(),
+                alias: wl.alias().map(str::to_string),
+                heading: wl.target_heading().map(str::to_string),
+                range: wl.range(),
+            })
+            .collect()
+    }
+
+    fn merge_incremental_wiki_links(
+        old_wiki_links: &[WikiLinkOwned],
+        new_wiki_links: &[WikiLinkOwned],
+        pending_edits: &[InputEdit],
+    ) -> Vec<WikiLinkOwned> {
+        let mut merged = Vec::new();
+        for old in old_wiki_links {
+            if !Self::wiki_link_affected_by_edits(old.range, pending_edits) {
+                merged.push(old.clone());
+            }
+        }
+
+        for new_link in new_wiki_links {
+            if Self::wiki_link_affected_by_edits(new_link.range, pending_edits) {
+                merged.push(new_link.clone());
+            }
+        }
+
+        merged.sort_by_key(|wl| (wl.range.start.line, wl.range.start.character));
+        merged
+    }
+
     fn build_markdown_index_incremental(
-        old_wiki_ranges: Option<&[Range]>,
+        old_wiki_links: Option<&[WikiLinkOwned]>,
         ast: markymark_parser::Ast,
         pending_edits: &[InputEdit],
     ) -> DocumentIndex {
@@ -297,10 +374,22 @@ impl ServerState {
             return DocumentIndex::from_ast(ast);
         }
 
-        let _wiki_links_need_update = old_wiki_ranges
-            .map(|ranges| Self::wiki_links_need_update(ranges, pending_edits))
-            .unwrap_or(true);
-        DocumentIndex::from_ast(ast)
+        let Some(old_wiki_links) = old_wiki_links else {
+            return DocumentIndex::from_ast(ast);
+        };
+        if old_wiki_links.is_empty() {
+            let new_wiki_links = Self::extract_wiki_links_owned(&ast);
+            return DocumentIndex::from_ast_with_wiki_links(ast, new_wiki_links);
+        }
+
+        if !Self::wiki_links_need_update(old_wiki_links, pending_edits) {
+            return DocumentIndex::from_ast_with_wiki_links(ast, old_wiki_links.to_vec());
+        }
+
+        let new_wiki_links = Self::extract_wiki_links_owned(&ast);
+        let merged =
+            Self::merge_incremental_wiki_links(old_wiki_links, &new_wiki_links, pending_edits);
+        DocumentIndex::from_ast_with_wiki_links(ast, merged)
     }
 
     /// Parse text with optional old tree reuse and build a markdown document index.
@@ -312,7 +401,7 @@ impl ServerState {
         &mut self,
         text: &str,
         old_tree: Option<&MarkdownTree>,
-        old_wiki_ranges: Option<&[Range]>,
+        old_wiki_links: Option<&[WikiLinkOwned]>,
         pending_edits: &[InputEdit],
     ) -> (DocumentIndex, Option<MarkdownTree>) {
         let mut ast = self
@@ -320,7 +409,7 @@ impl ServerState {
             .parse_with_old_tree(text, old_tree)
             .expect("failed to parse document");
         let md_tree = ast.take_md_tree();
-        let index = Self::build_markdown_index_incremental(old_wiki_ranges, ast, pending_edits);
+        let index = Self::build_markdown_index_incremental(old_wiki_links, ast, pending_edits);
         (index, md_tree)
     }
 
@@ -397,11 +486,16 @@ impl ServerState {
 
         // Take the old tree out (if any) for incremental parsing
         let mut old_tree = self.md_trees.remove(uri.as_str());
-        let old_wiki_ranges = self.realm.get_document(uri).map(|index| {
+        let old_wiki_links = self.realm.get_document(uri).map(|index| {
             index
                 .wiki_links()
                 .iter()
-                .map(|entry| entry.range)
+                .map(|entry| WikiLinkOwned {
+                    target: entry.target.to_string(),
+                    alias: entry.alias.map(str::to_string),
+                    heading: entry.heading.map(str::to_string),
+                    range: entry.range,
+                })
                 .collect::<Vec<_>>()
         });
 
@@ -507,7 +601,7 @@ impl ServerState {
                 let (index, md_tree) = self.build_markdown_index_with_old_tree(
                     &final_text,
                     old_tree.as_ref(),
-                    old_wiki_ranges.as_deref(),
+                    old_wiki_links.as_deref(),
                     &pending_edits,
                 );
                 let uri_str = uri.as_str().to_string();
