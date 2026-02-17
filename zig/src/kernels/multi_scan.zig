@@ -1,5 +1,9 @@
 const std = @import("std");
 const ref = @import("../reference/multi_scan_ref.zig");
+const heading_kernel = @import("heading_scan.zig");
+const link_kernel = @import("link_scan.zig");
+const tag_kernel = @import("tag_scan.zig");
+const block_kernel = @import("block_scan.zig");
 
 pub const ScanResult = ref.ScanResult;
 pub const ScanType = ref.ScanType;
@@ -61,49 +65,49 @@ pub fn scan_multi(
         // Slow path: process byte-by-byte through automaton for this chunk
         const chunk_end = @min(pos + chunk_size, len);
         while (pos < chunk_end) {
-            state = ref.automaton.step(state, buf[pos]);
-            const output = ref.automaton.matches(state);
-
-            if (output != 0) {
-                inline for (0..NUM_SCAN_TYPES) |t| {
-                    if (output & (@as(u8, 1) << t) != 0) {
-                        if (written >= cap) return written;
-                        out[written] = ScanResult{
-                            .offset = pos,
-                            .length = 0,
-                            .scan_type = @intCast(t),
-                            .extra = 0,
-                        };
-                        written += 1;
-                    }
-                }
-            }
+            written = emitStep(buf, pos, &state, out, written, cap);
+            if (written >= cap) return written;
             pos += 1;
         }
     }
 
     // Scalar tail: remaining bytes that don't fill a full vector
     while (pos < len) {
-        state = ref.automaton.step(state, buf[pos]);
-        const output = ref.automaton.matches(state);
-
-        if (output != 0) {
-            inline for (0..NUM_SCAN_TYPES) |t| {
-                if (output & (@as(u8, 1) << t) != 0) {
-                    if (written >= cap) return written;
-                    out[written] = ScanResult{
-                        .offset = pos,
-                        .length = 0,
-                        .scan_type = @intCast(t),
-                        .extra = 0,
-                    };
-                    written += 1;
-                }
-            }
-        }
+        written = emitStep(buf, pos, &state, out, written, cap);
+        if (written >= cap) return written;
         pos += 1;
     }
 
+    return written;
+}
+
+/// Advance automaton by one byte and emit any matching ScanResults.
+inline fn emitStep(
+    buf: []const u8,
+    pos: u32,
+    state: *u8,
+    out: [*]ScanResult,
+    written_in: u32,
+    cap: u32,
+) u32 {
+    var written = written_in;
+    state.* = ref.automaton.step(state.*, buf[pos]);
+    const output = ref.automaton.matches(state.*);
+
+    if (output != 0) {
+        inline for (0..NUM_SCAN_TYPES) |t| {
+            if (output & (@as(u8, 1) << t) != 0) {
+                if (written >= cap) return written;
+                out[written] = ScanResult{
+                    .offset = pos,
+                    .length = 0,
+                    .scan_type = @intCast(t),
+                    .extra = 0,
+                };
+                written += 1;
+            }
+        }
+    }
     return written;
 }
 
@@ -322,4 +326,79 @@ test "bench_simd_vs_scalar" {
     var scalar_out: [256]ScanResult = undefined;
     const scalar_count = ref.scan_multi_scalar(markdown.ptr, len, &scalar_out, 256);
     try testing.expectEqual(scalar_count, simd_count);
+}
+
+test "bench_multi_vs_four_kernels" {
+    // Benchmark unified multi_scan vs calling 4 separate SIMD kernels.
+    // This is the primary value proposition: one pass < four passes.
+    const line = "This is a regular line of markdown text that contains no headings at all.\n";
+    const heading = "## Section Title\n";
+    const link_line = "Check out [this link](https://example.com) for details.\n";
+    const wiki_line = "See also [[related page]] for more.\n";
+    const tag_line = "Some text #tag1 #tag2 and more.\n";
+    const block_line = "A paragraph ^block-ref here.\n";
+
+    comptime var markdown: []const u8 = "";
+    comptime {
+        var i = 0;
+        while (i < 143) : (i += 1) {
+            if (i % 11 == 0) {
+                markdown = markdown ++ heading;
+            } else if (i % 13 == 0) {
+                markdown = markdown ++ link_line;
+            } else if (i % 17 == 0) {
+                markdown = markdown ++ wiki_line;
+            } else if (i % 19 == 0) {
+                markdown = markdown ++ tag_line;
+            } else if (i % 29 == 0) {
+                markdown = markdown ++ block_line;
+            } else {
+                markdown = markdown ++ line;
+            }
+        }
+    }
+    const len: u32 = @intCast(markdown.len);
+
+    // Buffers
+    var multi_out: [256]ScanResult = undefined;
+    var head_out: [64]heading_kernel.HeadingScan = undefined;
+    var link_out: [64]link_kernel.LinkScan = undefined;
+    var tag_out: [64]tag_kernel.TagScan = undefined;
+    var block_out: [64]block_kernel.BlockIdScan = undefined;
+
+    // Warm up both paths
+    _ = scan_multi(markdown.ptr, len, &multi_out, 256);
+    _ = heading_kernel.scan_headings(markdown.ptr, len, &head_out, 64);
+    _ = link_kernel.scan_links(markdown.ptr, len, &link_out, 64);
+    _ = tag_kernel.scan_tags(markdown.ptr, len, &tag_out, 64);
+    _ = block_kernel.scan_block_ids(markdown.ptr, len, &block_out, 64);
+
+    const iterations: u32 = 1000;
+    var timer = std.time.Timer.start() catch return;
+
+    // Benchmark: unified multi_scan
+    timer.reset();
+    var i: u32 = 0;
+    while (i < iterations) : (i += 1) {
+        _ = scan_multi(markdown.ptr, len, &multi_out, 256);
+    }
+    const multi_ns = timer.read();
+
+    // Benchmark: 4 separate kernel calls
+    timer.reset();
+    i = 0;
+    while (i < iterations) : (i += 1) {
+        _ = heading_kernel.scan_headings(markdown.ptr, len, &head_out, 64);
+        _ = link_kernel.scan_links(markdown.ptr, len, &link_out, 64);
+        _ = tag_kernel.scan_tags(markdown.ptr, len, &tag_out, 64);
+        _ = block_kernel.scan_block_ids(markdown.ptr, len, &block_out, 64);
+    }
+    const four_ns = timer.read();
+
+    std.debug.print("\n[bench] multi_scan vs 4 kernels: {d}KB markdown, {d} iterations\n", .{ len / 1024, iterations });
+    std.debug.print("[bench] multi_scan:  {d}ns total, {d}ns/iter\n", .{ multi_ns, multi_ns / iterations });
+    std.debug.print("[bench] 4 kernels:   {d}ns total, {d}ns/iter\n", .{ four_ns, four_ns / iterations });
+    if (multi_ns > 0) {
+        std.debug.print("[bench] Speedup: {d:.1}x\n", .{@as(f64, @floatFromInt(four_ns)) / @as(f64, @floatFromInt(multi_ns))});
+    }
 }
