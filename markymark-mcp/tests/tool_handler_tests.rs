@@ -47,11 +47,13 @@ impl CoreEngine for MockEngine {
                     ),
                 ])
             }
-            (_, CoreOperation::SearchSymbols { query }) => CoreOperationResult::Symbols(vec![(
-                query,
-                DocumentUri::from_file_path(Path::new("/vault/notes.md")),
-                Range::new(Position::new(0, 0), Position::new(0, 7)),
-            )]),
+            (_, CoreOperation::SearchSymbols { query, .. }) => {
+                CoreOperationResult::Symbols(vec![(
+                    query,
+                    DocumentUri::from_file_path(Path::new("/vault/notes.md")),
+                    Range::new(Position::new(0, 0), Position::new(0, 7)),
+                )])
+            }
             (_, CoreOperation::FindReferences { .. }) => CoreOperationResult::Locations(vec![(
                 DocumentUri::from_file_path(Path::new("/vault/notes.md")),
                 Range::new(Position::new(1, 0), Position::new(1, 5)),
@@ -155,7 +157,7 @@ impl CoreEngine for MockEngine {
                     },
                 }
             }
-            (_, CoreOperation::ExportIndex { uri }) => CoreOperationResult::DocumentExport {
+            (_, CoreOperation::ExportIndex { uri, .. }) => CoreOperationResult::DocumentExport {
                 uri: uri.clone(),
                 document_kind: None,
                 headings: vec![(
@@ -188,7 +190,7 @@ fn forwards_get_outline_to_core_engine() {
         mode: MockMode::Happy,
     }));
     let uri = DocumentUri::from_file_path(Path::new("/vault/notes.md"));
-    let result = mcp.get_outline(uri);
+    let result = mcp.get_outline(uri, None);
 
     match result {
         CoreOperationResult::Outline(items) => {
@@ -203,7 +205,7 @@ fn forwards_search_symbols_to_core_engine() {
     let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
         mode: MockMode::Happy,
     }));
-    let result = mcp.search_symbols("intro".to_string());
+    let result = mcp.search_symbols("intro".to_string(), None);
 
     match result {
         CoreOperationResult::Symbols(items) => {
@@ -235,6 +237,7 @@ async fn outline_tool_returns_structured_success() {
     let result = mcp
         .get_outline_tool(Parameters(OutlineRequest {
             uri: "file:///vault/notes.md".to_string(),
+            realm: None,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -253,6 +256,7 @@ async fn outline_tool_rejects_non_file_uri() {
     let result = mcp
         .get_outline_tool(Parameters(OutlineRequest {
             uri: "https://example.com/notes.md".to_string(),
+            realm: None,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -270,6 +274,7 @@ async fn search_symbols_tool_rejects_empty_query() {
     let result = mcp
         .search_symbols_tool(Parameters(SearchSymbolsRequest {
             query: "   ".to_string(),
+            realm: None,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -287,6 +292,7 @@ async fn search_symbols_tool_orders_results_deterministically() {
     let result = mcp
         .search_symbols_tool(Parameters(SearchSymbolsRequest {
             query: "anything".to_string(),
+            realm: None,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -306,6 +312,7 @@ async fn tool_errors_map_core_failures_consistently() {
     let result = mcp
         .search_symbols_tool(Parameters(SearchSymbolsRequest {
             query: "intro".to_string(),
+            realm: None,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -327,6 +334,7 @@ async fn find_references_tool_returns_structured_locations() {
             uri: "file:///vault/notes.md".to_string(),
             line: 0,
             character: 2,
+            realm: None,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -351,6 +359,7 @@ async fn find_references_tool_rejects_non_file_uri() {
             uri: "https://example.com/notes.md".to_string(),
             line: 0,
             character: 0,
+            realm: None,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -370,6 +379,7 @@ async fn find_references_tool_maps_core_error() {
             uri: "file:///vault/notes.md".to_string(),
             line: 0,
             character: 0,
+            realm: None,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -392,6 +402,7 @@ async fn rename_tool_returns_structured_workspace_edit() {
             line: 2,
             character: 3,
             new_name: "NewTitle".to_string(),
+            realm: None,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -416,6 +427,7 @@ async fn rename_tool_rejects_non_file_uri() {
             line: 0,
             character: 0,
             new_name: "Whatever".to_string(),
+            realm: None,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -436,6 +448,7 @@ async fn rename_tool_rejects_empty_name() {
             line: 0,
             character: 0,
             new_name: "   ".to_string(),
+            realm: None,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -456,6 +469,7 @@ async fn rename_tool_maps_core_error() {
             line: 0,
             character: 0,
             new_name: "NewName".to_string(),
+            realm: None,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -815,6 +829,7 @@ async fn export_index_tool_returns_structured_document_export() {
     let result = mcp
         .export_index_tool(Parameters(ExportIndexRequest {
             uri: "file:///vault/notes.md".to_string(),
+            realm: None,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -843,6 +858,7 @@ async fn export_index_tool_rejects_non_file_uri() {
     let result = mcp
         .export_index_tool(Parameters(ExportIndexRequest {
             uri: "https://example.com/notes.md".to_string(),
+            realm: None,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -860,6 +876,7 @@ async fn export_index_tool_maps_core_error() {
     let result = mcp
         .export_index_tool(Parameters(ExportIndexRequest {
             uri: "file:///vault/notes.md".to_string(),
+            realm: None,
         }))
         .await
         .expect("tool call should not return protocol error");

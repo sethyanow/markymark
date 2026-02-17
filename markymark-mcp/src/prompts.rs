@@ -117,10 +117,10 @@ impl MarkymarkMcp {
         let mut context_lines = Vec::new();
 
         // Get document structure via export-index
-        match self
-            .engine
-            .execute(CoreOperation::ExportIndex { uri: uri.clone() })
-        {
+        match self.engine.execute(CoreOperation::ExportIndex {
+            uri: uri.clone(),
+            realm: None,
+        }) {
             CoreOperationResult::DocumentExport {
                 headings,
                 wiki_links,
@@ -219,6 +219,7 @@ impl MarkymarkMcp {
         match self.engine.execute(CoreOperation::FindReferences {
             uri: uri.clone(),
             position,
+            realm: None,
         }) {
             CoreOperationResult::Locations(locations) => {
                 if locations.is_empty() {
@@ -246,10 +247,10 @@ impl MarkymarkMcp {
             headings,
             wiki_links,
             ..
-        } = self
-            .engine
-            .execute(CoreOperation::ExportIndex { uri: uri.clone() })
-        {
+        } = self.engine.execute(CoreOperation::ExportIndex {
+            uri: uri.clone(),
+            realm: None,
+        }) {
             if !headings.is_empty() {
                 context_lines.push("\nDocument headings:".to_string());
                 for (text, level, _) in &headings {

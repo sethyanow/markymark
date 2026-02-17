@@ -21,7 +21,7 @@ impl CoreEngine for MockEngine {
             CoreOperation::GetOutline { .. } => {
                 CoreOperationResult::Outline(vec!["Introduction".to_string(), "Setup".to_string()])
             }
-            CoreOperation::SearchSymbols { query } => CoreOperationResult::Symbols(vec![(
+            CoreOperation::SearchSymbols { query, .. } => CoreOperationResult::Symbols(vec![(
                 format!("{query}-match"),
                 DocumentUri::from_file_path(Path::new("/vault/notes.md")),
                 Range::new(Position::new(0, 0), Position::new(0, 10)),
@@ -36,7 +36,7 @@ impl CoreEngine for MockEngine {
                     Range::new(Position::new(3, 2), Position::new(3, 7)),
                 ),
             ]),
-            CoreOperation::ExportIndex { uri } => CoreOperationResult::DocumentExport {
+            CoreOperation::ExportIndex { uri, .. } => CoreOperationResult::DocumentExport {
                 uri,
                 document_kind: None,
                 headings: vec![

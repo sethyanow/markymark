@@ -18,7 +18,7 @@ impl CoreEngine for MockEngine {
             CoreOperation::GetOutline { .. } => {
                 CoreOperationResult::Outline(vec!["Test".to_string()])
             }
-            CoreOperation::SearchSymbols { query } => CoreOperationResult::Symbols(vec![(
+            CoreOperation::SearchSymbols { query, .. } => CoreOperationResult::Symbols(vec![(
                 format!("match-{query}"),
                 DocumentUri::from_file_path(Path::new("/vault/a.md")),
                 Range::new(Position::new(0, 0), Position::new(0, 10)),

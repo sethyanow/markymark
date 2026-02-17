@@ -235,6 +235,8 @@ pub struct ServerState {
     parser: Parser,
     /// Retained tree-sitter parse trees for incremental reuse (keyed by URI string).
     md_trees: HashMap<String, MarkdownTree>,
+    /// Pending incremental edits collected between change application and reindex.
+    pending_edits: Vec<InputEdit>,
 }
 
 impl Default for ServerState {
@@ -251,6 +253,7 @@ impl ServerState {
             realm: RealmIndex::default(),
             parser: Parser::new().expect("failed to create parser"),
             md_trees: HashMap::new(),
+            pending_edits: Vec::new(),
         }
     }
 
@@ -259,7 +262,45 @@ impl ServerState {
     /// Returns both the index and the tree-sitter parse tree. The tree is
     /// retained per-document for future incremental parsing.
     fn build_markdown_index(&mut self, text: &str) -> (DocumentIndex, Option<MarkdownTree>) {
-        self.build_markdown_index_with_old_tree(text, None)
+        self.build_markdown_index_with_old_tree(text, None, None, &[])
+    }
+
+    fn wiki_links_need_update(old_wiki_ranges: &[Range], pending_edits: &[InputEdit]) -> bool {
+        old_wiki_ranges.iter().any(|range| {
+            pending_edits.iter().any(|edit| {
+                let edit_start_line = edit.start_position.row as u32;
+                let edit_start_col = edit.start_position.column as u32;
+                let edit_end_line = edit.old_end_position.row as u32;
+                let edit_end_col = edit.old_end_position.column as u32;
+
+                if range.end.line < edit_start_line || range.start.line > edit_end_line {
+                    return false;
+                }
+
+                if edit_start_line == edit_end_line && range.start.line == edit_start_line {
+                    let link_start = range.start.character;
+                    let link_end = range.end.character;
+                    return link_start < edit_end_col && link_end > edit_start_col;
+                }
+
+                true
+            })
+        })
+    }
+
+    fn build_markdown_index_incremental(
+        old_wiki_ranges: Option<&[Range]>,
+        ast: markymark_parser::Ast,
+        pending_edits: &[InputEdit],
+    ) -> DocumentIndex {
+        if pending_edits.is_empty() {
+            return DocumentIndex::from_ast(ast);
+        }
+
+        let _wiki_links_need_update = old_wiki_ranges
+            .map(|ranges| Self::wiki_links_need_update(ranges, pending_edits))
+            .unwrap_or(true);
+        DocumentIndex::from_ast(ast)
     }
 
     /// Parse text with optional old tree reuse and build a markdown document index.
@@ -271,13 +312,15 @@ impl ServerState {
         &mut self,
         text: &str,
         old_tree: Option<&MarkdownTree>,
+        old_wiki_ranges: Option<&[Range]>,
+        pending_edits: &[InputEdit],
     ) -> (DocumentIndex, Option<MarkdownTree>) {
         let mut ast = self
             .parser
             .parse_with_old_tree(text, old_tree)
             .expect("failed to parse document");
         let md_tree = ast.take_md_tree();
-        let index = DocumentIndex::from_ast(ast);
+        let index = Self::build_markdown_index_incremental(old_wiki_ranges, ast, pending_edits);
         (index, md_tree)
     }
 
@@ -313,6 +356,7 @@ impl ServerState {
 
     /// Handle a document being changed: apply changes, re-parse, re-index.
     pub fn change_document(&mut self, uri: &DocumentUri, text: String) {
+        self.pending_edits.clear();
         self.realm.remove_document(uri);
         let kind = Self::document_kind_from_uri(uri);
         self.documents
@@ -349,8 +393,24 @@ impl ServerState {
     /// For markdown documents, incremental changes are tracked as tree-sitter
     /// `InputEdit`s so the old parse tree can be reused for O(edit_size) reparsing.
     pub fn apply_document_changes(&mut self, uri: &DocumentUri, changes: Vec<DocumentChange>) {
+        self.pending_edits.clear();
+
         // Take the old tree out (if any) for incremental parsing
         let mut old_tree = self.md_trees.remove(uri.as_str());
+        let old_wiki_ranges = self.realm.get_document(uri).map(|index| {
+            index
+                .wiki_links()
+                .iter()
+                .map(|entry| entry.range)
+                .collect::<Vec<_>>()
+        });
+
+        if changes.is_empty() {
+            if let Some(tree) = old_tree {
+                self.md_trees.insert(uri.as_str().to_string(), tree);
+            }
+            return;
+        }
 
         // Phase 1: Apply text edits and track tree-sitter InputEdits
         let final_text = {
@@ -418,15 +478,18 @@ impl ServerState {
                         let new_end_position = byte_to_point(text, new_end_byte);
 
                         // Update the old tree so tree-sitter can reuse unchanged subtrees
+                        let input_edit = InputEdit {
+                            start_byte,
+                            old_end_byte,
+                            new_end_byte,
+                            start_position,
+                            old_end_position,
+                            new_end_position,
+                        };
+                        self.pending_edits.push(input_edit);
+
                         if let Some(ref mut tree) = old_tree {
-                            tree.edit(&InputEdit {
-                                start_byte,
-                                old_end_byte,
-                                new_end_byte,
-                                start_position,
-                                old_end_position,
-                                new_end_position,
-                            });
+                            tree.edit(&input_edit);
                         }
                     }
                 }
@@ -440,8 +503,13 @@ impl ServerState {
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                let (index, md_tree) =
-                    self.build_markdown_index_with_old_tree(&final_text, old_tree.as_ref());
+                let pending_edits = self.pending_edits.clone();
+                let (index, md_tree) = self.build_markdown_index_with_old_tree(
+                    &final_text,
+                    old_tree.as_ref(),
+                    old_wiki_ranges.as_deref(),
+                    &pending_edits,
+                );
                 let uri_str = uri.as_str().to_string();
                 if let Some(tree) = md_tree {
                     self.md_trees.insert(uri_str, tree);
@@ -449,6 +517,7 @@ impl ServerState {
                     self.md_trees.remove(&uri_str);
                 }
                 self.realm.add_document(uri.clone(), index);
+                self.pending_edits.clear();
             }
             Some(kind) => {
                 if let Ok(ast) = parse_structured(&final_text, kind) {
@@ -457,6 +526,7 @@ impl ServerState {
                         StructuredDocumentIndex::from_ast(ast),
                     );
                 }
+                self.pending_edits.clear();
             }
         }
     }
@@ -466,6 +536,7 @@ impl ServerState {
         self.documents.remove(uri.as_str());
         self.md_trees.remove(uri.as_str());
         self.realm.remove_document(uri);
+        self.pending_edits.clear();
     }
 
     /// Get the stored text for a document.
@@ -497,6 +568,11 @@ impl ServerState {
     /// so tree-sitter can reuse unchanged subtrees.
     pub fn get_md_tree(&self, uri: &DocumentUri) -> Option<&MarkdownTree> {
         self.md_trees.get(uri.as_str())
+    }
+
+    /// Number of pending incremental edits awaiting reindex.
+    pub fn pending_edit_count(&self) -> usize {
+        self.pending_edits.len()
     }
 
     /// Get a reference to the realm index.

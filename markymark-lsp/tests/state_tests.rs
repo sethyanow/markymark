@@ -730,3 +730,124 @@ fn test_incremental_parse_100_sequential_edits_matches_full() {
         "100 sequential edits: headings should match"
     );
 }
+
+#[test]
+fn incremental_wiki_links_matches_full_rebuild() {
+    assert_incremental_matches_full(
+        "# Title\n\nSee [[Page]] and [[Keep]] and [[Tail]].\n",
+        DocumentChange::Incremental {
+            start_line: 2,
+            start_character: 4,
+            end_line: 2,
+            end_character: 12,
+            text: "[[Other]]".to_string(),
+        },
+        "# Title\n\nSee [[Other]] and [[Keep]] and [[Tail]].\n",
+    );
+}
+
+#[test]
+fn wiki_links_unchanged_sections_reused() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/reuse.md").unwrap();
+    state.open_document(
+        uri.clone(),
+        "# Title\n\n[[A]]\nmiddle [[B]]\n[[C]]\n".to_string(),
+    );
+
+    let before = state
+        .get_document_index(&uri)
+        .expect("index should exist")
+        .wiki_links()
+        .iter()
+        .map(|w| (w.target.to_string(), w.range))
+        .collect::<Vec<_>>();
+    assert_eq!(before.len(), 3);
+
+    state.apply_document_changes(
+        &uri,
+        vec![DocumentChange::Incremental {
+            start_line: 3,
+            start_character: 9,
+            end_line: 3,
+            end_character: 10,
+            text: "X".to_string(),
+        }],
+    );
+
+    let after = state
+        .get_document_index(&uri)
+        .expect("index should exist")
+        .wiki_links()
+        .iter()
+        .map(|w| (w.target.to_string(), w.range))
+        .collect::<Vec<_>>();
+    assert_eq!(after.len(), 3);
+
+    assert_eq!(before[0], after[0], "first link should remain unchanged");
+    assert_eq!(before[2], after[2], "third link should remain unchanged");
+    assert_eq!(after[1].0, "X", "middle link target should be updated");
+}
+
+#[test]
+fn wiki_links_neighbor_validation() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/neighbors.md").unwrap();
+    state.open_document(uri.clone(), "# T\n\n[[A]][[B]]\n".to_string());
+
+    state.apply_document_changes(
+        &uri,
+        vec![DocumentChange::Incremental {
+            start_line: 2,
+            start_character: 5,
+            end_line: 2,
+            end_character: 5,
+            text: " text ".to_string(),
+        }],
+    );
+
+    let links = state
+        .get_document_index(&uri)
+        .expect("index should exist")
+        .wiki_links()
+        .iter()
+        .map(|w| (w.target.to_string(), w.range))
+        .collect::<Vec<_>>();
+
+    assert_eq!(links.len(), 2);
+    assert_eq!(links[0].0, "A");
+    assert_eq!(links[1].0, "B");
+    assert!(links[1].1.start.character > links[0].1.end.character);
+}
+
+#[test]
+fn edge_case_empty_pending_edits() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/empty-edits.md").unwrap();
+    state.open_document(uri.clone(), "# T\n\n[[A]] [[B]] [[C]]\n".to_string());
+    assert_eq!(state.pending_edit_count(), 0);
+
+    state.apply_document_changes(&uri, vec![]);
+
+    assert_eq!(state.pending_edit_count(), 0);
+    let links = state
+        .get_document_index(&uri)
+        .expect("index should exist")
+        .wiki_links();
+    assert_eq!(links.len(), 3);
+}
+
+#[test]
+fn edge_case_all_links_in_changed_range() {
+    assert_incremental_matches_full(
+        "# T\n\n[[A]] [[B]]\n",
+        DocumentChange::Incremental {
+            start_line: 2,
+            start_character: 0,
+            end_line: 2,
+            end_character: 11,
+            text: "[[X]] [[Y]]".to_string(),
+        },
+        "# T\n\n[[X]] [[Y]]\n",
+    );
+}

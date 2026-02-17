@@ -27,6 +27,8 @@ pub enum CoreOperation {
     GetOutline {
         /// Target document.
         uri: DocumentUri,
+        /// Realm to query. Defaults to "default" when `None`.
+        realm: Option<String>,
     },
     /// Find all references to the symbol at a position.
     FindReferences {
@@ -34,6 +36,8 @@ pub enum CoreOperation {
         uri: DocumentUri,
         /// Position of the symbol.
         position: Range,
+        /// Realm to query. Defaults to "default" when `None`.
+        realm: Option<String>,
     },
     /// Rename the symbol at a position.
     Rename {
@@ -43,11 +47,15 @@ pub enum CoreOperation {
         position: Range,
         /// New name for the symbol.
         new_name: String,
+        /// Realm to query. Defaults to "default" when `None`.
+        realm: Option<String>,
     },
     /// Search for symbols matching a query.
     SearchSymbols {
         /// Search query string.
         query: String,
+        /// Realm to query. Defaults to "default" when `None`.
+        realm: Option<String>,
     },
     /// Run semantic search across indexed document sections.
     SemanticSearch {
@@ -97,6 +105,8 @@ pub enum CoreOperation {
     ExportIndex {
         /// Target document.
         uri: DocumentUri,
+        /// Realm to query. Defaults to "default" when `None`.
+        realm: Option<String>,
     },
     /// Get a dependency graph showing inter-document links.
     DependencyGraph {
