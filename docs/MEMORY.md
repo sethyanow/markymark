@@ -294,3 +294,27 @@ When auditing a doc corpus with markymark:
   - adjusted FN: 2.52%.
 - Validation command that passed:
   - `cargo test -p markymark-index --features zig-kernels -- --test-threads=1 parity`
+
+### 2026-02-17: SemanticIndex integration for BRZA epic (marky-bcv)
+
+- Added `embeddings` feature flag to `markymark-index` (`embeddings = ["zig-kernels"]`) and gated semantic exports behind it.
+- Implemented `markymark-index/src/semantic.rs`:
+  - `SemanticIndex::new`, `add_document`, `remove_document`, `search`, `detect_duplicates`,
+  - entry metadata (`SemanticEntry`) and result models (`SearchResult`, `DuplicateMatch`),
+  - stale-ID filtering strategy to handle document removal/replacement even though current Zig embedding API has no delete primitive.
+- Wired semantic support into `RealmIndex` under `embeddings`:
+  - `RealmIndex::new_with_embeddings`,
+  - automatic semantic indexing on markdown document add,
+  - `semantic_search` and `detect_semantic_duplicates` query APIs.
+- Added integration tests in `markymark-index/tests/semantic_index.rs` covering:
+  - empty search behavior,
+  - add + search relevance,
+  - no-heading fallback,
+  - provider failure propagation,
+  - duplicate detection threshold,
+  - realm-level semantic search wiring.
+- Verification commands that passed:
+  - `cargo test -p markymark-index`
+  - `cargo test -p markymark-index --features embeddings --test semantic_index`
+  - `cargo clippy -p markymark-index -- -D warnings`
+  - `cargo clippy -p markymark-index --features embeddings -- -D warnings`

@@ -15,6 +15,8 @@ pub mod document;
 pub mod graph;
 pub mod realm;
 pub mod resolution;
+#[cfg(feature = "embeddings")]
+pub mod semantic;
 pub mod structured_document;
 
 #[cfg(feature = "bench-internals")]
@@ -27,4 +29,6 @@ pub use document::*;
 pub use graph::*;
 pub use realm::*;
 pub use resolution::*;
+#[cfg(feature = "embeddings")]
+pub use semantic::*;
 pub use structured_document::*;
