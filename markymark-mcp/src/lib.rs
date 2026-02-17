@@ -33,6 +33,8 @@ mod subscriptions;
 pub use dto::*;
 pub use runtime_engine::RuntimeEngine;
 
+const SEMANTIC_SEARCH_MAX_TOP_K: u32 = 100;
+
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for MarkymarkMcp {
     fn get_info(&self) -> ServerInfo {
@@ -126,9 +128,19 @@ pub struct MarkymarkMcp {
 impl MarkymarkMcp {
     /// Construct an MCP facade from a shared core engine implementation.
     pub fn new(engine: Arc<dyn CoreEngine>) -> Self {
+        #[cfg(feature = "semantic-search")]
+        let tool_router = Self::tool_router();
+
+        #[cfg(not(feature = "semantic-search"))]
+        let tool_router = {
+            let mut router = Self::tool_router();
+            router.remove_route("semantic-search");
+            router
+        };
+
         Self {
             engine,
-            tool_router: Self::tool_router(),
+            tool_router,
             subscriptions: subscriptions::SubscriptionTracker::new(),
         }
     }
@@ -163,6 +175,22 @@ impl MarkymarkMcp {
     pub fn search_symbols(&self, query: String, realm: Option<String>) -> CoreOperationResult {
         self.engine
             .execute(CoreOperation::SearchSymbols { query, realm })
+    }
+
+    /// Request semantic search from the core engine.
+    pub fn semantic_search(
+        &self,
+        query: String,
+        realm: Option<String>,
+        top_k: u32,
+        min_score: f32,
+    ) -> CoreOperationResult {
+        self.engine.execute(CoreOperation::SemanticSearch {
+            query,
+            realm,
+            top_k,
+            min_score,
+        })
     }
 
     /// Request references at a target range.
@@ -276,6 +304,56 @@ impl MarkymarkMcp {
             }
             CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
             other => Ok(unexpected_result_error("search-symbols", &other)),
+        }
+    }
+
+    /// Search semantically similar sections across indexed documents.
+    #[tool(
+        name = "semantic-search",
+        description = "Search semantically similar sections by embedding query text."
+    )]
+    pub async fn semantic_search_tool(
+        &self,
+        params: Parameters<SemanticSearchRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let query = params.0.query.trim().to_string();
+        if query.is_empty() {
+            return Ok(tool_error(
+                "invalid_query",
+                "query must not be empty for semantic-search",
+            ));
+        }
+
+        let realm = params
+            .0
+            .realm
+            .clone()
+            .map(|name| name.trim().to_string())
+            .filter(|name| !name.is_empty());
+        let realm_name = realm.clone().unwrap_or_else(|| "default".to_string());
+        let top_k = params.0.top_k.unwrap_or(10).min(SEMANTIC_SEARCH_MAX_TOP_K);
+        let min_score = params.0.min_score.unwrap_or(0.5).clamp(0.0, 1.0);
+
+        match self.semantic_search(query.clone(), realm, top_k, min_score) {
+            CoreOperationResult::SemanticMatches(matches) => {
+                let results = matches
+                    .into_iter()
+                    .map(|m| SemanticSearchResultDto {
+                        doc_uri: m.doc_uri.as_str().to_string(),
+                        heading: m.heading,
+                        heading_level: m.heading_level,
+                        score: round_score(m.score),
+                        section_preview: m.section_preview,
+                    })
+                    .collect();
+                Ok(CallToolResult::structured(json!(SemanticSearchResponse {
+                    query,
+                    realm: realm_name,
+                    results,
+                })))
+            }
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("semantic-search", &other)),
         }
     }
 
@@ -530,7 +608,11 @@ impl MarkymarkMcp {
             ));
         }
 
-        match self.engine.execute(CoreOperation::RealmStats { realm }) {
+        match self.engine.execute(CoreOperation::RealmStats {
+            realm,
+            check_duplicates: params.0.check_duplicates,
+            include_token_counts: params.0.include_token_counts,
+        }) {
             CoreOperationResult::RealmStats {
                 name,
                 root_count,
@@ -541,6 +623,8 @@ impl MarkymarkMcp {
                 markdown_link_count,
                 structured_doc_count,
                 key_path_count,
+                duplicate_pairs,
+                total_tokens,
             } => Ok(CallToolResult::structured(json!(RealmStatsResponse {
                 name,
                 root_count,
@@ -551,6 +635,8 @@ impl MarkymarkMcp {
                 markdown_link_count,
                 structured_doc_count,
                 key_path_count,
+                duplicate_pairs,
+                total_tokens,
             }))),
             CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
             other => Ok(unexpected_result_error("realm-stats", &other)),
@@ -648,6 +734,10 @@ fn parse_file_uri(uri: &str) -> Result<DocumentUri, ToolErrorPayload> {
         code: "invalid_uri".to_string(),
         message: err.to_string(),
     })
+}
+
+fn round_score(score: f32) -> f32 {
+    (score * 10_000.0).round() / 10_000.0
 }
 
 fn tool_error(code: &str, message: impl Into<String>) -> CallToolResult {

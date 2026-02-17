@@ -74,6 +74,45 @@ pub struct SearchSymbolsResponse {
     pub symbols: Vec<SymbolMatchDto>,
 }
 
+/// Request payload for `semantic-search`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SemanticSearchRequest {
+    /// Query text to embed and search against indexed sections.
+    pub query: String,
+    /// Optional realm name. Defaults to "default".
+    pub realm: Option<String>,
+    /// Maximum number of matches to return. Defaults to 10.
+    pub top_k: Option<u32>,
+    /// Similarity floor in `[0.0, 1.0]`. Defaults to 0.5.
+    pub min_score: Option<f32>,
+}
+
+/// Single semantic-search result entry.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct SemanticSearchResultDto {
+    /// Matched document URI.
+    pub doc_uri: String,
+    /// Matched heading text.
+    pub heading: String,
+    /// Matched heading level.
+    pub heading_level: u8,
+    /// Similarity score, rounded to 4 decimals.
+    pub score: f32,
+    /// Short preview from the matched section.
+    pub section_preview: String,
+}
+
+/// Response payload for `semantic-search`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct SemanticSearchResponse {
+    /// Query text used for search.
+    pub query: String,
+    /// Realm searched.
+    pub realm: String,
+    /// Ranked semantic matches.
+    pub results: Vec<SemanticSearchResultDto>,
+}
+
 /// Request payload for `find-references`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FindReferencesRequest {
@@ -202,6 +241,12 @@ pub struct DestroyRealmResponse {
 pub struct RealmStatsRequest {
     /// Realm name (e.g. "default").
     pub realm: String,
+    /// Include duplicate document pair count in the response.
+    #[serde(default)]
+    pub check_duplicates: bool,
+    /// Include aggregate token estimation in the response.
+    #[serde(default)]
+    pub include_token_counts: bool,
 }
 
 /// Response payload for `realm-stats`.
@@ -225,6 +270,10 @@ pub struct RealmStatsResponse {
     pub structured_doc_count: usize,
     /// Total key paths across all structured documents.
     pub key_path_count: usize,
+    /// Optional duplicate pair count (when requested).
+    pub duplicate_pairs: Option<usize>,
+    /// Optional aggregate token count (when requested).
+    pub total_tokens: Option<u64>,
 }
 
 /// Request payload for `export-index`.

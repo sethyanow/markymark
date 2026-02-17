@@ -1,11 +1,11 @@
 {
   "version": 3,
-  "lastUpdated": "2026-02-16T19:23:11Z",
+  "lastUpdated": "2026-02-17T17:50:55Z",
   "metadata": {
-    "totalRules": 8,
-    "projectSpecific": 3,
+    "totalRules": 9,
+    "projectSpecific": 4,
     "general": 2,
-    "lastReflection": "2026-02-16T19:23:11Z"
+    "lastReflection": "2026-02-17T17:50:55Z"
   },
   "rules": [
     {
@@ -36,7 +36,9 @@
       "applicability": {
         "always": false,
         "features": [],
-        "filePatterns": ["**/*.rs"]
+        "filePatterns": [
+          "**/*.rs"
+        ]
       },
       "learnedAt": "2026-02-09T21:30:00Z",
       "source": "user-correction",
@@ -52,7 +54,11 @@
       "applicability": {
         "always": true,
         "features": [],
-        "filePatterns": ["**/*.rs", "**/*.ts", "**/*.py"]
+        "filePatterns": [
+          "**/*.rs",
+          "**/*.ts",
+          "**/*.py"
+        ]
       },
       "learnedAt": "2026-02-10T05:03:00Z",
       "source": "user-correction",
@@ -84,7 +90,10 @@
       "applicability": {
         "always": false,
         "features": [],
-        "filePatterns": ["Cargo.toml", "markymark-plugin/.claude-plugin/plugin.json"]
+        "filePatterns": [
+          "Cargo.toml",
+          "markymark-plugin/.claude-plugin/plugin.json"
+        ]
       },
       "learnedAt": "2026-02-13T22:45:00Z",
       "source": "user-correction"
@@ -99,7 +108,9 @@
       "applicability": {
         "always": false,
         "features": [],
-        "filePatterns": ["epstein_20250227_all_in_one.md"]
+        "filePatterns": [
+          "epstein_20250227_all_in_one.md"
+        ]
       },
       "learnedAt": "2026-02-15T03:46:14Z",
       "source": "user-correction"
@@ -117,6 +128,27 @@
         "filePatterns": []
       },
       "learnedAt": "2026-02-15T15:33:00Z",
+      "source": "user-correction"
+    },
+    {
+      "id": "rule-009",
+      "title": "Exclude generated artifacts from metric input corpora",
+      "description": "If a test/benchmark writes a report file, exclude that file from the input corpus used to compute the same metrics. This prevents self-referential drift and unstable thresholds.",
+      "scope": "project",
+      "confidence": 1.0,
+      "active": true,
+      "applicability": {
+        "always": false,
+        "features": [
+          "marky-8s3",
+          "marky-0aw"
+        ],
+        "filePatterns": [
+          "**/extraction_parity.rs",
+          "**/benchmarks/*.md"
+        ]
+      },
+      "learnedAt": "2026-02-17T17:50:55Z",
       "source": "user-correction"
     }
   ]

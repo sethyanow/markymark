@@ -2,7 +2,7 @@
   "version": 3,
   "entries": [
     {
-      "id": "suc-030",
+      "id": "suc-034",
       "timestamp": "2026-02-16T21:00:00Z",
       "feature": "marky-ams",
       "type": "implementation",
@@ -18,7 +18,7 @@
       ]
     },
     {
-      "id": "suc-031",
+      "id": "suc-035",
       "timestamp": "2026-02-16T21:10:00Z",
       "feature": "marky-0oz",
       "type": "implementation",
@@ -528,7 +528,7 @@
       ]
     },
     {
-      "id": "suc-027",
+      "id": "suc-037",
       "timestamp": "2026-02-16T18:00:00Z",
       "feature": "marky-8ri",
       "type": "implementation",
@@ -542,7 +542,7 @@
       ]
     },
     {
-      "id": "suc-028",
+      "id": "suc-038",
       "timestamp": "2026-02-16T19:37:30Z",
       "feature": "marky-9s9",
       "type": "bugfix",
@@ -556,7 +556,7 @@
       ]
     },
     {
-      "id": "suc-029",
+      "id": "suc-039",
       "timestamp": "2026-02-16T20:35:00Z",
       "feature": "marky-4aa",
       "type": "bugfix",
@@ -570,7 +570,7 @@
       ]
     },
     {
-      "id": "suc-032",
+      "id": "suc-040",
       "timestamp": "2026-02-16T22:00:00Z",
       "feature": "marky-ayb",
       "type": "ci",
@@ -582,6 +582,86 @@
         "continue-on-error: true makes job optional without separate required checks config",
         "Bash heredoc (cat > file << 'CIEOF') for GitHub Actions YAML — Edit/Write blocked by security hook",
         "Python3 yaml.safe_load for structural YAML validation in test scripts"
+      ]
+    },
+    {
+      "id": "suc-041",
+      "timestamp": "2026-02-17T07:35:00Z",
+      "feature": "marky-77m",
+      "type": "implementation",
+      "approach": "Implemented marky_multi_scan C ABI post-processing in zig/src/c_adapter.zig: raw Aho-Corasick candidates -> typed validation via reference parsers -> fence filtering -> bounded output with -2 partial semantics. Added TDD tests for fence filtering basic/all-inside/parity/overflow and unsorted fence range handling.",
+      "files": ["zig/src/c_adapter.zig"],
+      "patterns": [
+        "For multi-pattern automata with overlap outputs, parse candidates by semantic type-specific offsets (heading/tag/block/link_open at raw.offset; wiki_link at raw.offset-1)",
+        "Fence filtering should sort input ranges at API boundary before binary search to tolerate unsorted caller input",
+        "Use reference parser helpers (try_parse_heading/tag/block/link/wiki) as single source of truth for post-processing validation",
+        "Return -2 with partial written count when output cap reached instead of dropping already-validated results"
+      ]
+    },
+    {
+      "id": "suc-042",
+      "timestamp": "2026-02-17T15:18:33Z",
+      "feature": "marky-8s3.5",
+      "type": "implementation",
+      "approach": "Implemented marky_slugify via TDD: added failing ABI tests in c_adapter first (RED compile error for missing symbol), then added zig/src/kernels/slug.zig and wired export in zig/src/c_adapter.zig to GREEN.",
+      "files": ["zig/src/kernels/slug.zig", "zig/src/c_adapter.zig"],
+      "patterns": [
+        "ABI-first RED test by referencing missing export catches wiring regressions early",
+        "Single-pass pending-hyphen state machine handles collapse+trim without post-pass",
+        "FFI contract returns byte length, so UTF-8 test expectations must use bytes not character count"
+      ]
+    },
+    {
+      "id": "suc-043",
+      "timestamp": "2026-02-17T16:26:59Z",
+      "feature": "marky-8s3.3",
+      "type": "implementation",
+      "approach": "Integrated fuzzy matcher end-to-end by exposing marky_fuzzy_match from Zig C ABI, binding it in markymark-kernels scan FFI, and switching MCP runtime search-symbols ordering to score-first ranking with deterministic tie-breaking.",
+      "files": [
+        "zig/src/shared/similarity.zig",
+        "zig/src/c_adapter.zig",
+        "markymark-kernels/src/scan.rs",
+        "markymark-kernels/src/lib.rs",
+        "markymark-mcp/src/runtime_engine.rs",
+        "markymark-mcp/tests/runtime_engine_tests.rs"
+      ],
+      "patterns": [
+        "Expose Zig scoring primitive via narrow C ABI export before Rust-side ranking changes",
+        "Prefer deterministic score-first ranking (score desc, starts_with desc, lexical) for semantic search outputs",
+        "Validate ranking changes with runtime-engine integration tests, not unit-only checks"
+      ]
+    },
+    {
+      "id": "suc-044",
+      "timestamp": "2026-02-17T16:26:59Z",
+      "feature": "marky-8s3.4",
+      "type": "implementation",
+      "approach": "Implemented link graph kernel with adjacency map, inbound counters, iterative reverse BFS, PageRank, and connectivity stats, then exposed lifecycle and query APIs through exports_graph.zig using opaque-handle FFI pattern and wired it via c_adapter comptime imports.",
+      "files": [
+        "zig/src/kernels/link_graph.zig",
+        "zig/src/exports_graph.zig",
+        "zig/src/c_adapter.zig"
+      ],
+      "patterns": [
+        "Use exports_<domain>.zig + comptime import in c_adapter to keep ABI modules composable",
+        "Maintain inbound counters at mutation time to keep orphan detection O(V)",
+        "Use iterative reverse traversal (queue + visited set) for transitive broken-chain analysis to avoid recursion depth risks"
+      ]
+    },
+    {
+      "id": "suc-045",
+      "timestamp": "2026-02-17T17:08:16Z",
+      "feature": "session-checkpoint",
+      "type": "workflow",
+      "approach": "Executed checkpoint-only persistence flow: refreshed progress/working-context and captured memory metadata updates without touching implementation code.",
+      "files": [
+        ".claude-harness/claude-progress.json",
+        ".claude-harness/sessions/20260216-215715/working-context.json",
+        ".claude-harness/memory/episodic/decisions.json"
+      ],
+      "patterns": [
+        "Use memory-only checkpoint when active feature queue is empty",
+        "Persist session-scoped context and memory metadata before commit/push"
       ]
     }
   ]
