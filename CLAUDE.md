@@ -94,20 +94,30 @@ cargo run -- --lsp
 cargo run -- --mcp /path/to/workspace
 ```
 
-## Rust Code Navigation (LSP)
+## Code Navigation (LSP-first)
 
-**Use the built-in LSP tool (rust-analyzer) for navigating Rust code.** It provides semantic understanding that text search cannot match.
+**Use the built-in LSP tool first for Rust and Zig code navigation.** It provides semantic understanding that text search cannot match.
 
 | Operation | Use Case |
 |-----------|----------|
-| `documentSymbol` | Full symbol tree for a file |
-| `hover` | Type info, doc comments, size/alignment |
-| `goToDefinition` | Jump to definition (cross-crate) |
+| `documentSymbol` | Full symbol tree for a file (best first step) |
+| `hover` | Type info, doc comments, signatures |
+| `goToDefinition` | Jump to definition (cross-crate / cross-file) |
 | `findReferences` | All usages of a symbol |
-| `workspaceSymbol` | Search symbols by name |
+| `workspaceSymbol` | Search symbols by name across workspace |
 | `incomingCalls` / `outgoingCalls` | Call graphs |
 
-**When grep is appropriate**: string literals, comments, TODO markers, non-code files.
+### LSP usage workflow
+
+1. Run `LSP documentSymbol [file]` to discover exact symbol names/locations.
+2. Run `LSP hover [file] [line] [col]` on the symbol token (not whitespace).
+3. Run `LSP goToDefinition` and `LSP findReferences` for navigation and impact checks.
+4. Use `Read` only after LSP narrows the target region.
+
+### Notes
+
+- If `hover`/`findReferences` returns no data, retry on the exact symbol position.
+- Prefer grep for string literals, comments, TODOs, and non-code files.
 
 ## Beads Workflow
 
@@ -148,8 +158,8 @@ bd sync               # Sync with git
 ## Document Intelligence
 
 This project uses markymark LSP. ALWAYS prefer LSP over reading raw files:
-- `LSP documentSymbol <file>` for structure/outline before Read
-- `LSP hover <file> <line> <col>` for heading backlinks and key path info
+- `LSP documentSymbol [file]` for structure/outline before Read
+- `LSP hover [file] [line] [col]` for heading backlinks and key path info
 - Diagnostics (broken links, duplicate headings) are reported automatically
 - Works for Markdown, JSON, YAML, TOML, .env, INI, and more
 - Only use the Read tool when you need full prose content

@@ -1,6 +1,10 @@
 #[test]
 fn document_index_internal_storage_no_longer_uses_static_or_ptr_read_transfer() {
-    let source = include_str!("../src/document.rs");
+    // Read all document module files to check for banned patterns
+    let mod_rs = include_str!("../src/document/mod.rs");
+    let types_rs = include_str!("../src/document/types.rs");
+    let helpers_rs = include_str!("../src/document/helpers.rs");
+    let source = format!("{mod_rs}\n{types_rs}\n{helpers_rs}");
 
     assert!(
         !source.contains("headings: &'static [HeadingEntry<'static>]"),

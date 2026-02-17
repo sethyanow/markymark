@@ -11,6 +11,7 @@ categories = ["development-tools", "text-processing"]
 
 [features]
 bench-internals = []
+zig-kernels = ["markymark-core/zig-kernels"]
 
 [dependencies]
 markymark-core = { version = "0.3.0", path = "../markymark-core" }
