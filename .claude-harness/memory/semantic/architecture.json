@@ -19,7 +19,9 @@
     ],
     "components": [
       "markymark-core/src/engine.rs (CoreEngine trait, CoreOperation, CoreResult)",
-      "zig/src/c_adapter.zig (C ABI entrypoint wiring SIMD kernels, including marky_slugify export)",
+      "zig/src/c_adapter.zig (C ABI entrypoint wiring modular exports via comptime imports)",
+      "zig/src/exports_graph.zig (opaque-handle graph lifecycle and query C ABI exports)",
+      "zig/src/kernels/link_graph.zig (adjacency-map link graph engine with orphan/broken-chain/PageRank/connectivity operations)",
       "zig/src/kernels/slug.zig (single-pass heading slug generation kernel with UTF-8 passthrough)",
       "markymark-core/src/arena.rs (arena helpers, allocation wrappers)",
       "markymark-parser/src/ast.rs (tree-sitter AST construction, arena ownership)",
@@ -42,6 +44,7 @@
       "markymark-index/src/bin/bench_roi_report.rs (tiered benchmark orchestration and ROI report writer)",
       "markymark-lsp/src/server.rs (tower-lsp LanguageServer impl, capability negotiation)",
       "markymark-lsp/src/state.rs (ServerState: document management, diagnostics, rename, refs)",
+      "markymark-mcp/src/runtime_engine.rs (search-symbols ranking uses fuzzy-score ordering via markymark-kernels)",
       "markymark-lsp/src/state.rs (SymbolAtPosition<'a> borrowed payloads to match index lifetimes)",
       "markymark-lsp/src/state.rs (incremental byte-range clamp helper + warning observability for invalid edit positions)",
       "markymark-lsp/src/convert.rs (LSP type conversions)",
@@ -90,7 +93,7 @@
         "Integration tests in crate tests/ dirs are standalone crates (no mod.rs needed)"
       ],
       "plugin": "markymark-plugin/{.claude-plugin/,bin/,scripts/,hooks/,skills/,tests/}",
-      "zig": "zig/{src/kernels/,src/reference/,src/c_adapter.zig,build.zig} — SIMD extraction kernels and C ABI exports (marky_slugify included)",
+      "zig": "zig/{src/kernels/,src/reference/,src/exports_*.zig,src/c_adapter.zig,build.zig} — SIMD extraction kernels and modular C ABI exports (marky_slugify + marky_graph APIs included)",
       "examples": "examples/claude-code-plugin/ (reference implementations)"
     },
     "codeStyle": {
@@ -126,6 +129,6 @@
     ]
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-17T16:02:39Z",
+  "lastUpdated": "2026-02-17T16:26:59Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

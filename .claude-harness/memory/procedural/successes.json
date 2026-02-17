@@ -610,6 +610,43 @@
         "Single-pass pending-hyphen state machine handles collapse+trim without post-pass",
         "FFI contract returns byte length, so UTF-8 test expectations must use bytes not character count"
       ]
+    },
+    {
+      "id": "suc-043",
+      "timestamp": "2026-02-17T16:26:59Z",
+      "feature": "marky-8s3.3",
+      "type": "implementation",
+      "approach": "Integrated fuzzy matcher end-to-end by exposing marky_fuzzy_match from Zig C ABI, binding it in markymark-kernels scan FFI, and switching MCP runtime search-symbols ordering to score-first ranking with deterministic tie-breaking.",
+      "files": [
+        "zig/src/shared/similarity.zig",
+        "zig/src/c_adapter.zig",
+        "markymark-kernels/src/scan.rs",
+        "markymark-kernels/src/lib.rs",
+        "markymark-mcp/src/runtime_engine.rs",
+        "markymark-mcp/tests/runtime_engine_tests.rs"
+      ],
+      "patterns": [
+        "Expose Zig scoring primitive via narrow C ABI export before Rust-side ranking changes",
+        "Prefer deterministic score-first ranking (score desc, starts_with desc, lexical) for semantic search outputs",
+        "Validate ranking changes with runtime-engine integration tests, not unit-only checks"
+      ]
+    },
+    {
+      "id": "suc-044",
+      "timestamp": "2026-02-17T16:26:59Z",
+      "feature": "marky-8s3.4",
+      "type": "implementation",
+      "approach": "Implemented link graph kernel with adjacency map, inbound counters, iterative reverse BFS, PageRank, and connectivity stats, then exposed lifecycle and query APIs through exports_graph.zig using opaque-handle FFI pattern and wired it via c_adapter comptime imports.",
+      "files": [
+        "zig/src/kernels/link_graph.zig",
+        "zig/src/exports_graph.zig",
+        "zig/src/c_adapter.zig"
+      ],
+      "patterns": [
+        "Use exports_<domain>.zig + comptime import in c_adapter to keep ABI modules composable",
+        "Maintain inbound counters at mutation time to keep orphan detection O(V)",
+        "Use iterative reverse traversal (queue + visited set) for transitive broken-chain analysis to avoid recursion depth risks"
+      ]
     }
   ]
 }

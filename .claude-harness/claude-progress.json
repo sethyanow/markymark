@@ -1,32 +1,32 @@
 {
-  "lastUpdated": "2026-02-17T16:02:39Z",
+  "lastUpdated": "2026-02-17T16:26:59Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Executed marky-8s3.5 (BRZA slug kernel) with TDD and verification. Added marky_slugify C ABI export and slug kernel implementation with no-heap single-pass behavior and UTF-8 passthrough semantics.",
+    "summary": "Backfilled harness memory for prior BRZA work: captured fuzzy-ranking integration (marky-8s3.3) and link-graph engine implementation (marky-8s3.4) decisions/patterns/entities in episodic, procedural, and semantic memory layers.",
     "completedTasks": [
-      "marky-8s3.5: Added failing marky_slugify ABI tests in zig/src/c_adapter.zig (RED compile failure)",
-      "marky-8s3.5: Implemented zig/src/kernels/slug.zig single-pass slug state machine",
-      "marky-8s3.5: Wired marky_slugify export in zig/src/c_adapter.zig",
-      "marky-8s3.5: Added null/zero-cap/truncation/Unicode regression tests",
-      "marky-8s3.5: Verified with zig test filter + full zig build test",
-      "marky-8s3.5: Closed bead and documented implementation notes"
+      "Recorded dec-060 for score-first fuzzy ranking policy with deterministic tie-breaks",
+      "Recorded dec-061 for modular link-graph kernel + exports_graph C ABI architecture",
+      "Added suc-043 for end-to-end fuzzy_match_score integration path across Zig/FFI/MCP",
+      "Added suc-044 for LinkGraph kernel + exports_graph opaque-handle lifecycle implementation",
+      "Extended procedural patterns with pat-zig-export-modularization and pat-fuzzy-ranking-order",
+      "Updated semantic architecture/entities for exports_graph.zig, LinkGraph, and runtime_engine ranking policy"
     ],
     "blockers": [
       "Scope guard RED ZONE remains active (branch size/files over threshold)",
-      "CodeRabbit CLI plain output did not include actionable findings in this run"
+      "This checkpoint intentionally persisted memory only; no source-code status changes applied"
     ],
     "nextSteps": [
-      "Execute next BRZA task marky-8s3.6 (binary index serialization format)",
-      "Address P3 refactor follow-up marky-a5w for oversized zig/src/c_adapter.zig",
-      "Run /hyperpowers:execute-plan again for one-task checkpoint progression"
+      "Continue normal BRZA execution from current real branch state (outside this backfill checkpoint)",
+      "Run /hyperpowers:execute-plan for the next active task checkpoint",
+      "Keep c_adapter modularization follow-up in scope control as branch grows"
     ]
   },
   "recentChanges": [
-    "Implemented marky_slugify export in zig/src/c_adapter.zig",
-    "Added new kernel zig/src/kernels/slug.zig",
-    "Added ABI and kernel tests for slug behavior and error contracts",
-    "Recorded dec-059, suc-042, fail-014 memory entries",
-    "Created follow-up bead marky-a5w for c_adapter modular refactor"
+    "Backfilled episodic decisions dec-060 and dec-061 for marky-8s3.3/8s3.4",
+    "Backfilled procedural successes suc-043 and suc-044 for fuzzy ranking and link graph",
+    "Added reusable patterns for modular Zig exports and deterministic fuzzy ranking",
+    "Extended semantic architecture with exports_graph.zig and link_graph kernel entries",
+    "Added semantic entities for marky_graph_create, LinkGraph, and runtime_engine fuzzy ranking policy"
   ],
   "knownIssues": [
     "marky-ktt (P1): Unsafe transmute audit from marky-5yt migration",
@@ -36,8 +36,8 @@
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-17T16:02:39Z",
-    "lastTypeCheck": "2026-02-17T16:02:39Z"
+    "lastSuccessfulBuild": "2026-02-17T16:26:59Z",
+    "lastTypeCheck": "2026-02-17T16:26:59Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
