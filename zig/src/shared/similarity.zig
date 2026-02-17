@@ -73,6 +73,72 @@ pub fn jaccard_similarity(set1: [*]const u32, set1_len: u32, set2: [*]const u32,
     return ref.jaccard_similarity(set1, set1_len, set2, set2_len);
 }
 
+/// Fuzzy match score between query and candidate.
+///
+/// Scoring model (integer, higher is better):
+/// - Prefix (candidate starts with query): +200 bonus
+/// - Character match: +10 each
+/// - Consecutive match extension: +5 each after the first
+/// - Gap penalty between matched chars: -1 per skipped byte
+///
+/// Matching is ASCII case-insensitive and subsequence-based.
+/// Returns 0 when query is not a subsequence of candidate.
+pub fn fuzzy_match_score(
+    query_ptr: [*]const u8,
+    query_len: u32,
+    candidate_ptr: [*]const u8,
+    candidate_len: u32,
+) i32 {
+    if (query_len == 0 or candidate_len == 0) return 0;
+
+    const query = query_ptr[0..query_len];
+    const candidate = candidate_ptr[0..candidate_len];
+
+    var qi: usize = 0;
+    var ci: usize = 0;
+
+    var score: i32 = 0;
+    var last_match_idx: ?usize = null;
+
+    while (qi < query.len and ci < candidate.len) : (ci += 1) {
+        const qch = std.ascii.toLower(query[qi]);
+        const cch = std.ascii.toLower(candidate[ci]);
+
+        if (qch != cch) continue;
+
+        score += 10;
+
+        if (last_match_idx) |prev| {
+            if (ci == prev + 1) {
+                score += 5;
+            } else {
+                const gap: i32 = @intCast(ci - prev - 1);
+                score -= gap;
+            }
+        }
+
+        last_match_idx = ci;
+        qi += 1;
+    }
+
+    if (qi != query.len) return 0;
+
+    if (candidate.len >= query.len) {
+        var prefix = true;
+        var i: usize = 0;
+        while (i < query.len) : (i += 1) {
+            if (std.ascii.toLower(query[i]) != std.ascii.toLower(candidate[i])) {
+                prefix = false;
+                break;
+            }
+        }
+        if (prefix) score += 200;
+    }
+
+    if (score < 0) return 0;
+    return score;
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -166,6 +232,30 @@ test "test_jaccard_empty" {
     const s = [_]u32{1};
     const result = jaccard_similarity(&s, 0, &s, 0);
     try testing.expectApproxEqAbs(@as(f32, 0.0), result, 1e-6);
+}
+
+test "test_fuzzy_match_prefix_scores_higher_than_substring" {
+    const prefix = fuzzy_match_score("st".ptr, 2, "stage".ptr, 5);
+    const substring = fuzzy_match_score("st".ptr, 2, "setup".ptr, 5);
+
+    try testing.expect(prefix > 0);
+    try testing.expect(substring > 0);
+    try testing.expect(prefix > substring);
+}
+
+test "test_fuzzy_match_case_insensitive" {
+    const score = fuzzy_match_score("ST".ptr, 2, "Setup".ptr, 5);
+    try testing.expect(score > 0);
+}
+
+test "test_fuzzy_match_subsequence" {
+    const score = fuzzy_match_score("stp".ptr, 3, "setup".ptr, 5);
+    try testing.expect(score > 0);
+}
+
+test "test_fuzzy_match_no_match_returns_zero" {
+    const score = fuzzy_match_score("zzz".ptr, 3, "setup".ptr, 5);
+    try testing.expectEqual(@as(i32, 0), score);
 }
 
 test "test_jaccard_simd_scalar_parity" {

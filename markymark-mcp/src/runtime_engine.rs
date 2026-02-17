@@ -1,13 +1,23 @@
 use std::collections::HashMap;
 use std::fs;
+#[cfg(feature = "semantic-search")]
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+#[cfg(feature = "semantic-search")]
+use std::sync::Arc;
 use std::sync::RwLock;
 
 use anyhow::{anyhow, bail};
+#[cfg(feature = "semantic-search")]
+use markymark_core::engine::SemanticSearchMatch;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
+#[cfg(feature = "semantic-search")]
+use markymark_core::prelude::{EmbedError, EmbeddingProvider};
 use markymark_core::structured::DocumentKind;
-use markymark_core::{CoreError, DocumentUri};
+use markymark_core::{CoreError, DocumentUri, Range};
 use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
+use markymark_kernels::fuzzy_match;
+use markymark_kernels::tokens;
 use markymark_parser::structured::parse_structured;
 use markymark_parser::Parser;
 
@@ -25,9 +35,80 @@ struct RealmData {
 impl RealmData {
     fn new() -> Self {
         Self {
-            index: RealmIndex::new(),
+            index: build_realm_index(),
             roots: Vec::new(),
         }
+    }
+}
+
+fn build_realm_index() -> RealmIndex {
+    #[cfg(feature = "semantic-search")]
+    {
+        let provider: Arc<dyn EmbeddingProvider> = Arc::new(HashEmbeddingProvider::new(128));
+        RealmIndex::new_with_embeddings(provider).unwrap_or_else(|err| {
+            eprintln!("warning: failed to initialize semantic index; falling back to plain realm index: {err}");
+            RealmIndex::new()
+        })
+    }
+
+    #[cfg(not(feature = "semantic-search"))]
+    {
+        RealmIndex::new()
+    }
+}
+
+#[cfg(feature = "semantic-search")]
+#[derive(Debug, Clone)]
+struct HashEmbeddingProvider {
+    dims: u32,
+}
+
+#[cfg(feature = "semantic-search")]
+impl HashEmbeddingProvider {
+    fn new(dims: u32) -> Self {
+        Self { dims }
+    }
+}
+
+#[cfg(feature = "semantic-search")]
+impl EmbeddingProvider for HashEmbeddingProvider {
+    fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+        if self.dims == 0 {
+            return Err(EmbedError::InvalidInput(
+                "embedding dimensions must be > 0".to_string(),
+            ));
+        }
+
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return Err(EmbedError::InvalidInput(
+                "semantic query must not be empty".to_string(),
+            ));
+        }
+
+        let mut out = vec![0.0_f32; self.dims as usize];
+        for token in trimmed
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|token| !token.is_empty())
+        {
+            let norm = token.to_ascii_lowercase();
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            norm.hash(&mut hasher);
+            let idx = (hasher.finish() as usize) % out.len();
+            out[idx] += 1.0;
+        }
+
+        let norm = out.iter().map(|v| v * v).sum::<f32>().sqrt();
+        if norm > 0.0 {
+            for v in &mut out {
+                *v /= norm;
+            }
+        }
+        Ok(out)
+    }
+
+    fn dimensions(&self) -> u32 {
+        self.dims
     }
 }
 
@@ -189,31 +270,121 @@ impl CoreEngine for RuntimeEngine {
                     )));
                 };
                 let realm = &realm_data.index;
-                let mut matches = Vec::new();
-                let query_lower = query.to_lowercase();
+                let mut scored_matches: Vec<(i32, bool, String, DocumentUri, Range)> = Vec::new();
 
-                // Search markdown headings
+                // Search markdown headings with fuzzy ranking.
                 for (uri, index) in realm.iter_documents() {
                     for heading in index.headings() {
-                        if heading.text.to_lowercase().contains(&query_lower) {
-                            matches.push((heading.text.to_string(), uri.clone(), heading.range));
+                        if let Ok(m) = fuzzy_match(&query, heading.text) {
+                            if m.score > 0 {
+                                scored_matches.push((
+                                    m.score,
+                                    m.starts_with,
+                                    heading.text.to_string(),
+                                    uri.clone(),
+                                    heading.range,
+                                ));
+                            }
                         }
                     }
                 }
 
-                // Search structured document key paths
+                // Search structured document key paths with fuzzy ranking.
                 for (uri, path, _key, _kind, range) in realm.search_key_paths(&query) {
-                    matches.push((path, uri, range));
+                    if let Ok(m) = fuzzy_match(&query, &path) {
+                        if m.score > 0 {
+                            scored_matches.push((m.score, m.starts_with, path, uri, range));
+                        }
+                    }
                 }
 
-                matches.sort_by(|(name_a, uri_a, range_a), (name_b, uri_b, range_b)| {
-                    name_a
-                        .cmp(name_b)
-                        .then_with(|| uri_a.as_str().cmp(uri_b.as_str()))
-                        .then_with(|| compare_ranges(*range_a, *range_b))
-                });
+                scored_matches.sort_by(
+                    |(score_a, starts_a, name_a, uri_a, range_a),
+                     (score_b, starts_b, name_b, uri_b, range_b)| {
+                        score_b
+                            .cmp(score_a)
+                            .then_with(|| starts_b.cmp(starts_a))
+                            .then_with(|| name_a.cmp(name_b))
+                            .then_with(|| uri_a.as_str().cmp(uri_b.as_str()))
+                            .then_with(|| compare_ranges(*range_a, *range_b))
+                    },
+                );
+
+                let matches = scored_matches
+                    .into_iter()
+                    .map(|(_, _, name, uri, range)| (name, uri, range))
+                    .collect();
 
                 CoreOperationResult::Symbols(matches)
+            }
+            CoreOperation::SemanticSearch {
+                query,
+                realm,
+                top_k,
+                min_score,
+            } => {
+                let query = query.trim().to_string();
+                if query.is_empty() {
+                    return CoreOperationResult::Error(CoreError::Message(
+                        "semantic query cannot be empty".to_string(),
+                    ));
+                }
+
+                let realm_name = realm.unwrap_or_else(|| DEFAULT_REALM.to_string());
+                let state = self.state.read().expect("lock poisoned");
+                let realm_data = match state.get(&realm_name) {
+                    Some(data) => data,
+                    None => {
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "realm does not exist: {realm_name}"
+                        )));
+                    }
+                };
+
+                #[cfg(not(feature = "semantic-search"))]
+                {
+                    let _ = (realm_data, top_k, min_score);
+                    CoreOperationResult::Error(CoreError::NotImplemented(
+                        "semantic-search feature is not enabled for markymark-mcp".to_string(),
+                    ))
+                }
+
+                #[cfg(feature = "semantic-search")]
+                {
+                    let results = match realm_data.index.semantic_search(
+                        &query,
+                        top_k,
+                        min_score.clamp(0.0, 1.0),
+                    ) {
+                        Ok(results) => results,
+                        Err(err) => {
+                            return CoreOperationResult::Error(CoreError::Message(format!(
+                                "semantic search failed: {err}"
+                            )));
+                        }
+                    };
+
+                    CoreOperationResult::SemanticMatches(
+                        results
+                            .into_iter()
+                            .map(|result| {
+                                let section_preview = preview_for_range(
+                                    &result.doc_uri,
+                                    result.section_range,
+                                    &result.heading,
+                                );
+                                SemanticSearchMatch {
+                                    doc_uri: result.doc_uri,
+                                    heading: result.heading,
+                                    heading_level: result.heading_level,
+                                    score: result.score,
+                                    section_range: result.section_range,
+                                    section_preview,
+                                }
+                            })
+                            .collect(),
+                    )
+                }
             }
             CoreOperation::FindReferences {
                 uri,
@@ -451,7 +622,11 @@ impl CoreEngine for RuntimeEngine {
             }
 
             // --- Query operations ---
-            CoreOperation::RealmStats { realm } => {
+            CoreOperation::RealmStats {
+                realm,
+                check_duplicates,
+                include_token_counts,
+            } => {
                 let state = self.state.read().expect("lock poisoned");
                 let realm_data = match state.get(&realm) {
                     Some(data) => data,
@@ -474,6 +649,33 @@ impl CoreEngine for RuntimeEngine {
                     markdown_link_count += index.markdown_links().len();
                 }
 
+                let duplicate_pairs = if check_duplicates {
+                    #[cfg(feature = "semantic-search")]
+                    {
+                        Some(realm_data.index.detect_semantic_duplicates(0.85).len())
+                    }
+                    #[cfg(not(feature = "semantic-search"))]
+                    {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let total_tokens = if include_token_counts {
+                    let (total, unreadable_docs) = total_tokens_for_realm(&realm_data.index);
+                    if unreadable_docs > 0 {
+                        eprintln!(
+                            "warning: token count omitted for realm '{realm}' due to {unreadable_docs} unreadable documents"
+                        );
+                        None
+                    } else {
+                        Some(total)
+                    }
+                } else {
+                    None
+                };
+
                 CoreOperationResult::RealmStats {
                     name: realm,
                     root_count: realm_data.roots.len(),
@@ -484,6 +686,8 @@ impl CoreEngine for RuntimeEngine {
                     markdown_link_count,
                     structured_doc_count: realm_data.index.structured_count(),
                     key_path_count: realm_data.index.key_path_count(),
+                    duplicate_pairs,
+                    total_tokens,
                 }
             }
             CoreOperation::DependencyGraph { realm, format } => {
@@ -586,6 +790,68 @@ impl CoreEngine for RuntimeEngine {
             }
         }
     }
+}
+
+fn total_tokens_for_realm(realm: &RealmIndex) -> (u64, usize) {
+    let mut total_tokens = 0_u64;
+    let mut unreadable_docs = 0_usize;
+    for (uri, _) in realm.iter_all_documents() {
+        let Some(path) = uri.to_file_path() else {
+            unreadable_docs += 1;
+            continue;
+        };
+        match fs::read_to_string(path) {
+            Ok(source) => {
+                total_tokens += u64::from(tokens::estimate_tokens(&source));
+            }
+            Err(_) => {
+                unreadable_docs += 1;
+            }
+        }
+    }
+    (total_tokens, unreadable_docs)
+}
+
+#[cfg(feature = "semantic-search")]
+fn preview_for_range(uri: &DocumentUri, range: Range, fallback: &str) -> String {
+    let Some(path) = uri.to_file_path() else {
+        return truncate_preview(fallback);
+    };
+    let Ok(source) = fs::read_to_string(path) else {
+        return truncate_preview(fallback);
+    };
+    let Some(start_idx) = byte_offset_for_line(&source, range.start.line) else {
+        return truncate_preview(fallback);
+    };
+    truncate_preview(&source[start_idx..])
+}
+
+#[cfg(feature = "semantic-search")]
+fn byte_offset_for_line(source: &str, line: u32) -> Option<usize> {
+    if line == 0 {
+        return Some(0);
+    }
+
+    let mut current_line = 0_u32;
+    for (idx, ch) in source.char_indices() {
+        if ch == '\n' {
+            current_line += 1;
+            if current_line == line {
+                return Some(idx + 1);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(feature = "semantic-search")]
+fn truncate_preview(text: &str) -> String {
+    const MAX_PREVIEW_BYTES: usize = 200;
+    let mut end = text.len().min(MAX_PREVIEW_BYTES);
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text[..end].split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn validate_workspace_root(root: &Path) -> anyhow::Result<()> {

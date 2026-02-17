@@ -18,6 +18,11 @@ pub mod scan;
 pub mod similarity;
 pub mod tokens;
 
+pub use scan::{
+    fuzzy_match, scan_block_ids, scan_headings, scan_links, scan_tags, BlockIdScan, FuzzyMatch,
+    HeadingScan, KernelError, LinkScan, LinkType, TagScan,
+};
+
 // Re-export the raw FFI version check for linkage verification
 extern "C" {
     fn marky_version() -> u32;
