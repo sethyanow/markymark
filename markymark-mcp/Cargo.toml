@@ -9,6 +9,10 @@ description = "MCP server for markdown intelligence in AI assistants"
 keywords = ["markdown", "mcp", "ai", "language-server"]
 categories = ["development-tools", "text-processing"]
 
+[features]
+default = []
+semantic-search = ["markymark-index/embeddings"]
+
 [dependencies]
 markymark-core = { version = "0.3.0", path = "../markymark-core" }
 markymark-parser = { version = "0.3.0", path = "../markymark-parser" }

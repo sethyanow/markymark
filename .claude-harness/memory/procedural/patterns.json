@@ -50,7 +50,8 @@
       "convert/state/server module separation in markymark-lsp for testability",
       "docs-vs-practice audit: read doc, find all struct/field types in codebase, compare systematically. Key: test Send/Sync implications before changing types.",
       "lefthook command values containing colons/braces must be YAML-quoted to avoid parse errors",
-      "rmcp CallToolResult::structured and structured_error for MCP payloads"
+      "rmcp CallToolResult::structured and structured_error for MCP payloads",
+      "Semantic-search MCP rollout pattern: extend core operation contracts first, then map runtime semantic hits to DTOs, then gate optional realm-stats enrichments with explicit request flags."
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",
@@ -171,5 +172,5 @@
       }
     ]
   },
-  "lastUpdated": "2026-02-17T18:31:32Z"
+  "lastUpdated": "2026-02-17T18:49:46Z"
 }

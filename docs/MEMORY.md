@@ -318,3 +318,29 @@ When auditing a doc corpus with markymark:
   - `cargo test -p markymark-index --features embeddings --test semantic_index`
   - `cargo clippy -p markymark-index -- -D warnings`
   - `cargo clippy -p markymark-index --features embeddings -- -D warnings`
+
+### 2026-02-17: MCP semantic-search tool + realm-stats enhancements (marky-9ui)
+
+- Added semantic-search support across core and MCP layers:
+  - `markymark-core/src/engine.rs`: new `CoreOperation::SemanticSearch`, `CoreOperationResult::SemanticMatches`, and `SemanticSearchMatch` payload.
+  - `markymark-index/src/semantic.rs`: `SearchResult` now carries `heading_level`.
+  - `markymark-mcp/src/dto.rs`: new `SemanticSearchRequest/Response` + result DTO; `RealmStatsRequest` now includes optional `check_duplicates`/`include_token_counts` flags; `RealmStatsResponse` now includes optional `duplicate_pairs`/`total_tokens`.
+  - `markymark-mcp/src/lib.rs`: added `semantic-search` tool handler and wired expanded realm-stats request/response fields.
+- Added runtime execution paths in `markymark-mcp/src/runtime_engine.rs`:
+  - feature-aware semantic search operation handling with section preview generation (200-char max),
+  - optional duplicate pair calculation via `RealmIndex::detect_semantic_duplicates`,
+  - optional token estimation aggregation via `markymark_kernels::tokens::estimate_tokens`,
+  - semantic-enabled realm initialization using a deterministic hash-based embedding provider when `semantic-search` feature is enabled.
+- Added `semantic-search` Cargo feature in `markymark-mcp/Cargo.toml` (`semantic-search = ["markymark-index/embeddings"]`).
+- Added/updated tests:
+  - `markymark-mcp/tests/tool_handler_tests.rs`: semantic-search tool registration/response tests and realm-stats option assertions.
+  - `markymark-mcp/tests/runtime_engine_tests.rs`: semantic-search runtime coverage and token-estimate realm-stats coverage.
+  - `markymark-mcp/tests/runtime_tools.rs`: end-to-end semantic-search tool test with real runtime indexing.
+- Verification commands that passed:
+  - `cargo fmt --all --check`
+  - `cargo test -p markymark-core`
+  - `cargo test -p markymark-index --features embeddings --test semantic_index`
+  - `cargo test -p markymark-mcp`
+  - `cargo test -p markymark-mcp --features semantic-search`
+  - `cargo clippy -p markymark-mcp -- -D warnings`
+  - `cargo clippy -p markymark-mcp --features semantic-search -- -D warnings`

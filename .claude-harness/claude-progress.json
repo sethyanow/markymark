@@ -1,27 +1,26 @@
 {
-  "lastUpdated": "2026-02-17T18:31:32Z",
+  "lastUpdated": "2026-02-17T18:49:46Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-bcv by adding SemanticIndex + RealmIndex embedding hooks behind the embeddings feature gate, with passing tests and clippy.",
+    "summary": "Completed marky-9ui by adding MCP semantic-search tool wiring, feature-path runtime support, and realm-stats optional duplicate/token metrics.",
     "completedTasks": [
-      "Added markymark-index/src/semantic.rs with SemanticIndex new/add_document/remove_document/search/detect_duplicates",
-      "Added markymark-index/tests/semantic_index.rs integration coverage and enabled embeddings feature flag",
-      "Wired RealmIndex::new_with_embeddings plus semantic_search and duplicate detection helpers",
-      "Closed beads task marky-bcv"
+      "Added semantic-search MCP DTOs and handler wiring in markymark-mcp",
+      "Extended core operation/result contracts for semantic search payloads",
+      "Updated RuntimeEngine with semantic query path and optional realm-stats duplicate/token fields",
+      "Added coverage in tool_handler, runtime_engine, and runtime_tools tests",
+      "Closed beads task marky-9ui"
     ],
-    "blockers": [
-      "GitHub CLI token for account sethyanow is invalid, so PR automation remains unavailable"
-    ],
+    "blockers": [],
     "nextSteps": [
-      "Execute next BRZA task: marky-9ui (semantic-search MCP tool)",
-      "Run performance follow-up marky-e59 for SIMD vs baseline benchmark coverage",
-      "Refresh gh auth if checkpoint PR automation is required"
+      "Execute next BRZA task: marky-8xt (SIMD/top-k fuzzy matcher parity)",
+      "Continue BRZA Phase 3 work: marky-8s3.6 (binary index serialization)",
+      "Continue BRZA Phase 3 work: marky-8s3.7 (multi-format extractors)"
     ]
   },
   "recentChanges": [
-    "Added embeddings-gated semantic index implementation to markymark-index",
-    "Added realm-level semantic search and duplicate-detection wiring",
-    "Persisted session checkpoint metadata and memory updates"
+    "Added semantic-search MCP tool and response DTOs",
+    "Extended realm-stats with optional duplicate_pairs and total_tokens",
+    "Persisted marky-9ui checkpoint state and memory updates"
   ],
   "knownIssues": [
     "marky-ktt (P1): Unsafe transmute audit from marky-5yt migration",
