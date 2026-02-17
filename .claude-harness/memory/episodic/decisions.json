@@ -725,6 +725,42 @@
     },
     {
       "id": "dec-056",
+      "timestamp": "2026-02-17T09:20:00Z",
+      "feature": "marky-z7e",
+      "decision": "Use test-first checkpoint for wiki-links incremental scaffolding before implementing selective merge",
+      "rationale": "The task required incremental wiki-link behavior confidence early; adding explicit parity and edge-case tests first prevented silent regressions while wiring pending edit tracking.",
+      "alternatives": [
+        "Implement incremental code path first and add tests afterward",
+        "Only add a single parity test and skip edge-case coverage"
+      ],
+      "impact": "markymark-lsp/tests/state_tests.rs incremental wiki-link regression set"
+    },
+    {
+      "id": "dec-057",
+      "timestamp": "2026-02-17T09:20:00Z",
+      "feature": "marky-z7e",
+      "decision": "Track pending InputEdit lifecycle in ServerState for incremental markdown orchestration",
+      "rationale": "Capturing edit batches in state makes incremental reindex routing explicit and testable, and establishes common infrastructure needed by all extractor-specific incremental updates.",
+      "alternatives": [
+        "Compute edits ad hoc without persisting state",
+        "Move incremental change tracking into index layer"
+      ],
+      "impact": "markymark-lsp/src/state.rs pending_edits, incremental entrypoint wiring, pending_edit_count helper"
+    },
+    {
+      "id": "dec-058",
+      "timestamp": "2026-02-17T09:20:00Z",
+      "feature": "marky-77i",
+      "decision": "Create follow-up task marky-77x for true selective wiki-link merge after scaffolding lands",
+      "rationale": "Current incremental path still delegates to full from_ast rebuild; separating selective-merge completion into an immediate child task keeps the epic honest while preserving one-task-at-a-time execution discipline.",
+      "alternatives": [
+        "Treat scaffolding as complete incremental implementation",
+        "Bundle selective merge into the same task without explicit checkpoint"
+      ],
+      "impact": "beads marky-z7e closure notes and new task marky-77x linked to marky-77i"
+    },
+    {
+      "id": "dec-059",
       "timestamp": "2026-02-16T22:48:25Z",
       "feature": "marky-3l6",
       "decision": "Add CRLF incremental edit parity regression test in markymark-lsp state tests",
@@ -736,7 +772,7 @@
       "impact": "markymark-lsp/tests/state_tests.rs"
     },
     {
-      "id": "dec-057",
+      "id": "dec-060",
       "timestamp": "2026-02-17T05:57:00Z",
       "feature": "marky-3w5",
       "decision": "Split document.rs into 4 focused modules: types.rs (entry structs), helpers.rs (functions), tests.rs (test modules), mod.rs (DocumentIndex + API)",
@@ -746,44 +782,56 @@
         "Extract constructors to build.rs (more granular, but unnecessary at current size)",
         "Leave as monolith and defer refactor (violates hard limit, blocks future work)"
       ],
-      "impact": "markymark-index/src/document/ \u2014 mod.rs (540L), types.rs (102L), helpers.rs (189L), tests.rs (403L)"
+      "impact": "markymark-index/src/document/ — mod.rs (540L), types.rs (102L), helpers.rs (189L), tests.rs (403L)"
     },
     {
-      "id": "dec-058",
+      "id": "dec-061",
+      "timestamp": "2026-02-17T19:03:43Z",
+      "feature": "feature-001",
+      "decision": "Default omitted MCP prompt realm to explicit \"default\" at handler boundary and decode percent-encoded resource query params before forwarding",
+      "rationale": "Prompt definitions claimed a default realm while handlers previously passed None, and resource query extraction forwarded raw encoded values. Making defaulting/decoding explicit removes contract drift and prevents encoded realm/query leakage.",
+      "alternatives": [
+        "Update prompt argument descriptions to remove default claim",
+        "Keep raw query parsing and decode in each call site"
+      ],
+      "impact": "markymark-mcp/src/prompts.rs, markymark-mcp/src/resources.rs, prompt/resource handler integration tests"
+    },
+    {
+      "id": "dec-062",
       "timestamp": "2026-02-17T21:38:00Z",
       "feature": "marky-r7j",
-      "decision": "realm query param in outline resource URI: strip ?realm= from doc_uri_str before DocumentUri::new",
-      "rationale": "The markymark://outline/{uri} template embeds the doc URI in the path. If a client appends ?realm=x, strip_prefix leaves file:///path.md?realm=x which DocumentUri::new would either reject or embed incorrectly. Splitting on first ? gives a clean doc URI.",
+      "decision": "Strip ?realm=... from embedded outline doc URI before DocumentUri::new parsing",
+      "rationale": "The markymark://outline/{uri} template embeds the source URI in the path. If a caller appends ?realm=x, parsing the full suffix as a document URI can fail or leak query data into path resolution. Splitting on the first ? keeps the document URI canonical.",
       "alternatives": [
-        "Require separate realm header",
-        "Use a different URI scheme for realm-scoped resources"
+        "Require realm in a separate header",
+        "Use a path-segment realm format (outline/{realm}/{uri})"
       ],
       "impact": "markymark-mcp/src/resources.rs read_outline_resource()"
     },
     {
-      "id": "dec-059",
+      "id": "dec-063",
       "timestamp": "2026-02-17T21:38:00Z",
       "feature": "marky-0g6",
-      "decision": "MCP URI template convention: realm always appended as last query param",
-      "rationale": "Consistent with dependency-graph template which already used ?realm={realm}&format={format}. Clients omit the param entirely for default realm; realm-specific access appends ?realm=name.",
+      "decision": "Standardize MCP URI templates to optional query realm parameter for realm-scoped resources",
+      "rationale": "Using query realm parameters keeps template shape consistent across resources and preserves default-realm behavior when the parameter is omitted.",
       "alternatives": [
-        "Path segment: outline/{realm}/{uri}",
-        "Request body param"
+        "Path segment realm routing",
+        "Request body realm argument"
       ],
       "impact": "markymark-mcp/src/resources.rs resource_templates()"
     },
     {
-      "id": "dec-060",
+      "id": "dec-064",
       "timestamp": "2026-02-17T21:38:00Z",
       "feature": "marky-r7j",
-      "decision": "Optional PromptArgument pattern: required: Some(false) in rmcp",
-      "rationale": "MCP spec allows optional prompt arguments. rmcp represents this as PromptArgument with required: Some(false). Prompt handlers use .get(key).and_then(|v| v.as_str()).map(|s| s.to_string()) for optional extraction.",
+      "decision": "Use rmcp optional PromptArgument pattern (required: Some(false)) for realm-aware prompts",
+      "rationale": "MCP prompt arguments can be optional. rmcp models this via required: Some(false), and handlers can safely extract with .get().and_then().map(str::to_string()) without forcing realm input.",
       "alternatives": [
-        "Separate prompt per realm",
-        "Implicit default (no arg)"
+        "Separate prompts per realm",
+        "Implicit default without exposing realm argument"
       ],
       "impact": "markymark-mcp/src/prompts.rs list_prompt_definitions()"
     }
   ],
-  "lastUpdated": "2026-02-17T04:44:00Z"
+  "lastUpdated": "2026-02-17T21:38:00Z"
 }

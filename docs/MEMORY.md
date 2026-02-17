@@ -278,3 +278,16 @@ When auditing a doc corpus with markymark:
 - Verified with `cargo test -p markymark-lsp` and `cargo fmt --check`.
 - Posted PR response summary comment: https://github.com/sethyanow/markymark/pull/21#issuecomment-3910812072
 - Closed beads issue `marky-3l6` after code, tests, and PR response loop were complete.
+
+### 2026-02-17: MCP prompt/resource review fixes (inline findings verification)
+
+- Verified prompt realm-default behavior path and made prompt handlers pass `"default"` explicitly when `realm` argument is omitted in `markymark-mcp/src/prompts.rs`.
+- Fixed `extract_query_param` decoding in `markymark-mcp/src/resources.rs` so percent-encoded query values (including `%20` and `+`) are decoded before forwarding.
+- Strengthened tests:
+  - Added prompt handler assertions that missing `realm` defaults to `"default"` for both `explain-link` and `suggest-references`.
+  - Updated resource handler mock to capture `CoreOperation::GetOutline` realm and assert forwarding.
+  - Added regression test that `realm=custom%20realm` is decoded to `"custom realm"` before reaching the core operation.
+- Verification run:
+  - `cargo fmt --all`
+  - `cargo test -p markymark-mcp --test resource_handler_tests`
+  - `cargo test -p markymark-mcp --test prompt_handler_tests`

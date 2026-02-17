@@ -4,7 +4,7 @@
 //! read_resource. Uses a MockEngine for deterministic responses.
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_core::{CoreError, DocumentUri, Position, Range};
@@ -12,20 +12,32 @@ use markymark_mcp::MarkymarkMcp;
 use rmcp::model::ResourceContents;
 use rmcp::ServerHandler;
 
-struct MockEngine;
+struct MockEngine {
+    captured_realm: Mutex<Option<Option<String>>>,
+}
+
+impl Default for MockEngine {
+    fn default() -> Self {
+        Self {
+            captured_realm: Mutex::new(None),
+        }
+    }
+}
 
 impl CoreEngine for MockEngine {
     fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
         match operation {
-            CoreOperation::GetOutline { .. } => {
+            CoreOperation::GetOutline { realm, .. } => {
+                let mut captured = self.captured_realm.lock().expect("mutex poisoned");
+                *captured = Some(realm);
                 CoreOperationResult::Outline(vec!["Introduction".to_string(), "Usage".to_string()])
             }
-            CoreOperation::SearchSymbols { query } => CoreOperationResult::Symbols(vec![(
+            CoreOperation::SearchSymbols { query, .. } => CoreOperationResult::Symbols(vec![(
                 format!("match-{query}"),
                 DocumentUri::from_file_path(Path::new("/vault/a.md")),
                 Range::new(Position::new(0, 0), Position::new(0, 10)),
             )]),
-            CoreOperation::ExportIndex { uri } => CoreOperationResult::DocumentExport {
+            CoreOperation::ExportIndex { uri, .. } => CoreOperationResult::DocumentExport {
                 uri: uri.clone(),
                 document_kind: None,
                 headings: vec![(
@@ -55,7 +67,12 @@ impl CoreEngine for MockEngine {
 }
 
 fn make_mcp() -> MarkymarkMcp {
-    MarkymarkMcp::new(Arc::new(MockEngine))
+    MarkymarkMcp::new(Arc::new(MockEngine::default()))
+}
+
+fn make_mcp_with_engine() -> (MarkymarkMcp, Arc<MockEngine>) {
+    let engine = Arc::new(MockEngine::default());
+    (MarkymarkMcp::new(engine.clone()), engine)
 }
 
 // --- list_resource_templates ---
@@ -75,9 +92,10 @@ fn outline_template_uses_correct_uri_pattern() {
         .iter()
         .find(|t| t.raw.name == "document-outline")
         .expect("missing document-outline template");
-    assert_eq!(
-        outline.raw.uri_template, "markymark://outline/{uri}",
-        "wrong outline URI template"
+    assert!(
+        outline.raw.uri_template.contains("realm"),
+        "outline template should expose realm param (got: {})",
+        outline.raw.uri_template
     );
     assert_eq!(
         outline.raw.mime_type.as_deref(),
@@ -118,6 +136,23 @@ fn dependency_graph_template_uses_correct_uri_pattern() {
     );
 }
 
+// --- resource template realm params ---
+
+#[test]
+fn symbols_template_includes_realm_param() {
+    let mcp = make_mcp();
+    let templates = mcp.resource_templates();
+    let symbols = templates
+        .iter()
+        .find(|t| t.raw.name == "symbol-search")
+        .expect("missing symbol-search template");
+    assert!(
+        symbols.raw.uri_template.contains("realm"),
+        "symbol-search template should expose realm param (got: {})",
+        symbols.raw.uri_template
+    );
+}
+
 // --- read_resource: outline ---
 
 #[test]
@@ -141,6 +176,50 @@ fn read_outline_resource_returns_json() {
     }
 }
 
+#[test]
+fn read_outline_resource_with_realm_query_succeeds() {
+    let (mcp, engine) = make_mcp_with_engine();
+    // realm query param must not bleed into the document URI
+    let result = mcp.read_resource_sync("markymark://outline/file:///vault/notes.md?realm=custom");
+    assert!(
+        result.is_ok(),
+        "outline resource should succeed when realm query param is present; got: {:?}",
+        result.err()
+    );
+    let captured = engine
+        .captured_realm
+        .lock()
+        .expect("mutex poisoned")
+        .clone();
+    assert_eq!(
+        captured,
+        Some(Some("custom".to_string())),
+        "realm should be forwarded to GetOutline"
+    );
+}
+
+#[test]
+fn read_outline_resource_with_percent_encoded_realm_query_decodes_value() {
+    let (mcp, engine) = make_mcp_with_engine();
+    let result =
+        mcp.read_resource_sync("markymark://outline/file:///vault/notes.md?realm=custom%20realm");
+    assert!(
+        result.is_ok(),
+        "outline resource should succeed when percent-encoded realm is present; got: {:?}",
+        result.err()
+    );
+    let captured = engine
+        .captured_realm
+        .lock()
+        .expect("mutex poisoned")
+        .clone();
+    assert_eq!(
+        captured,
+        Some(Some("custom realm".to_string())),
+        "percent-encoded realm should be decoded before forwarding"
+    );
+}
+
 // --- read_resource: symbols ---
 
 #[test]
@@ -160,6 +239,17 @@ fn read_symbols_resource_returns_json() {
         }
         _ => panic!("expected TextResourceContents"),
     }
+}
+
+#[test]
+fn read_symbols_resource_with_realm_query_succeeds() {
+    let mcp = make_mcp();
+    let result = mcp.read_resource_sync("markymark://symbols?query=test&realm=custom");
+    assert!(
+        result.is_ok(),
+        "symbols resource should succeed when realm query param is present; got: {:?}",
+        result.err()
+    );
 }
 
 // --- read_resource: dependency-graph ---
