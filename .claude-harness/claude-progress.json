@@ -1,51 +1,46 @@
 {
-  "lastUpdated": "2026-02-17T04:45:00Z",
+  "lastUpdated": "2026-02-17T05:57:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Merged origin/main (PR #21 self_cell refactor + incremental parsing) into feature/mark-brza. Fixed merge artifacts. Restored DocumentIndex::from_scan() on self_cell architecture (marky-b6v). Completed marky-3l6: implemented remaining PR #21 parser/LSP follow-ups (CRLF incremental regression test + incremental range clamp observability).",
+    "summary": "Completed marky-3w5: Refactored document.rs (1207 lines) into clean modular structure. Split into types.rs (102L), helpers.rs (189L), tests.rs (403L), mod.rs (540L). All 88 tests passing. Used safe refactoring workflow (change→test→commit) with 4 incremental commits.",
     "completedTasks": [
-      "Merge origin/main into feature/mark-brza (self_cell, incremental parsing, Miri CI)",
-      "Fixed duplicate alignment: YAML key in ci.yml (merge artifact)",
-      "Added markymark-index/** to zig-kernels CI path filter",
-      "marky-b6v: Restored from_scan() using DocumentOwner/DocumentIndexCell self_cell pattern",
-      "All 16 scan_tests pass including 4 bug-fix regression tests",
+      "marky-3w5: Converted document.rs to document/ module directory",
+      "marky-3w5: Extracted 8 entry structs to types.rs",
+      "marky-3w5: Extracted 8 helper functions to helpers.rs",
+      "marky-3w5: Extracted all test modules to tests.rs",
+      "marky-3w5: Reduced mod.rs from 1207 → 540 lines (under 1000-line hard limit)",
+      "All 88 tests passing (55 in markymark-index package)",
       "Quality gates: all tests pass, clippy clean, fmt clean, audit clean",
-      "marky-3l6: Added test_incremental_crlf_line_ending_edit_matches_full in markymark-lsp/tests/state_tests.rs",
-      "marky-3l6: Added incremental_byte_bounds/position_was_clamped helper path in markymark-lsp/src/state.rs",
-      "marky-3l6: Added unit test for clamped-range detection in state.rs",
-      "marky-3l6: Posted PR #21 follow-up comment and closed bead",
-      "Created new refactor bead marky-m8b for state.rs module split follow-up"
+      "Closed marky-3w5 with documentation",
+      "Synced beads and pushed 4 commits to remote"
     ],
     "blockers": [],
     "nextSteps": [
-      "Resolve merge conflicts (3 harness files)",
-      "marky-3w5 (P1): Refactor document.rs — 1203 lines, past 1000-line hard stop",
       "marky-ktt (P1): Audit unsafe transmute in DocumentIndex from marky-5yt migration",
       "marky-8s3.1: Code fence exclusion map Zig kernel",
-      "marky-0aw: Extraction parity tests (Zig SIMD vs tree-sitter)"
+      "marky-0aw: Extraction parity tests (Zig SIMD vs tree-sitter)",
+      "marky-m8b: Refactor state.rs module split follow-up"
     ]
   },
   "recentChanges": [
-    "Merge commit 6db8852: integrated self_cell + incremental parsing from main",
-    "ce90cdc: feat(index): restore from_scan() on self_cell architecture (marky-b6v)",
-    "from_scan now uses self_cell closure pattern — no more &'static lifetime hacks",
-    "CI has zig-kernels job + Miri job + markymark-index/** path filter",
-    "marky-3l6 CLOSED: triaged comments converted to concrete code/test updates",
-    "CRLF incremental edit parity now regression-tested in markymark-lsp",
-    "Incremental edit clamping now emits warning telemetry for observability",
-    "Follow-up refactor task opened: marky-m8b for state.rs submodule split"
+    "3cdde66: refactor(marky-3w5): extract tests to tests.rs",
+    "b2e5720: refactor(marky-3w5): extract helper functions to helpers.rs",
+    "d10a878: refactor(marky-3w5): extract entry types to types.rs",
+    "dff1682: refactor(marky-3w5): convert document.rs to document/ module directory",
+    "document.rs successfully modularized — now well under 1000-line limit",
+    "Safe refactoring workflow validated: change→test→commit cycle maintained green tests throughout",
+    "Final structure: 4 files totaling 1235 lines (split from original 1207)"
   ],
   "knownIssues": [
-    "marky-3w5 (P1): document.rs at 1203 lines — needs submodule split",
     "marky-ktt (P1): Unsafe transmute audit from marky-5yt migration",
     "c_adapter.zig at 811 lines — new exports use exports_*.zig pattern",
     "from_scan known gaps: no XML tags, no setext headings, no frontmatter",
-    "Scope guard RED ZONE: feature branch growing large"
+    "Scope guard RED ZONE: feature branch at 3926 lines, 20 files (RED > 2000 lines, 15 files)"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-17T04:44:00Z",
-    "lastTypeCheck": "2026-02-17T04:44:00Z"
+    "lastSuccessfulBuild": "2026-02-17T05:55:00Z",
+    "lastTypeCheck": "2026-02-17T05:55:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
