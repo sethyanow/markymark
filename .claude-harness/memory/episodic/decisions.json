@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "maxEntries": 50,
+  "maxEntries": 100,
   "entries": [
     {
       "id": "dec-020",
@@ -66,8 +66,8 @@
       "id": "dec-025",
       "timestamp": "2026-02-15T06:30:00Z",
       "feature": "feature-001",
-      "decision": "MARKYMARK_BENCH_HEAVY=1 for 100-sample runs; default to 10–20 samples to avoid RAM exhaustion on index_docs_dir (918 files)",
-      "rationale": "100-sample index_docs_dir froze laptop. Real corpus bench allocates ~5.9MB × 100 iterations; default sample sizes are sufficient for most runs.",
+      "decision": "MARKYMARK_BENCH_HEAVY=1 for 100-sample runs; default to 10\u201320 samples to avoid RAM exhaustion on index_docs_dir (918 files)",
+      "rationale": "100-sample index_docs_dir froze laptop. Real corpus bench allocates ~5.9MB \u00d7 100 iterations; default sample sizes are sufficient for most runs.",
       "alternatives": [
         "Cap index_docs_dir at 20 samples in heavy mode",
         "Run heavy bench on CI only"
@@ -175,7 +175,7 @@
       "timestamp": "2026-02-15T04:55:00Z",
       "feature": "feature-001",
       "decision": "Use LazyLock<Regex> static compilation for all 14 regex patterns in extract.rs",
-      "rationale": "CodeRabbit flagged regex recompilation on every function call as Major issue. LazyLock compiles each regex exactly once (first access) and reuses across all calls. No crate dependency added — LazyLock is in std since Rust 1.80.",
+      "rationale": "CodeRabbit flagged regex recompilation on every function call as Major issue. LazyLock compiles each regex exactly once (first access) and reuses across all calls. No crate dependency added \u2014 LazyLock is in std since Rust 1.80.",
       "alternatives": [
         "once_cell::sync::Lazy (external crate)",
         "Thread-local regex (separate per-thread compilation)"
@@ -187,7 +187,7 @@
       "timestamp": "2026-02-15T04:55:00Z",
       "feature": "feature-001",
       "decision": "MarkdownLinkEntry.url stores base URL only (without fragment); anchor stored separately",
-      "rationale": "CodeRabbit flagged that url field duplicated anchor info. Parser already splits URL at '#' — index was re-concatenating them. Storing base URL matches parser semantics and simplifies callers (no need to strip anchor from url).",
+      "rationale": "CodeRabbit flagged that url field duplicated anchor info. Parser already splits URL at '#' \u2014 index was re-concatenating them. Storing base URL matches parser semantics and simplifies callers (no need to strip anchor from url).",
       "alternatives": [
         "Keep concatenated url (matches browser URL bar behavior)",
         "Remove anchor field entirely and only store full url"
@@ -236,12 +236,12 @@
       "timestamp": "2026-02-15T15:30:00Z",
       "feature": "feature-001",
       "decision": "Reorder Ast struct fields so root_elements is declared before arena to fix drop order",
-      "rationale": "Rust drops struct fields in declaration order. Arena was declared before root_elements, meaning Bump freed all memory before Element drop impls ran. Any Element containing ArenaHashMap would access a dangling &Bump reference on drop — undefined behavior.",
+      "rationale": "Rust drops struct fields in declaration order. Arena was declared before root_elements, meaning Bump freed all memory before Element drop impls ran. Any Element containing ArenaHashMap would access a dangling &Bump reference on drop \u2014 undefined behavior.",
       "alternatives": [
         "Use ManuallyDrop for arena (more complex, less idiomatic)",
         "Implement custom Drop for Ast (overrides field drop order but adds maintenance burden)"
       ],
-      "impact": "markymark-parser/src/ast.rs — struct field reordering"
+      "impact": "markymark-parser/src/ast.rs \u2014 struct field reordering"
     },
     {
       "id": "dec-032",
@@ -253,14 +253,14 @@
         "Remove entirely (loses test utility)",
         "Rename to Ast::empty() (still panics, just with different name)"
       ],
-      "impact": "markymark-parser/src/ast.rs — Default impl visibility"
+      "impact": "markymark-parser/src/ast.rs \u2014 Default impl visibility"
     },
     {
       "id": "dec-033",
       "timestamp": "2026-02-15T15:33:00Z",
       "feature": "feature-001",
       "decision": "Merge origin/main into feature branch (not rebase) to resolve PR #10 squash merge conflicts",
-      "rationale": "PR #10 was squash-merged to main, causing 22 conflicts with the 52-commit feature branch. Rebase failed before (fail-feature-001-rebase-20260214). Merge commit is safest — preserves all history and clearly documents integration point.",
+      "rationale": "PR #10 was squash-merged to main, causing 22 conflicts with the 52-commit feature branch. Rebase failed before (fail-feature-001-rebase-20260214). Merge commit is safest \u2014 preserves all history and clearly documents integration point.",
       "alternatives": [
         "Rebase 52 commits (failed before, rewrites hashes)",
         "Reset main to before squash merge (force push to main, risky)"
@@ -364,7 +364,7 @@
         "Use cc crate (overkill for invoking zig CLI)",
         "Use which crate for zig lookup (unnecessary, PATH lookup via Command is sufficient)"
       ],
-      "impact": "markymark-kernels/build.rs — zero build-dependencies"
+      "impact": "markymark-kernels/build.rs \u2014 zero build-dependencies"
     },
     {
       "id": "dec-brza-een-002",
@@ -388,7 +388,7 @@
         "Separate zig-kernels CI job (full marky-ayb scope)",
         "Feature-gate markymark-kernels to skip without Zig"
       ],
-      "impact": ".github/workflows/ci.yml — mlugg/setup-zig@v2 step added"
+      "impact": ".github/workflows/ci.yml \u2014 mlugg/setup-zig@v2 step added"
     },
     {
       "id": "dec-ncz-001",
@@ -400,14 +400,14 @@
         "Add directly to c_adapter.zig (would exceed 1000 lines)",
         "Split c_adapter.zig into c_adapter_scan.zig and c_adapter_shared.zig first (larger refactor)"
       ],
-      "impact": "zig/src/exports_embed.zig — new pattern for all future C ABI exports"
+      "impact": "zig/src/exports_embed.zig \u2014 new pattern for all future C ABI exports"
     },
     {
       "id": "dec-041",
       "timestamp": "2026-02-16T16:27:00Z",
       "feature": "marky-luy.2",
-      "decision": "Do NOT implement arena reuse via DocumentArena::reset for re-parse — benchmark shows negligible benefit",
-      "rationale": "Benchmark data: small doc arena lifecycle = 662ns vs 64µs full reparse (0.07% savings). Large doc: 22.5µs vs 3.36ms (0.02%). Tree-sitter parsing dominates by 100-150x. Implementation would require API changes across 4 crates (parser, core, index, lsp) for sub-0.1% improvement.",
+      "decision": "Do NOT implement arena reuse via DocumentArena::reset for re-parse \u2014 benchmark shows negligible benefit",
+      "rationale": "Benchmark data: small doc arena lifecycle = 662ns vs 64\u00b5s full reparse (0.07% savings). Large doc: 22.5\u00b5s vs 3.36ms (0.02%). Tree-sitter parsing dominates by 100-150x. Implementation would require API changes across 4 crates (parser, core, index, lsp) for sub-0.1% improvement.",
       "alternatives": [
         "Implement full arena reuse pipeline (not justified by data)",
         "Pre-size arenas with Bump::with_capacity based on document size (marginal, separate concern)"
@@ -419,10 +419,10 @@
       "timestamp": "2026-02-16T17:10:00Z",
       "feature": "marky-tfd",
       "decision": "Option A: Store MarkdownTree in separate HashMap in ServerState, extract from Ast via take_md_tree()",
-      "rationale": "Cleanest separation — MarkdownTree is only needed by the parser layer for incremental reuse. Storing in ServerState HashMap keeps it independent of DocumentIndex's arena ownership transfer. The Ast wraps md_tree in Option to allow taking it out before from_ast() consumes the Ast.",
+      "rationale": "Cleanest separation \u2014 MarkdownTree is only needed by the parser layer for incremental reuse. Storing in ServerState HashMap keeps it independent of DocumentIndex's arena ownership transfer. The Ast wraps md_tree in Option to allow taking it out before from_ast() consumes the Ast.",
       "alternatives": [
-        "Option B: Ast::into_parts() -> (DocumentArena, MarkdownTree) — requires changing from_ast signature",
-        "Option C: Store MarkdownTree inside DocumentIndex — couples tree-sitter concerns into index layer"
+        "Option B: Ast::into_parts() -> (DocumentArena, MarkdownTree) \u2014 requires changing from_ast signature",
+        "Option C: Store MarkdownTree inside DocumentIndex \u2014 couples tree-sitter concerns into index layer"
       ],
       "impact": "markymark-parser/src/ast.rs (Option<MarkdownTree>, take_md_tree), markymark-lsp/src/state.rs (md_trees HashMap)"
     },
@@ -431,7 +431,7 @@
       "timestamp": "2026-02-16T17:10:00Z",
       "feature": "marky-tfd",
       "decision": "Re-export MarkdownTree from markymark-parser instead of adding tree-sitter-md dependency to markymark-lsp",
-      "rationale": "LSP crate doesn't need direct knowledge of tree-sitter-md internals. Re-exporting from the parser crate keeps the dependency graph clean — only parser needs to know about tree-sitter-md.",
+      "rationale": "LSP crate doesn't need direct knowledge of tree-sitter-md internals. Re-exporting from the parser crate keeps the dependency graph clean \u2014 only parser needs to know about tree-sitter-md.",
       "alternatives": [
         "Add tree-sitter-md as direct dependency of markymark-lsp"
       ],
@@ -442,11 +442,11 @@
       "timestamp": "2026-02-16T17:45:00Z",
       "feature": "marky-tzq",
       "decision": "DocumentChange enum in state.rs with LSP line/character fields, conversion in convert.rs",
-      "rationale": "Sequential change application requires interleaved UTF-16→byte conversion (each edit shifts offsets for the next). Keeping conversion interleaved with text mutation means state.rs calls convert.rs per edit. DocumentChange carries raw LSP positions to avoid leaking ls_types into state module.",
+      "rationale": "Sequential change application requires interleaved UTF-16\u2192byte conversion (each edit shifts offsets for the next). Keeping conversion interleaved with text mutation means state.rs calls convert.rs per edit. DocumentChange carries raw LSP positions to avoid leaking ls_types into state module.",
       "alternatives": [
-        "Pre-compute all byte offsets in server.rs (wrong — offsets shift after each edit)",
+        "Pre-compute all byte offsets in server.rs (wrong \u2014 offsets shift after each edit)",
         "Pass byte ranges from server.rs (requires server.rs to track evolving text)",
-        "Put conversion in state.rs directly (violates separation — convert.rs owns all LSP conversions)"
+        "Put conversion in state.rs directly (violates separation \u2014 convert.rs owns all LSP conversions)"
       ],
       "impact": "markymark-lsp/src/state.rs (DocumentChange, apply_document_changes), markymark-lsp/src/convert.rs (lsp_position_to_byte_offset)"
     },
@@ -516,7 +516,7 @@
         "Add rust-toolchain.toml with nightly (too disruptive)",
         "Just document that it's not thread-safe without enforcing (unsafe)"
       ],
-      "impact": "markymark-kernels/src/embed.rs — EmbeddingIndex struct"
+      "impact": "markymark-kernels/src/embed.rs \u2014 EmbeddingIndex struct"
     },
     {
       "id": "dec-0u5-003",
@@ -528,7 +528,7 @@
         "Move export fn declarations directly into c_adapter.zig (violates 1000-line limit)",
         "Add exports_embed.zig to build.zig as separate compilation unit (more complex build)"
       ],
-      "impact": "zig/src/c_adapter.zig — critical fix for all future exports_*.zig files"
+      "impact": "zig/src/c_adapter.zig \u2014 critical fix for all future exports_*.zig files"
     },
     {
       "id": "dec-phase3-001",
@@ -583,7 +583,7 @@
       "timestamp": "2026-02-16T16:23:03Z",
       "feature": "marky-77i",
       "decision": "Hybrid merge strategy: purge intersecting + validate neighbors (not full dedup or range-only)",
-      "rationale": "Purge entries where range intersects edits (conservative but correct). Validate neighbors within ±100 bytes (catches position shifts). More precise than range-only, less overhead than full content dedup.",
+      "rationale": "Purge entries where range intersects edits (conservative but correct). Validate neighbors within \u00b1100 bytes (catches position shifts). More precise than range-only, less overhead than full content dedup.",
       "alternatives": [
         "Range-based purge only (simple but may miss shifted neighbors)",
         "Content-based dedup (precise but requires hashing all entries - overhead)"
@@ -686,7 +686,19 @@
         "Delay regression test until DocumentIndex migration completes"
       ],
       "impact": "markymark-parser/tests/ast_self_cell.rs"
+    },
+    {
+      "id": "dec-053",
+      "timestamp": "2026-02-17T04:44:00Z",
+      "feature": "marky-b6v",
+      "decision": "Restore from_scan() on self_cell architecture using identical DocumentOwner/DocumentIndexCell pattern as from_ast",
+      "rationale": "PR #21 merge replaced old &static lifetime hacks with self_cell. from_scan was lost. Restoring it with the same self_cell closure pattern ensures both construction paths share the same safe ownership model. from_scan creates DocumentArena::new() (vs from_ast which takes ast.into_arena()).",
+      "alternatives": [
+        "Keep old &static pattern in from_scan only (inconsistent, unsafe)",
+        "Defer from_scan restoration until document.rs refactor (blocks BRZA work)"
+      ],
+      "impact": "markymark-index/src/document.rs \u2014 from_scan, byte_offset helpers, 16 scan_tests"
     }
   ],
-  "lastUpdated": "2026-02-16T19:23:11Z"
+  "lastUpdated": "2026-02-17T04:44:00Z"
 }
