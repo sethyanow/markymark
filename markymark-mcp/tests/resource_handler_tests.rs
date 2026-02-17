@@ -75,9 +75,10 @@ fn outline_template_uses_correct_uri_pattern() {
         .iter()
         .find(|t| t.raw.name == "document-outline")
         .expect("missing document-outline template");
-    assert_eq!(
-        outline.raw.uri_template, "markymark://outline/{uri}",
-        "wrong outline URI template"
+    assert!(
+        outline.raw.uri_template.contains("realm"),
+        "outline template should expose realm param (got: {})",
+        outline.raw.uri_template
     );
     assert_eq!(
         outline.raw.mime_type.as_deref(),
@@ -118,6 +119,23 @@ fn dependency_graph_template_uses_correct_uri_pattern() {
     );
 }
 
+// --- resource template realm params ---
+
+#[test]
+fn symbols_template_includes_realm_param() {
+    let mcp = make_mcp();
+    let templates = mcp.resource_templates();
+    let symbols = templates
+        .iter()
+        .find(|t| t.raw.name == "symbol-search")
+        .expect("missing symbol-search template");
+    assert!(
+        symbols.raw.uri_template.contains("realm"),
+        "symbol-search template should expose realm param (got: {})",
+        symbols.raw.uri_template
+    );
+}
+
 // --- read_resource: outline ---
 
 #[test]
@@ -141,6 +159,18 @@ fn read_outline_resource_returns_json() {
     }
 }
 
+#[test]
+fn read_outline_resource_with_realm_query_succeeds() {
+    let mcp = make_mcp();
+    // realm query param must not bleed into the document URI
+    let result = mcp.read_resource_sync("markymark://outline/file:///vault/notes.md?realm=custom");
+    assert!(
+        result.is_ok(),
+        "outline resource should succeed when realm query param is present; got: {:?}",
+        result.err()
+    );
+}
+
 // --- read_resource: symbols ---
 
 #[test]
@@ -160,6 +190,17 @@ fn read_symbols_resource_returns_json() {
         }
         _ => panic!("expected TextResourceContents"),
     }
+}
+
+#[test]
+fn read_symbols_resource_with_realm_query_succeeds() {
+    let mcp = make_mcp();
+    let result = mcp.read_resource_sync("markymark://symbols?query=test&realm=custom");
+    assert!(
+        result.is_ok(),
+        "symbols resource should succeed when realm query param is present; got: {:?}",
+        result.err()
+    );
 }
 
 // --- read_resource: dependency-graph ---
