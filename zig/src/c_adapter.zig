@@ -7,6 +7,7 @@ const token_estimate = @import("kernels/token_estimate.zig");
 const content_hash_mod = @import("kernels/content_hash.zig");
 const fence_map = @import("kernels/fence_map.zig");
 const multi_scan = @import("kernels/multi_scan.zig");
+const slug_kernel = @import("kernels/slug.zig");
 const similarity = @import("shared/similarity.zig");
 const normalize = @import("shared/normalize.zig");
 const entities = @import("shared/entities.zig");
@@ -522,6 +523,34 @@ export fn marky_fuzzy_match(
     return similarity.fuzzy_match_score(q, query_len, c, candidate_len);
 }
 
+/// SIMD-accelerated slug generation from heading text.
+///
+/// Converts ASCII uppercase to lowercase, maps whitespace/punctuation to '-',
+/// strips unsupported punctuation, collapses repeated hyphens, and trims leading/
+/// trailing hyphens. Non-ASCII UTF-8 bytes are passed through unchanged.
+///
+/// Returns:
+///  >=0 — bytes written
+///  -1  — invalid input (null pointers)
+///  -2  — output buffer too small (including output_cap == 0)
+export fn marky_slugify(
+    text: ?[*]const u8,
+    len: u32,
+    output: ?[*]u8,
+    output_cap: u32,
+) i32 {
+    const t = text orelse {
+        if (len == 0) return 0;
+        return -1;
+    };
+    const out = output orelse return -1;
+
+    if (len == 0) return 0;
+    if (output_cap == 0) return -2;
+
+    return slug_kernel.slugify(t, len, out, output_cap);
+}
+
 /// SIMD-accelerated entity hash extraction.
 ///
 /// Scans text for words, produces FNV-1a u32 hash for each.
@@ -632,6 +661,7 @@ test {
     // Multi-scan automaton (Aho-Corasick)
     _ = @import("reference/multi_scan_ref.zig");
     _ = @import("kernels/multi_scan.zig");
+    _ = @import("kernels/slug.zig");
     // Shared kernels (forked from forge BRZA)
     _ = @import("shared/similarity.zig");
     _ = @import("reference/similarity_ref.zig");
@@ -993,6 +1023,70 @@ test "marky_fuzzy_match null input returns -1" {
     const score2 = marky_fuzzy_match("st".ptr, 2, null, 5);
     try std.testing.expectEqual(@as(i32, -1), score1);
     try std.testing.expectEqual(@as(i32, -1), score2);
+}
+
+test "marky_slugify basic heading" {
+    const text = "Hello World";
+    var out: [32]u8 = undefined;
+    const rc = marky_slugify(text.ptr, text.len, &out, out.len);
+    try std.testing.expectEqual(@as(i32, 11), rc);
+    try std.testing.expectEqualStrings("hello-world", out[0..@as(usize, @intCast(rc))]);
+}
+
+test "marky_slugify strips punctuation and collapses hyphens" {
+    const text = "Using `fmt`!!!";
+    var out: [32]u8 = undefined;
+    const rc = marky_slugify(text.ptr, text.len, &out, out.len);
+    try std.testing.expectEqual(@as(i32, 9), rc);
+    try std.testing.expectEqualStrings("using-fmt", out[0..@as(usize, @intCast(rc))]);
+}
+
+test "marky_slugify all punctuation returns empty" {
+    const text = "!!!...---";
+    var out: [32]u8 = undefined;
+    const rc = marky_slugify(text.ptr, text.len, &out, out.len);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+}
+
+test "marky_slugify preserves non ascii bytes" {
+    const text = "Café au lait";
+    var out: [32]u8 = undefined;
+    const rc = marky_slugify(text.ptr, text.len, &out, out.len);
+    try std.testing.expectEqual(@as(i32, 13), rc);
+    try std.testing.expectEqualStrings("café-au-lait", out[0..@as(usize, @intCast(rc))]);
+}
+
+test "marky_slugify null text with zero len" {
+    var out: [8]u8 = undefined;
+    const rc = marky_slugify(null, 0, &out, out.len);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+}
+
+test "marky_slugify null text with nonzero len returns -1" {
+    var out: [8]u8 = undefined;
+    const rc = marky_slugify(null, 1, &out, out.len);
+    try std.testing.expectEqual(@as(i32, -1), rc);
+}
+
+test "marky_slugify null output returns -1" {
+    const text = "hello";
+    const rc = marky_slugify(text.ptr, text.len, null, 8);
+    try std.testing.expectEqual(@as(i32, -1), rc);
+}
+
+test "marky_slugify zero output cap returns -2" {
+    const text = "hello";
+    var out: [8]u8 = undefined;
+    const rc = marky_slugify(text.ptr, text.len, &out, 0);
+    try std.testing.expectEqual(@as(i32, -2), rc);
+}
+
+test "marky_slugify truncation returns -2" {
+    const text = "hello-world";
+    var out: [5]u8 = undefined;
+    const rc = marky_slugify(text.ptr, text.len, &out, out.len);
+    try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqualStrings("hello", out[0..]);
 }
 
 // -- zig_extract_entity_hashes tests --

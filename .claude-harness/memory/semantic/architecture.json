@@ -19,6 +19,8 @@
     ],
     "components": [
       "markymark-core/src/engine.rs (CoreEngine trait, CoreOperation, CoreResult)",
+      "zig/src/c_adapter.zig (C ABI entrypoint wiring SIMD kernels, including marky_slugify export)",
+      "zig/src/kernels/slug.zig (single-pass heading slug generation kernel with UTF-8 passthrough)",
       "markymark-core/src/arena.rs (arena helpers, allocation wrappers)",
       "markymark-parser/src/ast.rs (tree-sitter AST construction, arena ownership)",
       "markymark-parser/src/ast.rs (AstCell self_cell owner/dependent layout for internal lifetime binding)",
@@ -88,7 +90,7 @@
         "Integration tests in crate tests/ dirs are standalone crates (no mod.rs needed)"
       ],
       "plugin": "markymark-plugin/{.claude-plugin/,bin/,scripts/,hooks/,skills/,tests/}",
-      "zig": "zig/{src/kernels/,src/reference/,src/c_adapter.zig,build.zig} — SIMD extraction kernels",
+      "zig": "zig/{src/kernels/,src/reference/,src/c_adapter.zig,build.zig} — SIMD extraction kernels and C ABI exports (marky_slugify included)",
       "examples": "examples/claude-code-plugin/ (reference implementations)"
     },
     "codeStyle": {
@@ -113,6 +115,7 @@
     },
     "codePatterns": [
       "DocumentArena wrapper preferred over raw Bump for per-document arenas (Debug, capacity)",
+      "C ABI string transforms should return byte counts (i32) and tests must assert UTF-8 byte lengths, not character counts",
       "ArenaHashMap is !Send (Bump:!Sync); parser types can use it, index types must use std HashMap",
       "#[expect(lint, reason=\"...\")] preferred over #[allow(lint)] per M-LINT-OVERRIDE-EXPECT",
       "Self-referential arena migration path: use DocumentArena as owner with self_cell owner/dependent internals; legacy 'static + doc_arena_ptr() ownership-transfer is deprecated and should not be introduced in new code",
@@ -123,6 +126,6 @@
     ]
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-17T05:57:00Z",
+  "lastUpdated": "2026-02-17T16:02:39Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }
