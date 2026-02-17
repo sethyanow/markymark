@@ -29,3 +29,5 @@ Thumbs.db
 # Zig
 .zig-cache/
 zig-out/
+
+.brain
