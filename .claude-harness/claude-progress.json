@@ -1,46 +1,46 @@
 {
-  "lastUpdated": "2026-02-17T05:57:00Z",
+  "lastUpdated": "2026-02-17T21:38:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-3w5: Refactored document.rs (1207 lines) into clean modular structure. Split into types.rs (102L), helpers.rs (189L), tests.rs (403L), mod.rs (540L). All 88 tests passing. Used safe refactoring workflow (change→test→commit) with 4 incremental commits.",
+    "summary": "Triaged PR #28 review comments (CodeRabbit, Greptile, GHAS, Copilot). Implemented marky-r7j and marky-0g6: threaded optional realm parameter through MCP prompts.rs (explain-link, suggest-references) and resources.rs (outline, symbols). TDD: confirmed RED before implementation, GREEN after. All workspace tests pass. Pushed commit 35c1c14.",
     "completedTasks": [
-      "marky-3w5: Converted document.rs to document/ module directory",
-      "marky-3w5: Extracted 8 entry structs to types.rs",
-      "marky-3w5: Extracted 8 helper functions to helpers.rs",
-      "marky-3w5: Extracted all test modules to tests.rs",
-      "marky-3w5: Reduced mod.rs from 1207 → 540 lines (under 1000-line hard limit)",
-      "All 88 tests passing (55 in markymark-index package)",
-      "Quality gates: all tests pass, clippy clean, fmt clean, audit clean",
-      "Closed marky-3w5 with documentation",
-      "Synced beads and pushed 4 commits to remote"
+      "Fetched and triaged all PR #28 review comments via GitHub API",
+      "Created beads issues: marky-r7j (prompts realm), marky-0g6 (resources realm), marky-16m (GHAS temp-dir + boundary-unwrap), marky-w85 (non-existent realm test)",
+      "Updated marky-77x notes with Greptile incremental overlap check findings",
+      "marky-r7j: added optional realm PromptArgument to explain-link and suggest-references; threaded into ExportIndex and FindReferences",
+      "marky-0g6: parse realm query param from resource URI in GetOutline and SearchSymbols; strip ?realm= from doc URI before DocumentUri::new; updated URI templates",
+      "TDD: 4 tests confirmed RED before implementation; all GREEN after",
+      "Full workspace tests pass (zero failures)",
+      "Closed marky-r7j and marky-0g6, pushed, synced beads"
     ],
     "blockers": [],
     "nextSteps": [
+      "marky-16m (P2): Fix GHAS findings — switch tests to tempfile::TempDir, add expect() messages at boundary unwraps",
+      "marky-w85 (P3): Add non-existent realm error path test in runtime_engine_tests",
+      "marky-77x (P2): Implement true wiki_links selective merge; fix incomplete overlap check in state.rs:289",
       "marky-ktt (P1): Audit unsafe transmute in DocumentIndex from marky-5yt migration",
-      "marky-8s3.1: Code fence exclusion map Zig kernel",
-      "marky-0aw: Extraction parity tests (Zig SIMD vs tree-sitter)",
-      "marky-m8b: Refactor state.rs module split follow-up"
+      "marky-m8b (P3): Refactor state.rs into submodules"
     ]
   },
   "recentChanges": [
-    "3cdde66: refactor(marky-3w5): extract tests to tests.rs",
-    "b2e5720: refactor(marky-3w5): extract helper functions to helpers.rs",
-    "d10a878: refactor(marky-3w5): extract entry types to types.rs",
-    "dff1682: refactor(marky-3w5): convert document.rs to document/ module directory",
-    "document.rs successfully modularized — now well under 1000-line limit",
-    "Safe refactoring workflow validated: change→test→commit cycle maintained green tests throughout",
-    "Final structure: 4 files totaling 1235 lines (split from original 1207)"
+    "35c1c14: fix(mcp): thread realm through prompts and resources (marky-r7j, marky-0g6)",
+    "c1441c6: fix(markymark-d7r): add optional realm param to per-document MCP operations",
+    "46c648f: fix: resolve merge conflicts in claude-harness memory files",
+    "prompts.rs: explain-link and suggest-references now accept optional realm arg",
+    "resources.rs: outline and symbol-search templates expose realm; handlers parse it from URI",
+    "PR #28 triage complete — 4 beads issues filed from review findings"
   ],
   "knownIssues": [
+    "marky-16m (P2): GHAS Semgrep findings — temp_dir usage in tests, boundary-unwrap in tests",
     "marky-ktt (P1): Unsafe transmute audit from marky-5yt migration",
+    "marky-77x (P2): wiki_links incremental merge unimplemented; state.rs:289 overlap check incomplete",
     "c_adapter.zig at 811 lines — new exports use exports_*.zig pattern",
-    "from_scan known gaps: no XML tags, no setext headings, no frontmatter",
-    "Scope guard RED ZONE: feature branch at 3926 lines, 20 files (RED > 2000 lines, 15 files)"
+    "from_scan known gaps: no XML tags, no setext headings, no frontmatter"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-17T05:55:00Z",
-    "lastTypeCheck": "2026-02-17T05:55:00Z"
+    "lastSuccessfulBuild": "2026-02-17T21:35:00Z",
+    "lastTypeCheck": "2026-02-17T21:35:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
