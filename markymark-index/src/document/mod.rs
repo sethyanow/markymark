@@ -1,7 +1,9 @@
 //! Document indexing: heading lookup, block lookup, TOC, outline tree.
 
+mod helpers;
 mod types;
 
+pub use helpers::slugify;
 pub use types::*;
 
 use bumpalo::collections::Vec as BumpVec;
@@ -17,51 +19,6 @@ use std::sync::Mutex;
 
 #[cfg(feature = "zig-kernels")]
 use markymark_core::scanner::{ScanBackend, ScanLinkType};
-
-/// Convert heading text to a URL-safe slug.
-pub fn slugify(text: &str) -> String {
-    let lower = text.to_lowercase();
-    let mut slug = String::with_capacity(lower.len());
-
-    for ch in lower.chars() {
-        if ch.is_alphanumeric() || ch == '-' {
-            slug.push(ch);
-        } else if ch == ' ' {
-            slug.push('-');
-        }
-        // Other non-alphanumeric chars are stripped entirely
-    }
-
-    // Collapse consecutive dashes
-    let mut result = String::with_capacity(slug.len());
-    let mut prev_dash = false;
-    for ch in slug.chars() {
-        if ch == '-' {
-            if !prev_dash {
-                result.push('-');
-            }
-            prev_dash = true;
-        } else {
-            result.push(ch);
-            prev_dash = false;
-        }
-    }
-
-    // Trim dashes from start/end
-    result.trim_matches('-').to_string()
-}
-
-/// Deduplicate a slug given a set of already-used slugs.
-fn dedup_slug(base: &str, used: &mut StdHashMap<String, usize>) -> String {
-    let count = used.entry(base.to_string()).or_insert(0);
-    let slug = if *count == 0 {
-        base.to_string()
-    } else {
-        format!("{}-{}", base, count)
-    };
-    *count += 1;
-    slug
-}
 
 /// Index of a single parsed markdown document.
 ///
@@ -257,7 +214,7 @@ impl DocumentIndex {
             let mut slug_counts: StdHashMap<String, usize> = StdHashMap::new();
             for h in headings_owned {
                 let base_slug = slugify(&h.text);
-                let slug_owned = dedup_slug(&base_slug, &mut slug_counts);
+                let slug_owned = helpers::dedup_slug(&base_slug, &mut slug_counts);
                 let text = arena_alloc_str(arena_ref, &h.text);
                 let slug = arena_alloc_str(arena_ref, &slug_owned);
                 let idx = headings_builder.len();
@@ -283,8 +240,8 @@ impl DocumentIndex {
                 );
             }
 
-            let toc = build_toc(arena_ref, headings);
-            let outline = build_outline(arena_ref, headings);
+            let toc = helpers::build_toc(arena_ref, headings);
+            let outline = helpers::build_outline(arena_ref, headings);
 
             let mut wiki_links_builder = BumpVec::new_in(arena_ref);
             for wl in wiki_links_owned {
@@ -358,7 +315,7 @@ impl DocumentIndex {
     #[cfg(feature = "zig-kernels")]
     pub fn from_scan(text: &str, backend: &dyn ScanBackend) -> Self {
         // Pre-compute line starts for byte-offset → Position conversion
-        let line_starts = byte_offset_line_starts(text);
+        let line_starts = helpers::byte_offset_line_starts(text);
 
         // Collect owned data from scan backend before entering self_cell closure
         let scan_headings = backend.scan_headings(text).unwrap_or_default();
@@ -379,11 +336,11 @@ impl DocumentIndex {
 
             for h in scan_headings {
                 let base_slug = slugify(&h.text);
-                let slug_owned = dedup_slug(&base_slug, &mut slug_counts);
+                let slug_owned = helpers::dedup_slug(&base_slug, &mut slug_counts);
                 let heading_text = arena_alloc_str(arena_ref, &h.text);
                 let slug = arena_alloc_str(arena_ref, &slug_owned);
-                let pos = byte_offset_to_position(&line_starts, h.offset);
-                let end_pos = byte_offset_to_position(
+                let pos = helpers::byte_offset_to_position(&line_starts, h.offset);
+                let end_pos = helpers::byte_offset_to_position(
                     &line_starts,
                     h.offset + h.level as u32 + 1 + h.text.len() as u32,
                 );
@@ -413,7 +370,7 @@ impl DocumentIndex {
                     }
                     ScanLinkType::Wiki => l.offset + l.target.len() as u32 + 4,
                 };
-                let end_pos = byte_offset_to_position(&line_starts, end_offset);
+                let end_pos = helpers::byte_offset_to_position(&line_starts, end_offset);
                 let range = Range::new(pos, end_pos);
 
                 match l.link_type {
@@ -478,8 +435,8 @@ impl DocumentIndex {
             }
 
             // Build TOC and outline from headings
-            let toc = build_toc(arena_ref, headings);
-            let outline = build_outline(arena_ref, headings);
+            let toc = helpers::build_toc(arena_ref, headings);
+            let outline = helpers::build_outline(arena_ref, headings);
 
             // XML tags: not supported by scan backend
             let xml_tags = BumpVec::<XmlTagEntry<'_>>::new_in(arena_ref).into_bump_slice();
@@ -577,140 +534,6 @@ impl fmt::Debug for DocumentIndex {
             .field("xml_tags", &dep.xml_tags.len())
             .finish()
     }
-}
-
-/// Build flat TOC entries with depth calculation.
-fn build_toc<'arena>(
-    arena: &'arena Bump,
-    headings: &[HeadingEntry<'arena>],
-) -> &'arena [TocEntry<'arena>] {
-    let mut toc = BumpVec::new_in(arena);
-    let mut level_stack: Vec<u8> = Vec::new();
-
-    for h in headings {
-        while let Some(&top) = level_stack.last() {
-            if top >= h.level {
-                level_stack.pop();
-            } else {
-                break;
-            }
-        }
-
-        let depth = level_stack.len();
-        level_stack.push(h.level);
-
-        toc.push(TocEntry {
-            text: h.text,
-            slug: h.slug,
-            level: h.level,
-            depth,
-        });
-    }
-
-    toc.into_bump_slice()
-}
-
-#[derive(Debug, Clone)]
-struct TempOutline<'arena> {
-    heading: Option<HeadingEntry<'arena>>,
-    children: Vec<TempOutline<'arena>>,
-}
-
-fn get_temp_node_mut<'tree, 'arena>(
-    root: &'tree mut TempOutline<'arena>,
-    path: &[usize],
-) -> &'tree mut TempOutline<'arena> {
-    let mut current = root;
-    for &idx in path {
-        current = &mut current.children[idx];
-    }
-    current
-}
-
-fn freeze_outline<'arena>(arena: &'arena Bump, node: TempOutline<'arena>) -> OutlineNode<'arena> {
-    let mut children = BumpVec::new_in(arena);
-    for child in node.children {
-        children.push(freeze_outline(arena, child));
-    }
-
-    OutlineNode {
-        heading: node.heading,
-        children: children.into_bump_slice(),
-    }
-}
-
-/// Build outline tree from heading entries.
-fn build_outline<'arena>(
-    arena: &'arena Bump,
-    headings: &[HeadingEntry<'arena>],
-) -> OutlineNode<'arena> {
-    let mut root = TempOutline {
-        heading: None,
-        children: Vec::new(),
-    };
-
-    // Stack entries are (heading level, path of child indices from root).
-    let mut stack: Vec<(u8, Vec<usize>)> = Vec::new();
-
-    for h in headings {
-        let node = TempOutline {
-            heading: Some(h.clone()),
-            children: Vec::new(),
-        };
-
-        while let Some((lvl, _)) = stack.last() {
-            if *lvl >= h.level {
-                stack.pop();
-            } else {
-                break;
-            }
-        }
-
-        if stack.is_empty() {
-            root.children.push(node);
-            let idx = root.children.len() - 1;
-            stack.push((h.level, vec![idx]));
-        } else {
-            let parent_path = stack.last().expect("stack not empty").1.clone();
-            let parent = get_temp_node_mut(&mut root, &parent_path);
-            parent.children.push(node);
-            let child_idx = parent.children.len() - 1;
-
-            let mut child_path = parent_path;
-            child_path.push(child_idx);
-            stack.push((h.level, child_path));
-        }
-    }
-
-    freeze_outline(arena, root)
-}
-
-// ---------------------------------------------------------------------------
-// Byte-offset to Position helpers (for scan-based construction)
-// ---------------------------------------------------------------------------
-
-/// Build a sorted list of byte offsets where each line starts.
-/// Line 0 starts at offset 0. Line N starts after the N-th newline.
-#[cfg(feature = "zig-kernels")]
-fn byte_offset_line_starts(text: &str) -> Vec<u32> {
-    let mut starts = vec![0u32];
-    for (i, b) in text.bytes().enumerate() {
-        if b == b'\n' {
-            starts.push((i + 1) as u32);
-        }
-    }
-    starts
-}
-
-/// Convert a byte offset to a Position (0-based line, 0-based character).
-#[cfg(feature = "zig-kernels")]
-fn byte_offset_to_position(line_starts: &[u32], offset: u32) -> Position {
-    let line = match line_starts.binary_search(&offset) {
-        Ok(exact) => exact,
-        Err(insert) => insert - 1,
-    };
-    let col = offset - line_starts[line];
-    Position::new(line as u32, col)
 }
 
 #[cfg(test)]
