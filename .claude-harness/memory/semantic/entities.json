@@ -186,6 +186,24 @@
         "implements true selective wiki-link merge after z7e scaffolding",
         "targets purge/re-extract/neighbor-validation merge behavior"
       ]
+    },
+    {
+      "name": "decode_query_value",
+      "type": "mcp-resource-helper",
+      "location": "markymark-mcp/src/resources.rs",
+      "relationships": [
+        "percent-decodes query parameter values before CoreOperation dispatch",
+        "supports both %XX and + space decoding semantics"
+      ]
+    },
+    {
+      "name": "mcp-prompt-realm-default",
+      "type": "prompt-contract-rule",
+      "location": "markymark-mcp/src/prompts.rs",
+      "relationships": [
+        "omitted realm argument maps to Some(\"default\")",
+        "keeps prompt argument description aligned with runtime behavior"
+      ]
     }
   ]
 }

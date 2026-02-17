@@ -53,7 +53,9 @@
       "For incremental indexing tasks, land a RED->GREEN regression set first (parity + unchanged-region + neighbor-shift + empty-edit) before tuning merge logic",
       "Use ServerState pending InputEdit tracking as shared orchestration state before extractor-specific incremental implementations",
       "When scaffold task proves flow but not target performance, close it explicitly and create immediate follow-up task linked to the same epic",
-      "Safe refactoring workflow for large file splits: (1) convert to module directory, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit cycle maintains green tests throughout. Final validation: all tests pass + line count reduction verified"
+      "Safe refactoring workflow for large file splits: (1) convert to module directory, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit cycle maintains green tests throughout. Final validation: all tests pass + line count reduction verified",
+      "For MCP URI query params, decode values once in a shared helper before dispatch so realm/query strings are canonical across handlers and tests",
+      "When review feedback flags propagation gaps, update mocks to capture operation arguments and assert forwarded values explicitly"
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",
@@ -150,5 +152,5 @@
       }
     ]
   },
-  "lastUpdated": "2026-02-17T09:20:00Z"
+  "lastUpdated": "2026-02-17T19:04:15Z"
 }

@@ -4,7 +4,7 @@
 //! that returns canned responses for each CoreOperation variant.
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_core::{CoreError, DocumentUri, Position, Range};
@@ -13,7 +13,19 @@ use rmcp::model::{PromptMessageContent, PromptMessageRole};
 use rmcp::ServerHandler;
 use serde_json::json;
 
-struct MockEngine;
+struct MockEngine {
+    captured_find_references_realm: Mutex<Option<Option<String>>>,
+    captured_export_index_realm: Mutex<Option<Option<String>>>,
+}
+
+impl Default for MockEngine {
+    fn default() -> Self {
+        Self {
+            captured_find_references_realm: Mutex::new(None),
+            captured_export_index_realm: Mutex::new(None),
+        }
+    }
+}
 
 impl CoreEngine for MockEngine {
     fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
@@ -26,43 +38,57 @@ impl CoreEngine for MockEngine {
                 DocumentUri::from_file_path(Path::new("/vault/notes.md")),
                 Range::new(Position::new(0, 0), Position::new(0, 10)),
             )]),
-            CoreOperation::FindReferences { .. } => CoreOperationResult::Locations(vec![
-                (
-                    DocumentUri::from_file_path(Path::new("/vault/notes.md")),
-                    Range::new(Position::new(1, 0), Position::new(1, 5)),
-                ),
-                (
-                    DocumentUri::from_file_path(Path::new("/vault/other.md")),
-                    Range::new(Position::new(3, 2), Position::new(3, 7)),
-                ),
-            ]),
-            CoreOperation::ExportIndex { uri, .. } => CoreOperationResult::DocumentExport {
-                uri,
-                document_kind: None,
-                headings: vec![
+            CoreOperation::FindReferences { realm, .. } => {
+                let mut captured = self
+                    .captured_find_references_realm
+                    .lock()
+                    .expect("mutex poisoned");
+                *captured = Some(realm);
+                CoreOperationResult::Locations(vec![
                     (
-                        "Introduction".to_string(),
-                        1,
-                        Range::new(Position::new(0, 0), Position::new(0, 16)),
+                        DocumentUri::from_file_path(Path::new("/vault/notes.md")),
+                        Range::new(Position::new(1, 0), Position::new(1, 5)),
                     ),
                     (
-                        "Setup".to_string(),
-                        2,
-                        Range::new(Position::new(5, 0), Position::new(5, 9)),
+                        DocumentUri::from_file_path(Path::new("/vault/other.md")),
+                        Range::new(Position::new(3, 2), Position::new(3, 7)),
                     ),
-                ],
-                xml_tags: vec![],
-                wiki_links: vec![(
-                    "other-page".to_string(),
-                    Some("section".to_string()),
-                    Range::new(Position::new(2, 0), Position::new(2, 25)),
-                )],
-                markdown_links: vec![(
-                    "example".to_string(),
-                    "https://example.com".to_string(),
-                    Range::new(Position::new(3, 0), Position::new(3, 30)),
-                )],
-            },
+                ])
+            }
+            CoreOperation::ExportIndex { uri, realm } => {
+                let mut captured = self
+                    .captured_export_index_realm
+                    .lock()
+                    .expect("mutex poisoned");
+                *captured = Some(realm);
+                CoreOperationResult::DocumentExport {
+                    uri,
+                    document_kind: None,
+                    headings: vec![
+                        (
+                            "Introduction".to_string(),
+                            1,
+                            Range::new(Position::new(0, 0), Position::new(0, 16)),
+                        ),
+                        (
+                            "Setup".to_string(),
+                            2,
+                            Range::new(Position::new(5, 0), Position::new(5, 9)),
+                        ),
+                    ],
+                    xml_tags: vec![],
+                    wiki_links: vec![(
+                        "other-page".to_string(),
+                        Some("section".to_string()),
+                        Range::new(Position::new(2, 0), Position::new(2, 25)),
+                    )],
+                    markdown_links: vec![(
+                        "example".to_string(),
+                        "https://example.com".to_string(),
+                        Range::new(Position::new(3, 0), Position::new(3, 30)),
+                    )],
+                }
+            }
             _ => CoreOperationResult::Error(CoreError::NotImplemented(
                 "not needed for prompt tests".to_string(),
             )),
@@ -71,7 +97,12 @@ impl CoreEngine for MockEngine {
 }
 
 fn make_mcp() -> MarkymarkMcp {
-    MarkymarkMcp::new(Arc::new(MockEngine))
+    MarkymarkMcp::new(Arc::new(MockEngine::default()))
+}
+
+fn make_mcp_with_engine() -> (MarkymarkMcp, Arc<MockEngine>) {
+    let engine = Arc::new(MockEngine::default());
+    (MarkymarkMcp::new(engine.clone()), engine)
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +375,62 @@ fn suggest_references_with_explicit_realm_succeeds() {
     assert!(
         result.is_ok(),
         "suggest-references should succeed with explicit realm arg"
+    );
+}
+
+#[test]
+fn explain_link_without_realm_defaults_to_default_realm() {
+    let (mcp, engine) = make_mcp_with_engine();
+    let args = json!({
+        "uri": "file:///vault/notes.md",
+        "target": "other-page#section"
+    });
+    let result = mcp.get_prompt_by_name("explain-link", Some(args.as_object().unwrap().clone()));
+    assert!(result.is_ok(), "explain-link should succeed");
+    let captured = engine
+        .captured_export_index_realm
+        .lock()
+        .expect("mutex poisoned")
+        .clone();
+    assert_eq!(
+        captured,
+        Some(Some("default".to_string())),
+        "missing realm should default to 'default'"
+    );
+}
+
+#[test]
+fn suggest_references_without_realm_defaults_to_default_realm() {
+    let (mcp, engine) = make_mcp_with_engine();
+    let args = json!({
+        "uri": "file:///vault/notes.md",
+        "line": 0,
+        "character": 5
+    });
+    let result = mcp.get_prompt_by_name(
+        "suggest-references",
+        Some(args.as_object().unwrap().clone()),
+    );
+    assert!(result.is_ok(), "suggest-references should succeed");
+    let find_refs_realm = engine
+        .captured_find_references_realm
+        .lock()
+        .expect("mutex poisoned")
+        .clone();
+    let export_realm = engine
+        .captured_export_index_realm
+        .lock()
+        .expect("mutex poisoned")
+        .clone();
+    assert_eq!(
+        find_refs_realm,
+        Some(Some("default".to_string())),
+        "find-references should receive default realm"
+    );
+    assert_eq!(
+        export_realm,
+        Some(Some("default".to_string())),
+        "export-index should receive default realm"
     );
 }
 

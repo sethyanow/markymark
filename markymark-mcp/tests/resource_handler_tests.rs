@@ -4,7 +4,7 @@
 //! read_resource. Uses a MockEngine for deterministic responses.
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_core::{CoreError, DocumentUri, Position, Range};
@@ -12,12 +12,24 @@ use markymark_mcp::MarkymarkMcp;
 use rmcp::model::ResourceContents;
 use rmcp::ServerHandler;
 
-struct MockEngine;
+struct MockEngine {
+    captured_realm: Mutex<Option<Option<String>>>,
+}
+
+impl Default for MockEngine {
+    fn default() -> Self {
+        Self {
+            captured_realm: Mutex::new(None),
+        }
+    }
+}
 
 impl CoreEngine for MockEngine {
     fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
         match operation {
-            CoreOperation::GetOutline { .. } => {
+            CoreOperation::GetOutline { realm, .. } => {
+                let mut captured = self.captured_realm.lock().expect("mutex poisoned");
+                *captured = Some(realm);
                 CoreOperationResult::Outline(vec!["Introduction".to_string(), "Usage".to_string()])
             }
             CoreOperation::SearchSymbols { query, .. } => CoreOperationResult::Symbols(vec![(
@@ -55,7 +67,12 @@ impl CoreEngine for MockEngine {
 }
 
 fn make_mcp() -> MarkymarkMcp {
-    MarkymarkMcp::new(Arc::new(MockEngine))
+    MarkymarkMcp::new(Arc::new(MockEngine::default()))
+}
+
+fn make_mcp_with_engine() -> (MarkymarkMcp, Arc<MockEngine>) {
+    let engine = Arc::new(MockEngine::default());
+    (MarkymarkMcp::new(engine.clone()), engine)
 }
 
 // --- list_resource_templates ---
@@ -161,13 +178,45 @@ fn read_outline_resource_returns_json() {
 
 #[test]
 fn read_outline_resource_with_realm_query_succeeds() {
-    let mcp = make_mcp();
+    let (mcp, engine) = make_mcp_with_engine();
     // realm query param must not bleed into the document URI
     let result = mcp.read_resource_sync("markymark://outline/file:///vault/notes.md?realm=custom");
     assert!(
         result.is_ok(),
         "outline resource should succeed when realm query param is present; got: {:?}",
         result.err()
+    );
+    let captured = engine
+        .captured_realm
+        .lock()
+        .expect("mutex poisoned")
+        .clone();
+    assert_eq!(
+        captured,
+        Some(Some("custom".to_string())),
+        "realm should be forwarded to GetOutline"
+    );
+}
+
+#[test]
+fn read_outline_resource_with_percent_encoded_realm_query_decodes_value() {
+    let (mcp, engine) = make_mcp_with_engine();
+    let result =
+        mcp.read_resource_sync("markymark://outline/file:///vault/notes.md?realm=custom%20realm");
+    assert!(
+        result.is_ok(),
+        "outline resource should succeed when percent-encoded realm is present; got: {:?}",
+        result.err()
+    );
+    let captured = engine
+        .captured_realm
+        .lock()
+        .expect("mutex poisoned")
+        .clone();
+    assert_eq!(
+        captured,
+        Some(Some("custom realm".to_string())),
+        "percent-encoded realm should be decoded before forwarding"
     );
 }
 
