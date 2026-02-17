@@ -344,3 +344,17 @@ When auditing a doc corpus with markymark:
   - `cargo test -p markymark-mcp --features semantic-search`
   - `cargo clippy -p markymark-mcp -- -D warnings`
   - `cargo clippy -p markymark-mcp --features semantic-search -- -D warnings`
+
+### 2026-02-17: BRZA Benchmark Reality Check (marky-e59)
+
+Implemented `markymark-kernels/benches/brza_kernels.rs` and produced
+`docs/benchmarks/brza-markymark-benchmarks.md` from Criterion artifacts.
+
+**Measured outcomes:**
+- Heading scan: 107x-255x faster than tree-sitter extraction (target met/exceeded)
+- Bulk re-index (600 docs): ~40x faster with Zig scan backend (strong win)
+- Embedding search: 1K/10K latency targets met, 100K misses target (~41ms vs <10ms)
+- Link scan vs regex: SIMD path slower than regex baseline on all tested sets
+- content_hash vs md5: FNV-1a path slower than md5 baseline on tested sizes
+
+**Lesson:** BRZA gains are highly workload-dependent. SIMD extraction + scan-path indexing wins are clear, but hash/link kernels and large-scale embedding search need targeted optimization instead of assumed blanket speedups.

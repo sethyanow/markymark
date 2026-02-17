@@ -19,6 +19,7 @@
     ],
     "components": [
       ".claude-harness/sessions/{session-id}/context.json (compiled session memory context for fast resume)",
+      "docs/benchmarks/brza-markymark-benchmarks.md (measured BRZA benchmark report)",
       "markymark-core/src/arena.rs (arena helpers, allocation wrappers)",
       "markymark-core/src/engine.rs (CoreEngine trait, CoreOperation, CoreResult)",
       "markymark-index/benches/memory.rs (criterion benchmarks: index/reparse/real_corpus/synthetic_scale, CountingAllocator for alloc metrics)",
@@ -38,6 +39,7 @@
       "markymark-index/src/semantic.rs (SemanticIndex embedding-backed search and duplicate detection)",
       "markymark-index/src/structured_document.rs (StructuredDocumentIndex: key-path lookup, outline)",
       "markymark-index/tests/extraction_parity.rs (AST-vs-scan corpus parity harness with report-path exclusion to prevent self-referential metrics)",
+      "markymark-kernels/benches/brza_kernels.rs (criterion BRZA kernel-vs-baseline benchmark suite)",
       "markymark-lsp/src/convert.rs (LSP type conversions)",
       "markymark-lsp/src/server.rs (tower-lsp LanguageServer impl, capability negotiation)",
       "markymark-lsp/src/state.rs (ServerState: document management, diagnostics, rename, refs)",
@@ -134,6 +136,6 @@
     ]
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-17T18:31:32Z",
+  "lastUpdated": "2026-02-17T19:27:45Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

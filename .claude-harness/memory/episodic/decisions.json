@@ -867,6 +867,30 @@
         "Create separate stats tool"
       ],
       "impact": "markymark-mcp/src/dto.rs, markymark-mcp/src/lib.rs, markymark-mcp/src/runtime_engine.rs"
+    },
+    {
+      "id": "dec-brza-bench-20260217-01",
+      "timestamp": "2026-02-17T19:27:45Z",
+      "feature": "marky-e59",
+      "decision": "Implement BRZA benchmark suite in markymark-kernels with criterion and report from estimates.json",
+      "rationale": "Kernel-facing bench crate gives direct measurement of SIMD scan/hash/embed and allows apples-to-apples baseline reporting.",
+      "alternatives": [
+        "Put benchmarks in markymark-index only",
+        "Use ad-hoc Instant timing without criterion"
+      ],
+      "impact": "markymark-kernels/benches/brza_kernels.rs, docs/benchmarks/brza-markymark-benchmarks.md"
+    },
+    {
+      "id": "dec-brza-bench-20260217-02",
+      "timestamp": "2026-02-17T19:27:45Z",
+      "feature": "marky-e59",
+      "decision": "Record benchmark misses explicitly (link_scan, content_hash, 100K embedding) instead of tuning report presentation",
+      "rationale": "Benchmark task is diagnostic; preserving misses is required input for next optimization tasks.",
+      "alternatives": [
+        "Only report benchmarks that pass target",
+        "Tune workloads to hide worst-case misses"
+      ],
+      "impact": "docs/benchmarks/brza-markymark-benchmarks.md, follow-up task planning"
     }
   ],
   "lastUpdated": "2026-02-17T18:49:46Z"
