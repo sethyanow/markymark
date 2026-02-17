@@ -3,390 +3,464 @@
   "maxEntries": 100,
   "entries": [
     {
-      "id": "dec-checkpoint-20260217-13",
-      "timestamp": "2026-02-17T20:45:28Z",
-      "feature": "mark-brza",
-      "decision": "When realm token counting encounters unreadable docs, omit total_tokens and emit warning",
-      "rationale": "Silent skip underreports totals and hides stale index/file-system divergence from callers.",
+      "id": "dec-020",
+      "timestamp": "2026-02-15T00:15:00Z",
+      "feature": "marky-g9t.7",
+      "decision": "extract_list_items returns Vec<&ListItem> instead of Vec<ListItem> to avoid ArenaHashMap::clone",
+      "rationale": "Cloning ListItem clones its ArenaHashMap. hashbrown HashMap with bumpalo allocator triggers SIGSEGV on clone. Returning references to arena-allocated items avoids clone entirely.",
       "alternatives": [
-        "Return partial total silently",
-        "Fail RealmStats request hard"
+        "Fix ArenaHashMap::clone (investigate hashbrown/bumpalo)",
+        "Use Vec<(key,value)> instead of HashMap for properties"
       ],
-      "impact": "markymark-mcp/src/runtime_engine.rs"
+      "impact": "markymark-parser ast.rs extract_list_items, collect_top_level_list_items"
     },
     {
-      "id": "dec-checkpoint-20260217-12",
-      "timestamp": "2026-02-17T20:45:28Z",
-      "feature": "mark-brza",
-      "decision": "Define preview truncation contract as byte-bound (<=200 bytes) with UTF-8 boundary trimming",
-      "rationale": "Prior code truncated by codepoints while tests asserted bytes, producing Unicode-length mismatches.",
+      "id": "dec-021",
+      "timestamp": "2026-02-15T00:15:00Z",
+      "feature": "marky-0gl",
+      "decision": "Use arena-allocated empty slice for ListItem children_list instead of &[]",
+      "rationale": "Literal &[] creates reference to stack-local temporary; returning it causes use-after-free when ListItem outlives the function. bumpalo::collections::Vec::new_in(arena).into_bump_slice() gives valid &'arena [ListItem].",
       "alternatives": [
-        "Switch tests/docs to codepoint contract",
-        "Drop preview length guarantee"
+        "static EMPTY: &[ListItem] (requires const-constructible ListItem)",
+        "Allocate empty array in arena upfront"
       ],
-      "impact": "markymark-mcp/src/runtime_engine.rs, markymark-mcp/tests/runtime_engine_tests.rs"
+      "impact": "markymark-parser types/elements.rs ListItem::from_node"
     },
     {
-      "id": "dec-checkpoint-20260217-11",
-      "timestamp": "2026-02-17T20:45:28Z",
-      "feature": "mark-brza",
-      "decision": "Use bounded semantic fetch_k policy compute_fetch_k(index_count, top_k)",
-      "rationale": "count.max(top_k) overfetches to full corpus in common cases, forcing unnecessary O(n) scan cost.",
+      "id": "dec-022",
+      "timestamp": "2026-02-15T00:15:00Z",
+      "feature": "marky-g9t.7",
+      "decision": "Custom CountingAllocator in benchmark binary for heap allocation metrics",
+      "rationale": "Task required allocation count via global allocator counter. Wrapping System allocator with atomic counter gives per-iteration alloc count. Note: bumpalo uses its own allocation so count includes arena chunk growth.",
       "alternatives": [
-        "Always fetch full corpus",
-        "Two-phase refetch loop immediately"
+        "alloc_counter crate (older, potential compat issues)",
+        "dhat heap profiler"
       ],
-      "impact": "markymark-index/src/semantic.rs"
+      "impact": "markymark-index benches/memory.rs"
     },
     {
-      "id": "dec-checkpoint-20260217-10",
-      "timestamp": "2026-02-17T20:45:28Z",
-      "feature": "mark-brza",
-      "decision": "Reserve LinkGraph hashmap capacity before capturing source node pointer in addDocument",
-      "rationale": "getOrPut may grow AutoHashMapUnmanaged and invalidate retained value pointers; reservation prevents UAF/segfault.",
-      "alternatives": [
-        "Reacquire pointer every loop iteration",
-        "Redesign node storage layout"
-      ],
-      "impact": "zig/src/kernels/link_graph.zig"
-    },
-    {
-      "id": "dec-checkpoint-20260217-9",
-      "timestamp": "2026-02-17T20:45:28Z",
-      "feature": "mark-brza",
-      "decision": "Promote fuzzy starts_with edge-case hardening to actionable and gate starts_with on positive score plus query<=candidate length",
-      "rationale": "zip()-based prefix checks can report true on truncated pairs when query is longer than candidate; fix is small and regression-testable.",
-      "alternatives": [
-        "Keep as deferred cleanup",
-        "Remove starts_with metadata entirely"
-      ],
-      "impact": "markymark-kernels/src/scan.rs"
-    },
-    {
-      "id": "dec-checkpoint-20260217-6",
-      "timestamp": "2026-02-17T20:18:08Z",
-      "feature": "mark-brza",
-      "decision": "Clamp semantic-search top_k at MCP transport boundary",
-      "rationale": "Prevents user-controlled large k values from forcing oversized result allocations in embedding search path.",
-      "alternatives": [
-        "Validate only in runtime engine",
-        "Leave unbounded and rely on caller discipline"
-      ],
-      "impact": "markymark-mcp/src/lib.rs, markymark-mcp/tests/tool_handler_tests.rs"
-    },
-    {
-      "id": "dec-checkpoint-20260217-7",
-      "timestamp": "2026-02-17T20:18:08Z",
-      "feature": "mark-brza",
-      "decision": "Remove semantic-search route from ToolRouter when semantic-search feature is disabled",
-      "rationale": "Keeps list_tools contract accurate by not advertising a tool that cannot execute in this build.",
-      "alternatives": [
-        "Advertise tool and return not_implemented on invocation",
-        "Maintain separate router impl per feature set"
-      ],
-      "impact": "markymark-mcp/src/lib.rs, markymark-mcp/tests/tool_handler_tests.rs"
-    },
-    {
-      "id": "dec-checkpoint-20260217-8",
-      "timestamp": "2026-02-17T20:18:08Z",
-      "feature": "mark-brza",
-      "decision": "Stage SemanticIndex add_document metadata writes and commit only after full success",
-      "rationale": "Avoids stale partial entries when embedding generation fails on later headings within a document.",
-      "alternatives": [
-        "Write entries incrementally and rely on remove_document cleanup",
-        "Attempt Zig index rollback support first"
-      ],
-      "impact": "markymark-index/src/semantic.rs, markymark-index/tests/semantic_index.rs"
-    },
-    {
-      "id": "dec-brza-bench-20260217-01",
-      "timestamp": "2026-02-17T19:27:45Z",
-      "feature": "marky-e59",
-      "decision": "Implement BRZA benchmark suite in markymark-kernels with criterion and report from estimates.json",
-      "rationale": "Kernel-facing bench crate gives direct measurement of SIMD scan/hash/embed and allows apples-to-apples baseline reporting.",
-      "alternatives": [
-        "Put benchmarks in markymark-index only",
-        "Use ad-hoc Instant timing without criterion"
-      ],
-      "impact": "markymark-kernels/benches/brza_kernels.rs, docs/benchmarks/brza-markymark-benchmarks.md"
-    },
-    {
-      "id": "dec-brza-bench-20260217-02",
-      "timestamp": "2026-02-17T19:27:45Z",
-      "feature": "marky-e59",
-      "decision": "Record benchmark misses explicitly (link_scan, content_hash, 100K embedding) instead of tuning report presentation",
-      "rationale": "Benchmark task is diagnostic; preserving misses is required input for next optimization tasks.",
-      "alternatives": [
-        "Only report benchmarks that pass target",
-        "Tune workloads to hide worst-case misses"
-      ],
-      "impact": "docs/benchmarks/brza-markymark-benchmarks.md, follow-up task planning"
-    },
-    {
-      "id": "dec-checkpoint-20260217-4",
-      "timestamp": "2026-02-17T18:49:46Z",
-      "feature": "marky-9ui",
-      "decision": "Expose semantic-search through shared core operation/result types before MCP response shaping",
-      "rationale": "Keeps transport behavior consistent and avoids MCP-only branching for semantic queries.",
-      "alternatives": [
-        "Implement semantic search as MCP-specific runtime downcast",
-        "Add semantic search only at markymark-index call sites"
-      ],
-      "impact": "markymark-core/src/engine.rs, markymark-mcp/src/lib.rs, markymark-mcp/src/runtime_engine.rs"
-    },
-    {
-      "id": "dec-checkpoint-20260217-5",
-      "timestamp": "2026-02-17T18:49:46Z",
-      "feature": "marky-9ui",
-      "decision": "Realm stats optional expansions use request flags and nullable response fields",
-      "rationale": "Preserves default payload compatibility while enabling higher-cost metrics on demand.",
-      "alternatives": [
-        "Always compute duplicate and token metrics",
-        "Create separate stats tool"
-      ],
-      "impact": "markymark-mcp/src/dto.rs, markymark-mcp/src/lib.rs, markymark-mcp/src/runtime_engine.rs"
-    },
-    {
-      "id": "dec-checkpoint-20260217-3",
-      "timestamp": "2026-02-17T18:31:32Z",
-      "feature": "marky-bcv",
-      "decision": "Use stale-ID filtering in SemanticIndex to support document replacement/removal without Zig-side delete",
-      "rationale": "Current Zig embedding index API supports add/search but not delete. Filtering unknown IDs keeps search results correct while preserving simple integration.",
-      "alternatives": [
-        "Rebuild Zig index on each document removal",
-        "Delay semantic integration until delete support exists"
-      ],
-      "impact": "markymark-index/src/semantic.rs, markymark-index/src/realm.rs"
-    },
-    {
-      "id": "dec-checkpoint-20260217-1",
-      "timestamp": "2026-02-17T17:50:55Z",
-      "feature": "marky-8s3",
-      "decision": "Exclude generated extraction parity report from corpus parity inputs",
-      "rationale": "Including docs/benchmarks/extraction-parity.md makes parity metrics depend on prior report content and introduces self-referential drift.",
-      "alternatives": [
-        "Keep report in corpus and tolerate metric feedback noise",
-        "Write report outside docs/ and include all docs/**/*.md"
-      ],
-      "impact": "markymark-index/tests/extraction_parity.rs corpus collection"
-    },
-    {
-      "id": "dec-checkpoint-20260217-2",
-      "timestamp": "2026-02-17T17:50:55Z",
-      "feature": "marky-0aw",
-      "decision": "Gate parity acceptance on adjusted false-positive rate (<5%) while documenting known gaps",
-      "rationale": "Setext and frontmatter are known divergence zones; adjusted rates provide a cleaner complement-strategy signal.",
-      "alternatives": [
-        "Use only raw FP/FN rates",
-        "Disable threshold assertion entirely"
-      ],
-      "impact": "markymark-index/tests/extraction_parity.rs and docs/benchmarks/extraction-parity.md"
-    },
-    {
-      "id": "dec-062",
-      "timestamp": "2026-02-17T17:08:16Z",
-      "feature": "session-checkpoint",
-      "decision": "Run checkpoint as memory-only persistence when no active feature is queued",
-      "rationale": "Preserves resumable progress and memory continuity without introducing unrelated source-code changes.",
-      "alternatives": [
-        "Skip checkpoint persistence entirely",
-        "Start a new feature implementation before persisting session memory"
-      ],
-      "impact": ".claude-harness/claude-progress.json, .claude-harness/sessions/20260216-215715/working-context.json, memory layer metadata"
-    },
-    {
-      "id": "dec-060",
-      "timestamp": "2026-02-17T16:26:59Z",
-      "feature": "marky-8s3.3",
-      "decision": "Use Zig SIMD fuzzy_match_score as the primary ranking signal for MCP search-symbols results with starts_with as tie-breaker",
-      "rationale": "Substring containment and lexical sorting produced low-relevance ordering. Scored fuzzy ranking improves symbol relevance while keeping API behavior deterministic.",
-      "alternatives": [
-        "Keep substring contains + lexical sort",
-        "Implement fuzzy scoring only in Rust without Zig kernel integration"
-      ],
-      "impact": "zig/src/shared/similarity.zig, zig/src/c_adapter.zig, markymark-kernels/src/scan.rs, markymark-mcp/src/runtime_engine.rs"
-    },
-    {
-      "id": "dec-061",
-      "timestamp": "2026-02-17T16:26:59Z",
-      "feature": "marky-8s3.4",
-      "decision": "Implement link graph as AutoHashMapUnmanaged doc nodes with outbound adjacency + inbound counters, exposed via dedicated exports_graph.zig opaque-handle C ABI",
-      "rationale": "This keeps O(1) document lookup and O(V) orphan scans while matching the existing exports_embed lifecycle pattern and avoiding additional c_adapter monolith growth.",
-      "alternatives": [
-        "Track only outbound edges and recompute inbound counts per query",
-        "Place all graph exports directly in c_adapter.zig"
-      ],
-      "impact": "zig/src/kernels/link_graph.zig, zig/src/exports_graph.zig, zig/src/c_adapter.zig"
-    },
-    {
-      "id": "dec-059",
-      "timestamp": "2026-02-17T15:18:33Z",
-      "feature": "marky-8s3.5",
-      "decision": "Implement slug generation as a single-pass state machine with pending-hyphen flush and UTF-8 byte passthrough",
-      "rationale": "Meets BRZA constraints (no heap allocation, direct output buffer writes) while achieving hyphen collapse/trim without a second pass and preserving non-ASCII bytes per task requirements.",
-      "alternatives": [
-        "Two-pass normalize-then-collapse implementation",
-        "ASCII-only output that strips non-ASCII bytes"
-      ],
-      "impact": "zig/src/kernels/slug.zig and zig/src/c_adapter.zig marky_slugify export"
-    },
-    {
-      "id": "dec-058",
-      "timestamp": "2026-02-17T07:35:00Z",
-      "feature": "marky-77m",
-      "decision": "marky_multi_scan normalizes fence ranges by copying and sorting input ranges before binary-search filtering",
-      "rationale": "Callers may pass unsorted fence ranges; binary search assumes sorted order and silently leaks inside-fence matches if order is wrong. Sorting once at API boundary preserves O(log n) filtering and correctness.",
-      "alternatives": [
-        "Require caller to pre-sort ranges and document undefined behavior",
-        "Use linear scan for every candidate (correct but slower on larger fence maps)"
-      ],
-      "impact": "zig/src/c_adapter.zig marky_multi_scan fence handling and new unsorted-range regression test"
-    },
-    {
-      "id": "dec-057",
-      "timestamp": "2026-02-17T05:57:00Z",
-      "feature": "marky-3w5",
-      "decision": "Split document.rs into 4 focused modules: types.rs (entry structs), helpers.rs (functions), tests.rs (test modules), mod.rs (DocumentIndex + API)",
-      "rationale": "document.rs at 1207 lines exceeded the 1000-line HARD STOP (learned rule-004). Modular structure improves maintainability and follows Rust conventions. Safe refactoring workflow (change→test→commit) ensured zero behavior change.",
-      "alternatives": [
-        "Extract only tests to separate file (partial solution, mod.rs still too large)",
-        "Extract constructors to build.rs (more granular, but unnecessary at current size)",
-        "Leave as monolith and defer refactor (violates hard limit, blocks future work)"
-      ],
-      "impact": "markymark-index/src/document/ — mod.rs (540L), types.rs (102L), helpers.rs (189L), tests.rs (403L)"
-    },
-    {
-      "id": "dec-053",
-      "timestamp": "2026-02-17T04:44:00Z",
-      "feature": "marky-b6v",
-      "decision": "Restore from_scan() on self_cell architecture using identical DocumentOwner/DocumentIndexCell pattern as from_ast",
-      "rationale": "PR #21 merge replaced old &static lifetime hacks with self_cell. from_scan was lost. Restoring it with the same self_cell closure pattern ensures both construction paths share the same safe ownership model. from_scan creates DocumentArena::new() (vs from_ast which takes ast.into_arena()).",
-      "alternatives": [
-        "Keep old &static pattern in from_scan only (inconsistent, unsafe)",
-        "Defer from_scan restoration until document.rs refactor (blocks BRZA work)"
-      ],
-      "impact": "markymark-index/src/document.rs — from_scan, byte_offset helpers, 16 scan_tests"
-    },
-    {
-      "id": "dec-054",
-      "timestamp": "2026-02-16T22:48:25Z",
-      "feature": "marky-3l6",
-      "decision": "Centralize incremental edit range clamping in helper and emit warning telemetry when clamping occurs",
-      "rationale": "Out-of-range LSP edit positions should not crash apply_document_changes, but silent clamping hides buggy clients. A shared helper keeps range logic consistent and warning output adds observability.",
-      "alternatives": [
-        "Keep inline .min/.max clamping without warning output",
-        "Reject out-of-range edits and propagate errors through LSP path"
-      ],
-      "impact": "markymark-lsp/src/state.rs incremental edit path and unit tests"
-    },
-    {
-      "id": "dec-055",
-      "timestamp": "2026-02-16T22:48:25Z",
+      "id": "dec-023",
+      "timestamp": "2026-02-15T01:00:00Z",
       "feature": "feature-001",
-      "decision": "Track oversized ServerState module as explicit refactor follow-up (marky-m8b)",
-      "rationale": "state.rs exceeds the 500-line threshold and mixes concerns. Capturing the refactor as a dedicated bead preserves momentum while keeping current bugfix/review scope tight.",
+      "decision": "Extend BlockId with source Range; compute from regex full match in extract_block_ids",
+      "rationale": "BlockEntry used hardcoded Range(0,0,0,0), causing go-to-definition for ^block-id to always jump to file start. Regex-extracted types should carry source position for LSP navigation.",
       "alternatives": [
-        "Refactor state.rs immediately within the review-follow-up task",
-        "Leave the oversized module untracked for later"
+        "Return separate struct with id+range",
+        "Compute range only in index layer"
       ],
-      "impact": "beads task marky-m8b and planned markymark-lsp/src/state/* module split"
+      "impact": "markymark-parser types/blocks.rs BlockId, extract.rs extract_block_ids, markymark-index document.rs BlockEntry"
     },
     {
-      "id": "dec-056",
-      "timestamp": "2026-02-16T22:48:25Z",
-      "feature": "marky-3l6",
-      "decision": "Add CRLF incremental edit parity regression test in markymark-lsp state tests",
-      "rationale": "Review triage identified CRLF coverage as a valid gap. A parity test that compares incremental parsing output against full parse output prevents regressions in CRLF line-ending handling.",
+      "id": "dec-024",
+      "timestamp": "2026-02-15T06:30:00Z",
+      "feature": "feature-001",
+      "decision": "Keep baseline worktree at /tmp/markymark-baseline for benchmarking; only kill PIDs when user explicitly asks for process cleanup",
+      "rationale": "User corrected: they wanted PID cleanup only, not worktree removal. Baseline worktree enables quick pre/post arena comparison.",
       "alternatives": [
-        "Rely on existing LF-only incremental tests",
-        "Defer CRLF coverage to a future parser stress-test task"
+        "Remove worktree after each run",
+        "Document recreate steps"
       ],
-      "impact": "markymark-lsp/tests/state_tests.rs"
+      "impact": "Checkpoint workflow, process-cleanup behavior"
     },
     {
-      "id": "dec-050",
-      "timestamp": "2026-02-16T19:23:11Z",
-      "feature": "marky-5yt",
-      "decision": "Split marky-5yt into child execution tasks marky-5yt.1 and marky-5yt.2",
-      "rationale": "The parent task spans two high-risk self-referential migrations; splitting enables one-task-at-a-time execution with clear checkpoints and verification boundaries.",
+      "id": "dec-025",
+      "timestamp": "2026-02-15T06:30:00Z",
+      "feature": "feature-001",
+      "decision": "MARKYMARK_BENCH_HEAVY=1 for 100-sample runs; default to 10\u201320 samples to avoid RAM exhaustion on index_docs_dir (918 files)",
+      "rationale": "100-sample index_docs_dir froze laptop. Real corpus bench allocates ~5.9MB \u00d7 100 iterations; default sample sizes are sufficient for most runs.",
       "alternatives": [
-        "Execute full Ast + DocumentIndex migration in one pass",
-        "Continue parent task without explicit child task tracking"
+        "Cap index_docs_dir at 20 samples in heavy mode",
+        "Run heavy bench on CI only"
       ],
-      "impact": "beads task structure for marky-5yt, execution flow and checkpointing"
+      "impact": "markymark-index benches/memory.rs sample_size()"
     },
     {
-      "id": "dec-051",
-      "timestamp": "2026-02-16T19:23:11Z",
-      "feature": "marky-5yt.1",
-      "decision": "Use self_cell owner/dependent storage for Ast internals on stable Rust",
-      "rationale": "self_cell provides safe self-referential owner/dependent modeling without nightly features and removes internal Vec<Element<'static>> storage from Ast.",
+      "id": "dec-026",
+      "timestamp": "2026-02-15T07:05:00Z",
+      "feature": "feature-001",
+      "decision": "Add explicit benchmark tier controls for both sample count and corpus scale",
+      "rationale": "A single heavy flag did not provide enough control for iterative profiling versus scale validation. Tiered controls support fast dev loops (light) and progressively larger runs (medium/heavy/extreme) without editing code.",
       "alternatives": [
-        "Use ouroboros for Ast first migration",
-        "Keep existing static-marked storage and rely on docs"
+        "Keep MARKYMARK_BENCH_HEAVY only",
+        "Hardcode fixed sample/doc counts in benches"
       ],
-      "impact": "markymark-parser/src/ast.rs, markymark-parser/Cargo.toml, Cargo.lock"
+      "impact": "markymark-index/src/bench_config.rs, markymark-index/benches/memory.rs"
     },
     {
-      "id": "dec-052",
-      "timestamp": "2026-02-16T19:23:11Z",
-      "feature": "marky-5yt.1",
-      "decision": "Add storage-level regression test enforcing Ast no longer contains Vec<Element<'static>>",
-      "rationale": "A focused test guards against accidental reintroduction of static-marked root storage during follow-on migration work.",
+      "id": "dec-027",
+      "timestamp": "2026-02-15T07:05:00Z",
+      "feature": "feature-001",
+      "decision": "Automate benchmark ROI reporting with a dedicated runner binary that executes tiered benches and writes markdown",
+      "rationale": "Manual benchmark collection was slow and error-prone. Automating run + parse + report reduces operator overhead and creates a repeatable artifact for go/no-go arena ROI decisions.",
       "alternatives": [
-        "Rely only on code review to prevent regressions",
-        "Delay regression test until DocumentIndex migration completes"
+        "Manual copy/paste from criterion output",
+        "Ad-hoc one-off scripts outside workspace"
       ],
-      "impact": "markymark-parser/tests/ast_self_cell.rs"
+      "impact": "markymark-index/src/bench_report.rs, markymark-index/src/bin/bench_roi_report.rs, docs/benchmarks/roi-tier-report.md"
     },
     {
-      "id": "dec-047",
-      "timestamp": "2026-02-16T18:52:59Z",
-      "feature": "marky-5yt",
-      "decision": "Use compile_fail doctests to enforce that Ast/DocumentIndex APIs cannot leak &'static references",
-      "rationale": "The task requires hardening lifetime safety. compile_fail doctests catch regressions at the API boundary and fail if leakage becomes possible again.",
+      "id": "dec-028",
+      "timestamp": "2026-02-15T03:46:14Z",
+      "feature": "feature-001",
+      "decision": "Preserve duplicate block IDs in RealmIndex and keep first-in lookup semantics",
+      "rationale": "Overwriting duplicate block IDs silently dropped cross-document references. Storing all occurrences prevents data loss while returning the first entry preserves existing Option-based resolution behavior.",
       "alternatives": [
-        "Rely on code review-only lifetime discipline",
-        "Defer tests until full self_cell migration"
+        "Keep overwrite behavior",
+        "Change lookup API to return Vec and propagate broad signature changes"
       ],
-      "impact": "markymark-parser/src/ast.rs and markymark-index/src/document.rs doctests"
+      "impact": "markymark-index/src/realm.rs, markymark-index/tests/realm_index.rs, markymark-index/src/resolution.rs"
     },
     {
-      "id": "dec-048",
-      "timestamp": "2026-02-16T18:52:59Z",
-      "feature": "marky-5yt",
-      "decision": "Change parser/index public accessors to lifetimes tied to &self while preserving internal ownership-transfer path",
-      "rationale": "This provides immediate static safety at public boundaries without destabilizing the existing arena transfer architecture in a single checkpoint.",
+      "id": "dec-029",
+      "timestamp": "2026-02-15T03:46:14Z",
+      "feature": "feature-001",
+      "decision": "Upgrade workspace allocator dependencies to bumpalo 3.19.1 and hashbrown 0.16.1",
+      "rationale": "Code review flagged outdated versions and security concerns on earlier hashbrown line. Upgrading keeps arena allocation strategy current and secure without changing allocator-api2 approach.",
       "alternatives": [
-        "Full self_cell/ouroboros migration in the same checkpoint",
-        "Keep outward 'static and rely on documentation warnings"
+        "Pin minimum patch release in 0.15.x",
+        "Defer dependency upgrades to separate maintenance task"
       ],
-      "impact": "markymark-parser/src/ast.rs and markymark-index/src/document.rs signatures and call-sites"
+      "impact": "Cargo.toml, Cargo.lock, allocator-backed map usage in parser/index/core crates"
     },
     {
-      "id": "dec-049",
-      "timestamp": "2026-02-16T18:52:59Z",
-      "feature": "marky-5yt",
-      "decision": "Parameterize SymbolAtPosition over lifetime instead of storing only 'static payloads",
-      "rationale": "LSP state symbol extraction clones index entries; after boundary hardening, forcing 'static caused borrow escape errors. A borrowed enum keeps handlers correct and compile-safe.",
+      "id": "dec-030",
+      "timestamp": "2026-02-15T03:46:14Z",
+      "feature": "feature-001",
+      "decision": "Keep local epstein benchmark corpus file out of checkpoint commits unless explicitly requested",
+      "rationale": "The fixture is user-local context and should not be accidentally bundled with PR code cleanup commits.",
       "alternatives": [
-        "Force owned String copies into SymbolAtPosition variants",
-        "Reintroduce outward 'static APIs in index layer"
+        "Auto-stage all untracked files",
+        "Delete local fixture each checkpoint"
       ],
-      "impact": "markymark-lsp/src/state.rs and markymark-lsp/tests/state_tests.rs"
+      "impact": "checkpoint commit workflow and staging discipline for this branch"
     },
     {
-      "id": "dec-046",
-      "timestamp": "2026-02-16T18:10:17Z",
-      "feature": "marky-luy.3",
-      "decision": "Defer Cow<str> optimization in RealmIndex::add_document until self-referential lifetime model is implemented",
-      "rationale": "RealmIndex stores DocumentIndex in self.docs and also stores cross-document lookup maps as sibling fields. Borrowing from DocumentIndex into those sibling maps would require self-referential invariants not provided by the current ownership model. Benchmark evidence from alloc_count_index_100 shows baseline 11326 heap allocations (~6.6-7.7ms), so deferral preserves correctness while retaining a measurable optimization target.",
+      "id": "dec-arena-send-001",
+      "timestamp": "2026-02-15T06:30:00Z",
+      "feature": "feature-001",
+      "decision": "ArenaHashMap (!Send) restricted to parser types only; index types use std HashMap",
+      "rationale": "Bump:!Sync -> &Bump:!Send -> ArenaHashMap:!Send. tower-lsp requires Send+static for async handlers. Index types flow into ServerState via RealmIndex.",
       "alternatives": [
-        "Partial Cow retrofit while still allocating owned copies in maps",
-        "Immediate self_cell/ouroboros refactor in this task",
-        "Arena-backed cross-doc map redesign"
+        "Wrap arena in Arc<Mutex<Bump>>",
+        "Use unsafe impl Send",
+        "Accept ArenaHashMap everywhere and restructure LSP to not require Send"
       ],
-      "impact": "markymark-index/src/realm.rs add_document cross-doc indexing strategy; follow-up tracked in marky-5yt"
+      "impact": "markymark-index/src/document.rs (XmlTagEntry, DocumentIndex internal HashMaps), bumpalo.md docs"
+    },
+    {
+      "id": "dec-docarena-adopt-001",
+      "timestamp": "2026-02-15T06:30:00Z",
+      "feature": "feature-001",
+      "decision": "Adopt DocumentArena wrapper in Ast and DocumentIndex instead of raw Bump",
+      "rationale": "DocumentArena provides Debug, capacity hints, and clear semantic boundary. Option (a) from audit: use the wrapper everywhere vs (b) delete it.",
+      "alternatives": [
+        "Delete DocumentArena and use raw Bump (option b)"
+      ],
+      "impact": "markymark-parser/src/ast.rs, markymark-index/src/document.rs, markymark-core/src/arena.rs"
+    },
+    {
+      "id": "dec-docarena-ptr-001",
+      "timestamp": "2026-02-15T06:30:00Z",
+      "feature": "feature-001",
+      "decision": "Changed arena_ptr() to doc_arena_ptr() returning *const DocumentArena",
+      "rationale": "The ptr::read+forget pattern needs to read the whole DocumentArena (not just inner Bump) to transfer ownership cleanly between Ast and DocumentIndex.",
+      "alternatives": [
+        "Keep *const Bump and cast to DocumentArena",
+        "Add repr(transparent) to DocumentArena"
+      ],
+      "impact": "markymark-parser/src/ast.rs, markymark-index/src/document.rs"
+    },
+    {
+      "id": "dec-pr-review-001",
+      "timestamp": "2026-02-15T04:55:00Z",
+      "feature": "feature-001",
+      "decision": "Use LazyLock<Regex> static compilation for all 14 regex patterns in extract.rs",
+      "rationale": "CodeRabbit flagged regex recompilation on every function call as Major issue. LazyLock compiles each regex exactly once (first access) and reuses across all calls. No crate dependency added \u2014 LazyLock is in std since Rust 1.80.",
+      "alternatives": [
+        "once_cell::sync::Lazy (external crate)",
+        "Thread-local regex (separate per-thread compilation)"
+      ],
+      "impact": "markymark-parser/src/extract.rs"
+    },
+    {
+      "id": "dec-pr-review-002",
+      "timestamp": "2026-02-15T04:55:00Z",
+      "feature": "feature-001",
+      "decision": "MarkdownLinkEntry.url stores base URL only (without fragment); anchor stored separately",
+      "rationale": "CodeRabbit flagged that url field duplicated anchor info. Parser already splits URL at '#' \u2014 index was re-concatenating them. Storing base URL matches parser semantics and simplifies callers (no need to strip anchor from url).",
+      "alternatives": [
+        "Keep concatenated url (matches browser URL bar behavior)",
+        "Remove anchor field entirely and only store full url"
+      ],
+      "impact": "markymark-index/src/document.rs, markymark-lsp/src/server.rs, markymark-index/tests/document_index.rs"
+    },
+    {
+      "id": "dec-pr-review-003",
+      "timestamp": "2026-02-15T04:55:00Z",
+      "feature": "feature-001",
+      "decision": "Accept 'static lifetime pattern with documentation; defer self_cell migration to marky-5yt",
+      "rationale": "Copilot flagged 'static as unsound. While inner &'static str can technically escape &self, all callers access through &self. Documenting the invariant + filing marky-5yt for proper fix is pragmatic given scope of arena migration.",
+      "alternatives": [
+        "Immediately adopt ouroboros/self_cell (large refactor)",
+        "Remove arena allocation entirely"
+      ],
+      "impact": "markymark-parser/src/ast.rs, markymark-index/src/document.rs safety docs; marky-5yt issue"
+    },
+    {
+      "id": "dec-docs-phase3-001",
+      "timestamp": "2026-02-15T09:00:00Z",
+      "feature": "docs-refinement",
+      "decision": "Use markymark realm indexing of 633-doc source vault for systematic gap analysis instead of manual file-by-file review",
+      "rationale": "Realm-based search-symbols queries cover all indexed headings efficiently. Combined with grep for inline content checks, this identified 7 gaps across 15+ topic areas in one pass.",
+      "alternatives": [
+        "Manual file-by-file reading of source vault (too many files)",
+        "Grep-only approach (misses structural gaps)",
+        "Rely on agent knowledge of what's missing (subjective)"
+      ],
+      "impact": "8 docs modified: ownership.md, idioms.md, anti-patterns.md, types.md, syntax-ref.md, MISTAKES.md, AGENTS.md, MEMORY.md"
+    },
+    {
+      "id": "dec-docs-phase3-002",
+      "timestamp": "2026-02-15T09:00:00Z",
+      "feature": "docs-refinement",
+      "decision": "Add nomicon dot-operator derived-Clone autoref gotcha to anti-patterns rather than a standalone doc",
+      "rationale": "The gotcha is an anti-pattern that agents produce silently. It belongs where agents check for mistakes, not in a separate advanced concepts file.",
+      "alternatives": [
+        "Add to traits.md (too academic)",
+        "Create advanced/method-resolution.md (too niche for standalone)"
+      ],
+      "impact": "patterns/anti-patterns.md"
+    },
+    {
+      "id": "dec-031",
+      "timestamp": "2026-02-15T15:30:00Z",
+      "feature": "feature-001",
+      "decision": "Reorder Ast struct fields so root_elements is declared before arena to fix drop order",
+      "rationale": "Rust drops struct fields in declaration order. Arena was declared before root_elements, meaning Bump freed all memory before Element drop impls ran. Any Element containing ArenaHashMap would access a dangling &Bump reference on drop \u2014 undefined behavior.",
+      "alternatives": [
+        "Use ManuallyDrop for arena (more complex, less idiomatic)",
+        "Implement custom Drop for Ast (overrides field drop order but adds maintenance burden)"
+      ],
+      "impact": "markymark-parser/src/ast.rs \u2014 struct field reordering"
+    },
+    {
+      "id": "dec-032",
+      "timestamp": "2026-02-15T15:30:00Z",
+      "feature": "feature-001",
+      "decision": "Gate Ast Default impl behind #[cfg(test)] rather than removing or renaming to Ast::empty()",
+      "rationale": "Default impl panics via .expect() which is inappropriate for library code. Zero usages found in codebase. Gating behind #[cfg(test)] preserves it for future test convenience while removing the public API hazard.",
+      "alternatives": [
+        "Remove entirely (loses test utility)",
+        "Rename to Ast::empty() (still panics, just with different name)"
+      ],
+      "impact": "markymark-parser/src/ast.rs \u2014 Default impl visibility"
+    },
+    {
+      "id": "dec-033",
+      "timestamp": "2026-02-15T15:33:00Z",
+      "feature": "feature-001",
+      "decision": "Merge origin/main into feature branch (not rebase) to resolve PR #10 squash merge conflicts",
+      "rationale": "PR #10 was squash-merged to main, causing 22 conflicts with the 52-commit feature branch. Rebase failed before (fail-feature-001-rebase-20260214). Merge commit is safest \u2014 preserves all history and clearly documents integration point.",
+      "alternatives": [
+        "Rebase 52 commits (failed before, rewrites hashes)",
+        "Reset main to before squash merge (force push to main, risky)"
+      ],
+      "impact": "Merge commit 02dd960, PR #11 now MERGEABLE"
+    },
+    {
+      "id": "dec-brza-mm-001",
+      "timestamp": "2026-02-15T23:50:00Z",
+      "feature": "marky-8s3",
+      "decision": "Copy and diverge Zig kernels from forge BRZA into markymark",
+      "rationale": "Simplest to start, avoids coordination overhead between forge and markymark repos. Can sync later if patterns converge. Shared kernels (embeddings, similarity, entity hashing) forked; markymark-specific kernels (heading/link/tag/block scan) are new.",
+      "alternatives": [
+        "Zig package (clean versioning but coordination overhead)",
+        "Git submodule (explicit version control but submodule friction)",
+        "Monorepo extract later (delays extraction)"
+      ],
+      "impact": "zig/src/shared/ directory contains forked forge kernels"
+    },
+    {
+      "id": "dec-brza-mm-002",
+      "timestamp": "2026-02-15T23:50:00Z",
+      "feature": "marky-8s3",
+      "decision": "Complement tree-sitter with Zig SIMD scanning, promotion path based on benchmarks",
+      "rationale": "Zig scans fast but context-unaware (false positives in code blocks). Tree-sitter precise but slower. Two-tier model: Tier 1 Zig for speed-critical ops, Tier 2 tree-sitter for precision. If Zig covers 95%+ accurately, promote to primary.",
+      "alternatives": [
+        "Replace tree-sitter entirely (too risky, loses context awareness)",
+        "Complement only (no promotion path, keeps two systems permanently)"
+      ],
+      "impact": "ScanBackend trait, DocumentIndex::from_scan() alternative path"
+    },
+    {
+      "id": "dec-brza-mm-003",
+      "timestamp": "2026-02-15T23:50:00Z",
+      "feature": "marky-8s3",
+      "decision": "markymark-kernels crate below markymark-core in dependency graph",
+      "rationale": "Core defines traits (ScanBackend, EmbeddingProvider), kernels implements via Zig FFI. Other crates depend only on core. Feature-gated: zig-kernels flag in core enables kernels dep.",
+      "alternatives": [
+        "Sibling to core (more wiring, less encapsulation)",
+        "Inside core as feature-gated module (simpler graph but larger core crate)"
+      ],
+      "impact": "Dependency chain: kernels <- core <- index <- mcp"
+    },
+    {
+      "id": "dec-v8r-001",
+      "timestamp": "2026-02-16T07:42:00Z",
+      "feature": "marky-v8r",
+      "decision": "Hybrid SIMD-scalar heading scanner: SIMD finds newlines, scalar validates headings",
+      "rationale": "Headings are sparse in markdown. SIMD accelerates the common case (scanning prose for newlines) while scalar handles the rare case (parsing heading syntax). This avoids complex SIMD logic for # counting and space verification.",
+      "alternatives": [
+        "Full SIMD heading parsing (complex, marginal benefit for sparse headings)",
+        "Pure scalar (simpler but slower on large documents)"
+      ],
+      "impact": "zig/src/kernels/heading_scan.zig, zig/src/reference/heading_scan_ref.zig"
+    },
+    {
+      "id": "dec-v8r-002",
+      "timestamp": "2026-02-16T07:42:00Z",
+      "feature": "marky-v8r",
+      "decision": "Shared try_parse_heading between SIMD and scalar implementations",
+      "rationale": "Both SIMD and scalar paths need identical heading validation logic. Sharing the function ensures parity and reduces duplication. Made pub in reference module for SIMD module to import.",
+      "alternatives": [
+        "Duplicate validation logic in each module",
+        "Extract to shared utility module"
+      ],
+      "impact": "zig/src/reference/heading_scan_ref.zig (pub fn try_parse_heading)"
+    },
+    {
+      "id": "dec-brza-mm-004",
+      "timestamp": "2026-02-15T23:50:00Z",
+      "feature": "marky-8s3",
+      "decision": "Embedding source agnostic via EmbeddingProvider trait",
+      "rationale": "Design the embedding index to be source-agnostic. Provider decision (local ONNX, API, TF-IDF) deferred to implementation time. Trait: embed, embed_batch, dimensions.",
+      "alternatives": [
+        "Local ONNX only (self-contained but limits quality options)",
+        "API only (highest quality but network dependency)",
+        "TF-IDF in Zig (zero deps but lower semantic quality)"
+      ],
+      "impact": "markymark-core/src/embeddings.rs EmbeddingProvider trait"
+    },
+    {
+      "id": "dec-brza-mm-005",
+      "timestamp": "2026-02-15T23:50:00Z",
+      "feature": "marky-8s3",
+      "decision": "P2 parallel exploration priority, full upfront planning with user orchestration",
+      "rationale": "BRZA-markymark doesn't block v1.0 launch. Work on it alongside arena conformance and v1.0 tasks. All 17 tasks planned upfront with dependency graph for user-orchestrated execution.",
+      "alternatives": [
+        "Post-v1.0 (delays exploration)",
+        "P1 with semantic search as launch feature (risky scope addition)",
+        "Spike first (delays full planning)"
+      ],
+      "impact": "Epic marky-8s3 with 17 tasks across 7 phases"
+    },
+    {
+      "id": "dec-brza-een-001",
+      "timestamp": "2026-02-16T06:50:00Z",
+      "feature": "marky-een",
+      "decision": "build.rs invokes zig build lib via std::process::Command with no external build dependencies",
+      "rationale": "Keeps the crate dependency-free. build.rs uses only std for Command, PathBuf, and env. Version parsing is manual (split on '-' then '.') to handle dev suffixes without regex crate.",
+      "alternatives": [
+        "Use cc crate (overkill for invoking zig CLI)",
+        "Use which crate for zig lookup (unnecessary, PATH lookup via Command is sufficient)"
+      ],
+      "impact": "markymark-kernels/build.rs \u2014 zero build-dependencies"
+    },
+    {
+      "id": "dec-brza-een-002",
+      "timestamp": "2026-02-16T06:50:00Z",
+      "feature": "marky-een",
+      "decision": "rerun-if-changed enumerates individual .zig files via walkdir, not directory watch",
+      "rationale": "Directory-level rerun-if-changed only triggers on add/remove (directory metadata changes), not file modifications. walkdir enumerates all .zig files so cargo rebuilds on any source change. Adds walkdir build-dependency.",
+      "alternatives": [
+        "Directory watch only (misses file modifications per CodeRabbit feedback)",
+        "Hardcode file list (maintenance burden as kernels added)"
+      ],
+      "impact": "markymark-kernels/build.rs lines 35-45, markymark-kernels/Cargo.toml build-dependencies"
+    },
+    {
+      "id": "dec-ci-zig-001",
+      "timestamp": "2026-02-16T09:30:00Z",
+      "feature": "marky-ayb",
+      "decision": "Add Zig to existing build-and-test CI job rather than separate zig-kernels job",
+      "rationale": "Minimum viable fix: markymark-kernels build.rs requires zig binary and was failing CI. Adding to existing job unblocks PR. Full marky-ayb task (separate job, platform matrix, feature gate) deferred.",
+      "alternatives": [
+        "Separate zig-kernels CI job (full marky-ayb scope)",
+        "Feature-gate markymark-kernels to skip without Zig"
+      ],
+      "impact": ".github/workflows/ci.yml \u2014 mlugg/setup-zig@v2 step added"
+    },
+    {
+      "id": "dec-ncz-001",
+      "timestamp": "2026-02-16T12:35:00Z",
+      "feature": "marky-ncz",
+      "decision": "Split C ABI exports into separate exports_*.zig files instead of adding to c_adapter.zig",
+      "rationale": "c_adapter.zig was at 793 lines. Adding 6 embedding exports + 18 tests would push past 1000-line hard limit. Separate files with _ = @import wiring adds only 2-3 lines to c_adapter.zig while keeping exports in the library.",
+      "alternatives": [
+        "Add directly to c_adapter.zig (would exceed 1000 lines)",
+        "Split c_adapter.zig into c_adapter_scan.zig and c_adapter_shared.zig first (larger refactor)"
+      ],
+      "impact": "zig/src/exports_embed.zig \u2014 new pattern for all future C ABI exports"
+    },
+    {
+      "id": "dec-041",
+      "timestamp": "2026-02-16T16:27:00Z",
+      "feature": "marky-luy.2",
+      "decision": "Do NOT implement arena reuse via DocumentArena::reset for re-parse \u2014 benchmark shows negligible benefit",
+      "rationale": "Benchmark data: small doc arena lifecycle = 662ns vs 64\u00b5s full reparse (0.07% savings). Large doc: 22.5\u00b5s vs 3.36ms (0.02%). Tree-sitter parsing dominates by 100-150x. Implementation would require API changes across 4 crates (parser, core, index, lsp) for sub-0.1% improvement.",
+      "alternatives": [
+        "Implement full arena reuse pipeline (not justified by data)",
+        "Pre-size arenas with Bump::with_capacity based on document size (marginal, separate concern)"
+      ],
+      "impact": "Added DocumentArena::reset() method and investigation benchmark to memory.rs. No reindex API warranted."
+    },
+    {
+      "id": "dec-042",
+      "timestamp": "2026-02-16T17:10:00Z",
+      "feature": "marky-tfd",
+      "decision": "Option A: Store MarkdownTree in separate HashMap in ServerState, extract from Ast via take_md_tree()",
+      "rationale": "Cleanest separation \u2014 MarkdownTree is only needed by the parser layer for incremental reuse. Storing in ServerState HashMap keeps it independent of DocumentIndex's arena ownership transfer. The Ast wraps md_tree in Option to allow taking it out before from_ast() consumes the Ast.",
+      "alternatives": [
+        "Option B: Ast::into_parts() -> (DocumentArena, MarkdownTree) \u2014 requires changing from_ast signature",
+        "Option C: Store MarkdownTree inside DocumentIndex \u2014 couples tree-sitter concerns into index layer"
+      ],
+      "impact": "markymark-parser/src/ast.rs (Option<MarkdownTree>, take_md_tree), markymark-lsp/src/state.rs (md_trees HashMap)"
+    },
+    {
+      "id": "dec-043",
+      "timestamp": "2026-02-16T17:10:00Z",
+      "feature": "marky-tfd",
+      "decision": "Re-export MarkdownTree from markymark-parser instead of adding tree-sitter-md dependency to markymark-lsp",
+      "rationale": "LSP crate doesn't need direct knowledge of tree-sitter-md internals. Re-exporting from the parser crate keeps the dependency graph clean \u2014 only parser needs to know about tree-sitter-md.",
+      "alternatives": [
+        "Add tree-sitter-md as direct dependency of markymark-lsp"
+      ],
+      "impact": "markymark-parser/src/lib.rs (pub use), markymark-lsp/src/state.rs (import from markymark_parser)"
+    },
+    {
+      "id": "dec-044",
+      "timestamp": "2026-02-16T17:45:00Z",
+      "feature": "marky-tzq",
+      "decision": "DocumentChange enum in state.rs with LSP line/character fields, conversion in convert.rs",
+      "rationale": "Sequential change application requires interleaved UTF-16\u2192byte conversion (each edit shifts offsets for the next). Keeping conversion interleaved with text mutation means state.rs calls convert.rs per edit. DocumentChange carries raw LSP positions to avoid leaking ls_types into state module.",
+      "alternatives": [
+        "Pre-compute all byte offsets in server.rs (wrong \u2014 offsets shift after each edit)",
+        "Pass byte ranges from server.rs (requires server.rs to track evolving text)",
+        "Put conversion in state.rs directly (violates separation \u2014 convert.rs owns all LSP conversions)"
+      ],
+      "impact": "markymark-lsp/src/state.rs (DocumentChange, apply_document_changes), markymark-lsp/src/convert.rs (lsp_position_to_byte_offset)"
+    },
+    {
+      "id": "dec-045",
+      "timestamp": "2026-02-16T17:45:00Z",
+      "feature": "marky-tzq",
+      "decision": "Bounds clamping on byte offsets instead of panicking on invalid ranges",
+      "rationale": "String::replace_range panics on out-of-bounds indices. Editors should send valid ranges, but defensive clamping (.min(text.len()).max(start)) prevents crashes from edge cases or buggy clients without silently corrupting data.",
+      "alternatives": [
+        "Trust editor sends valid ranges (panics on bad input)",
+        "Return Result and propagate error to LSP response (overengineering for a notification handler)"
+      ],
+      "impact": "markymark-lsp/src/state.rs apply_document_changes()"
     },
     {
       "id": "dec-zan-001",
@@ -421,64 +495,40 @@
       "impact": "apply_document_changes sets old_tree=None on Full variant"
     },
     {
-      "id": "dec-044",
-      "timestamp": "2026-02-16T17:45:00Z",
-      "feature": "marky-tzq",
-      "decision": "DocumentChange enum in state.rs with LSP line/character fields, conversion in convert.rs",
-      "rationale": "Sequential change application requires interleaved UTF-16→byte conversion (each edit shifts offsets for the next). Keeping conversion interleaved with text mutation means state.rs calls convert.rs per edit. DocumentChange carries raw LSP positions to avoid leaking ls_types into state module.",
+      "id": "dec-0u5-001",
+      "timestamp": "2026-02-16T12:50:00Z",
+      "feature": "marky-0u5",
+      "decision": "Reuse KernelError from scan.rs instead of defining new error type in lib.rs",
+      "rationale": "The design doc suggested defining KernelError in lib.rs, but scan.rs already has it with the exact same variants. Moving it would require changing scan.rs imports. Using crate::scan::KernelError from the new modules avoids touching working code.",
       "alternatives": [
-        "Pre-compute all byte offsets in server.rs (wrong — offsets shift after each edit)",
-        "Pass byte ranges from server.rs (requires server.rs to track evolving text)",
-        "Put conversion in state.rs directly (violates separation — convert.rs owns all LSP conversions)"
+        "Move KernelError to lib.rs and re-export (cleaner but changes existing code)",
+        "Define separate error types per module (more isolation but code duplication)"
       ],
-      "impact": "markymark-lsp/src/state.rs (DocumentChange, apply_document_changes), markymark-lsp/src/convert.rs (lsp_position_to_byte_offset)"
+      "impact": "similarity.rs, hash.rs, embed.rs all import from crate::scan::KernelError"
     },
     {
-      "id": "dec-045",
-      "timestamp": "2026-02-16T17:45:00Z",
-      "feature": "marky-tzq",
-      "decision": "Bounds clamping on byte offsets instead of panicking on invalid ranges",
-      "rationale": "String::replace_range panics on out-of-bounds indices. Editors should send valid ranges, but defensive clamping (.min(text.len()).max(start)) prevents crashes from edge cases or buggy clients without silently corrupting data.",
+      "id": "dec-0u5-002",
+      "timestamp": "2026-02-16T12:50:00Z",
+      "feature": "marky-0u5",
+      "decision": "Use PhantomData<*mut ()> for !Send/!Sync on EmbeddingIndex instead of negative trait impls",
+      "rationale": "impl !Send and impl !Sync require nightly Rust (feature gate negative_impls). This project uses stable Rust. PhantomData<*mut ()> achieves the same effect since raw pointers are !Send + !Sync.",
       "alternatives": [
-        "Trust editor sends valid ranges (panics on bad input)",
-        "Return Result and propagate error to LSP response (overengineering for a notification handler)"
+        "Add rust-toolchain.toml with nightly (too disruptive)",
+        "Just document that it's not thread-safe without enforcing (unsafe)"
       ],
-      "impact": "markymark-lsp/src/state.rs apply_document_changes()"
+      "impact": "markymark-kernels/src/embed.rs \u2014 EmbeddingIndex struct"
     },
     {
-      "id": "dec-042",
-      "timestamp": "2026-02-16T17:10:00Z",
-      "feature": "marky-tfd",
-      "decision": "Option A: Store MarkdownTree in separate HashMap in ServerState, extract from Ast via take_md_tree()",
-      "rationale": "Cleanest separation — MarkdownTree is only needed by the parser layer for incremental reuse. Storing in ServerState HashMap keeps it independent of DocumentIndex's arena ownership transfer. The Ast wraps md_tree in Option to allow taking it out before from_ast() consumes the Ast.",
+      "id": "dec-0u5-003",
+      "timestamp": "2026-02-16T12:52:00Z",
+      "feature": "marky-0u5",
+      "decision": "Fix exports_embed.zig with comptime { _ = @import } at module level in c_adapter.zig",
+      "rationale": "The previous session wired exports_embed.zig via _ = @import inside a test block. This makes export fn declarations visible during zig build test but NOT in the library build (zig build lib). Symbols were missing at link time. Moving to comptime at module level ensures exports are always included.",
       "alternatives": [
-        "Option B: Ast::into_parts() -> (DocumentArena, MarkdownTree) — requires changing from_ast signature",
-        "Option C: Store MarkdownTree inside DocumentIndex — couples tree-sitter concerns into index layer"
+        "Move export fn declarations directly into c_adapter.zig (violates 1000-line limit)",
+        "Add exports_embed.zig to build.zig as separate compilation unit (more complex build)"
       ],
-      "impact": "markymark-parser/src/ast.rs (Option<MarkdownTree>, take_md_tree), markymark-lsp/src/state.rs (md_trees HashMap)"
-    },
-    {
-      "id": "dec-043",
-      "timestamp": "2026-02-16T17:10:00Z",
-      "feature": "marky-tfd",
-      "decision": "Re-export MarkdownTree from markymark-parser instead of adding tree-sitter-md dependency to markymark-lsp",
-      "rationale": "LSP crate doesn't need direct knowledge of tree-sitter-md internals. Re-exporting from the parser crate keeps the dependency graph clean — only parser needs to know about tree-sitter-md.",
-      "alternatives": [
-        "Add tree-sitter-md as direct dependency of markymark-lsp"
-      ],
-      "impact": "markymark-parser/src/lib.rs (pub use), markymark-lsp/src/state.rs (import from markymark_parser)"
-    },
-    {
-      "id": "dec-041",
-      "timestamp": "2026-02-16T16:27:00Z",
-      "feature": "marky-luy.2",
-      "decision": "Do NOT implement arena reuse via DocumentArena::reset for re-parse — benchmark shows negligible benefit",
-      "rationale": "Benchmark data: small doc arena lifecycle = 662ns vs 64µs full reparse (0.07% savings). Large doc: 22.5µs vs 3.36ms (0.02%). Tree-sitter parsing dominates by 100-150x. Implementation would require API changes across 4 crates (parser, core, index, lsp) for sub-0.1% improvement.",
-      "alternatives": [
-        "Implement full arena reuse pipeline (not justified by data)",
-        "Pre-size arenas with Bump::with_capacity based on document size (marginal, separate concern)"
-      ],
-      "impact": "Added DocumentArena::reset() method and investigation benchmark to memory.rs. No reindex API warranted."
+      "impact": "zig/src/c_adapter.zig \u2014 critical fix for all future exports_*.zig files"
     },
     {
       "id": "dec-phase3-001",
@@ -533,7 +583,7 @@
       "timestamp": "2026-02-16T16:23:03Z",
       "feature": "marky-77i",
       "decision": "Hybrid merge strategy: purge intersecting + validate neighbors (not full dedup or range-only)",
-      "rationale": "Purge entries where range intersects edits (conservative but correct). Validate neighbors within ±100 bytes (catches position shifts). More precise than range-only, less overhead than full content dedup.",
+      "rationale": "Purge entries where range intersects edits (conservative but correct). Validate neighbors within \u00b1100 bytes (catches position shifts). More precise than range-only, less overhead than full content dedup.",
       "alternatives": [
         "Range-based purge only (simple but may miss shifted neighbors)",
         "Content-based dedup (precise but requires hashing all entries - overhead)"
@@ -553,441 +603,235 @@
       "impact": "Incremental logic only in markdown path, structured formats bypass to from_ast()"
     },
     {
-      "id": "dec-0u5-003",
-      "timestamp": "2026-02-16T12:52:00Z",
-      "feature": "marky-0u5",
-      "decision": "Fix exports_embed.zig with comptime { _ = @import } at module level in c_adapter.zig",
-      "rationale": "The previous session wired exports_embed.zig via _ = @import inside a test block. This makes export fn declarations visible during zig build test but NOT in the library build (zig build lib). Symbols were missing at link time. Moving to comptime at module level ensures exports are always included.",
+      "id": "dec-046",
+      "timestamp": "2026-02-16T18:10:17Z",
+      "feature": "marky-luy.3",
+      "decision": "Defer Cow<str> optimization in RealmIndex::add_document until self-referential lifetime model is implemented",
+      "rationale": "RealmIndex stores DocumentIndex in self.docs and also stores cross-document lookup maps as sibling fields. Borrowing from DocumentIndex into those sibling maps would require self-referential invariants not provided by the current ownership model. Benchmark evidence from alloc_count_index_100 shows baseline 11326 heap allocations (~6.6-7.7ms), so deferral preserves correctness while retaining a measurable optimization target.",
       "alternatives": [
-        "Move export fn declarations directly into c_adapter.zig (violates 1000-line limit)",
-        "Add exports_embed.zig to build.zig as separate compilation unit (more complex build)"
+        "Partial Cow retrofit while still allocating owned copies in maps",
+        "Immediate self_cell/ouroboros refactor in this task",
+        "Arena-backed cross-doc map redesign"
       ],
-      "impact": "zig/src/c_adapter.zig — critical fix for all future exports_*.zig files"
+      "impact": "markymark-index/src/realm.rs add_document cross-doc indexing strategy; follow-up tracked in marky-5yt"
     },
     {
-      "id": "dec-0u5-001",
-      "timestamp": "2026-02-16T12:50:00Z",
-      "feature": "marky-0u5",
-      "decision": "Reuse KernelError from scan.rs instead of defining new error type in lib.rs",
-      "rationale": "The design doc suggested defining KernelError in lib.rs, but scan.rs already has it with the exact same variants. Moving it would require changing scan.rs imports. Using crate::scan::KernelError from the new modules avoids touching working code.",
+      "id": "dec-047",
+      "timestamp": "2026-02-16T18:52:59Z",
+      "feature": "marky-5yt",
+      "decision": "Use compile_fail doctests to enforce that Ast/DocumentIndex APIs cannot leak &'static references",
+      "rationale": "The task requires hardening lifetime safety. compile_fail doctests catch regressions at the API boundary and fail if leakage becomes possible again.",
       "alternatives": [
-        "Move KernelError to lib.rs and re-export (cleaner but changes existing code)",
-        "Define separate error types per module (more isolation but code duplication)"
+        "Rely on code review-only lifetime discipline",
+        "Defer tests until full self_cell migration"
       ],
-      "impact": "similarity.rs, hash.rs, embed.rs all import from crate::scan::KernelError"
+      "impact": "markymark-parser/src/ast.rs and markymark-index/src/document.rs doctests"
     },
     {
-      "id": "dec-0u5-002",
-      "timestamp": "2026-02-16T12:50:00Z",
-      "feature": "marky-0u5",
-      "decision": "Use PhantomData<*mut ()> for !Send/!Sync on EmbeddingIndex instead of negative trait impls",
-      "rationale": "impl !Send and impl !Sync require nightly Rust (feature gate negative_impls). This project uses stable Rust. PhantomData<*mut ()> achieves the same effect since raw pointers are !Send + !Sync.",
+      "id": "dec-048",
+      "timestamp": "2026-02-16T18:52:59Z",
+      "feature": "marky-5yt",
+      "decision": "Change parser/index public accessors to lifetimes tied to &self while preserving internal ownership-transfer path",
+      "rationale": "This provides immediate static safety at public boundaries without destabilizing the existing arena transfer architecture in a single checkpoint.",
       "alternatives": [
-        "Add rust-toolchain.toml with nightly (too disruptive)",
-        "Just document that it's not thread-safe without enforcing (unsafe)"
+        "Full self_cell/ouroboros migration in the same checkpoint",
+        "Keep outward 'static and rely on documentation warnings"
       ],
-      "impact": "markymark-kernels/src/embed.rs — EmbeddingIndex struct"
+      "impact": "markymark-parser/src/ast.rs and markymark-index/src/document.rs signatures and call-sites"
     },
     {
-      "id": "dec-ncz-001",
-      "timestamp": "2026-02-16T12:35:00Z",
-      "feature": "marky-ncz",
-      "decision": "Split C ABI exports into separate exports_*.zig files instead of adding to c_adapter.zig",
-      "rationale": "c_adapter.zig was at 793 lines. Adding 6 embedding exports + 18 tests would push past 1000-line hard limit. Separate files with _ = @import wiring adds only 2-3 lines to c_adapter.zig while keeping exports in the library.",
+      "id": "dec-049",
+      "timestamp": "2026-02-16T18:52:59Z",
+      "feature": "marky-5yt",
+      "decision": "Parameterize SymbolAtPosition over lifetime instead of storing only 'static payloads",
+      "rationale": "LSP state symbol extraction clones index entries; after boundary hardening, forcing 'static caused borrow escape errors. A borrowed enum keeps handlers correct and compile-safe.",
       "alternatives": [
-        "Add directly to c_adapter.zig (would exceed 1000 lines)",
-        "Split c_adapter.zig into c_adapter_scan.zig and c_adapter_shared.zig first (larger refactor)"
+        "Force owned String copies into SymbolAtPosition variants",
+        "Reintroduce outward 'static APIs in index layer"
       ],
-      "impact": "zig/src/exports_embed.zig — new pattern for all future C ABI exports"
+      "impact": "markymark-lsp/src/state.rs and markymark-lsp/tests/state_tests.rs"
     },
     {
-      "id": "dec-ci-zig-001",
-      "timestamp": "2026-02-16T09:30:00Z",
-      "feature": "marky-ayb",
-      "decision": "Add Zig to existing build-and-test CI job rather than separate zig-kernels job",
-      "rationale": "Minimum viable fix: markymark-kernels build.rs requires zig binary and was failing CI. Adding to existing job unblocks PR. Full marky-ayb task (separate job, platform matrix, feature gate) deferred.",
+      "id": "dec-050",
+      "timestamp": "2026-02-16T19:23:11Z",
+      "feature": "marky-5yt",
+      "decision": "Split marky-5yt into child execution tasks marky-5yt.1 and marky-5yt.2",
+      "rationale": "The parent task spans two high-risk self-referential migrations; splitting enables one-task-at-a-time execution with clear checkpoints and verification boundaries.",
       "alternatives": [
-        "Separate zig-kernels CI job (full marky-ayb scope)",
-        "Feature-gate markymark-kernels to skip without Zig"
+        "Execute full Ast + DocumentIndex migration in one pass",
+        "Continue parent task without explicit child task tracking"
       ],
-      "impact": ".github/workflows/ci.yml — mlugg/setup-zig@v2 step added"
+      "impact": "beads task structure for marky-5yt, execution flow and checkpointing"
     },
     {
-      "id": "dec-v8r-001",
-      "timestamp": "2026-02-16T07:42:00Z",
-      "feature": "marky-v8r",
-      "decision": "Hybrid SIMD-scalar heading scanner: SIMD finds newlines, scalar validates headings",
-      "rationale": "Headings are sparse in markdown. SIMD accelerates the common case (scanning prose for newlines) while scalar handles the rare case (parsing heading syntax). This avoids complex SIMD logic for # counting and space verification.",
+      "id": "dec-051",
+      "timestamp": "2026-02-16T19:23:11Z",
+      "feature": "marky-5yt.1",
+      "decision": "Use self_cell owner/dependent storage for Ast internals on stable Rust",
+      "rationale": "self_cell provides safe self-referential owner/dependent modeling without nightly features and removes internal Vec<Element<'static>> storage from Ast.",
       "alternatives": [
-        "Full SIMD heading parsing (complex, marginal benefit for sparse headings)",
-        "Pure scalar (simpler but slower on large documents)"
+        "Use ouroboros for Ast first migration",
+        "Keep existing static-marked storage and rely on docs"
       ],
-      "impact": "zig/src/kernels/heading_scan.zig, zig/src/reference/heading_scan_ref.zig"
+      "impact": "markymark-parser/src/ast.rs, markymark-parser/Cargo.toml, Cargo.lock"
     },
     {
-      "id": "dec-v8r-002",
-      "timestamp": "2026-02-16T07:42:00Z",
-      "feature": "marky-v8r",
-      "decision": "Shared try_parse_heading between SIMD and scalar implementations",
-      "rationale": "Both SIMD and scalar paths need identical heading validation logic. Sharing the function ensures parity and reduces duplication. Made pub in reference module for SIMD module to import.",
+      "id": "dec-052",
+      "timestamp": "2026-02-16T19:23:11Z",
+      "feature": "marky-5yt.1",
+      "decision": "Add storage-level regression test enforcing Ast no longer contains Vec<Element<'static>>",
+      "rationale": "A focused test guards against accidental reintroduction of static-marked root storage during follow-on migration work.",
       "alternatives": [
-        "Duplicate validation logic in each module",
-        "Extract to shared utility module"
+        "Rely only on code review to prevent regressions",
+        "Delay regression test until DocumentIndex migration completes"
       ],
-      "impact": "zig/src/reference/heading_scan_ref.zig (pub fn try_parse_heading)"
+      "impact": "markymark-parser/tests/ast_self_cell.rs"
     },
     {
-      "id": "dec-brza-een-001",
-      "timestamp": "2026-02-16T06:50:00Z",
-      "feature": "marky-een",
-      "decision": "build.rs invokes zig build lib via std::process::Command with no external build dependencies",
-      "rationale": "Keeps the crate dependency-free. build.rs uses only std for Command, PathBuf, and env. Version parsing is manual (split on '-' then '.') to handle dev suffixes without regex crate.",
+      "id": "dec-053",
+      "timestamp": "2026-02-17T04:44:00Z",
+      "feature": "marky-b6v",
+      "decision": "Restore from_scan() on self_cell architecture using identical DocumentOwner/DocumentIndexCell pattern as from_ast",
+      "rationale": "PR #21 merge replaced old &static lifetime hacks with self_cell. from_scan was lost. Restoring it with the same self_cell closure pattern ensures both construction paths share the same safe ownership model. from_scan creates DocumentArena::new() (vs from_ast which takes ast.into_arena()).",
       "alternatives": [
-        "Use cc crate (overkill for invoking zig CLI)",
-        "Use which crate for zig lookup (unnecessary, PATH lookup via Command is sufficient)"
+        "Keep old &static pattern in from_scan only (inconsistent, unsafe)",
+        "Defer from_scan restoration until document.rs refactor (blocks BRZA work)"
       ],
-      "impact": "markymark-kernels/build.rs — zero build-dependencies"
+      "impact": "markymark-index/src/document.rs \u2014 from_scan, byte_offset helpers, 16 scan_tests"
     },
     {
-      "id": "dec-brza-een-002",
-      "timestamp": "2026-02-16T06:50:00Z",
-      "feature": "marky-een",
-      "decision": "rerun-if-changed enumerates individual .zig files via walkdir, not directory watch",
-      "rationale": "Directory-level rerun-if-changed only triggers on add/remove (directory metadata changes), not file modifications. walkdir enumerates all .zig files so cargo rebuilds on any source change. Adds walkdir build-dependency.",
+      "id": "dec-054",
+      "timestamp": "2026-02-16T22:48:25Z",
+      "feature": "marky-3l6",
+      "decision": "Centralize incremental edit range clamping in helper and emit warning telemetry when clamping occurs",
+      "rationale": "Out-of-range LSP edit positions should not crash apply_document_changes, but silent clamping hides buggy clients. A shared helper keeps range logic consistent and warning output adds observability.",
       "alternatives": [
-        "Directory watch only (misses file modifications per CodeRabbit feedback)",
-        "Hardcode file list (maintenance burden as kernels added)"
+        "Keep inline .min/.max clamping without warning output",
+        "Reject out-of-range edits and propagate errors through LSP path"
       ],
-      "impact": "markymark-kernels/build.rs lines 35-45, markymark-kernels/Cargo.toml build-dependencies"
+      "impact": "markymark-lsp/src/state.rs incremental edit path and unit tests"
     },
     {
-      "id": "dec-brza-mm-001",
-      "timestamp": "2026-02-15T23:50:00Z",
-      "feature": "marky-8s3",
-      "decision": "Copy and diverge Zig kernels from forge BRZA into markymark",
-      "rationale": "Simplest to start, avoids coordination overhead between forge and markymark repos. Can sync later if patterns converge. Shared kernels (embeddings, similarity, entity hashing) forked; markymark-specific kernels (heading/link/tag/block scan) are new.",
-      "alternatives": [
-        "Zig package (clean versioning but coordination overhead)",
-        "Git submodule (explicit version control but submodule friction)",
-        "Monorepo extract later (delays extraction)"
-      ],
-      "impact": "zig/src/shared/ directory contains forked forge kernels"
-    },
-    {
-      "id": "dec-brza-mm-002",
-      "timestamp": "2026-02-15T23:50:00Z",
-      "feature": "marky-8s3",
-      "decision": "Complement tree-sitter with Zig SIMD scanning, promotion path based on benchmarks",
-      "rationale": "Zig scans fast but context-unaware (false positives in code blocks). Tree-sitter precise but slower. Two-tier model: Tier 1 Zig for speed-critical ops, Tier 2 tree-sitter for precision. If Zig covers 95%+ accurately, promote to primary.",
-      "alternatives": [
-        "Replace tree-sitter entirely (too risky, loses context awareness)",
-        "Complement only (no promotion path, keeps two systems permanently)"
-      ],
-      "impact": "ScanBackend trait, DocumentIndex::from_scan() alternative path"
-    },
-    {
-      "id": "dec-brza-mm-003",
-      "timestamp": "2026-02-15T23:50:00Z",
-      "feature": "marky-8s3",
-      "decision": "markymark-kernels crate below markymark-core in dependency graph",
-      "rationale": "Core defines traits (ScanBackend, EmbeddingProvider), kernels implements via Zig FFI. Other crates depend only on core. Feature-gated: zig-kernels flag in core enables kernels dep.",
-      "alternatives": [
-        "Sibling to core (more wiring, less encapsulation)",
-        "Inside core as feature-gated module (simpler graph but larger core crate)"
-      ],
-      "impact": "Dependency chain: kernels <- core <- index <- mcp"
-    },
-    {
-      "id": "dec-brza-mm-004",
-      "timestamp": "2026-02-15T23:50:00Z",
-      "feature": "marky-8s3",
-      "decision": "Embedding source agnostic via EmbeddingProvider trait",
-      "rationale": "Design the embedding index to be source-agnostic. Provider decision (local ONNX, API, TF-IDF) deferred to implementation time. Trait: embed, embed_batch, dimensions.",
-      "alternatives": [
-        "Local ONNX only (self-contained but limits quality options)",
-        "API only (highest quality but network dependency)",
-        "TF-IDF in Zig (zero deps but lower semantic quality)"
-      ],
-      "impact": "markymark-core/src/embeddings.rs EmbeddingProvider trait"
-    },
-    {
-      "id": "dec-brza-mm-005",
-      "timestamp": "2026-02-15T23:50:00Z",
-      "feature": "marky-8s3",
-      "decision": "P2 parallel exploration priority, full upfront planning with user orchestration",
-      "rationale": "BRZA-markymark doesn't block v1.0 launch. Work on it alongside arena conformance and v1.0 tasks. All 17 tasks planned upfront with dependency graph for user-orchestrated execution.",
-      "alternatives": [
-        "Post-v1.0 (delays exploration)",
-        "P1 with semantic search as launch feature (risky scope addition)",
-        "Spike first (delays full planning)"
-      ],
-      "impact": "Epic marky-8s3 with 17 tasks across 7 phases"
-    },
-    {
-      "id": "dec-033",
-      "timestamp": "2026-02-15T15:33:00Z",
+      "id": "dec-055",
+      "timestamp": "2026-02-16T22:48:25Z",
       "feature": "feature-001",
-      "decision": "Merge origin/main into feature branch (not rebase) to resolve PR #10 squash merge conflicts",
-      "rationale": "PR #10 was squash-merged to main, causing 22 conflicts with the 52-commit feature branch. Rebase failed before (fail-feature-001-rebase-20260214). Merge commit is safest — preserves all history and clearly documents integration point.",
+      "decision": "Track oversized ServerState module as explicit refactor follow-up (marky-m8b)",
+      "rationale": "state.rs exceeds the 500-line threshold and mixes concerns. Capturing the refactor as a dedicated bead preserves momentum while keeping current bugfix/review scope tight.",
       "alternatives": [
-        "Rebase 52 commits (failed before, rewrites hashes)",
-        "Reset main to before squash merge (force push to main, risky)"
+        "Refactor state.rs immediately within the review-follow-up task",
+        "Leave the oversized module untracked for later"
       ],
-      "impact": "Merge commit 02dd960, PR #11 now MERGEABLE"
+      "impact": "beads task marky-m8b and planned markymark-lsp/src/state/* module split"
     },
     {
-      "id": "dec-031",
-      "timestamp": "2026-02-15T15:30:00Z",
+      "id": "dec-056",
+      "timestamp": "2026-02-17T09:20:00Z",
+      "feature": "marky-z7e",
+      "decision": "Use test-first checkpoint for wiki-links incremental scaffolding before implementing selective merge",
+      "rationale": "The task required incremental wiki-link behavior confidence early; adding explicit parity and edge-case tests first prevented silent regressions while wiring pending edit tracking.",
+      "alternatives": [
+        "Implement incremental code path first and add tests afterward",
+        "Only add a single parity test and skip edge-case coverage"
+      ],
+      "impact": "markymark-lsp/tests/state_tests.rs incremental wiki-link regression set"
+    },
+    {
+      "id": "dec-057",
+      "timestamp": "2026-02-17T09:20:00Z",
+      "feature": "marky-z7e",
+      "decision": "Track pending InputEdit lifecycle in ServerState for incremental markdown orchestration",
+      "rationale": "Capturing edit batches in state makes incremental reindex routing explicit and testable, and establishes common infrastructure needed by all extractor-specific incremental updates.",
+      "alternatives": [
+        "Compute edits ad hoc without persisting state",
+        "Move incremental change tracking into index layer"
+      ],
+      "impact": "markymark-lsp/src/state.rs pending_edits, incremental entrypoint wiring, pending_edit_count helper"
+    },
+    {
+      "id": "dec-058",
+      "timestamp": "2026-02-17T09:20:00Z",
+      "feature": "marky-77i",
+      "decision": "Create follow-up task marky-77x for true selective wiki-link merge after scaffolding lands",
+      "rationale": "Current incremental path still delegates to full from_ast rebuild; separating selective-merge completion into an immediate child task keeps the epic honest while preserving one-task-at-a-time execution discipline.",
+      "alternatives": [
+        "Treat scaffolding as complete incremental implementation",
+        "Bundle selective merge into the same task without explicit checkpoint"
+      ],
+      "impact": "beads marky-z7e closure notes and new task marky-77x linked to marky-77i"
+    },
+    {
+      "id": "dec-059",
+      "timestamp": "2026-02-16T22:48:25Z",
+      "feature": "marky-3l6",
+      "decision": "Add CRLF incremental edit parity regression test in markymark-lsp state tests",
+      "rationale": "Review triage identified CRLF coverage as a valid gap. A parity test that compares incremental parsing output against full parse output prevents regressions in CRLF line-ending handling.",
+      "alternatives": [
+        "Rely on existing LF-only incremental tests",
+        "Defer CRLF coverage to a future parser stress-test task"
+      ],
+      "impact": "markymark-lsp/tests/state_tests.rs"
+    },
+    {
+      "id": "dec-060",
+      "timestamp": "2026-02-17T05:57:00Z",
+      "feature": "marky-3w5",
+      "decision": "Split document.rs into 4 focused modules: types.rs (entry structs), helpers.rs (functions), tests.rs (test modules), mod.rs (DocumentIndex + API)",
+      "rationale": "document.rs at 1207 lines exceeded the 1000-line HARD STOP (learned rule-004). Modular structure improves maintainability and follows Rust conventions. Safe refactoring workflow (change\u2192test\u2192commit) ensured zero behavior change.",
+      "alternatives": [
+        "Extract only tests to separate file (partial solution, mod.rs still too large)",
+        "Extract constructors to build.rs (more granular, but unnecessary at current size)",
+        "Leave as monolith and defer refactor (violates hard limit, blocks future work)"
+      ],
+      "impact": "markymark-index/src/document/ — mod.rs (540L), types.rs (102L), helpers.rs (189L), tests.rs (403L)"
+    },
+    {
+      "id": "dec-061",
+      "timestamp": "2026-02-17T19:03:43Z",
       "feature": "feature-001",
-      "decision": "Reorder Ast struct fields so root_elements is declared before arena to fix drop order",
-      "rationale": "Rust drops struct fields in declaration order. Arena was declared before root_elements, meaning Bump freed all memory before Element drop impls ran. Any Element containing ArenaHashMap would access a dangling &Bump reference on drop — undefined behavior.",
+      "decision": "Default omitted MCP prompt realm to explicit \"default\" at handler boundary and decode percent-encoded resource query params before forwarding",
+      "rationale": "Prompt definitions claimed a default realm while handlers previously passed None, and resource query extraction forwarded raw encoded values. Making defaulting/decoding explicit removes contract drift and prevents encoded realm/query leakage.",
       "alternatives": [
-        "Use ManuallyDrop for arena (more complex, less idiomatic)",
-        "Implement custom Drop for Ast (overrides field drop order but adds maintenance burden)"
+        "Update prompt argument descriptions to remove default claim",
+        "Keep raw query parsing and decode in each call site"
       ],
-      "impact": "markymark-parser/src/ast.rs — struct field reordering"
+      "impact": "markymark-mcp/src/prompts.rs, markymark-mcp/src/resources.rs, prompt/resource handler integration tests"
     },
     {
-      "id": "dec-032",
-      "timestamp": "2026-02-15T15:30:00Z",
-      "feature": "feature-001",
-      "decision": "Gate Ast Default impl behind #[cfg(test)] rather than removing or renaming to Ast::empty()",
-      "rationale": "Default impl panics via .expect() which is inappropriate for library code. Zero usages found in codebase. Gating behind #[cfg(test)] preserves it for future test convenience while removing the public API hazard.",
+      "id": "dec-062",
+      "timestamp": "2026-02-17T21:38:00Z",
+      "feature": "marky-r7j",
+      "decision": "Strip ?realm=... from embedded outline doc URI before DocumentUri::new parsing",
+      "rationale": "The markymark://outline/{uri} template embeds the source URI in the path. If a caller appends ?realm=x, parsing the full suffix as a document URI can fail or leak query data into path resolution. Splitting on the first ? keeps the document URI canonical.",
       "alternatives": [
-        "Remove entirely (loses test utility)",
-        "Rename to Ast::empty() (still panics, just with different name)"
+        "Require realm in a separate header",
+        "Use a path-segment realm format (outline/{realm}/{uri})"
       ],
-      "impact": "markymark-parser/src/ast.rs — Default impl visibility"
+      "impact": "markymark-mcp/src/resources.rs read_outline_resource()"
     },
     {
-      "id": "dec-docs-phase3-001",
-      "timestamp": "2026-02-15T09:00:00Z",
-      "feature": "docs-refinement",
-      "decision": "Use markymark realm indexing of 633-doc source vault for systematic gap analysis instead of manual file-by-file review",
-      "rationale": "Realm-based search-symbols queries cover all indexed headings efficiently. Combined with grep for inline content checks, this identified 7 gaps across 15+ topic areas in one pass.",
+      "id": "dec-063",
+      "timestamp": "2026-02-17T21:38:00Z",
+      "feature": "marky-0g6",
+      "decision": "Standardize MCP URI templates to optional query realm parameter for realm-scoped resources",
+      "rationale": "Using query realm parameters keeps template shape consistent across resources and preserves default-realm behavior when the parameter is omitted.",
       "alternatives": [
-        "Manual file-by-file reading of source vault (too many files)",
-        "Grep-only approach (misses structural gaps)",
-        "Rely on agent knowledge of what's missing (subjective)"
+        "Path segment realm routing",
+        "Request body realm argument"
       ],
-      "impact": "8 docs modified: ownership.md, idioms.md, anti-patterns.md, types.md, syntax-ref.md, MISTAKES.md, AGENTS.md, MEMORY.md"
+      "impact": "markymark-mcp/src/resources.rs resource_templates()"
     },
     {
-      "id": "dec-docs-phase3-002",
-      "timestamp": "2026-02-15T09:00:00Z",
-      "feature": "docs-refinement",
-      "decision": "Add nomicon dot-operator derived-Clone autoref gotcha to anti-patterns rather than a standalone doc",
-      "rationale": "The gotcha is an anti-pattern that agents produce silently. It belongs where agents check for mistakes, not in a separate advanced concepts file.",
+      "id": "dec-064",
+      "timestamp": "2026-02-17T21:38:00Z",
+      "feature": "marky-r7j",
+      "decision": "Use rmcp optional PromptArgument pattern (required: Some(false)) for realm-aware prompts",
+      "rationale": "MCP prompt arguments can be optional. rmcp models this via required: Some(false), and handlers can safely extract with .get().and_then().map(str::to_string()) without forcing realm input.",
       "alternatives": [
-        "Add to traits.md (too academic)",
-        "Create advanced/method-resolution.md (too niche for standalone)"
+        "Separate prompts per realm",
+        "Implicit default without exposing realm argument"
       ],
-      "impact": "patterns/anti-patterns.md"
-    },
-    {
-      "id": "dec-026",
-      "timestamp": "2026-02-15T07:05:00Z",
-      "feature": "feature-001",
-      "decision": "Add explicit benchmark tier controls for both sample count and corpus scale",
-      "rationale": "A single heavy flag did not provide enough control for iterative profiling versus scale validation. Tiered controls support fast dev loops (light) and progressively larger runs (medium/heavy/extreme) without editing code.",
-      "alternatives": [
-        "Keep MARKYMARK_BENCH_HEAVY only",
-        "Hardcode fixed sample/doc counts in benches"
-      ],
-      "impact": "markymark-index/src/bench_config.rs, markymark-index/benches/memory.rs"
-    },
-    {
-      "id": "dec-027",
-      "timestamp": "2026-02-15T07:05:00Z",
-      "feature": "feature-001",
-      "decision": "Automate benchmark ROI reporting with a dedicated runner binary that executes tiered benches and writes markdown",
-      "rationale": "Manual benchmark collection was slow and error-prone. Automating run + parse + report reduces operator overhead and creates a repeatable artifact for go/no-go arena ROI decisions.",
-      "alternatives": [
-        "Manual copy/paste from criterion output",
-        "Ad-hoc one-off scripts outside workspace"
-      ],
-      "impact": "markymark-index/src/bench_report.rs, markymark-index/src/bin/bench_roi_report.rs, docs/benchmarks/roi-tier-report.md"
-    },
-    {
-      "id": "dec-024",
-      "timestamp": "2026-02-15T06:30:00Z",
-      "feature": "feature-001",
-      "decision": "Keep baseline worktree at /tmp/markymark-baseline for benchmarking; only kill PIDs when user explicitly asks for process cleanup",
-      "rationale": "User corrected: they wanted PID cleanup only, not worktree removal. Baseline worktree enables quick pre/post arena comparison.",
-      "alternatives": [
-        "Remove worktree after each run",
-        "Document recreate steps"
-      ],
-      "impact": "Checkpoint workflow, process-cleanup behavior"
-    },
-    {
-      "id": "dec-025",
-      "timestamp": "2026-02-15T06:30:00Z",
-      "feature": "feature-001",
-      "decision": "MARKYMARK_BENCH_HEAVY=1 for 100-sample runs; default to 10–20 samples to avoid RAM exhaustion on index_docs_dir (918 files)",
-      "rationale": "100-sample index_docs_dir froze laptop. Real corpus bench allocates ~5.9MB × 100 iterations; default sample sizes are sufficient for most runs.",
-      "alternatives": [
-        "Cap index_docs_dir at 20 samples in heavy mode",
-        "Run heavy bench on CI only"
-      ],
-      "impact": "markymark-index benches/memory.rs sample_size()"
-    },
-    {
-      "id": "dec-arena-send-001",
-      "timestamp": "2026-02-15T06:30:00Z",
-      "feature": "feature-001",
-      "decision": "ArenaHashMap (!Send) restricted to parser types only; index types use std HashMap",
-      "rationale": "Bump:!Sync -> &Bump:!Send -> ArenaHashMap:!Send. tower-lsp requires Send+static for async handlers. Index types flow into ServerState via RealmIndex.",
-      "alternatives": [
-        "Wrap arena in Arc<Mutex<Bump>>",
-        "Use unsafe impl Send",
-        "Accept ArenaHashMap everywhere and restructure LSP to not require Send"
-      ],
-      "impact": "markymark-index/src/document.rs (XmlTagEntry, DocumentIndex internal HashMaps), bumpalo.md docs"
-    },
-    {
-      "id": "dec-docarena-adopt-001",
-      "timestamp": "2026-02-15T06:30:00Z",
-      "feature": "feature-001",
-      "decision": "Adopt DocumentArena wrapper in Ast and DocumentIndex instead of raw Bump",
-      "rationale": "DocumentArena provides Debug, capacity hints, and clear semantic boundary. Option (a) from audit: use the wrapper everywhere vs (b) delete it.",
-      "alternatives": [
-        "Delete DocumentArena and use raw Bump (option b)"
-      ],
-      "impact": "markymark-parser/src/ast.rs, markymark-index/src/document.rs, markymark-core/src/arena.rs"
-    },
-    {
-      "id": "dec-docarena-ptr-001",
-      "timestamp": "2026-02-15T06:30:00Z",
-      "feature": "feature-001",
-      "decision": "Changed arena_ptr() to doc_arena_ptr() returning *const DocumentArena",
-      "rationale": "The ptr::read+forget pattern needs to read the whole DocumentArena (not just inner Bump) to transfer ownership cleanly between Ast and DocumentIndex.",
-      "alternatives": [
-        "Keep *const Bump and cast to DocumentArena",
-        "Add repr(transparent) to DocumentArena"
-      ],
-      "impact": "markymark-parser/src/ast.rs, markymark-index/src/document.rs"
-    },
-    {
-      "id": "dec-pr-review-001",
-      "timestamp": "2026-02-15T04:55:00Z",
-      "feature": "feature-001",
-      "decision": "Use LazyLock<Regex> static compilation for all 14 regex patterns in extract.rs",
-      "rationale": "CodeRabbit flagged regex recompilation on every function call as Major issue. LazyLock compiles each regex exactly once (first access) and reuses across all calls. No crate dependency added — LazyLock is in std since Rust 1.80.",
-      "alternatives": [
-        "once_cell::sync::Lazy (external crate)",
-        "Thread-local regex (separate per-thread compilation)"
-      ],
-      "impact": "markymark-parser/src/extract.rs"
-    },
-    {
-      "id": "dec-pr-review-002",
-      "timestamp": "2026-02-15T04:55:00Z",
-      "feature": "feature-001",
-      "decision": "MarkdownLinkEntry.url stores base URL only (without fragment); anchor stored separately",
-      "rationale": "CodeRabbit flagged that url field duplicated anchor info. Parser already splits URL at '#' — index was re-concatenating them. Storing base URL matches parser semantics and simplifies callers (no need to strip anchor from url).",
-      "alternatives": [
-        "Keep concatenated url (matches browser URL bar behavior)",
-        "Remove anchor field entirely and only store full url"
-      ],
-      "impact": "markymark-index/src/document.rs, markymark-lsp/src/server.rs, markymark-index/tests/document_index.rs"
-    },
-    {
-      "id": "dec-pr-review-003",
-      "timestamp": "2026-02-15T04:55:00Z",
-      "feature": "feature-001",
-      "decision": "Accept 'static lifetime pattern with documentation; defer self_cell migration to marky-5yt",
-      "rationale": "Copilot flagged 'static as unsound. While inner &'static str can technically escape &self, all callers access through &self. Documenting the invariant + filing marky-5yt for proper fix is pragmatic given scope of arena migration.",
-      "alternatives": [
-        "Immediately adopt ouroboros/self_cell (large refactor)",
-        "Remove arena allocation entirely"
-      ],
-      "impact": "markymark-parser/src/ast.rs, markymark-index/src/document.rs safety docs; marky-5yt issue"
-    },
-    {
-      "id": "dec-028",
-      "timestamp": "2026-02-15T03:46:14Z",
-      "feature": "feature-001",
-      "decision": "Preserve duplicate block IDs in RealmIndex and keep first-in lookup semantics",
-      "rationale": "Overwriting duplicate block IDs silently dropped cross-document references. Storing all occurrences prevents data loss while returning the first entry preserves existing Option-based resolution behavior.",
-      "alternatives": [
-        "Keep overwrite behavior",
-        "Change lookup API to return Vec and propagate broad signature changes"
-      ],
-      "impact": "markymark-index/src/realm.rs, markymark-index/tests/realm_index.rs, markymark-index/src/resolution.rs"
-    },
-    {
-      "id": "dec-029",
-      "timestamp": "2026-02-15T03:46:14Z",
-      "feature": "feature-001",
-      "decision": "Upgrade workspace allocator dependencies to bumpalo 3.19.1 and hashbrown 0.16.1",
-      "rationale": "Code review flagged outdated versions and security concerns on earlier hashbrown line. Upgrading keeps arena allocation strategy current and secure without changing allocator-api2 approach.",
-      "alternatives": [
-        "Pin minimum patch release in 0.15.x",
-        "Defer dependency upgrades to separate maintenance task"
-      ],
-      "impact": "Cargo.toml, Cargo.lock, allocator-backed map usage in parser/index/core crates"
-    },
-    {
-      "id": "dec-030",
-      "timestamp": "2026-02-15T03:46:14Z",
-      "feature": "feature-001",
-      "decision": "Keep local epstein benchmark corpus file out of checkpoint commits unless explicitly requested",
-      "rationale": "The fixture is user-local context and should not be accidentally bundled with PR code cleanup commits.",
-      "alternatives": [
-        "Auto-stage all untracked files",
-        "Delete local fixture each checkpoint"
-      ],
-      "impact": "checkpoint commit workflow and staging discipline for this branch"
-    },
-    {
-      "id": "dec-023",
-      "timestamp": "2026-02-15T01:00:00Z",
-      "feature": "feature-001",
-      "decision": "Extend BlockId with source Range; compute from regex full match in extract_block_ids",
-      "rationale": "BlockEntry used hardcoded Range(0,0,0,0), causing go-to-definition for ^block-id to always jump to file start. Regex-extracted types should carry source position for LSP navigation.",
-      "alternatives": [
-        "Return separate struct with id+range",
-        "Compute range only in index layer"
-      ],
-      "impact": "markymark-parser types/blocks.rs BlockId, extract.rs extract_block_ids, markymark-index document.rs BlockEntry"
-    },
-    {
-      "id": "dec-020",
-      "timestamp": "2026-02-15T00:15:00Z",
-      "feature": "marky-g9t.7",
-      "decision": "extract_list_items returns Vec<&ListItem> instead of Vec<ListItem> to avoid ArenaHashMap::clone",
-      "rationale": "Cloning ListItem clones its ArenaHashMap. hashbrown HashMap with bumpalo allocator triggers SIGSEGV on clone. Returning references to arena-allocated items avoids clone entirely.",
-      "alternatives": [
-        "Fix ArenaHashMap::clone (investigate hashbrown/bumpalo)",
-        "Use Vec<(key,value)> instead of HashMap for properties"
-      ],
-      "impact": "markymark-parser ast.rs extract_list_items, collect_top_level_list_items"
-    },
-    {
-      "id": "dec-021",
-      "timestamp": "2026-02-15T00:15:00Z",
-      "feature": "marky-0gl",
-      "decision": "Use arena-allocated empty slice for ListItem children_list instead of &[]",
-      "rationale": "Literal &[] creates reference to stack-local temporary; returning it causes use-after-free when ListItem outlives the function. bumpalo::collections::Vec::new_in(arena).into_bump_slice() gives valid &'arena [ListItem].",
-      "alternatives": [
-        "static EMPTY: &[ListItem] (requires const-constructible ListItem)",
-        "Allocate empty array in arena upfront"
-      ],
-      "impact": "markymark-parser types/elements.rs ListItem::from_node"
-    },
-    {
-      "id": "dec-022",
-      "timestamp": "2026-02-15T00:15:00Z",
-      "feature": "marky-g9t.7",
-      "decision": "Custom CountingAllocator in benchmark binary for heap allocation metrics",
-      "rationale": "Task required allocation count via global allocator counter. Wrapping System allocator with atomic counter gives per-iteration alloc count. Note: bumpalo uses its own allocation so count includes arena chunk growth.",
-      "alternatives": [
-        "alloc_counter crate (older, potential compat issues)",
-        "dhat heap profiler"
-      ],
-      "impact": "markymark-index benches/memory.rs"
+      "impact": "markymark-mcp/src/prompts.rs list_prompt_definitions()"
     }
   ],
-  "lastUpdated": "2026-02-17T20:18:08Z"
+  "lastUpdated": "2026-02-17T21:38:00Z"
 }
