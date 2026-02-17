@@ -25,7 +25,10 @@
       "For self-referential migrations on stable Rust, split work into Ast-first then index-layer tasks and land self_cell owner/dependent conversion in isolated checkpoints",
       "Generated benchmark output files must be excluded from the corpus used to compute those same benchmark metrics",
       "Hook scripts receive JSON on stdin, output JSON to stdout, use exit 0 for no-op on non-matching files",
+      "If aggregate stats depend on file reads, surface unreadable inputs explicitly instead of returning silent partial totals",
+      "If fuzzy starts_with metadata is derived via zip, guard query<=candidate length to avoid truncated-pair false positives",
       "If partial ingest failures can occur, collect pending index metadata in temporary structures and commit atomically",
+      "In Zig AutoHashMapUnmanaged mutation loops, reserve capacity before retaining value pointers across getOrPut operations",
       "Keep Semgrep rule scope high-signal by excluding tests/** and validating with repo-wide scan excluding dedicated fixtures",
       "LSP Content-Length framing vs MCP line-delimited JSON — NEVER mix them",
       "Plugin hooks use hooks.json with {description, hooks: {EventName: [{matcher, hooks: [{type, command, timeout}]}]}} structure",
@@ -47,6 +50,7 @@
       "When hardening lifetime safety incrementally, add compile_fail doctests first, then narrow public signatures to &self-bound lifetimes, and only then adapt downstream call sites",
       "When harness active/archive state drifts from beads reality, reconcile by restoring in-progress feature to active.json and clearing premature archive entry before continuing implementation",
       "When migrating wrapper types (e.g. Bump->DocumentArena), trace all ptr::read/mem::forget usage - pointer type must match the owning type, not inner type.",
+      "When response contract is byte-bounded, truncate strings by bytes with UTF-8 boundary checks rather than codepoint count",
       "When teammate implementer crashes, reassign narrow-scope blocker to test-writer to preserve momentum",
       "When writing bd --design content with markdown backticks, use heredoc file + bd update to avoid shell command substitution",
       "Zig SIMD heading scan: detect newlines with SIMD, validate heading syntax with shared scalar function",
@@ -176,5 +180,5 @@
       }
     ]
   },
-  "lastUpdated": "2026-02-17T20:18:58Z"
+  "lastUpdated": "2026-02-17T20:45:28Z"
 }

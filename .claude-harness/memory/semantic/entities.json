@@ -228,6 +228,15 @@
       ]
     },
     {
+      "name": "runtime-preview-byte-cap",
+      "type": "mcp-response-contract",
+      "location": "markymark-mcp/src/runtime_engine.rs",
+      "relationships": [
+        "section_preview capped to <=200 bytes",
+        "truncation preserves UTF-8 boundary"
+      ]
+    },
+    {
       "name": "runtime_engine fuzzy ranking",
       "type": "mcp-ranking-policy",
       "location": "markymark-mcp/src/runtime_engine.rs",
@@ -235,6 +244,35 @@
         "uses markymark_kernels fuzzy_match_score",
         "orders search-symbols by score then starts_with tie-break",
         "replaces substring contains + lexical ordering"
+      ]
+    },
+    {
+      "name": "semantic-fetch-k-bounded",
+      "type": "ranking-performance-policy",
+      "location": "markymark-index/src/semantic.rs",
+      "relationships": [
+        "compute_fetch_k caps overfetch to 4x top_k",
+        "avoids full-corpus fetch in common top_k << count searches"
+      ]
+    },
+    {
+      "name": "semantic-index-transactional-add",
+      "type": "indexing-correctness-pattern",
+      "location": "markymark-index/src/semantic.rs",
+      "relationships": [
+        "stages pending entries during add_document and commits after all embeddings succeed",
+        "prevents stale semantic matches after partial provider failures",
+        "validated by semantic_index rollback regression test"
+      ]
+    },
+    {
+      "name": "semantic-search-tool-router-gating",
+      "type": "mcp-tooling-pattern",
+      "location": "markymark-mcp/src/lib.rs",
+      "relationships": [
+        "removes semantic-search route when semantic-search feature is disabled",
+        "keeps list_tools capability surface aligned with executable tools",
+        "implemented via ToolRouter::remove_route in constructor"
       ]
     },
     {
@@ -256,27 +294,7 @@
         "preserves non-ASCII UTF-8 bytes during normalization",
         "used for markdown heading slug generation in BRZA track"
       ]
-    },
-    {
-      "name": "semantic-search-tool-router-gating",
-      "type": "mcp-tooling-pattern",
-      "location": "markymark-mcp/src/lib.rs",
-      "relationships": [
-        "removes semantic-search route when semantic-search feature is disabled",
-        "keeps list_tools capability surface aligned with executable tools",
-        "implemented via ToolRouter::remove_route in constructor"
-      ]
-    },
-    {
-      "name": "semantic-index-transactional-add",
-      "type": "indexing-correctness-pattern",
-      "location": "markymark-index/src/semantic.rs",
-      "relationships": [
-        "stages pending entries during add_document and commits after all embeddings succeed",
-        "prevents stale semantic matches after partial provider failures",
-        "validated by semantic_index rollback regression test"
-      ]
     }
   ],
-  "lastUpdated": "2026-02-17T20:18:38Z"
+  "lastUpdated": "2026-02-17T20:45:28Z"
 }

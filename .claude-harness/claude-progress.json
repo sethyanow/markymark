@@ -1,26 +1,28 @@
 {
-  "lastUpdated": "2026-02-17T20:18:08Z",
+  "lastUpdated": "2026-02-17T20:45:28Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Fixed semantic-search review findings: capped top_k, made semantic index writes transactional, and hid semantic-search from non-feature MCP tool listings.",
+    "summary": "Triaged PR #29 comments, created follow-up beads, and fixed 5 actionable review items with strict RED->GREEN TDD.",
     "completedTasks": [
-      "Capped semantic-search top_k at MCP boundary in markymark-mcp/src/lib.rs",
-      "Made SemanticIndex::add_document commit metadata atomically in markymark-index/src/semantic.rs",
-      "Removed semantic-search route from MCP tool router when feature is disabled",
-      "Added regression tests for non-feature tool visibility, top_k clamping, and partial-write rollback",
-      "Verified with cargo fmt + targeted markymark-index/markymark-mcp test suites"
+      "Pulled PR #29 review streams into pr29-comments.json and wrote pr29-triage.json",
+      "Created follow-up beads marky-8s3.10/.11/.12 for deferred investigations",
+      "Hardened fuzzy starts_with length guard in markymark-kernels",
+      "Fixed Zig link_graph addDocument pointer invalidation by reserving HashMap capacity",
+      "Bounded semantic fetch overfetch policy via compute_fetch_k helper",
+      "Aligned semantic preview truncation to <=200 bytes on UTF-8 boundary",
+      "Made realm token-count stats observable by omitting totals when docs are unreadable"
     ],
     "blockers": [],
     "nextSteps": [
-      "Run full workspace quality gates if this branch is being prepared for merge",
-      "Continue BRZA backlog work (e.g. marky-8s3.6 binary index serialization)",
-      "Optionally update/open PR with this checkpoint commit"
+      "Post checkpoint summary to PR #29 and resolve review threads",
+      "Decide merge strategy for PR #29 after CI green",
+      "Execute follow-up beads marky-8s3.10/.11/.12"
     ]
   },
   "recentChanges": [
-    "semantic-search top_k capped to prevent unbounded allocation pressure",
-    "semantic-search tool hidden in non-semantic-search builds",
-    "SemanticIndex add_document now stages entries before commit"
+    "PR29 triage artifacts added (comments + dispositions)",
+    "5 actionable review items implemented with regression tests",
+    "Harness memory/progress layers updated for checkpoint"
   ],
   "knownIssues": [
     "marky-ktt (P1): Unsafe transmute audit from marky-5yt migration",

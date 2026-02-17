@@ -378,3 +378,37 @@ Verification commands that passed:
 - `cargo test -p markymark-index --features embeddings --test semantic_index`
 - `cargo test -p markymark-mcp --test tool_handler_tests`
 - `cargo test -p markymark-mcp --features semantic-search --test tool_handler_tests`
+
+### 2026-02-17: PR #29 comment triage (feature/mark-brza)
+
+- Executed `claude-harness-start` memory context compilation and wrote session context to `.claude-harness/sessions/s-20260217-202530/context.json`.
+- Pulled PR #29 discussion streams into `pr29-comments.json` (issue comments + reviews + line comments, 15 items total).
+- Produced machine triage in `pr29-triage.json`.
+- Highest-priority finding: potential pointer invalidation/UAF risk in `zig/src/kernels/link_graph.zig:addDocument` when hashmap grows during target insertion.
+- Additional actionable follow-ups: semantic search overfetch in `markymark-index/src/semantic.rs`, preview length contract mismatch (`bytes` vs `codepoints`) in `markymark-mcp/src/runtime_engine.rs`, and token-count observability gaps.
+
+### 2026-02-17: PR #29 actionable fixes via strict TDD
+
+- Created follow-up beads for deferred triage confirmation/research:
+  - `marky-8s3.10` (confirm fuzzy-prefix false-positive report)
+  - `marky-8s3.11` (deterministic embedding quality/stability evaluation)
+  - `marky-8s3.12` (profile preview I/O on large files)
+- Converted prior deferred `starts_with` edge-case hardening into actionable and fixed it with RED→GREEN test (`test_fuzzy_match_query_longer_than_candidate_is_not_prefix`).
+- Reproduced and fixed a real Zig memory-safety defect in `LinkGraph.addDocument`:
+  - New RED test (`addDocument preserves source node when inserting many new targets`) crashed with segmentation fault before fix.
+  - Fix: reserve HashMap capacity before capturing value pointer (`ensureUnusedCapacity`) to prevent pointer invalidation on growth.
+- Added bounded semantic fetch policy in `markymark-index`:
+  - New RED tests for `compute_fetch_k` behavior.
+  - Fix: replace `count.max(top_k)` with bounded overfetch (`4 * top_k`, capped by index count).
+- Fixed semantic preview length contract mismatch:
+  - New RED test with Unicode/emoji payload showed preview >200 bytes.
+  - Fix: `truncate_preview` now truncates by byte budget with UTF-8 boundary safety.
+- Added token-count observability for unreadable documents:
+  - New RED test deletes indexed file and expects token count to be omitted.
+  - Fix: `total_tokens_for_realm` now tracks unreadable docs and realm stats returns `None` for `total_tokens` plus warning when unreadable sources exist.
+- Verification (all passing):
+  - `cargo fmt --all`
+  - `cargo test -p markymark-kernels`
+  - `cargo test -p markymark-index --features embeddings --test semantic_index`
+  - `cargo test -p markymark-mcp --features semantic-search --test runtime_engine_tests`
+  - `zig test zig/src/kernels/link_graph.zig`
