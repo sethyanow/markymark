@@ -123,6 +123,20 @@ The arena conformance closeout (marky-luy) should monitor this.
 
 ## Lessons Learned
 
+### 2026-02-17: FFI serialization must validate both math and pointers
+
+For mmap-friendly binary formats, treat header counts and C pointers as untrusted input.
+In `zig/src/kernels/index_serde.zig`, using checked arithmetic in `IndexView.init` avoided
+overflow panics/acceptance bugs, and explicit null-pointer guards in `serialize_index`
+prevented SIGSEGV on malformed C callers. Also, padding bytes in caller-provided output
+buffers must be explicitly zeroed to guarantee deterministic output and avoid leaking
+stale memory.
+
+**Verification evidence:**
+- `zig test zig/src/kernels/index_serde.zig` → 8/8 passing
+- `zig test zig/src/exports_serde.zig` → 12/12 passing
+- `cargo test --package markymark-kernels` → 69 unit tests + docs passing
+
 ### 2026-02-15: Documentation for Agents != Documentation for Humans
 
 **Key insight:** Agent docs need PROCEDURAL knowledge (how to work through problems)
