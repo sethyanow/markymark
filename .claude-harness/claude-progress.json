@@ -1,40 +1,51 @@
 {
-  "lastUpdated": "2026-02-17T19:03:43Z",
+  "lastUpdated": "2026-02-17T21:38:00Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Verified inline review findings for MCP prompts/resources, fixed real mismatches, and added regression coverage for realm propagation and percent-decoding.",
+    "summary": "Triaged PR #28 review comments and verified MCP prompt/resource realm handling end-to-end, including explicit default realm forwarding and percent-decoded query propagation with regression coverage.",
     "completedTasks": [
-      "Validated prompt realm default claim against runtime and prompt handler behavior",
-      "Updated prompt handlers to pass explicit default realm when argument is omitted",
-      "Updated resource query extraction to percent-decode values before forwarding",
-      "Extended MCP tests to assert realm forwarding and decoded query handling",
-      "Ran focused verification: cargo fmt --all, cargo test -p markymark-mcp --test resource_handler_tests, cargo test -p markymark-mcp --test prompt_handler_tests"
+      "Fetched and triaged all PR #28 review comments via GitHub API",
+      "Created beads issues: marky-r7j (prompts realm), marky-0g6 (resources realm), marky-16m (GHAS temp-dir + boundary-unwrap), marky-w85 (non-existent realm test)",
+      "Updated marky-77x notes with Greptile incremental overlap check findings",
+      "marky-r7j: added optional realm PromptArgument to explain-link and suggest-references; threaded into ExportIndex and FindReferences",
+      "marky-0g6: parse realm query param from resource URI in GetOutline and SearchSymbols; strip ?realm= from doc URI before DocumentUri::new; updated URI templates",
+      "Validated prompt realm default behavior against runtime and prompt handlers",
+      "Updated prompt handlers to pass explicit default realm when realm argument is omitted",
+      "Updated shared resource query extraction to percent-decode values before forwarding",
+      "Extended MCP tests to assert realm propagation and decoded query handling",
+      "TDD: 4 tests confirmed RED before implementation; all GREEN after",
+      "Ran focused verification for prompt/resource handlers and workspace tests"
     ],
     "blockers": [
       "No blockers in this checkpoint scope"
     ],
     "nextSteps": [
-      "Run full workspace quality gates (fmt --check, clippy --workspace, test --workspace)",
-      "Commit and push checkpoint changes",
-      "Update existing PR for branch next-temp (or create one if missing)"
+      "marky-16m (P2): Fix GHAS findings (tempfile::TempDir in tests, boundary unwrap expect messages)",
+      "marky-w85 (P3): Add non-existent realm error path test in runtime_engine_tests",
+      "marky-77x (P2): Implement true wiki_links selective merge and resolve overlap check gap in state.rs",
+      "marky-ktt (P1): Audit unsafe transmute in DocumentIndex from marky-5yt migration",
+      "Run full workspace quality gates (fmt --check, clippy --workspace, test --workspace)"
     ]
   },
   "recentChanges": [
+    "35c1c14: fix(mcp): thread realm through prompts and resources (marky-r7j, marky-0g6)",
+    "c1441c6: fix(markymark-d7r): add optional realm param to per-document MCP operations",
     "markymark-mcp prompt handlers now default omitted realm to 'default' explicitly",
     "markymark-mcp extract_query_param now percent-decodes returned values",
-    "resource_handler_tests now assert realm propagation and decoding",
-    "prompt_handler_tests now assert default realm forwarding when realm arg is omitted"
+    "resource_handler_tests assert realm propagation and decoding",
+    "prompt_handler_tests assert default realm forwarding when realm arg is omitted"
   ],
   "knownIssues": [
+    "marky-16m (P2): GHAS Semgrep findings (temp_dir usage in tests, boundary-unwrap in tests)",
+    "marky-ktt (P1): Unsafe transmute audit from marky-5yt migration",
+    "marky-77x (P2): wiki_links incremental merge unimplemented; state.rs overlap check incomplete",
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
-    "marky-lkj.1: runtime_engine.zig test refactoring deferred (P4)",
-    "marky-8la: XML tag false positives in fenced code blocks",
-    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
+    "marky-8la: XML tag false positives in fenced code blocks"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-16T19:23:11Z",
-    "lastTypeCheck": "2026-02-16T19:23:11Z"
+    "lastSuccessfulBuild": "2026-02-17T21:35:00Z",
+    "lastTypeCheck": "2026-02-17T21:35:00Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4
