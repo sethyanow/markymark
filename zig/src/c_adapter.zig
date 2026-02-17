@@ -426,6 +426,8 @@ test {
     _ = @import("kernels/content_hash.zig");
     _ = @import("kernels/fence_map.zig");
     _ = @import("reference/fence_map_ref.zig");
+    // Multi-scan automaton (Aho-Corasick)
+    _ = @import("reference/multi_scan_ref.zig");
     // Shared kernels (forked from forge BRZA)
     _ = @import("shared/similarity.zig");
     _ = @import("reference/similarity_ref.zig");
