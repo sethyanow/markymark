@@ -1,25 +1,26 @@
 {
-  "lastUpdated": "2026-02-17T20:46:06Z",
+  "lastUpdated": "2026-02-17T23:34:38Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Fixed incremental wiki-link tail append regression with TDD and validated via cargo-mcp.",
+    "summary": "Fixed P1 incremental indexing bug where tail appends after the last wiki-link could skip recomputation and leave stale completion/reference data.",
     "completedTasks": [
-      "Added RED regression test for appending wiki-link after last existing link beyond neighbor window",
-      "Implemented state.rs safeguard to recompute wiki-links when edit starts at/after last old wiki-link range",
-      "Re-ran targeted and full markymark-lsp tests via cargo-mcp (all passing)"
+      "Added RED unit test for wiki_links_need_update with edit start after last existing link",
+      "Updated wiki_links_need_update to include tail-start detection and removed redundant fallback branch",
+      "Verified GREEN with markymark-lsp unit + state integration tests and fmt check"
     ],
     "blockers": [
       "None"
     ],
     "nextSteps": [
-      "Continue incremental indexing rollout tasks (blocks/tags/markdown_links/xml_tags)",
-      "Run checkpoint PR update flow for feature/incremental-indexing when additional tasks land"
+      "Push checkpoint commit and update the branch PR",
+      "Continue incremental index extractor rollout tasks under feature/incremental-indexing",
+      "Run /clear after checkpoint to reset context"
     ]
   },
   "recentChanges": [
-    "markymark-lsp: fix stale wiki-link reuse for append-after-tail incremental edits",
-    "markymark-lsp tests: added append-tail incremental parity regression",
-    "checkpoint: cargo-mcp validation and memory/progress persistence"
+    "markymark-lsp/state: recompute wiki-links when edits start at/after last old link",
+    "markymark-lsp/state tests: added tail-append recomputation regression",
+    "docs/MEMORY: recorded P1 tail-append recomputation fix"
   ],
   "knownIssues": [
     "marky-16m (P2): GHAS Semgrep findings (temp_dir usage in tests, boundary-unwrap in tests)",
@@ -29,8 +30,8 @@
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-17T21:35:00Z",
-    "lastTypeCheck": "2026-02-17T21:35:00Z"
+    "lastSuccessfulBuild": "2026-02-17T23:34:38Z",
+    "lastTypeCheck": "2026-02-17T23:34:38Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4

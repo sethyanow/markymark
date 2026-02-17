@@ -213,6 +213,15 @@
         "guards incremental wiki-link reuse fast path against tail-append stale index cases",
         "paired with wiki_links_need_update before deciding reuse vs re-extract"
       ]
+    },
+    {
+      "name": "wiki_links_need_update",
+      "type": "lsp-helper-function",
+      "location": "markymark-lsp/src/state.rs",
+      "relationships": [
+        "primary predicate deciding incremental wiki-link reuse vs recomputation",
+        "must include edits_start_at_or_after_last_wiki_link to avoid missing newly appended links"
+      ]
     }
   ]
 }

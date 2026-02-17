@@ -309,3 +309,16 @@ When auditing a doc corpus with markymark:
   - `cargo test --workspace`
   - `cargo test -p markymark-lsp --test state_tests benchmark_incremental_wiki_link_edit_faster_than_full_rebuild -- --ignored --nocapture`
 - Observed benchmark output (8 iterations): incremental `10.531780375s` vs full `10.598508041s`.
+
+### 2026-02-17: P1 fix for append-after-last wiki-link recomputation gap
+
+- Tightened incremental wiki-link update gating in `markymark-lsp/src/state.rs`:
+  - `wiki_links_need_update(...)` now also returns `true` when an edit starts at/after the last existing wiki-link.
+  - Removed the now-redundant nested fallback branch in `build_markdown_index_incremental(...)`.
+- Added unit coverage in `markymark-lsp/src/state.rs`:
+  - `test_wiki_links_need_update_for_edit_after_last_existing_link` reproduces the stale-path predicate and asserts recomputation is required.
+- Verification run:
+  - `cargo test -p markymark-lsp --lib test_wiki_links_need_update_for_edit_after_last_existing_link -- --nocapture` (RED then GREEN)
+  - `cargo test -p markymark-lsp --lib`
+  - `cargo test -p markymark-lsp --test state_tests`
+  - `cargo fmt --all --check`
