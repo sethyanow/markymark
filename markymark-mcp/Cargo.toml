@@ -13,6 +13,7 @@ categories = ["development-tools", "text-processing"]
 markymark-core = { version = "0.3.0", path = "../markymark-core" }
 markymark-parser = { version = "0.3.0", path = "../markymark-parser" }
 markymark-index = { version = "0.3.0", path = "../markymark-index" }
+markymark-kernels = { version = "0.3.0", path = "../markymark-kernels" }
 rmcp = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

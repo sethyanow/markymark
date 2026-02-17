@@ -2,7 +2,7 @@
   "version": 3,
   "entries": [
     {
-      "id": "suc-030",
+      "id": "suc-034",
       "timestamp": "2026-02-16T21:00:00Z",
       "feature": "marky-ams",
       "type": "implementation",
@@ -22,7 +22,7 @@
       ]
     },
     {
-      "id": "suc-031",
+      "id": "suc-035",
       "timestamp": "2026-02-16T21:10:00Z",
       "feature": "marky-0oz",
       "type": "implementation",
@@ -631,7 +631,7 @@
       ]
     },
     {
-      "id": "suc-027",
+      "id": "suc-037",
       "timestamp": "2026-02-16T18:00:00Z",
       "feature": "marky-8ri",
       "type": "implementation",
@@ -650,7 +650,7 @@
       ]
     },
     {
-      "id": "suc-028",
+      "id": "suc-038",
       "timestamp": "2026-02-16T19:37:30Z",
       "feature": "marky-9s9",
       "type": "bugfix",
@@ -667,7 +667,7 @@
       ]
     },
     {
-      "id": "suc-029",
+      "id": "suc-039",
       "timestamp": "2026-02-16T20:35:00Z",
       "feature": "marky-4aa",
       "type": "bugfix",
@@ -684,7 +684,7 @@
       ]
     },
     {
-      "id": "suc-032",
+      "id": "suc-040",
       "timestamp": "2026-02-16T22:00:00Z",
       "feature": "marky-ayb",
       "type": "ci",
@@ -703,6 +703,20 @@
     },
     {
       "id": "suc-041",
+      "timestamp": "2026-02-17T07:35:00Z",
+      "feature": "marky-77m",
+      "type": "implementation",
+      "approach": "Implemented marky_multi_scan C ABI post-processing in zig/src/c_adapter.zig: raw Aho-Corasick candidates -> typed validation via reference parsers -> fence filtering -> bounded output with -2 partial semantics. Added TDD tests for fence filtering basic/all-inside/parity/overflow and unsorted fence range handling.",
+      "files": ["zig/src/c_adapter.zig"],
+      "patterns": [
+        "For multi-pattern automata with overlap outputs, parse candidates by semantic type-specific offsets (heading/tag/block/link_open at raw.offset; wiki_link at raw.offset-1)",
+        "Fence filtering should sort input ranges at API boundary before binary search to tolerate unsorted caller input",
+        "Use reference parser helpers (try_parse_heading/tag/block/link/wiki) as single source of truth for post-processing validation",
+        "Return -2 with partial written count when output cap reached instead of dropping already-validated results"
+      ]
+    },
+    {
+      "id": "suc-042",
       "timestamp": "2026-02-17T20:20:56Z",
       "feature": "marky-77x",
       "type": "implementation",
