@@ -5,6 +5,7 @@
       "ATX closing hash trimming: trim trailing spaces, trim trailing '#', check preceding space (if no space, hashes are content), trim trailing spaces again",
       "Arena migration works best as phased TDD: infrastructure -> parser types -> parser GREEN tests -> index types -> index GREEN tests",
       "ArenaHashMap Send constraint: always check trait bounds before adopting arena-backed collections in types stored across async boundaries.",
+      "At MCP tool boundaries, clamp user-controlled numeric fanout params (e.g. top_k) before engine dispatch",
       "Avoid cloning ArenaHashMap with bumpalo allocator — causes SIGSEGV. Return Vec<&T> of arena refs instead of Vec<T> when T contains ArenaHashMap",
       "Benchmark ROI workflow: expose env-tiered controls (samples + doc counts), run synthetic_scale per tier, parse criterion estimates.json, and persist markdown report artifact for decision reviews",
       "Benchmark real corpus: use MARKYMARK_BENCH_EPSTEIN for epstein path when running from worktree without fixture; MARKYMARK_BENCH_HEAVY=1 for 100 samples (RAM-heavy for index_docs_dir); keep baseline worktree for pre/post comparison",
@@ -24,6 +25,7 @@
       "For self-referential migrations on stable Rust, split work into Ast-first then index-layer tasks and land self_cell owner/dependent conversion in isolated checkpoints",
       "Generated benchmark output files must be excluded from the corpus used to compute those same benchmark metrics",
       "Hook scripts receive JSON on stdin, output JSON to stdout, use exit 0 for no-op on non-matching files",
+      "If partial ingest failures can occur, collect pending index metadata in temporary structures and commit atomically",
       "Keep Semgrep rule scope high-signal by excluding tests/** and validating with repo-wide scan excluding dedicated fixtures",
       "LSP Content-Length framing vs MCP line-delimited JSON — NEVER mix them",
       "Plugin hooks use hooks.json with {description, hooks: {EventName: [{matcher, hooks: [{type, command, timeout}]}]}} structure",
@@ -63,13 +65,14 @@
     "projectSpecificRules": [
       "${CLAUDE_PLUGIN_ROOT} is the standard variable for plugin-relative paths in commands",
       "Checkpoint updates must include claude-progress, working-context, and memory layer persistence",
+      "Do not advertise semantic-search in list_tools unless semantic-search feature is actually enabled",
       "Existing tests use set -euo pipefail - be aware this causes early abort on command failures in non-conditional contexts",
       "Plugin directory is markymark-plugin/ with .claude-plugin/plugin.json manifest",
       "Rust integration tests in tests/ are standalone crates — each file gets its own imports, no mod.rs needed",
       "Shared test helpers must be duplicated in tests/ files (pub(crate) not accessible from integration tests)",
       "Use exact count assertions (assert_eq!) not >= in rename/edit tests — >= masked a closing-tag rename bug",
-      "require_marksman! macro for graceful test skip when marksman unavailable in CI",
-      "When running learners-only checkpoints, persist memory/progress/context files without forcing commit/push"
+      "When running learners-only checkpoints, persist memory/progress/context files without forcing commit/push",
+      "require_marksman! macro for graceful test skip when marksman unavailable in CI"
     ],
     "rustPatterns": [
       {
@@ -173,5 +176,5 @@
       }
     ]
   },
-  "lastUpdated": "2026-02-17T19:27:45Z"
+  "lastUpdated": "2026-02-17T20:18:58Z"
 }
