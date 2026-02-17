@@ -7,7 +7,8 @@
 //! - PageRank computation (iterative power method)
 //! - Connectivity statistics (union-find for components)
 //!
-//! All graph mutations are O(degree). Orphan detection is O(V).
+//! Graph mutations: addDocument is O(degree), removeDocument is O(V + E).
+//! Orphan detection is O(V).
 //! PageRank is O(iterations * E). Connectivity is O(V * α(V)).
 //!
 //! Thread safety: NOT thread-safe. Caller must synchronize.
@@ -53,7 +54,7 @@ pub const LinkGraph = struct {
     /// Target IDs that don't exist as documents are tracked for
     /// inbound counts (they'll get nodes when added later).
     ///
-    /// Returns: 0 success, -1 invalid input, -3 allocation failure.
+    /// Returns: 0 success, -3 allocation failure.
     pub fn addDocument(self: *LinkGraph, doc_id: u32, targets: []const u32) i32 {
         // If doc already exists, remove its old edges first
         if (self.nodes.getPtr(doc_id)) |existing| {

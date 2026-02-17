@@ -947,7 +947,7 @@ fn benchmark_incremental_wiki_link_edit_faster_than_full_rebuild() {
     let start_line = marker_prefix.chars().filter(|c| *c == '\n').count() as u32;
     let line_start = marker_prefix.rfind('\n').map(|idx| idx + 1).unwrap_or(0);
     let start_character = (marker_offset - line_start + 2) as u32;
-    let end_character = start_character + "Page400".len() as u32;
+    let end_character = start_character + "Page4000".len() as u32;
 
     let changed = text.replacen("[[Page4000]]", "[[Renamed4000]]", 1);
 
