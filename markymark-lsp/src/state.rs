@@ -324,6 +324,7 @@ impl ServerState {
         old_wiki_links
             .iter()
             .any(|link| Self::wiki_link_affected_by_edits(link.range, pending_edits))
+            || Self::edits_start_at_or_after_last_wiki_link(old_wiki_links, pending_edits)
     }
 
     fn edits_start_at_or_after_last_wiki_link(
@@ -404,10 +405,6 @@ impl ServerState {
         }
 
         if !Self::wiki_links_need_update(old_wiki_links, pending_edits) {
-            if Self::edits_start_at_or_after_last_wiki_link(old_wiki_links, pending_edits) {
-                let new_wiki_links = Self::extract_wiki_links_owned(&ast);
-                return DocumentIndex::from_ast_with_wiki_links(ast, new_wiki_links);
-            }
             return DocumentIndex::from_ast_with_wiki_links(ast, old_wiki_links.to_vec());
         }
 
@@ -1285,5 +1282,28 @@ mod tests {
         );
         // old_end_byte is still coerced for consistency
         assert!(bounds.old_end_byte >= bounds.start_byte);
+    }
+
+    #[test]
+    fn test_wiki_links_need_update_for_edit_after_last_existing_link() {
+        let old_wiki_links = vec![WikiLinkOwned {
+            target: "Page".to_string(),
+            alias: None,
+            heading: None,
+            range: Range::new(Position::new(1, 2), Position::new(1, 10)),
+        }];
+        let pending_edits = vec![InputEdit {
+            start_byte: 0,
+            old_end_byte: 0,
+            new_end_byte: 7,
+            start_position: markymark_parser::Point { row: 3, column: 0 },
+            old_end_position: markymark_parser::Point { row: 3, column: 0 },
+            new_end_position: markymark_parser::Point { row: 3, column: 7 },
+        }];
+
+        assert!(
+            ServerState::wiki_links_need_update(&old_wiki_links, &pending_edits),
+            "append edits after the last link should force wiki-link recomputation"
+        );
     }
 }
