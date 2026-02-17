@@ -56,7 +56,8 @@
       "markymark-parser/src/structured/ (multi-format parsers: json, yaml, toml, jsonl, flat)",
       "markymark-index/src/structured_document.rs (StructuredDocumentIndex: key-path lookup, outline)",
       "markymark-index/src/resolution.rs (ResolvedTarget::KeyPath for structured doc cross-references)",
-      ".claude-harness/sessions/{session-id}/context.json (compiled session memory context for fast resume)"
+      ".claude-harness/sessions/{session-id}/context.json (compiled session memory context for fast resume)",
+      "markymark-index/tests/extraction_parity.rs (AST-vs-scan corpus parity harness with report-path exclusion to prevent self-referential metrics)"
     ],
     "api": [
       "markymark-parser/src/lib.rs",
@@ -126,10 +127,11 @@
       "RealmIndex cross-doc maps remain owned String-backed until self_cell/ouroboros migration (marky-5yt); do not introduce borrowed Cow across sibling fields",
       "Use compile_fail doctests on public methods to lock lifetime leakage invariants during migration work",
       "Use self_cell owner/dependent internals as a first stable migration step when replacing internal static-marked self-references",
-      "For LSP incremental edits, pair out-of-range clamping with a deterministic warning so buggy clients are observable during diagnostics"
+      "For LSP incremental edits, pair out-of-range clamping with a deterministic warning so buggy clients are observable during diagnostics",
+      "Parity corpus benchmarks must exclude generated report artifacts from the same pipeline to avoid feedback loops and threshold noise"
     ]
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-17T17:08:16Z",
+  "lastUpdated": "2026-02-17T17:50:55Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }
