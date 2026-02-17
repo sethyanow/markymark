@@ -807,7 +807,31 @@
         "Start a new feature implementation before persisting session memory"
       ],
       "impact": ".claude-harness/claude-progress.json, .claude-harness/sessions/20260216-215715/working-context.json, memory layer metadata"
+    },
+    {
+      "id": "dec-checkpoint-20260217-1",
+      "timestamp": "2026-02-17T17:50:55Z",
+      "feature": "marky-8s3",
+      "decision": "Exclude generated extraction parity report from corpus parity inputs",
+      "rationale": "Including docs/benchmarks/extraction-parity.md makes parity metrics depend on prior report content and introduces self-referential drift.",
+      "alternatives": [
+        "Keep report in corpus and tolerate metric feedback noise",
+        "Write report outside docs/ and include all docs/**/*.md"
+      ],
+      "impact": "markymark-index/tests/extraction_parity.rs corpus collection"
+    },
+    {
+      "id": "dec-checkpoint-20260217-2",
+      "timestamp": "2026-02-17T17:50:55Z",
+      "feature": "marky-0aw",
+      "decision": "Gate parity acceptance on adjusted false-positive rate (<5%) while documenting known gaps",
+      "rationale": "Setext and frontmatter are known divergence zones; adjusted rates provide a cleaner complement-strategy signal.",
+      "alternatives": [
+        "Use only raw FP/FN rates",
+        "Disable threshold assertion entirely"
+      ],
+      "impact": "markymark-index/tests/extraction_parity.rs and docs/benchmarks/extraction-parity.md"
     }
   ],
-  "lastUpdated": "2026-02-17T17:08:16Z"
+  "lastUpdated": "2026-02-17T17:50:55Z"
 }

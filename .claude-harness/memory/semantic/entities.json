@@ -216,6 +216,26 @@
         "provides resume-ready context for start/checkpoint workflows",
         "updated during memory-layer initialization and checkpoint persistence"
       ]
+    },
+    {
+      "name": "extraction-parity-report-filter",
+      "type": "benchmark-safety-rule",
+      "location": "markymark-index/tests/extraction_parity.rs",
+      "relationships": [
+        "excludes docs/benchmarks/extraction-parity.md from docs corpus",
+        "prevents self-referential parity metric drift",
+        "stabilizes FP/FN threshold behavior over repeated runs"
+      ]
+    },
+    {
+      "name": "marky-0aw-parity-suite",
+      "type": "integration-test-suite",
+      "location": "markymark-index/tests/extraction_parity.rs",
+      "relationships": [
+        "compares DocumentIndex::from_ast and DocumentIndex::from_scan",
+        "writes extraction-parity.md benchmark report",
+        "validates adjusted false-positive threshold below 5%"
+      ]
     }
   ]
 }

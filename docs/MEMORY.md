@@ -278,3 +278,19 @@ When auditing a doc corpus with markymark:
 - Verified with `cargo test -p markymark-lsp` and `cargo fmt --check`.
 - Posted PR response summary comment: https://github.com/sethyanow/markymark/pull/21#issuecomment-3910812072
 - Closed beads issue `marky-3l6` after code, tests, and PR response loop were complete.
+
+### 2026-02-17: Extraction parity suite + corpus report (marky-0aw)
+
+- Added `markymark-index/tests/extraction_parity.rs` (feature-gated on `zig-kernels`) with:
+  - 11 handcrafted AST-vs-scan parity fixtures (including known-gap coverage for setext/frontmatter and code-heavy docs),
+  - corpus scan over `docs/**/*.md`,
+  - per-element FP/FN aggregation (headings, wiki links, markdown links, tags, block IDs),
+  - report generation to `docs/benchmarks/extraction-parity.md`.
+- Latest corpus run metrics:
+  - parsed files: 90,
+  - raw FP: 4.49%,
+  - adjusted FP (excluding setext/frontmatter known gaps): 4.26%,
+  - raw FN: 2.81%,
+  - adjusted FN: 2.52%.
+- Validation command that passed:
+  - `cargo test -p markymark-index --features zig-kernels -- --test-threads=1 parity`

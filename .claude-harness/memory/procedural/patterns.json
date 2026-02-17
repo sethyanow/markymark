@@ -48,7 +48,8 @@
       "When hardening lifetime safety incrementally, add compile_fail doctests first, then narrow public signatures to &self-bound lifetimes, and only then adapt downstream call sites",
       "For self-referential migrations on stable Rust, split work into Ast-first then index-layer tasks and land self_cell owner/dependent conversion in isolated checkpoints",
       "Use a lightweight structural regression test (source-level invariant) to prevent reintroducing internal static-marked storage during multi-step lifetime migrations",
-      "Safe refactoring workflow for large file splits: (1) convert to module directory, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit cycle maintains green tests throughout. Final validation: all tests pass + line count reduction verified"
+      "Safe refactoring workflow for large file splits: (1) convert to module directory, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit cycle maintains green tests throughout. Final validation: all tests pass + line count reduction verified",
+      "Generated benchmark output files must be excluded from the corpus used to compute those same benchmark metrics"
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",
@@ -169,5 +170,5 @@
       }
     ]
   },
-  "lastUpdated": "2026-02-17T17:08:16Z"
+  "lastUpdated": "2026-02-17T17:50:55Z"
 }
