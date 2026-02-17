@@ -98,6 +98,16 @@
       ]
     },
     {
+      "name": "brza_kernels benchmark suite",
+      "type": "criterion-benchmark-suite",
+      "location": "markymark-kernels/benches/brza_kernels.rs",
+      "relationships": [
+        "measures heading/link scan, embedding search, content hash, and bulk re-index",
+        "feeds report generation via target/criterion estimates",
+        "implemented for beads task marky-e59"
+      ]
+    },
+    {
       "name": "extraction-parity-report-filter",
       "type": "benchmark-safety-rule",
       "location": "markymark-index/tests/extraction_parity.rs",
@@ -248,5 +258,5 @@
       ]
     }
   ],
-  "lastUpdated": "2026-02-17T18:31:32Z"
+  "lastUpdated": "2026-02-17T19:27:45Z"
 }

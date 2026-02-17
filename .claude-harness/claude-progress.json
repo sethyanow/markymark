@@ -1,26 +1,28 @@
 {
-  "lastUpdated": "2026-02-17T18:49:46Z",
+  "lastUpdated": "2026-02-17T19:27:45Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-9ui by adding MCP semantic-search tool wiring, feature-path runtime support, and realm-stats optional duplicate/token metrics.",
+    "summary": "Closed marky-e59 with a new BRZA benchmark suite and report (heading/link/embedding/hash/bulk re-index).",
     "completedTasks": [
-      "Added semantic-search MCP DTOs and handler wiring in markymark-mcp",
-      "Extended core operation/result contracts for semantic search payloads",
-      "Updated RuntimeEngine with semantic query path and optional realm-stats duplicate/token fields",
-      "Added coverage in tool_handler, runtime_engine, and runtime_tools tests",
-      "Closed beads task marky-9ui"
+      "Added criterion benchmark suite at markymark-kernels/benches/brza_kernels.rs",
+      "Added benchmark crate wiring in markymark-kernels/Cargo.toml and lockfile update",
+      "Executed BRZA benchmarks and captured criterion mean estimates",
+      "Published report docs/benchmarks/brza-markymark-benchmarks.md",
+      "Closed beads task marky-e59"
     ],
-    "blockers": [],
+    "blockers": [
+      "Benchmark targets missed for link_scan vs regex, content_hash vs md5, and embedding search at 100K entries"
+    ],
     "nextSteps": [
-      "Execute next BRZA task: marky-8xt (SIMD/top-k fuzzy matcher parity)",
-      "Continue BRZA Phase 3 work: marky-8s3.6 (binary index serialization)",
-      "Continue BRZA Phase 3 work: marky-8s3.7 (multi-format extractors)"
+      "Execute marky-8s3.6 (binary index serialization format)",
+      "Create optimization follow-ups for 100K embedding search latency",
+      "Optimize link_scan and content_hash kernels to hit BRZA target ratios"
     ]
   },
   "recentChanges": [
-    "Added semantic-search MCP tool and response DTOs",
-    "Extended realm-stats with optional duplicate_pairs and total_tokens",
-    "Persisted marky-9ui checkpoint state and memory updates"
+    "Added BRZA benchmark suite in markymark-kernels",
+    "Generated docs/benchmarks/brza-markymark-benchmarks.md",
+    "Persisted marky-e59 checkpoint state and memory updates"
   ],
   "knownIssues": [
     "marky-ktt (P1): Unsafe transmute audit from marky-5yt migration",
@@ -30,8 +32,8 @@
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-17T18:31:32Z",
-    "lastTypeCheck": "2026-02-17T18:31:32Z"
+    "lastSuccessfulBuild": "2026-02-17T19:27:45Z",
+    "lastTypeCheck": "2026-02-17T19:27:45Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4

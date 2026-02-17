@@ -16,6 +16,7 @@
       "Drop read lock before async publish_diagnostics (deadlock prevention)",
       "FULL text document sync (not INCREMENTAL) for v1 LSP",
       "For RealmIndex cross-doc maps, treat Cow<str> as a deferred optimization unless self-referential ownership is explicitly implemented (e.g., self_cell/ouroboros); validate with alloc_count_index_100 baseline before revisiting",
+      "For criterion benchmark reporting, read mean point estimates from target/criterion/**/new/estimates.json and compute speedups from those canonical values",
       "For cross-agent handoff, attach full CodeRabbit plain review (including codegen prompts) as beads comments on the owning task",
       "For cross-document block ID indexing, store Vec<(uri, block)> in insertion order and keep lookup API stable by returning first match; add regression test before changing semantics",
       "For embedding-backed document indexes without delete support, keep metadata map authoritative and filter stale vector IDs at query time",
@@ -33,6 +34,7 @@
       "SIMD kernel pattern: @Vector(16, u8) for byte scanning, inline for over lanes for match extraction, scalar tail for < 16 bytes",
       "Safe refactoring workflow for large file splits: (1) convert to module directory, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit cycle maintains green tests throughout. Final validation: all tests pass + line count reduction verified",
       "Security CI for this repo is advisory-only with continue-on-error on each scan job",
+      "Semantic-search MCP rollout pattern: extend core operation contracts first, then map runtime semantic hits to DTOs, then gate optional realm-stats enrichments with explicit request flags.",
       "Single-pass stack tokenizer for XML extraction (not multi-regex)",
       "Test files follow pass/fail counter pattern with colored output and exit 1 on any failure",
       "Use a lightweight structural regression test (source-level invariant) to prevent reintroducing internal static-marked storage during multi-step lifetime migrations",
@@ -50,8 +52,7 @@
       "convert/state/server module separation in markymark-lsp for testability",
       "docs-vs-practice audit: read doc, find all struct/field types in codebase, compare systematically. Key: test Send/Sync implications before changing types.",
       "lefthook command values containing colons/braces must be YAML-quoted to avoid parse errors",
-      "rmcp CallToolResult::structured and structured_error for MCP payloads",
-      "Semantic-search MCP rollout pattern: extend core operation contracts first, then map runtime semantic hits to DTOs, then gate optional realm-stats enrichments with explicit request flags."
+      "rmcp CallToolResult::structured and structured_error for MCP payloads"
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",
@@ -172,5 +173,5 @@
       }
     ]
   },
-  "lastUpdated": "2026-02-17T18:49:46Z"
+  "lastUpdated": "2026-02-17T19:27:45Z"
 }
