@@ -17,6 +17,7 @@ const embeddings_mod = @import("shared/embeddings.zig");
 // The _ = @import forces Zig to include these export fn declarations in the library.
 comptime {
     _ = @import("exports_embed.zig");
+    _ = @import("exports_graph.zig");
 }
 
 /// Re-export types for C consumers
@@ -641,6 +642,10 @@ test {
     _ = @import("shared/embeddings.zig");
     // Embedding C ABI exports + tests
     _ = @import("exports_embed.zig");
+    // Link graph engine
+    _ = @import("kernels/link_graph.zig");
+    // Link graph C ABI exports + tests
+    _ = @import("exports_graph.zig");
 }
 
 test "marky_version returns expected version" {
