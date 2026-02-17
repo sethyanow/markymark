@@ -21,12 +21,16 @@
       "markymark-core/src/engine.rs (CoreEngine trait, CoreOperation, CoreResult)",
       "markymark-core/src/arena.rs (arena helpers, allocation wrappers)",
       "markymark-parser/src/ast.rs (tree-sitter AST construction, arena ownership)",
+      "markymark-parser/src/ast.rs (AstCell self_cell owner/dependent layout for internal lifetime binding)",
+      "markymark-parser/src/ast.rs (public API lifetime-bound accessors with compile_fail leakage guards)",
       "markymark-parser/src/extract.rs (regex-based extraction updated for arena-backed outputs)",
       "markymark-parser/src/types/ (elements, links, blocks, frontmatter, xml - arena-backed element types)",
       "markymark-index/src/document.rs (DocumentIndex arena-backed entries, slugify, outline)",
+      "markymark-index/src/document.rs (lifetime-bound accessor surface, ownership-transfer build path in from_ast)",
       "markymark-index/src/graph.rs (ConnectionGraph via petgraph)",
       "markymark-index/src/realm.rs (RealmIndex: multi-document workspace, hybrid arena with ResolvedHeading/ResolvedBlock, slug_to_headings, block_to_location preserving duplicate IDs, tag_to_docs)",
       "markymark-index/src/resolution.rs (wiki link / markdown link resolution)",
+      "markymark-index/src/realm.rs::add_document (cross-doc indexes use owned copies; Cow deferral until self-referential model)",
       "markymark-index/benches/memory.rs (criterion benchmarks: index/reparse/real_corpus/synthetic_scale, CountingAllocator for alloc metrics)",
       "markymark-index/src/bench_config.rs (sample/doc tier env parsing for benchmark control)",
       "markymark-index/src/bench_corpus.rs (mixed-size synthetic corpus generation for scale tests)",
@@ -34,6 +38,7 @@
       "markymark-index/src/bin/bench_roi_report.rs (tiered benchmark orchestration and ROI report writer)",
       "markymark-lsp/src/server.rs (tower-lsp LanguageServer impl, capability negotiation)",
       "markymark-lsp/src/state.rs (ServerState: document management, diagnostics, rename, refs)",
+      "markymark-lsp/src/state.rs (SymbolAtPosition<'a> borrowed payloads to match index lifetimes)",
       "markymark-lsp/src/convert.rs (LSP type conversions)",
       "markymark-mcp/src/lib.rs (rmcp tool_router/handlers, DTOs)",
       "markymark-mcp/src/runtime_engine.rs (MCP RuntimeEngine: startup indexing, CoreEngine impl)",
@@ -49,7 +54,7 @@
       "markymark-core/src/engine.rs"
     ],
     "tests": [
-      "markymark-parser/tests/ (xml_extraction, frontmatter, tree_sitter_integration)",
+      "markymark-parser/tests/ (xml_extraction, frontmatter, tree_sitter_integration, ast_self_cell)",
       "markymark-index/tests/ (document_index, connection_graph, realm_index, resolution)",
       "markymark-core/tests/ (core_engine)",
       "markymark-lsp/tests/ (11 files: capabilities, completion_*, diagnostics, hover, rename, etc.)",
@@ -97,6 +102,8 @@
         "Arena empty slice: bumpalo Vec::new_in(arena).into_bump_slice() not &[] (UAF risk)",
         "Tier benchmark controls via MARKYMARK_BENCH_SAMPLES and MARKYMARK_BENCH_DOC_TIER to separate quick iteration from scale validation",
         "Benchmark ROI automation via bench_roi_report binary that runs benches, parses criterion estimates.json, and emits docs/benchmarks report artifacts"
+        ,
+        "Expose arena-backed document/index data via lifetimes tied to &self; reserve any explicit 'static casts for ownership-transfer seams with documented SAFETY"
       ],
       "bash": "set -euo pipefail, jq for JSON, case statements for file extension matching"
     },
@@ -104,10 +111,14 @@
       "DocumentArena wrapper preferred over raw Bump for per-document arenas (Debug, capacity)",
       "ArenaHashMap is !Send (Bump:!Sync); parser types can use it, index types must use std HashMap",
       "#[expect(lint, reason=\"...\")] preferred over #[allow(lint)] per M-LINT-OVERRIDE-EXPECT",
-      "Self-referential arena: struct owns Bump + stores refs as static; doc_arena_ptr() for ownership transfer"
+      "Self-referential arena: struct owns Bump + stores refs as static; doc_arena_ptr() for ownership transfer",
+      "RealmIndex cross-doc maps remain owned String-backed until self_cell/ouroboros migration (marky-5yt); do not introduce borrowed Cow across sibling fields"
+      ,
+      "Use compile_fail doctests on public methods to lock lifetime leakage invariants during migration work",
+      "Use self_cell owner/dependent internals as a first stable migration step when replacing internal static-marked self-references"
     ]
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-15T20:51:58.952224Z",
+  "lastUpdated": "2026-02-16T19:23:11Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

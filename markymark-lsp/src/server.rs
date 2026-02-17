@@ -12,7 +12,9 @@ use crate::state::{
 };
 use markymark_core::{DocumentUri, Range as CoreRange};
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link, ResolvedTarget};
-use markymark_index::{DocumentIndex, OutlineNode, StructuredDocumentIndex, XmlTagEntry};
+use markymark_index::DocumentIndex;
+
+use crate::symbols::{key_entries_to_symbols, outline_children_to_symbols, xml_tags_to_symbols};
 use std::collections::HashMap;
 
 /// The LSP server backend.
@@ -88,7 +90,7 @@ impl LanguageServer for Backend {
                 text_document_sync: Some(TextDocumentSyncCapability::Options(
                     TextDocumentSyncOptions {
                         open_close: Some(true),
-                        change: Some(TextDocumentSyncKind::FULL),
+                        change: Some(TextDocumentSyncKind::INCREMENTAL),
                         ..Default::default()
                     },
                 )),
@@ -138,10 +140,25 @@ impl LanguageServer for Backend {
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri_str = params.text_document.uri;
         if let Ok(doc_uri) = crate::convert::from_lsp_uri(&uri_str) {
-            if let Some(change) = params.content_changes.into_iter().last() {
+            let changes: Vec<crate::state::DocumentChange> = params
+                .content_changes
+                .into_iter()
+                .map(|change| match change.range {
+                    Some(range) => crate::state::DocumentChange::Incremental {
+                        start_line: range.start.line,
+                        start_character: range.start.character,
+                        end_line: range.end.line,
+                        end_character: range.end.character,
+                        text: change.text,
+                    },
+                    None => crate::state::DocumentChange::Full(change.text),
+                })
+                .collect();
+
+            if !changes.is_empty() {
                 {
                     let mut state = self.state.write().await;
-                    state.change_document(&doc_uri, change.text);
+                    state.apply_document_changes(&doc_uri, changes);
                 }
                 self.publish_diagnostics_for(uri_str, &doc_uri).await;
             }
@@ -774,35 +791,6 @@ fn iter_realm_documents(
     state.realm().iter_documents()
 }
 
-/// Convert outline children to `DocumentSymbol` entries.
-fn outline_children_to_symbols(children: &[OutlineNode]) -> Vec<DocumentSymbol> {
-    children
-        .iter()
-        .filter_map(|node| {
-            let heading = node.heading.as_ref()?;
-            let range = crate::convert::to_lsp_range(heading.range);
-            #[expect(deprecated, reason = "DocumentSymbol.deprecated field is deprecated by LSP spec but struct still required")]
-            Some(DocumentSymbol {
-                name: heading.text.to_string(),
-                detail: None,
-                kind: SymbolKind::STRING,
-                tags: None,
-                deprecated: None,
-                range,
-                selection_range: range,
-                children: Some(outline_children_to_symbols(node.children)),
-            })
-        })
-        .collect()
-}
-
-#[derive(Debug)]
-struct XmlSymbolNode {
-    name: String,
-    range: CoreRange,
-    children: Vec<XmlSymbolNode>,
-}
-
 #[derive(Debug, Default)]
 struct XmlHoverStats {
     occurrences: usize,
@@ -853,201 +841,4 @@ fn structured_key_hover_markdown(info: &StructuredKeyInfo) -> String {
     lines.push(format!("**Depth:** {}", info.depth));
     lines.push(format!("**Format:** {:?}", info.document_kind));
     lines.join("\n\n")
-}
-
-fn xml_tags_to_symbols(xml_tags: &[XmlTagEntry]) -> Vec<DocumentSymbol> {
-    let mut roots: Vec<XmlSymbolNode> = Vec::new();
-
-    for tag in xml_tags {
-        let node = XmlSymbolNode {
-            name: format!("<{}>", tag.tag_name),
-            range: tag.range,
-            children: Vec::new(),
-        };
-        insert_xml_node(&mut roots, node);
-    }
-
-    roots.into_iter().map(xml_node_to_document_symbol).collect()
-}
-
-fn insert_xml_node(nodes: &mut Vec<XmlSymbolNode>, node: XmlSymbolNode) {
-    for existing in nodes.iter_mut().rev() {
-        if core_range_strictly_contains(existing.range, node.range) {
-            insert_xml_node(&mut existing.children, node);
-            return;
-        }
-    }
-
-    nodes.push(node);
-}
-
-fn core_range_strictly_contains(parent: CoreRange, child: CoreRange) -> bool {
-    parent.start <= child.start
-        && child.end <= parent.end
-        && (parent.start < child.start || child.end < parent.end)
-}
-
-fn xml_node_to_document_symbol(node: XmlSymbolNode) -> DocumentSymbol {
-    let range = crate::convert::to_lsp_range(node.range);
-    let children: Vec<DocumentSymbol> = node
-        .children
-        .into_iter()
-        .map(xml_node_to_document_symbol)
-        .collect();
-
-    #[expect(
-        deprecated,
-        reason = "DocumentSymbol.deprecated field is deprecated by LSP spec but struct still required"
-    )]
-    DocumentSymbol {
-        name: node.name,
-        detail: None,
-        kind: SymbolKind::OBJECT,
-        tags: None,
-        deprecated: None,
-        range,
-        selection_range: range,
-        children: if children.is_empty() {
-            None
-        } else {
-            Some(children)
-        },
-    }
-}
-
-/// Convert structured document key entries into nested LSP DocumentSymbol items.
-///
-/// Reconstructs the tree hierarchy from the flat key list using depth information,
-/// and maps each `ValueKind` to an appropriate LSP `SymbolKind`.
-fn key_entries_to_symbols(index: &StructuredDocumentIndex) -> Vec<DocumentSymbol> {
-    use markymark_core::structured::ValueKind;
-
-    fn value_kind_to_symbol_kind(vk: ValueKind) -> SymbolKind {
-        match vk {
-            ValueKind::Object => SymbolKind::OBJECT,
-            ValueKind::Array => SymbolKind::ARRAY,
-            ValueKind::String => SymbolKind::STRING,
-            ValueKind::Number => SymbolKind::NUMBER,
-            ValueKind::Boolean => SymbolKind::BOOLEAN,
-            ValueKind::Null => SymbolKind::NULL,
-        }
-    }
-
-    /// A tree node built from the flat key list.
-    struct SymbolNode {
-        name: String,
-        detail: Option<String>,
-        kind: SymbolKind,
-        range: tower_lsp_server::ls_types::Range,
-        selection_range: tower_lsp_server::ls_types::Range,
-        children: Vec<SymbolNode>,
-    }
-
-    fn to_document_symbol(node: SymbolNode) -> DocumentSymbol {
-        let children: Vec<DocumentSymbol> =
-            node.children.into_iter().map(to_document_symbol).collect();
-
-        #[expect(
-            deprecated,
-            reason = "DocumentSymbol.deprecated field is deprecated by LSP spec but struct still required"
-        )]
-        DocumentSymbol {
-            name: node.name,
-            detail: node.detail,
-            kind: node.kind,
-            tags: None,
-            deprecated: None,
-            range: node.range,
-            selection_range: node.selection_range,
-            children: if children.is_empty() {
-                None
-            } else {
-                Some(children)
-            },
-        }
-    }
-
-    let keys = index.keys();
-    if keys.is_empty() {
-        return Vec::new();
-    }
-
-    // Build tree using a stack of (depth, node) to track nesting.
-    let mut roots: Vec<SymbolNode> = Vec::new();
-    // Stack holds mutable references by index path into roots.
-    // Simpler approach: use a stack of Vec<SymbolNode> per depth level.
-    let mut stack: Vec<(usize, Vec<SymbolNode>)> = Vec::new();
-
-    for entry in keys {
-        let range = crate::convert::to_lsp_range(entry.key_range);
-        let value_range = crate::convert::to_lsp_range(entry.value_range);
-
-        // The range should span from key start to value end for full coverage.
-        let full_range = tower_lsp_server::ls_types::Range {
-            start: range.start,
-            end: if value_range.end > range.end {
-                value_range.end
-            } else {
-                range.end
-            },
-        };
-
-        let node = SymbolNode {
-            name: entry.key.clone(),
-            detail: Some(format!("{:?}", entry.value_kind)),
-            kind: value_kind_to_symbol_kind(entry.value_kind),
-            range: full_range,
-            selection_range: range,
-            children: Vec::new(),
-        };
-
-        let depth = entry.depth;
-
-        // Pop stack levels that are at or deeper than current depth,
-        // folding their children into the parent.
-        while let Some((d, _)) = stack.last() {
-            if *d >= depth {
-                let (_, children) = stack.pop().unwrap();
-                if let Some((_, parent_children)) = stack.last_mut() {
-                    if let Some(parent) = parent_children.last_mut() {
-                        parent.children = children;
-                    }
-                } else {
-                    // These are root-level nodes being finalized
-                    if let Some(root) = roots.last_mut() {
-                        root.children = children;
-                    }
-                }
-            } else {
-                break;
-            }
-        }
-
-        if depth == 0 {
-            roots.push(node);
-        } else if let Some((_, children)) = stack.last_mut() {
-            children.push(node);
-        } else {
-            // Shouldn't happen with well-formed data, but handle gracefully
-            roots.push(node);
-        }
-
-        // If this is a container type, push a new stack level for its children
-        if entry.value_kind == ValueKind::Object || entry.value_kind == ValueKind::Array {
-            stack.push((depth, Vec::new()));
-        }
-    }
-
-    // Drain remaining stack levels
-    while let Some((_, children)) = stack.pop() {
-        if let Some((_, parent_children)) = stack.last_mut() {
-            if let Some(parent) = parent_children.last_mut() {
-                parent.children = children;
-            }
-        } else if let Some(root) = roots.last_mut() {
-            root.children = children;
-        }
-    }
-
-    roots.into_iter().map(to_document_symbol).collect()
 }
