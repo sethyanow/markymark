@@ -52,6 +52,7 @@ async fn mcp_tools_return_real_indexed_data() {
     let outline_result = mcp
         .get_outline_tool(Parameters(OutlineRequest {
             uri: format!("file://{}", file.to_string_lossy()),
+            realm: None,
         }))
         .await
         .expect("outline tool should return a result");
@@ -65,6 +66,7 @@ async fn mcp_tools_return_real_indexed_data() {
     let symbols_result = mcp
         .search_symbols_tool(Parameters(SearchSymbolsRequest {
             query: "deep".to_string(),
+            realm: None,
         }))
         .await
         .expect("search-symbols tool should return a result");

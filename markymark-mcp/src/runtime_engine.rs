@@ -129,10 +129,19 @@ fn unindex_root_from_realm(root: &Path, realm: &mut RealmData) {
 impl CoreEngine for RuntimeEngine {
     fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
         match operation {
-            // --- Document operations (read from default realm) ---
-            CoreOperation::GetOutline { uri } => {
+            // --- Document operations (read from specified realm, falling back to default) ---
+            CoreOperation::GetOutline {
+                uri,
+                realm: realm_name,
+            } => {
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
                 let state = self.state.read().expect("lock poisoned");
-                let realm = &state[DEFAULT_REALM].index;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                let realm = &realm_data.index;
                 match realm.get_any_document(&uri) {
                     Some(markymark_index::AnyDocumentIndex::Markdown(index)) => {
                         CoreOperationResult::Outline(
@@ -161,7 +170,10 @@ impl CoreEngine for RuntimeEngine {
                     ))),
                 }
             }
-            CoreOperation::SearchSymbols { query } => {
+            CoreOperation::SearchSymbols {
+                query,
+                realm: realm_name,
+            } => {
                 let query = query.trim().to_string();
                 if query.is_empty() {
                     return CoreOperationResult::Error(CoreError::Message(
@@ -169,8 +181,14 @@ impl CoreEngine for RuntimeEngine {
                     ));
                 }
 
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
                 let state = self.state.read().expect("lock poisoned");
-                let realm = &state[DEFAULT_REALM].index;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                let realm = &realm_data.index;
                 let mut matches = Vec::new();
                 let query_lower = query.to_lowercase();
 
@@ -197,9 +215,19 @@ impl CoreEngine for RuntimeEngine {
 
                 CoreOperationResult::Symbols(matches)
             }
-            CoreOperation::FindReferences { uri, position } => {
+            CoreOperation::FindReferences {
+                uri,
+                position,
+                realm: realm_name,
+            } => {
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
                 let state = self.state.read().expect("lock poisoned");
-                let realm = &state[DEFAULT_REALM].index;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                let realm = &realm_data.index;
                 let index = match realm.get_document(&uri) {
                     Some(idx) => idx,
                     None => {
@@ -269,9 +297,16 @@ impl CoreEngine for RuntimeEngine {
                 uri,
                 position,
                 new_name,
+                realm: realm_name,
             } => {
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
                 let state = self.state.read().expect("lock poisoned");
-                let realm = &state[DEFAULT_REALM].index;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                let realm = &realm_data.index;
                 let index = match realm.get_document(&uri) {
                     Some(idx) => idx,
                     None => {
@@ -472,9 +507,18 @@ impl CoreEngine for RuntimeEngine {
                     Err(msg) => CoreOperationResult::Error(CoreError::Message(msg)),
                 }
             }
-            CoreOperation::ExportIndex { uri } => {
+            CoreOperation::ExportIndex {
+                uri,
+                realm: realm_name,
+            } => {
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
                 let state = self.state.read().expect("lock poisoned");
-                let realm = &state[DEFAULT_REALM].index;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                let realm = &realm_data.index;
                 match realm.get_any_document(&uri) {
                     Some(markymark_index::AnyDocumentIndex::Markdown(index)) => {
                         let headings = index
@@ -657,7 +701,211 @@ fn build_dependency_graph(realm: &RealmIndex, format: &str) -> Result<String, St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use markymark_core::Position;
     use std::fs;
+
+    fn make_temp_realm_dir(suffix: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("marky-realm-{}-{}", suffix, std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn make_engine_with_custom_realm(realm_name: &str, dir: &Path) -> RuntimeEngine {
+        let engine = RuntimeEngine::default();
+        // create the realm
+        engine.execute(CoreOperation::CreateRealm {
+            name: realm_name.to_string(),
+        });
+        // index the directory into it
+        engine.execute(CoreOperation::AddRoot {
+            realm: realm_name.to_string(),
+            root: dir.to_path_buf(),
+        });
+        engine
+    }
+
+    #[test]
+    fn get_outline_uses_named_realm() {
+        let dir = make_temp_realm_dir("get-outline");
+        fs::write(dir.join("doc.md"), "# Hello World\n\n## Section\n").unwrap();
+        let engine = make_engine_with_custom_realm("my-realm", &dir);
+
+        let uri_str = format!("file://{}", dir.join("doc.md").display());
+        let uri = DocumentUri::new(&uri_str).unwrap();
+
+        // Should fail without realm (default realm has no such doc)
+        let result = engine.execute(CoreOperation::GetOutline {
+            uri: uri.clone(),
+            realm: None,
+        });
+        assert!(
+            matches!(result, CoreOperationResult::Error(_)),
+            "expected error when querying default realm, got {result:?}"
+        );
+
+        // Should succeed with the correct realm
+        let result = engine.execute(CoreOperation::GetOutline {
+            uri: uri.clone(),
+            realm: Some("my-realm".to_string()),
+        });
+        assert!(
+            matches!(result, CoreOperationResult::Outline(_)),
+            "expected Outline from named realm, got {result:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn export_index_uses_named_realm() {
+        let dir = make_temp_realm_dir("export-index");
+        fs::write(dir.join("doc.md"), "# Title\n").unwrap();
+        let engine = make_engine_with_custom_realm("export-realm", &dir);
+
+        let uri_str = format!("file://{}", dir.join("doc.md").display());
+        let uri = DocumentUri::new(&uri_str).unwrap();
+
+        let result = engine.execute(CoreOperation::ExportIndex {
+            uri: uri.clone(),
+            realm: Some("export-realm".to_string()),
+        });
+        assert!(
+            matches!(result, CoreOperationResult::DocumentExport { .. }),
+            "expected DocumentExport from named realm, got {result:?}"
+        );
+
+        let result_default = engine.execute(CoreOperation::ExportIndex { uri, realm: None });
+        assert!(
+            matches!(result_default, CoreOperationResult::Error(_)),
+            "expected error from default realm, got {result_default:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn search_symbols_uses_named_realm() {
+        let dir = make_temp_realm_dir("search-symbols");
+        fs::write(dir.join("doc.md"), "# UniqueHeadingXYZ\n").unwrap();
+        let engine = make_engine_with_custom_realm("search-realm", &dir);
+
+        // Default realm should return no matches for the unique heading
+        let result = engine.execute(CoreOperation::SearchSymbols {
+            query: "UniqueHeadingXYZ".to_string(),
+            realm: None,
+        });
+        if let CoreOperationResult::Symbols(matches) = result {
+            assert!(
+                matches.is_empty(),
+                "default realm should not have the heading"
+            );
+        } else {
+            panic!("expected Symbols result");
+        }
+
+        // Named realm should find it
+        let result = engine.execute(CoreOperation::SearchSymbols {
+            query: "UniqueHeadingXYZ".to_string(),
+            realm: Some("search-realm".to_string()),
+        });
+        if let CoreOperationResult::Symbols(matches) = result {
+            assert!(!matches.is_empty(), "named realm should have the heading");
+        } else {
+            panic!("expected Symbols result");
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn find_references_uses_named_realm() {
+        let dir = make_temp_realm_dir("find-refs");
+        // A heading with a wiki-link reference in the same file
+        fs::write(dir.join("doc.md"), "# My Heading\n\n[[My Heading]]\n").unwrap();
+        let engine = make_engine_with_custom_realm("refs-realm", &dir);
+
+        let uri_str = format!("file://{}", dir.join("doc.md").display());
+        let uri = DocumentUri::new(&uri_str).unwrap();
+
+        let position = markymark_core::Range {
+            start: Position {
+                line: 0,
+                character: 2,
+            },
+            end: Position {
+                line: 0,
+                character: 12,
+            },
+        };
+
+        // Default realm has no such doc
+        let result = engine.execute(CoreOperation::FindReferences {
+            uri: uri.clone(),
+            position,
+            realm: None,
+        });
+        assert!(
+            matches!(result, CoreOperationResult::Error(_)),
+            "expected error from default realm, got {result:?}"
+        );
+
+        // Named realm should find the references
+        let result = engine.execute(CoreOperation::FindReferences {
+            uri,
+            position,
+            realm: Some("refs-realm".to_string()),
+        });
+        assert!(
+            !matches!(result, CoreOperationResult::Error(_)),
+            "expected success from named realm, got {result:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rename_uses_named_realm() {
+        let dir = make_temp_realm_dir("rename");
+        fs::write(dir.join("doc.md"), "# Old Name\n").unwrap();
+        let engine = make_engine_with_custom_realm("rename-realm", &dir);
+
+        let uri_str = format!("file://{}", dir.join("doc.md").display());
+        let uri = DocumentUri::new(&uri_str).unwrap();
+
+        let position = markymark_core::Range {
+            start: Position {
+                line: 0,
+                character: 2,
+            },
+            end: Position {
+                line: 0,
+                character: 10,
+            },
+        };
+
+        // Default realm has no such doc
+        let result = engine.execute(CoreOperation::Rename {
+            uri: uri.clone(),
+            position,
+            new_name: "New Name".to_string(),
+            realm: None,
+        });
+        assert!(
+            matches!(result, CoreOperationResult::Error(_)),
+            "expected error from default realm, got {result:?}"
+        );
+
+        // Named realm should work
+        let result = engine.execute(CoreOperation::Rename {
+            uri,
+            position,
+            new_name: "New Name".to_string(),
+            realm: Some("rename-realm".to_string()),
+        });
+        assert!(
+            !matches!(result, CoreOperationResult::Error(_)),
+            "expected success from named realm, got {result:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn collect_documents_includes_json_alongside_markdown() {
