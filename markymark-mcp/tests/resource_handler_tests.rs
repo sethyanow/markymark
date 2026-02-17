@@ -20,12 +20,12 @@ impl CoreEngine for MockEngine {
             CoreOperation::GetOutline { .. } => {
                 CoreOperationResult::Outline(vec!["Introduction".to_string(), "Usage".to_string()])
             }
-            CoreOperation::SearchSymbols { query } => CoreOperationResult::Symbols(vec![(
+            CoreOperation::SearchSymbols { query, .. } => CoreOperationResult::Symbols(vec![(
                 format!("match-{query}"),
                 DocumentUri::from_file_path(Path::new("/vault/a.md")),
                 Range::new(Position::new(0, 0), Position::new(0, 10)),
             )]),
-            CoreOperation::ExportIndex { uri } => CoreOperationResult::DocumentExport {
+            CoreOperation::ExportIndex { uri, .. } => CoreOperationResult::DocumentExport {
                 uri: uri.clone(),
                 document_kind: None,
                 headings: vec![(

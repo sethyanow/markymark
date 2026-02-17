@@ -91,10 +91,10 @@ impl MarkymarkMcp {
     ) -> Result<Vec<ResourceContents>, McpError> {
         let doc_uri = DocumentUri::new(doc_uri_str)
             .map_err(|e| McpError::invalid_params(format!("invalid document URI: {e}"), None))?;
-        match self
-            .engine
-            .execute(CoreOperation::GetOutline { uri: doc_uri })
-        {
+        match self.engine.execute(CoreOperation::GetOutline {
+            uri: doc_uri,
+            realm: None,
+        }) {
             CoreOperationResult::Outline(headings) => {
                 let json = serde_json::to_string_pretty(&headings)
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -124,7 +124,10 @@ impl MarkymarkMcp {
                 None,
             ));
         }
-        match self.engine.execute(CoreOperation::SearchSymbols { query }) {
+        match self
+            .engine
+            .execute(CoreOperation::SearchSymbols { query, realm: None })
+        {
             CoreOperationResult::Symbols(symbols) => {
                 let mapped: Vec<_> = symbols
                     .into_iter()

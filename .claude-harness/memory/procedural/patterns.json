@@ -50,7 +50,11 @@
       "For self-referential migrations on stable Rust, split work into Ast-first then index-layer tasks and land self_cell owner/dependent conversion in isolated checkpoints",
       "Use a lightweight structural regression test (source-level invariant) to prevent reintroducing internal static-marked storage during multi-step lifetime migrations",
       "For LSP incremental text edits, centralize UTF-16/line to byte-range normalization in one helper and emit warning telemetry when clamping invalid ranges",
-      "When review triage flags line-ending edge cases, add parity tests that compare incremental parse outputs against full parse outputs on CRLF fixtures"
+      "When review triage flags line-ending edge cases, add parity tests that compare incremental parse outputs against full parse outputs on CRLF fixtures",
+      "For incremental indexing tasks, land a RED->GREEN regression set first (parity + unchanged-region + neighbor-shift + empty-edit) before tuning merge logic",
+      "Use ServerState pending InputEdit tracking as shared orchestration state before extractor-specific incremental implementations",
+      "When scaffold task proves flow but not target performance, close it explicitly and create immediate follow-up task linked to the same epic",
+      "Safe refactoring workflow for large file splits: (1) convert to module directory, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit cycle maintains green tests throughout. Final validation: all tests pass + line count reduction verified"
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",
@@ -147,5 +151,5 @@
       }
     ]
   },
-  "lastUpdated": "2026-02-16T22:48:25Z"
+  "lastUpdated": "2026-02-17T09:20:00Z"
 }

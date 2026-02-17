@@ -722,7 +722,68 @@
         "Leave the oversized module untracked for later"
       ],
       "impact": "beads task marky-m8b and planned markymark-lsp/src/state/* module split"
+    },
+    {
+      "id": "dec-056",
+      "timestamp": "2026-02-17T09:20:00Z",
+      "feature": "marky-z7e",
+      "decision": "Use test-first checkpoint for wiki-links incremental scaffolding before implementing selective merge",
+      "rationale": "The task required incremental wiki-link behavior confidence early; adding explicit parity and edge-case tests first prevented silent regressions while wiring pending edit tracking.",
+      "alternatives": [
+        "Implement incremental code path first and add tests afterward",
+        "Only add a single parity test and skip edge-case coverage"
+      ],
+      "impact": "markymark-lsp/tests/state_tests.rs incremental wiki-link regression set"
+    },
+    {
+      "id": "dec-057",
+      "timestamp": "2026-02-17T09:20:00Z",
+      "feature": "marky-z7e",
+      "decision": "Track pending InputEdit lifecycle in ServerState for incremental markdown orchestration",
+      "rationale": "Capturing edit batches in state makes incremental reindex routing explicit and testable, and establishes common infrastructure needed by all extractor-specific incremental updates.",
+      "alternatives": [
+        "Compute edits ad hoc without persisting state",
+        "Move incremental change tracking into index layer"
+      ],
+      "impact": "markymark-lsp/src/state.rs pending_edits, incremental entrypoint wiring, pending_edit_count helper"
+    },
+    {
+      "id": "dec-058",
+      "timestamp": "2026-02-17T09:20:00Z",
+      "feature": "marky-77i",
+      "decision": "Create follow-up task marky-77x for true selective wiki-link merge after scaffolding lands",
+      "rationale": "Current incremental path still delegates to full from_ast rebuild; separating selective-merge completion into an immediate child task keeps the epic honest while preserving one-task-at-a-time execution discipline.",
+      "alternatives": [
+        "Treat scaffolding as complete incremental implementation",
+        "Bundle selective merge into the same task without explicit checkpoint"
+      ],
+      "impact": "beads marky-z7e closure notes and new task marky-77x linked to marky-77i"
+    },
+    {
+      "id": "dec-059",
+      "timestamp": "2026-02-16T22:48:25Z",
+      "feature": "marky-3l6",
+      "decision": "Add CRLF incremental edit parity regression test in markymark-lsp state tests",
+      "rationale": "Review triage identified CRLF coverage as a valid gap. A parity test that compares incremental parsing output against full parse output prevents regressions in CRLF line-ending handling.",
+      "alternatives": [
+        "Rely on existing LF-only incremental tests",
+        "Defer CRLF coverage to a future parser stress-test task"
+      ],
+      "impact": "markymark-lsp/tests/state_tests.rs"
+    },
+    {
+      "id": "dec-060",
+      "timestamp": "2026-02-17T05:57:00Z",
+      "feature": "marky-3w5",
+      "decision": "Split document.rs into 4 focused modules: types.rs (entry structs), helpers.rs (functions), tests.rs (test modules), mod.rs (DocumentIndex + API)",
+      "rationale": "document.rs at 1207 lines exceeded the 1000-line HARD STOP (learned rule-004). Modular structure improves maintainability and follows Rust conventions. Safe refactoring workflow (change→test→commit) ensured zero behavior change.",
+      "alternatives": [
+        "Extract only tests to separate file (partial solution, mod.rs still too large)",
+        "Extract constructors to build.rs (more granular, but unnecessary at current size)",
+        "Leave as monolith and defer refactor (violates hard limit, blocks future work)"
+      ],
+      "impact": "markymark-index/src/document/ — mod.rs (540L), types.rs (102L), helpers.rs (189L), tests.rs (403L)"
     }
   ],
-  "lastUpdated": "2026-02-16T22:48:25Z"
+  "lastUpdated": "2026-02-17T09:20:00Z"
 }
