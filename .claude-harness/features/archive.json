@@ -2,7 +2,7 @@
   "version": 3,
   "archived": [
     {
-      "id": "feature-001",
+      "id": "feature-001-pr21-failed",
       "name": "Arena allocation: bumpalo migration for parser + index types",
       "status": "archived",
       "passes": false,
