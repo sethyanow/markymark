@@ -156,6 +156,36 @@
         "follows marky-3l6 completion as structural cleanup work",
         "targets markymark-lsp/src/state/mod.rs and focused submodules"
       ]
+    },
+    {
+      "name": "pending_edits",
+      "type": "lsp-state-field",
+      "location": "markymark-lsp/src/state.rs",
+      "relationships": [
+        "stores InputEdit batches between change application and markdown reindex",
+        "forms shared infrastructure for extractor-level incremental indexing",
+        "exposed indirectly via pending_edit_count() for regression tests"
+      ]
+    },
+    {
+      "name": "marky-z7e",
+      "type": "task",
+      "location": "beads:marky-z7e",
+      "relationships": [
+        "completed proof-of-concept for incremental wiki-link orchestration scaffolding",
+        "added regression coverage for parity and wiki-link edit edge cases",
+        "predecessor to marky-77x selective merge implementation"
+      ]
+    },
+    {
+      "name": "marky-77x",
+      "type": "task",
+      "location": "beads:marky-77x",
+      "relationships": [
+        "child task of marky-77i",
+        "implements true selective wiki-link merge after z7e scaffolding",
+        "targets purge/re-extract/neighbor-validation merge behavior"
+      ]
     }
   ]
 }
