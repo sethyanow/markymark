@@ -783,7 +783,19 @@
         "Leave as monolith and defer refactor (violates hard limit, blocks future work)"
       ],
       "impact": "markymark-index/src/document/ — mod.rs (540L), types.rs (102L), helpers.rs (189L), tests.rs (403L)"
+    },
+    {
+      "id": "dec-061",
+      "timestamp": "2026-02-17T19:03:43Z",
+      "feature": "feature-001",
+      "decision": "Default omitted MCP prompt realm to explicit \"default\" at handler boundary and decode percent-encoded resource query params before forwarding",
+      "rationale": "Prompt definitions claimed a default realm while handlers previously passed None, and resource query extraction forwarded raw encoded values. Making defaulting/decoding explicit removes contract drift and prevents encoded realm/query leakage.",
+      "alternatives": [
+        "Update prompt argument descriptions to remove default claim",
+        "Keep raw query parsing and decode in each call site"
+      ],
+      "impact": "markymark-mcp/src/prompts.rs, markymark-mcp/src/resources.rs, prompt/resource handler integration tests"
     }
   ],
-  "lastUpdated": "2026-02-17T09:20:00Z"
+  "lastUpdated": "2026-02-17T19:03:43Z"
 }

@@ -1,38 +1,35 @@
 {
-  "lastUpdated": "2026-02-17T09:20:00Z",
+  "lastUpdated": "2026-02-17T19:03:43Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed and closed marky-z7e: implemented incremental wiki-link indexing scaffolding in LSP state, added 5 regression tests, and created follow-up task marky-77x for true selective merge.",
+    "summary": "Verified inline review findings for MCP prompts/resources, fixed real mismatches, and added regression coverage for realm propagation and percent-decoding.",
     "completedTasks": [
-      "Added pending_edits tracking to ServerState and wired incremental markdown index entrypoint",
-      "Added pending_edit_count visibility helper for incremental-state tests",
-      "Added 5 wiki-link incremental regression tests in markymark-lsp/tests/state_tests.rs",
-      "Ran quality gates: cargo fmt --all --check, cargo clippy --workspace --all-targets -- -D warnings, cargo test --workspace",
-      "Closed bead marky-z7e",
-      "Created and linked follow-up bead marky-77x for real selective wiki_links merge"
+      "Validated prompt realm default claim against runtime and prompt handler behavior",
+      "Updated prompt handlers to pass explicit default realm when argument is omitted",
+      "Updated resource query extraction to percent-decode values before forwarding",
+      "Extended MCP tests to assert realm forwarding and decoded query handling",
+      "Ran focused verification: cargo fmt --all, cargo test -p markymark-mcp --test resource_handler_tests, cargo test -p markymark-mcp --test prompt_handler_tests"
     ],
     "blockers": [
-      "Current incremental wiki-link path still falls back to full DocumentIndex::from_ast rebuild; selective merge remains to be implemented in marky-77x."
+      "No blockers in this checkpoint scope"
     ],
     "nextSteps": [
-      "Implement marky-77x selective wiki-link merge (purge + re-extract + neighbor validation + merge)",
-      "Benchmark wiki-link incremental path against full rebuild baseline",
-      "Keep state.rs module-size follow-up visible (marky-m8b) while adding incremental logic"
+      "Run full workspace quality gates (fmt --check, clippy --workspace, test --workspace)",
+      "Commit and push checkpoint changes",
+      "Update existing PR for branch next-temp (or create one if missing)"
     ]
   },
   "recentChanges": [
-    "marky-z7e CLOSED: incremental wiki-link proof-of-concept delivered with tests",
-    "ServerState now tracks pending InputEdit batches across apply/reindex lifecycle",
-    "New state test coverage for wiki-link incremental parity and edge cases",
-    "Follow-up task created: marky-77x for true selective merge implementation"
+    "markymark-mcp prompt handlers now default omitted realm to 'default' explicitly",
+    "markymark-mcp extract_query_param now percent-decodes returned values",
+    "resource_handler_tests now assert realm propagation and decoding",
+    "prompt_handler_tests now assert default realm forwarding when realm arg is omitted"
   ],
   "knownIssues": [
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
     "marky-lkj.1: runtime_engine.zig test refactoring deferred (P4)",
     "marky-8la: XML tag false positives in fenced code blocks",
-    "c_adapter.zig at 803 lines — new exports use exports_*.zig pattern to stay under limit",
-    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate",
-    "RED ZONE: Branch has 80 commits, 12,851 lines changed, 47 new files"
+    "marky-ayb: CI has Zig install but still needs separate job, platform matrix, feature gate"
   ],
   "environmentState": {
     "devServerRunning": false,

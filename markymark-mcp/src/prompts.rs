@@ -118,10 +118,12 @@ impl MarkymarkMcp {
             McpError::invalid_params("target argument is required".to_string(), None)
         })?;
 
-        let realm = args
-            .get("realm")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        let realm = Some(
+            args.get("realm")
+                .and_then(|v| v.as_str())
+                .unwrap_or("default")
+                .to_string(),
+        );
 
         // Validate URI scheme
         if !uri_str.starts_with("file://") {
@@ -218,10 +220,12 @@ impl MarkymarkMcp {
                 McpError::invalid_params("character argument is required".to_string(), None)
             })? as u32;
 
-        let realm = args
-            .get("realm")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        let realm = Some(
+            args.get("realm")
+                .and_then(|v| v.as_str())
+                .unwrap_or("default")
+                .to_string(),
+        );
 
         // Validate URI scheme
         if !uri_str.starts_with("file://") {

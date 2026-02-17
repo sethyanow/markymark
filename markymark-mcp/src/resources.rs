@@ -214,9 +214,48 @@ pub(crate) fn extract_query_param(uri: &str, key: &str) -> Option<String> {
         let mut kv = pair.splitn(2, '=');
         if let (Some(k), Some(v)) = (kv.next(), kv.next()) {
             if k == key {
-                return Some(v.to_string());
+                return Some(decode_query_value(v));
             }
         }
     }
     None
+}
+
+fn decode_query_value(value: &str) -> String {
+    fn from_hex(b: u8) -> Option<u8> {
+        match b {
+            b'0'..=b'9' => Some(b - b'0'),
+            b'a'..=b'f' => Some(b - b'a' + 10),
+            b'A'..=b'F' => Some(b - b'A' + 10),
+            _ => None,
+        }
+    }
+
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            b'%' if i + 2 < bytes.len() => {
+                let hi = bytes[i + 1];
+                let lo = bytes[i + 2];
+                if let (Some(hi), Some(lo)) = (from_hex(hi), from_hex(lo)) {
+                    out.push((hi << 4) | lo);
+                    i += 3;
+                } else {
+                    out.push(bytes[i]);
+                    i += 1;
+                }
+            }
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).to_string()
 }
