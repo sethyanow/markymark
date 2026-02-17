@@ -759,7 +759,19 @@
         "Use linear scan for every candidate (correct but slower on larger fence maps)"
       ],
       "impact": "zig/src/c_adapter.zig marky_multi_scan fence handling and new unsorted-range regression test"
+    },
+    {
+      "id": "dec-059",
+      "timestamp": "2026-02-17T15:18:33Z",
+      "feature": "marky-8s3.5",
+      "decision": "Implement slug generation as a single-pass state machine with pending-hyphen flush and UTF-8 byte passthrough",
+      "rationale": "Meets BRZA constraints (no heap allocation, direct output buffer writes) while achieving hyphen collapse/trim without a second pass and preserving non-ASCII bytes per task requirements.",
+      "alternatives": [
+        "Two-pass normalize-then-collapse implementation",
+        "ASCII-only output that strips non-ASCII bytes"
+      ],
+      "impact": "zig/src/kernels/slug.zig and zig/src/c_adapter.zig marky_slugify export"
     }
   ],
-  "lastUpdated": "2026-02-17T07:35:00Z"
+  "lastUpdated": "2026-02-17T16:02:39Z"
 }

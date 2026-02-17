@@ -1,46 +1,43 @@
 {
-  "lastUpdated": "2026-02-17T05:57:00Z",
+  "lastUpdated": "2026-02-17T16:02:39Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-3w5: Refactored document.rs (1207 lines) into clean modular structure. Split into types.rs (102L), helpers.rs (189L), tests.rs (403L), mod.rs (540L). All 88 tests passing. Used safe refactoring workflow (change→test→commit) with 4 incremental commits.",
+    "summary": "Executed marky-8s3.5 (BRZA slug kernel) with TDD and verification. Added marky_slugify C ABI export and slug kernel implementation with no-heap single-pass behavior and UTF-8 passthrough semantics.",
     "completedTasks": [
-      "marky-3w5: Converted document.rs to document/ module directory",
-      "marky-3w5: Extracted 8 entry structs to types.rs",
-      "marky-3w5: Extracted 8 helper functions to helpers.rs",
-      "marky-3w5: Extracted all test modules to tests.rs",
-      "marky-3w5: Reduced mod.rs from 1207 → 540 lines (under 1000-line hard limit)",
-      "All 88 tests passing (55 in markymark-index package)",
-      "Quality gates: all tests pass, clippy clean, fmt clean, audit clean",
-      "Closed marky-3w5 with documentation",
-      "Synced beads and pushed 4 commits to remote"
+      "marky-8s3.5: Added failing marky_slugify ABI tests in zig/src/c_adapter.zig (RED compile failure)",
+      "marky-8s3.5: Implemented zig/src/kernels/slug.zig single-pass slug state machine",
+      "marky-8s3.5: Wired marky_slugify export in zig/src/c_adapter.zig",
+      "marky-8s3.5: Added null/zero-cap/truncation/Unicode regression tests",
+      "marky-8s3.5: Verified with zig test filter + full zig build test",
+      "marky-8s3.5: Closed bead and documented implementation notes"
     ],
-    "blockers": [],
+    "blockers": [
+      "Scope guard RED ZONE remains active (branch size/files over threshold)",
+      "CodeRabbit CLI plain output did not include actionable findings in this run"
+    ],
     "nextSteps": [
-      "marky-ktt (P1): Audit unsafe transmute in DocumentIndex from marky-5yt migration",
-      "marky-8s3.1: Code fence exclusion map Zig kernel",
-      "marky-0aw: Extraction parity tests (Zig SIMD vs tree-sitter)",
-      "marky-m8b: Refactor state.rs module split follow-up"
+      "Execute next BRZA task marky-8s3.6 (binary index serialization format)",
+      "Address P3 refactor follow-up marky-a5w for oversized zig/src/c_adapter.zig",
+      "Run /hyperpowers:execute-plan again for one-task checkpoint progression"
     ]
   },
   "recentChanges": [
-    "3cdde66: refactor(marky-3w5): extract tests to tests.rs",
-    "b2e5720: refactor(marky-3w5): extract helper functions to helpers.rs",
-    "d10a878: refactor(marky-3w5): extract entry types to types.rs",
-    "dff1682: refactor(marky-3w5): convert document.rs to document/ module directory",
-    "document.rs successfully modularized — now well under 1000-line limit",
-    "Safe refactoring workflow validated: change→test→commit cycle maintained green tests throughout",
-    "Final structure: 4 files totaling 1235 lines (split from original 1207)"
+    "Implemented marky_slugify export in zig/src/c_adapter.zig",
+    "Added new kernel zig/src/kernels/slug.zig",
+    "Added ABI and kernel tests for slug behavior and error contracts",
+    "Recorded dec-059, suc-042, fail-014 memory entries",
+    "Created follow-up bead marky-a5w for c_adapter modular refactor"
   ],
   "knownIssues": [
     "marky-ktt (P1): Unsafe transmute audit from marky-5yt migration",
-    "c_adapter.zig at 811 lines — new exports use exports_*.zig pattern",
+    "marky-a5w (P3): c_adapter.zig modular refactor follow-up",
     "from_scan known gaps: no XML tags, no setext headings, no frontmatter",
-    "Scope guard RED ZONE: feature branch at 3926 lines, 20 files (RED > 2000 lines, 15 files)"
+    "Scope guard RED ZONE: branch line/file count exceeds configured thresholds"
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-17T05:55:00Z",
-    "lastTypeCheck": "2026-02-17T05:55:00Z"
+    "lastSuccessfulBuild": "2026-02-17T16:02:39Z",
+    "lastTypeCheck": "2026-02-17T16:02:39Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4

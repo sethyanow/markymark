@@ -597,6 +597,19 @@
         "Use reference parser helpers (try_parse_heading/tag/block/link/wiki) as single source of truth for post-processing validation",
         "Return -2 with partial written count when output cap reached instead of dropping already-validated results"
       ]
+    },
+    {
+      "id": "suc-042",
+      "timestamp": "2026-02-17T15:18:33Z",
+      "feature": "marky-8s3.5",
+      "type": "implementation",
+      "approach": "Implemented marky_slugify via TDD: added failing ABI tests in c_adapter first (RED compile error for missing symbol), then added zig/src/kernels/slug.zig and wired export in zig/src/c_adapter.zig to GREEN.",
+      "files": ["zig/src/kernels/slug.zig", "zig/src/c_adapter.zig"],
+      "patterns": [
+        "ABI-first RED test by referencing missing export catches wiring regressions early",
+        "Single-pass pending-hyphen state machine handles collapse+trim without post-pass",
+        "FFI contract returns byte length, so UTF-8 test expectations must use bytes not character count"
+      ]
     }
   ]
 }

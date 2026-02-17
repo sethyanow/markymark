@@ -156,6 +156,26 @@
         "follows marky-3l6 completion as structural cleanup work",
         "targets markymark-lsp/src/state/mod.rs and focused submodules"
       ]
+    },
+    {
+      "name": "marky_slugify",
+      "type": "zig-c-abi-export",
+      "location": "zig/src/c_adapter.zig",
+      "relationships": [
+        "delegates to zig/src/kernels/slug.zig",
+        "returns byte count for slug output with -1/-2 error semantics",
+        "covered by ABI regression tests in c_adapter.zig"
+      ]
+    },
+    {
+      "name": "slug-kernel-state-machine",
+      "type": "zig-kernel-pattern",
+      "location": "zig/src/kernels/slug.zig",
+      "relationships": [
+        "single-pass pending-hyphen collapse/trim logic",
+        "preserves non-ASCII UTF-8 bytes during normalization",
+        "used for markdown heading slug generation in BRZA track"
+      ]
     }
   ]
 }

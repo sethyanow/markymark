@@ -142,8 +142,14 @@
         "pattern": "Tiered benchmark + report runner loop",
         "context": "Performance validation where both quick iteration and scale sweeps are needed",
         "application": "Use MARKYMARK_BENCH_SAMPLES and MARKYMARK_BENCH_DOC_TIER for workload selection, then run a dedicated binary to execute benches and emit a markdown summary table"
+      },
+      {
+        "id": "pat-zig-abi-byte-length",
+        "pattern": "Zig C ABI string transform tests assert UTF-8 byte length",
+        "context": "Validating C ABI functions that return written length as i32",
+        "application": "Treat return value as bytes written; for non-ASCII samples (e.g. café), assert byte count and output string together"
       }
     ]
   },
-  "lastUpdated": "2026-02-16T19:23:11Z"
+  "lastUpdated": "2026-02-17T16:02:39Z"
 }
