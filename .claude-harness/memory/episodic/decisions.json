@@ -783,6 +783,18 @@
         "Leave as monolith and defer refactor (violates hard limit, blocks future work)"
       ],
       "impact": "markymark-index/src/document/ — mod.rs (540L), types.rs (102L), helpers.rs (189L), tests.rs (403L)"
+    },
+    {
+      "id": "dec-058",
+      "timestamp": "2026-02-17T07:35:00Z",
+      "feature": "marky-77m",
+      "decision": "marky_multi_scan normalizes fence ranges by copying and sorting input ranges before binary-search filtering",
+      "rationale": "Callers may pass unsorted fence ranges; binary search assumes sorted order and silently leaks inside-fence matches if order is wrong. Sorting once at API boundary preserves O(log n) filtering and correctness.",
+      "alternatives": [
+        "Require caller to pre-sort ranges and document undefined behavior",
+        "Use linear scan for every candidate (correct but slower on larger fence maps)"
+      ],
+      "impact": "zig/src/c_adapter.zig marky_multi_scan fence handling and new unsorted-range regression test"
     }
   ],
   "lastUpdated": "2026-02-17T09:20:00Z"
