@@ -1,27 +1,27 @@
 {
-  "lastUpdated": "2026-02-17T17:50:55Z",
+  "lastUpdated": "2026-02-17T18:31:32Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed BRZA extraction parity suite and stabilized corpus metrics by excluding the generated report artifact from parity inputs.",
+    "summary": "Completed marky-bcv by adding SemanticIndex + RealmIndex embedding hooks behind the embeddings feature gate, with passing tests and clippy.",
     "completedTasks": [
-      "Implemented extraction parity integration suite (handcrafted fixtures + docs corpus) in markymark-index/tests/extraction_parity.rs",
-      "Generated docs/benchmarks/extraction-parity.md with FP/FN rates and mismatch inventory",
-      "Closed beads task marky-0aw",
-      "Applied corpus filter to exclude docs/benchmarks/extraction-parity.md from parity input to remove self-referential skew"
+      "Added markymark-index/src/semantic.rs with SemanticIndex new/add_document/remove_document/search/detect_duplicates",
+      "Added markymark-index/tests/semantic_index.rs integration coverage and enabled embeddings feature flag",
+      "Wired RealmIndex::new_with_embeddings plus semantic_search and duplicate detection helpers",
+      "Closed beads task marky-bcv"
     ],
     "blockers": [
-      "GitHub CLI token for account sethyanow is invalid, so PR automation is unavailable in checkpoint"
+      "GitHub CLI token for account sethyanow is invalid, so PR automation remains unavailable"
     ],
     "nextSteps": [
-      "Execute next BRZA task: marky-bcv (SemanticIndex integration)",
-      "Optionally run full workspace quality gates before large semantic-index changes",
-      "Refresh gh auth if PR automation is required in future checkpoints"
+      "Execute next BRZA task: marky-9ui (semantic-search MCP tool)",
+      "Run performance follow-up marky-e59 for SIMD vs baseline benchmark coverage",
+      "Refresh gh auth if checkpoint PR automation is required"
     ]
   },
   "recentChanges": [
-    "Added extraction parity integration tests and corpus metrics report",
-    "Fixed benchmark self-reference by filtering generated report from corpus scan",
-    "Updated harness progress and memory layers for resumable session state"
+    "Added embeddings-gated semantic index implementation to markymark-index",
+    "Added realm-level semantic search and duplicate-detection wiring",
+    "Persisted session checkpoint metadata and memory updates"
   ],
   "knownIssues": [
     "marky-ktt (P1): Unsafe transmute audit from marky-5yt migration",
@@ -31,8 +31,8 @@
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-17T17:50:55Z",
-    "lastTypeCheck": "2026-02-17T17:50:55Z"
+    "lastSuccessfulBuild": "2026-02-17T18:31:32Z",
+    "lastTypeCheck": "2026-02-17T18:31:32Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4

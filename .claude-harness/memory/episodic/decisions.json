@@ -831,7 +831,19 @@
         "Disable threshold assertion entirely"
       ],
       "impact": "markymark-index/tests/extraction_parity.rs and docs/benchmarks/extraction-parity.md"
+    },
+    {
+      "id": "dec-checkpoint-20260217-3",
+      "timestamp": "2026-02-17T18:31:32Z",
+      "feature": "marky-bcv",
+      "decision": "Use stale-ID filtering in SemanticIndex to support document replacement/removal without Zig-side delete",
+      "rationale": "Current Zig embedding index API supports add/search but not delete. Filtering unknown IDs keeps search results correct while preserving simple integration.",
+      "alternatives": [
+        "Rebuild Zig index on each document removal",
+        "Delay semantic integration until delete support exists"
+      ],
+      "impact": "markymark-index/src/semantic.rs, markymark-index/src/realm.rs"
     }
   ],
-  "lastUpdated": "2026-02-17T17:50:55Z"
+  "lastUpdated": "2026-02-17T18:31:32Z"
 }
