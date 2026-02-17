@@ -148,8 +148,20 @@
         "pattern": "Zig C ABI string transform tests assert UTF-8 byte length",
         "context": "Validating C ABI functions that return written length as i32",
         "application": "Treat return value as bytes written; for non-ASCII samples (e.g. café), assert byte count and output string together"
+      },
+      {
+        "id": "pat-zig-export-modularization",
+        "pattern": "Add new Zig C ABI surface in exports_<domain>.zig and include via c_adapter comptime import",
+        "context": "Extending Zig FFI exports without further growing c_adapter monolith",
+        "application": "Create dedicated export module (e.g., exports_graph.zig), keep lifecycle/query tests near export code, and wire with comptime { _ = @import(...) } in c_adapter"
+      },
+      {
+        "id": "pat-fuzzy-ranking-order",
+        "pattern": "Semantic search ranking uses score-first ordering with deterministic tie-breakers",
+        "context": "search-symbols style fuzzy result ranking across many candidate symbols",
+        "application": "Sort by fuzzy score desc, then starts_with preference, then lexical order to keep stable and relevant output"
       }
     ]
   },
-  "lastUpdated": "2026-02-17T16:02:39Z"
+  "lastUpdated": "2026-02-17T16:26:59Z"
 }

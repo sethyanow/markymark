@@ -176,6 +176,36 @@
         "preserves non-ASCII UTF-8 bytes during normalization",
         "used for markdown heading slug generation in BRZA track"
       ]
+    },
+    {
+      "name": "marky_graph_create",
+      "type": "zig-c-abi-export",
+      "location": "zig/src/exports_graph.zig",
+      "relationships": [
+        "creates opaque LinkGraph handle for FFI callers",
+        "paired lifecycle with marky_graph_destroy",
+        "part of modular graph export surface"
+      ]
+    },
+    {
+      "name": "LinkGraph",
+      "type": "zig-kernel-struct",
+      "location": "zig/src/kernels/link_graph.zig",
+      "relationships": [
+        "AutoHashMapUnmanaged node store keyed by doc_id",
+        "tracks outbound adjacency and inbound counters",
+        "supports orphan, broken-chain, pagerank, and connectivity queries"
+      ]
+    },
+    {
+      "name": "runtime_engine fuzzy ranking",
+      "type": "mcp-ranking-policy",
+      "location": "markymark-mcp/src/runtime_engine.rs",
+      "relationships": [
+        "uses markymark_kernels fuzzy_match_score",
+        "orders search-symbols by score then starts_with tie-break",
+        "replaces substring contains + lexical ordering"
+      ]
     }
   ]
 }

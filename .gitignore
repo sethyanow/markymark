@@ -29,3 +29,6 @@ Thumbs.db
 # Zig
 .zig-cache/
 zig-out/
+
+# temp TODO refine proper specs for markymark
+brza-spec.md

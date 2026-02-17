@@ -771,7 +771,31 @@
         "ASCII-only output that strips non-ASCII bytes"
       ],
       "impact": "zig/src/kernels/slug.zig and zig/src/c_adapter.zig marky_slugify export"
+    },
+    {
+      "id": "dec-060",
+      "timestamp": "2026-02-17T16:26:59Z",
+      "feature": "marky-8s3.3",
+      "decision": "Use Zig SIMD fuzzy_match_score as the primary ranking signal for MCP search-symbols results with starts_with as tie-breaker",
+      "rationale": "Substring containment and lexical sorting produced low-relevance ordering. Scored fuzzy ranking improves symbol relevance while keeping API behavior deterministic.",
+      "alternatives": [
+        "Keep substring contains + lexical sort",
+        "Implement fuzzy scoring only in Rust without Zig kernel integration"
+      ],
+      "impact": "zig/src/shared/similarity.zig, zig/src/c_adapter.zig, markymark-kernels/src/scan.rs, markymark-mcp/src/runtime_engine.rs"
+    },
+    {
+      "id": "dec-061",
+      "timestamp": "2026-02-17T16:26:59Z",
+      "feature": "marky-8s3.4",
+      "decision": "Implement link graph as AutoHashMapUnmanaged doc nodes with outbound adjacency + inbound counters, exposed via dedicated exports_graph.zig opaque-handle C ABI",
+      "rationale": "This keeps O(1) document lookup and O(V) orphan scans while matching the existing exports_embed lifecycle pattern and avoiding additional c_adapter monolith growth.",
+      "alternatives": [
+        "Track only outbound edges and recompute inbound counts per query",
+        "Place all graph exports directly in c_adapter.zig"
+      ],
+      "impact": "zig/src/kernels/link_graph.zig, zig/src/exports_graph.zig, zig/src/c_adapter.zig"
     }
   ],
-  "lastUpdated": "2026-02-17T16:02:39Z"
+  "lastUpdated": "2026-02-17T16:26:59Z"
 }
