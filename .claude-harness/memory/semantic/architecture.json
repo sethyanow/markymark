@@ -9,7 +9,7 @@
     "parser": "tree-sitter 0.26.5 + tree-sitter-md 0.5.2",
     "graph": "petgraph 0.7 (StableGraph)",
     "allocator": "bumpalo 3.19.1 + hashbrown 0.16.1",
-    "simd": "Zig @Vector(16, u8) portable SIMD — compiles to NEON on Apple Silicon, SSE on x86",
+    "simd": "Zig @Vector(16, u8) portable SIMD \u2014 compiles to NEON on Apple Silicon, SSE on x86",
     "testFramework": "cargo test + bash test scripts for plugin"
   },
   "structure": {
@@ -53,7 +53,8 @@
       "markymark-index/src/structured_document.rs (StructuredDocumentIndex: key-path lookup, outline)",
       "markymark-index/src/resolution.rs (ResolvedTarget::KeyPath for structured doc cross-references)",
       "markymark-mcp/src/prompts.rs (prompt realm argument normalization to explicit default realm)",
-      "markymark-mcp/src/resources.rs (query param extraction with percent-decoding before core dispatch)"
+      "markymark-mcp/src/resources.rs (query param extraction with percent-decoding before core dispatch)",
+      "markymark-lsp/src/state.rs (edits_start_at_or_after_last_wiki_link safeguard for tail append incremental correctness)"
     ],
     "api": [
       "markymark-parser/src/lib.rs",
@@ -92,7 +93,7 @@
         "Integration tests in crate tests/ dirs are standalone crates (no mod.rs needed)"
       ],
       "plugin": "markymark-plugin/{.claude-plugin/,bin/,scripts/,hooks/,skills/,tests/}",
-      "zig": "zig/{src/kernels/,src/reference/,src/c_adapter.zig,build.zig} — SIMD extraction kernels",
+      "zig": "zig/{src/kernels/,src/reference/,src/c_adapter.zig,build.zig} \u2014 SIMD extraction kernels",
       "examples": "examples/claude-code-plugin/ (reference implementations)"
     },
     "codeStyle": {
@@ -113,7 +114,8 @@
         "Expose arena-backed document/index data via lifetimes tied to &self; prefer self_cell owner/dependent internals and treat explicit 'static + doc_arena_ptr() ownership-transfer seams as deprecated transition-only paths with documented SAFETY",
         "Incremental LSP edit handling should centralize byte-range clamping and surface clamp events via warning telemetry",
         "Incremental wiki-link work should start with parity/edge tests before selective merge optimizations",
-        "When prompt arguments document defaults, enforce that default explicitly at handler boundary before dispatching CoreOperation"
+        "When prompt arguments document defaults, enforce that default explicitly at handler boundary before dispatching CoreOperation",
+        "Incremental wiki-link fast path must detect edits beyond last old link range and force recomputation to avoid stale append-tail indexing"
       ],
       "bash": "set -euo pipefail, jq for JSON, case statements for file extension matching"
     },
@@ -130,6 +132,6 @@
     ]
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-17T19:04:15Z",
+  "lastUpdated": "2026-02-17T20:46:06Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

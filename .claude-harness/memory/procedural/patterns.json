@@ -58,7 +58,8 @@
       "When review feedback flags propagation gaps, update mocks to capture operation arguments and assert forwarded values explicitly",
       "MCP realm threading checklist: dto.rs, lib.rs, runtime_engine.rs, prompts.rs, resources.rs \u2014 all must be updated together when adding realm to a CoreOperation",
       "Resource URI realm parsing: extract_query_param(resource_uri, \"realm\") for query params; strip \"?\" from embedded doc URI before DocumentUri::new to prevent parse failures",
-      "Optional PromptArgument pattern in rmcp: PromptArgument { required: Some(false), ... }; extract with .get(key).and_then(|v| v.as_str()).map(str::to_string)"
+      "Optional PromptArgument pattern in rmcp: PromptArgument { required: Some(false), ... }; extract with .get(key).and_then(|v| v.as_str()).map(str::to_string)",
+      "For incremental merge fast paths, add explicit tail-boundary checks (edit start >= last old entry end) so appended symbols are not dropped"
     ],
     "namingConventions": {
       "hookScripts": "kebab-case.sh (e.g., suggest-lsp.sh)",
@@ -155,5 +156,5 @@
       }
     ]
   },
-  "lastUpdated": "2026-02-17T21:38:00Z"
+  "lastUpdated": "2026-02-17T20:46:06Z"
 }

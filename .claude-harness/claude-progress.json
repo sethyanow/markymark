@@ -1,32 +1,29 @@
 {
-  "lastUpdated": "2026-02-17T20:20:36Z",
+  "lastUpdated": "2026-02-17T20:46:06Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Completed marky-77x with true incremental wiki-link selective merge and full verification gates.",
+    "summary": "Fixed incremental wiki-link tail append regression with TDD and validated via cargo-mcp.",
     "completedTasks": [
-      "Added DocumentIndex wiki-link override constructor for incremental merge paths",
-      "Implemented ServerState incremental wiki-link merge (affected-range + neighbor-window logic)",
-      "Added overlapping-edit parity test and performance benchmark test (ignored by default)",
-      "Ran fmt/clippy/workspace tests and targeted benchmark evidence run"
+      "Added RED regression test for appending wiki-link after last existing link beyond neighbor window",
+      "Implemented state.rs safeguard to recompute wiki-links when edit starts at/after last old wiki-link range",
+      "Re-ran targeted and full markymark-lsp tests via cargo-mcp (all passing)"
     ],
     "blockers": [
       "None"
     ],
     "nextSteps": [
-      "Execute marky-rmx: selective merge for blocks extractor",
-      "Continue marky-77i extractor rollout for tags/markdown_links/xml_tags",
-      "Track benchmark trend as additional extractors land"
+      "Continue incremental indexing rollout tasks (blocks/tags/markdown_links/xml_tags)",
+      "Run checkpoint PR update flow for feature/incremental-indexing when additional tasks land"
     ]
   },
   "recentChanges": [
-    "markymark-index: from_ast_with_wiki_links + WikiLinkOwned",
-    "markymark-lsp: real incremental wiki-link selective merge wiring",
-    "markymark-lsp tests: overlap parity + ignored benchmark scenario"
+    "markymark-lsp: fix stale wiki-link reuse for append-after-tail incremental edits",
+    "markymark-lsp tests: added append-tail incremental parity regression",
+    "checkpoint: cargo-mcp validation and memory/progress persistence"
   ],
   "knownIssues": [
     "marky-16m (P2): GHAS Semgrep findings (temp_dir usage in tests, boundary-unwrap in tests)",
     "marky-ktt (P1): Unsafe transmute audit from marky-5yt migration",
-    "marky-77x (P2): wiki_links incremental merge unimplemented; state.rs overlap check incomplete",
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
     "marky-8la: XML tag false positives in fenced code blocks"
   ],

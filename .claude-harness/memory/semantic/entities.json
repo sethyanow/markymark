@@ -204,6 +204,15 @@
         "omitted realm argument maps to Some(\"default\")",
         "keeps prompt argument description aligned with runtime behavior"
       ]
+    },
+    {
+      "name": "edits_start_at_or_after_last_wiki_link",
+      "type": "lsp-helper-function",
+      "location": "markymark-lsp/src/state.rs",
+      "relationships": [
+        "guards incremental wiki-link reuse fast path against tail-append stale index cases",
+        "paired with wiki_links_need_update before deciding reuse vs re-extract"
+      ]
     }
   ]
 }

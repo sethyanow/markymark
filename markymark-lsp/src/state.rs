@@ -326,6 +326,27 @@ impl ServerState {
             .any(|link| Self::wiki_link_affected_by_edits(link.range, pending_edits))
     }
 
+    fn edits_start_at_or_after_last_wiki_link(
+        old_wiki_links: &[WikiLinkOwned],
+        pending_edits: &[InputEdit],
+    ) -> bool {
+        let Some(last_old_end) = old_wiki_links
+            .iter()
+            .map(|link| (link.range.end.line, link.range.end.character))
+            .max()
+        else {
+            return false;
+        };
+
+        pending_edits.iter().any(|edit| {
+            let edit_start = (
+                edit.start_position.row as u32,
+                edit.start_position.column as u32,
+            );
+            edit_start >= last_old_end
+        })
+    }
+
     fn extract_wiki_links_owned(ast: &markymark_parser::Ast) -> Vec<WikiLinkOwned> {
         ast.extract_wiki_links()
             .into_iter()
@@ -383,6 +404,10 @@ impl ServerState {
         }
 
         if !Self::wiki_links_need_update(old_wiki_links, pending_edits) {
+            if Self::edits_start_at_or_after_last_wiki_link(old_wiki_links, pending_edits) {
+                let new_wiki_links = Self::extract_wiki_links_owned(&ast);
+                return DocumentIndex::from_ast_with_wiki_links(ast, new_wiki_links);
+            }
             return DocumentIndex::from_ast_with_wiki_links(ast, old_wiki_links.to_vec());
         }
 

@@ -748,6 +748,25 @@ fn incremental_wiki_links_matches_full_rebuild() {
 }
 
 #[test]
+fn incremental_append_new_wiki_link_after_last_existing_matches_full() {
+    let tail = "x".repeat(220);
+    let original = format!("# Title\n\n[[Page]]\n{}\n", tail);
+    let expected = format!("# Title\n\n[[Page]]\n{} [[NewTail]]\n", tail);
+
+    assert_incremental_matches_full(
+        &original,
+        DocumentChange::Incremental {
+            start_line: 3,
+            start_character: 220,
+            end_line: 3,
+            end_character: 220,
+            text: " [[NewTail]]".to_string(),
+        },
+        &expected,
+    );
+}
+
+#[test]
 fn wiki_links_unchanged_sections_reused() {
     let mut state = ServerState::new();
     let uri = DocumentUri::new("file:///test/reuse.md").unwrap();
