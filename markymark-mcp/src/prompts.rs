@@ -37,6 +37,14 @@ impl MarkymarkMcp {
                         ),
                         required: Some(true),
                     },
+                    PromptArgument {
+                        name: "realm".to_string(),
+                        title: None,
+                        description: Some(
+                            "Optional realm name (defaults to 'default')".to_string(),
+                        ),
+                        required: Some(false),
+                    },
                 ]),
             ),
             Prompt::new(
@@ -62,6 +70,14 @@ impl MarkymarkMcp {
                         title: None,
                         description: Some("0-based character offset".to_string()),
                         required: Some(true),
+                    },
+                    PromptArgument {
+                        name: "realm".to_string(),
+                        title: None,
+                        description: Some(
+                            "Optional realm name (defaults to 'default')".to_string(),
+                        ),
+                        required: Some(false),
                     },
                 ]),
             ),
@@ -102,6 +118,13 @@ impl MarkymarkMcp {
             McpError::invalid_params("target argument is required".to_string(), None)
         })?;
 
+        let realm = Some(
+            args.get("realm")
+                .and_then(|v| v.as_str())
+                .unwrap_or("default")
+                .to_string(),
+        );
+
         // Validate URI scheme
         if !uri_str.starts_with("file://") {
             return Err(McpError::invalid_params(
@@ -119,7 +142,7 @@ impl MarkymarkMcp {
         // Get document structure via export-index
         match self.engine.execute(CoreOperation::ExportIndex {
             uri: uri.clone(),
-            realm: None,
+            realm: realm.clone(),
         }) {
             CoreOperationResult::DocumentExport {
                 headings,
@@ -197,6 +220,13 @@ impl MarkymarkMcp {
                 McpError::invalid_params("character argument is required".to_string(), None)
             })? as u32;
 
+        let realm = Some(
+            args.get("realm")
+                .and_then(|v| v.as_str())
+                .unwrap_or("default")
+                .to_string(),
+        );
+
         // Validate URI scheme
         if !uri_str.starts_with("file://") {
             return Err(McpError::invalid_params(
@@ -219,7 +249,7 @@ impl MarkymarkMcp {
         match self.engine.execute(CoreOperation::FindReferences {
             uri: uri.clone(),
             position,
-            realm: None,
+            realm: realm.clone(),
         }) {
             CoreOperationResult::Locations(locations) => {
                 if locations.is_empty() {
@@ -249,7 +279,7 @@ impl MarkymarkMcp {
             ..
         } = self.engine.execute(CoreOperation::ExportIndex {
             uri: uri.clone(),
-            realm: None,
+            realm,
         }) {
             if !headings.is_empty() {
                 context_lines.push("\nDocument headings:".to_string());
