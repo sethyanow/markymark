@@ -250,13 +250,13 @@ Document arrives (raw markdown text)
 Markdown is context-sensitive. Zig SIMD scanning sees raw bytes without knowing
 whether content is inside a fenced code block or inline code:
 
-```text
+````text
 # This IS a heading
 ```python
 # This is NOT a heading (inside code block)
 ```
 [[real-link]] vs `[[not-a-link]]`
-```
+````
 
 **Mitigation strategy (complement path):**
 1. Accept false positives in Tier 1 scans

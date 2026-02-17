@@ -11,10 +11,11 @@ categories = ["development-tools", "text-processing"]
 
 [features]
 bench-internals = []
+zig-kernels = ["markymark-core/zig-kernels"]
 
 [dependencies]
-markymark-core = { version = "0.2.0", path = "../markymark-core" }
-markymark-parser = { version = "0.2.0", path = "../markymark-parser" }
+markymark-core = { version = "0.3.0", path = "../markymark-core" }
+markymark-parser = { version = "0.3.0", path = "../markymark-parser" }
 petgraph = { workspace = true }
 bumpalo = { workspace = true }
 hashbrown = { workspace = true }
