@@ -9,7 +9,6 @@
       <purpose>Address all actionable PR #36 review findings before merge</purpose>
     </metadata>
 
-
     <session_initialization>
       <instructions>
         You are a Claude Opus orchestrator. Your job is to dispatch parallel subagents
@@ -103,11 +102,12 @@
               4. Add // SAFETY: {justification} directly above each unsafe { block
               5. Run: cargo clippy -p markymark-kernels
               6. bd comments add marky-ktt "SAFETY comments added to all kernels unsafe blocks: index_serde.rs (5 sites) and
-  scan.rs (2 sites). See commit {hash}."
-            </task>
-            <deliverable>All 7 unsafe blocks documented with SAFETY invariants</deliverable>
-            <verification>cargo clippy -p markymark-kernels — no new warnings</verification>
-          </parallel_track>
+
+scan.rs (2 sites). See commit {hash}."
+</task>
+<deliverable>All 7 unsafe blocks documented with SAFETY invariants</deliverable>
+<verification>cargo clippy -p markymark-kernels — no new warnings</verification>
+</parallel_track>
 
           <parallel_track name="C-lsp-correctness">
             <scope>
@@ -178,15 +178,16 @@
               1. Read lefthook.yml — find 07-zig-build at line ~16
               2. Change run value to:
                  'command -v zig >/dev/null || { echo "zig is required: https://ziglang.org/download/"; exit 1; }; zig build
-  -Doptimize=Debug'
-              3. bd close marky-fe7
 
-              === README.md (marky-7cl) ===
-              4. Read README.md:130-155 — find crates table
-              5. Check: does markymark-vscode/Cargo.toml exist? (it does not)
-              6. Remove the markymark-vscode row OR add "(external — see markymark-plugin/)" note
-              7. bd comments add marky-7cl "README crates table updated: markymark-vscode row removed/marked external per PR
-  #36 review."
+-Doptimize=Debug' 3. bd close marky-fe7
+
+    === README.md (marky-7cl) ===
+    4. Read README.md:130-155 — find crates table
+    5. Check: does markymark-vscode/Cargo.toml exist? (it does not)
+    6. Remove the markymark-vscode row OR add "(external — see markymark-plugin/)" note
+    7. bd comments add marky-7cl "README crates table updated: markymark-vscode row removed/marked external per PR
+
+#36 review."
 
               === bumpalo.md (marky-pyb) ===
               8. Read docs/rust_crates/bumpalo.md:625-660
@@ -216,10 +217,12 @@
               1. docs/agent-patterns-raw.md:33 — "markdown lists" → "Markdown lists"
               2. docs/plans/brza-markymark.md:259 — outer fence triple→quad backtick (MD040)
               3. docs/research/harness-memory-archive-2026-02-18.md:94 — pick one: "prerelease" or "pre-release", apply
-  consistently
-              4. docs/research/harness-memory-archive-2026-02-18.md:160 — "pre/post benchmark" → "pre/post-benchmark"
-              5. docs/research/harness-memory-archive-2026-02-18.md:190 — add blank lines around Tech Stack table
-              6. docs/research/wasm-zig-feasibility.md:40 — add ```text language specifier
+
+consistently 4. docs/research/harness-memory-archive-2026-02-18.md:160 —
+"pre/post benchmark" → "pre/post-benchmark" 5.
+docs/research/harness-memory-archive-2026-02-18.md:190 — add blank lines around
+Tech Stack table 6. docs/research/wasm-zig-feasibility.md:40 — add ```text
+language specifier
 
               CODE (low-risk, no behavior change):
               7. markymark-mcp/src/tools/graph.rs:28-30:
@@ -369,4 +372,5 @@
       <constraint type="git">Push is mandatory before declaring work done</constraint>
       <constraint type="artifacts">Do not commit generated report files or .env — stage selectively</constraint>
     </constraints>
-  </handoff>
+
+</handoff>
