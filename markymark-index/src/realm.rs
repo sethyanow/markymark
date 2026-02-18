@@ -5,8 +5,12 @@
 //! Supports both markdown (DocumentIndex) and structured (StructuredDocumentIndex) documents.
 
 use std::collections::HashMap;
+#[cfg(feature = "embeddings")]
+use std::sync::Arc;
 
 use crate::document::DocumentIndex;
+#[cfg(feature = "embeddings")]
+use crate::semantic::{DuplicateMatch, SearchResult, SemanticIndex};
 use crate::structured_document::StructuredDocumentIndex;
 use markymark_core::prelude::*;
 use markymark_core::structured::ValueKind;
@@ -92,6 +96,9 @@ pub struct RealmIndex {
     tag_to_docs: HashMap<String, Vec<DocumentUri>>,
     /// Key path → URIs of structured docs containing it.
     key_path_to_docs: HashMap<String, Vec<DocumentUri>>,
+    /// Optional semantic index for embedding-based search.
+    #[cfg(feature = "embeddings")]
+    semantic_index: Option<SemanticIndex>,
 }
 
 impl RealmIndex {
@@ -103,7 +110,17 @@ impl RealmIndex {
             block_to_location: HashMap::new(),
             tag_to_docs: HashMap::new(),
             key_path_to_docs: HashMap::new(),
+            #[cfg(feature = "embeddings")]
+            semantic_index: None,
         }
+    }
+
+    /// Create a realm index with semantic embeddings enabled.
+    #[cfg(feature = "embeddings")]
+    pub fn new_with_embeddings(provider: Arc<dyn EmbeddingProvider>) -> Result<Self, EmbedError> {
+        let mut realm = Self::new();
+        realm.semantic_index = Some(SemanticIndex::new(provider)?);
+        Ok(realm)
     }
 
     /// Add a markdown document to the realm index.
@@ -155,6 +172,16 @@ impl RealmIndex {
             }
         }
 
+        #[cfg(feature = "embeddings")]
+        if let Some(semantic) = &mut self.semantic_index {
+            if let Err(err) = semantic.add_document(uri.clone(), &index) {
+                eprintln!(
+                    "warning: semantic indexing failed for {}: {err}",
+                    uri.as_str()
+                );
+            }
+        }
+
         self.docs
             .insert(key, (uri, AnyDocumentIndex::Markdown(index)));
     }
@@ -182,6 +209,10 @@ impl RealmIndex {
     /// Remove a document from the realm index.
     pub fn remove_document(&mut self, uri: &DocumentUri) {
         let key = uri.as_str().to_string();
+        #[cfg(feature = "embeddings")]
+        if let Some(semantic) = &mut self.semantic_index {
+            semantic.remove_document(uri);
+        }
         self.remove_from_cross_doc_indexes(&key);
         self.docs.remove(&key);
     }
@@ -355,6 +386,33 @@ impl RealmIndex {
             }
         }
         None
+    }
+
+    /// Run semantic search if embeddings are enabled.
+    ///
+    /// Returns an empty vector when semantic indexing is not configured.
+    #[cfg(feature = "embeddings")]
+    pub fn semantic_search(
+        &self,
+        query: &str,
+        top_k: u32,
+        min_score: f32,
+    ) -> Result<Vec<SearchResult>, EmbedError> {
+        match &self.semantic_index {
+            Some(index) => index.search(query, top_k, min_score),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    /// Detect near-duplicate documents if embeddings are enabled.
+    ///
+    /// Returns an empty vector when semantic indexing is not configured.
+    #[cfg(feature = "embeddings")]
+    pub fn detect_semantic_duplicates(&self, threshold: f32) -> Vec<DuplicateMatch> {
+        match &self.semantic_index {
+            Some(index) => index.detect_duplicates(threshold),
+            None => Vec::new(),
+        }
     }
 
     /// Search key paths across all structured documents.

@@ -10,10 +10,10 @@ use markymark_core::{CoreError, DocumentUri, Position, Range};
 #[test]
 fn test_core_operation_get_outline_variant() {
     let uri = DocumentUri::from_file_path(&PathBuf::from("/vault/test.md"));
-    let op = CoreOperation::GetOutline { uri };
+    let op = CoreOperation::GetOutline { uri, realm: None };
     // Verify it's the correct variant via pattern matching
     match op {
-        CoreOperation::GetOutline { uri } => {
+        CoreOperation::GetOutline { uri, .. } => {
             assert_eq!(uri.as_str(), "file:///vault/test.md");
         }
         _ => panic!("expected GetOutline variant"),
@@ -24,9 +24,17 @@ fn test_core_operation_get_outline_variant() {
 fn test_core_operation_find_references_variant() {
     let uri = DocumentUri::from_file_path(&PathBuf::from("/vault/test.md"));
     let position = Range::new(Position::new(5, 10), Position::new(5, 20));
-    let op = CoreOperation::FindReferences { uri, position };
+    let op = CoreOperation::FindReferences {
+        uri,
+        position,
+        realm: None,
+    };
     match op {
-        CoreOperation::FindReferences { uri, position } => {
+        CoreOperation::FindReferences {
+            uri,
+            position,
+            realm: None,
+        } => {
             assert_eq!(uri.as_str(), "file:///vault/test.md");
             assert_eq!(position.start.line, 5);
             assert_eq!(position.start.character, 10);
@@ -43,12 +51,14 @@ fn test_core_operation_rename_variant() {
         uri,
         position,
         new_name: "NewHeading".to_string(),
+        realm: None,
     };
     match op {
         CoreOperation::Rename {
             uri,
             position,
             new_name,
+            realm: None,
         } => {
             assert_eq!(uri.as_str(), "file:///vault/test.md");
             assert_eq!(position.start.line, 2);
@@ -62,9 +72,10 @@ fn test_core_operation_rename_variant() {
 fn test_core_operation_search_symbols_variant() {
     let op = CoreOperation::SearchSymbols {
         query: "introduction".to_string(),
+        realm: None,
     };
     match op {
-        CoreOperation::SearchSymbols { query } => {
+        CoreOperation::SearchSymbols { query, .. } => {
             assert_eq!(query, "introduction");
         }
         _ => panic!("expected SearchSymbols variant"),
@@ -197,7 +208,7 @@ impl CoreEngine for MockEngine {
 fn test_core_engine_executes_operation() {
     let engine = MockEngine;
     let uri = DocumentUri::from_file_path(&PathBuf::from("/vault/notes.md"));
-    let result = engine.execute(CoreOperation::GetOutline { uri });
+    let result = engine.execute(CoreOperation::GetOutline { uri, realm: None });
 
     match result {
         CoreOperationResult::Outline(items) => {

@@ -102,6 +102,7 @@ fn indexes_markdown_and_returns_deterministic_symbols() {
 
     let outline = engine.execute(CoreOperation::GetOutline {
         uri: DocumentUri::from_file_path(&first),
+        realm: None,
     });
     match outline {
         CoreOperationResult::Outline(headings) => {
@@ -112,6 +113,7 @@ fn indexes_markdown_and_returns_deterministic_symbols() {
 
     let symbols = engine.execute(CoreOperation::SearchSymbols {
         query: "a".to_string(),
+        realm: None,
     });
     match symbols {
         CoreOperationResult::Symbols(matches) => {
@@ -120,6 +122,100 @@ fn indexes_markdown_and_returns_deterministic_symbols() {
                 names,
                 vec!["Alpha".to_string(), "Beta".to_string(), "Zebra".to_string()]
             );
+        }
+        other => panic!("expected symbol matches, got: {other:?}"),
+    }
+}
+
+#[test]
+fn search_symbols_prefers_prefix_over_plain_substring() {
+    let ws = TempWorkspace::new("search-symbols-fuzzy-prefix");
+    let first = ws.root().join("a.md");
+    let second = ws.root().join("b.md");
+
+    fs::write(&first, "# setup\n# stage\n").expect("first markdown should be created");
+    fs::write(&second, "# close\n").expect("second markdown should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let symbols = engine.execute(CoreOperation::SearchSymbols {
+        query: "st".to_string(),
+        realm: None,
+    });
+
+    match symbols {
+        CoreOperationResult::Symbols(matches) => {
+            let names: Vec<_> = matches.into_iter().map(|(name, _, _)| name).collect();
+            assert_eq!(names, vec!["stage".to_string(), "setup".to_string()]);
+        }
+        other => panic!("expected symbol matches, got: {other:?}"),
+    }
+}
+
+#[test]
+fn search_symbols_matches_case_insensitively() {
+    let ws = TempWorkspace::new("search-symbols-fuzzy-case");
+    let file = ws.root().join("case.md");
+    fs::write(&file, "# Setup\n# stage\n").expect("markdown should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let symbols = engine.execute(CoreOperation::SearchSymbols {
+        query: "ST".to_string(),
+        realm: None,
+    });
+
+    match symbols {
+        CoreOperationResult::Symbols(matches) => {
+            let names: Vec<_> = matches.into_iter().map(|(name, _, _)| name).collect();
+            assert_eq!(names, vec!["stage".to_string(), "Setup".to_string()]);
+        }
+        other => panic!("expected symbol matches, got: {other:?}"),
+    }
+}
+
+#[test]
+fn search_symbols_supports_subsequence_matching() {
+    let ws = TempWorkspace::new("search-symbols-fuzzy-subseq");
+    let file = ws.root().join("subseq.md");
+    fs::write(&file, "# setup\n# stop\n").expect("markdown should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let symbols = engine.execute(CoreOperation::SearchSymbols {
+        query: "stp".to_string(),
+        realm: None,
+    });
+
+    match symbols {
+        CoreOperationResult::Symbols(matches) => {
+            let names: Vec<_> = matches.into_iter().map(|(name, _, _)| name).collect();
+            assert_eq!(names, vec!["stop".to_string(), "setup".to_string()]);
+        }
+        other => panic!("expected symbol matches, got: {other:?}"),
+    }
+}
+
+#[test]
+fn search_symbols_returns_no_results_when_query_cannot_be_matched() {
+    let ws = TempWorkspace::new("search-symbols-fuzzy-none");
+    let file = ws.root().join("none.md");
+    fs::write(&file, "# setup\n# stage\n").expect("markdown should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let symbols = engine.execute(CoreOperation::SearchSymbols {
+        query: "zzz".to_string(),
+        realm: None,
+    });
+
+    match symbols {
+        CoreOperationResult::Symbols(matches) => {
+            assert!(matches.is_empty(), "expected no fuzzy matches");
         }
         other => panic!("expected symbol matches, got: {other:?}"),
     }
@@ -140,6 +236,7 @@ fn find_references_returns_wiki_link_refs_to_heading() {
     let result = engine.execute(CoreOperation::FindReferences {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 3), Position::new(2, 3)),
+        realm: None,
     });
 
     match result {
@@ -182,6 +279,7 @@ fn find_references_returns_markdown_link_refs_to_heading() {
     let result = engine.execute(CoreOperation::FindReferences {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 4), Position::new(2, 4)),
+        realm: None,
     });
 
     match result {
@@ -213,6 +311,7 @@ fn find_references_returns_xml_tag_refs_across_documents() {
     let result = engine.execute(CoreOperation::FindReferences {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 1), Position::new(2, 1)),
+        realm: None,
     });
 
     match result {
@@ -241,6 +340,7 @@ fn find_references_returns_error_for_unknown_document() {
     let result = engine.execute(CoreOperation::FindReferences {
         uri: DocumentUri::from_file_path(&unknown),
         position: Range::new(Position::new(0, 2), Position::new(0, 2)),
+        realm: None,
     });
 
     match result {
@@ -261,6 +361,7 @@ fn find_references_returns_error_for_position_without_symbol() {
     let result = engine.execute(CoreOperation::FindReferences {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 2), Position::new(2, 2)),
+        realm: None,
     });
 
     match result {
@@ -313,6 +414,7 @@ fn rename_heading_edits_heading_text_and_wiki_link_and_markdown_anchor() {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 3), Position::new(2, 3)),
         new_name: "Installation".to_string(),
+        realm: None,
     });
 
     let edits = flatten_workspace_edit(result);
@@ -349,6 +451,7 @@ fn rename_xml_tag_edits_open_and_close_tags_across_documents() {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 1), Position::new(2, 1)),
         new_name: "tool".to_string(),
+        realm: None,
     });
 
     let edits = flatten_workspace_edit(result);
@@ -377,6 +480,7 @@ fn rename_self_closing_xml_tag_edits_only_open_tag() {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 1), Position::new(2, 1)),
         new_name: "hr".to_string(),
+        realm: None,
     });
 
     let edits = flatten_workspace_edit(result);
@@ -403,6 +507,7 @@ fn rename_returns_error_for_unknown_document() {
         uri: DocumentUri::from_file_path(&unknown),
         position: Range::new(Position::new(0, 2), Position::new(0, 2)),
         new_name: "NewName".to_string(),
+        realm: None,
     });
 
     match result {
@@ -424,6 +529,7 @@ fn rename_returns_error_for_position_without_renameable_symbol() {
         uri: DocumentUri::from_file_path(&a),
         position: Range::new(Position::new(2, 2), Position::new(2, 2)),
         new_name: "Whatever".to_string(),
+        realm: None,
     });
 
     match result {
@@ -742,6 +848,7 @@ fn skips_non_utf8_documents_without_failing_startup() {
 
     let outline = engine.execute(CoreOperation::GetOutline {
         uri: DocumentUri::from_file_path(&good),
+        realm: None,
     });
     match outline {
         CoreOperationResult::Outline(headings) => assert_eq!(headings, vec!["Intro"]),
@@ -772,6 +879,8 @@ fn realm_stats_returns_aggregate_counts_for_default_realm() {
 
     let result = engine.execute(CoreOperation::RealmStats {
         realm: "default".to_string(),
+        check_duplicates: false,
+        include_token_counts: false,
     });
 
     match result {
@@ -807,6 +916,8 @@ fn realm_stats_errors_for_nonexistent_realm() {
 
     let result = engine.execute(CoreOperation::RealmStats {
         realm: "nonexistent".to_string(),
+        check_duplicates: false,
+        include_token_counts: false,
     });
 
     match result {
@@ -826,6 +937,8 @@ fn realm_stats_works_for_empty_realm() {
 
     let result = engine.execute(CoreOperation::RealmStats {
         realm: "empty-realm".to_string(),
+        check_duplicates: false,
+        include_token_counts: false,
     });
 
     match result {
@@ -851,6 +964,124 @@ fn realm_stats_works_for_empty_realm() {
     }
 }
 
+#[test]
+fn realm_stats_can_include_token_estimate() {
+    let ws = TempWorkspace::new("realm-stats-token-estimate");
+    fs::write(ws.root().join("notes.md"), "# Intro\nsome words here\n")
+        .expect("doc should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let result = engine.execute(CoreOperation::RealmStats {
+        realm: "default".to_string(),
+        check_duplicates: false,
+        include_token_counts: true,
+    });
+
+    match result {
+        CoreOperationResult::RealmStats { total_tokens, .. } => {
+            assert!(
+                total_tokens.unwrap_or(0) > 0,
+                "expected token estimate to be present"
+            );
+        }
+        other => panic!("expected RealmStats result, got: {other:?}"),
+    }
+}
+
+#[cfg(feature = "semantic-search")]
+#[test]
+fn semantic_search_returns_ranked_matches() {
+    let ws = TempWorkspace::new("semantic-search-default-realm");
+    let intro = ws.root().join("intro.md");
+    let setup = ws.root().join("setup.md");
+    fs::write(&intro, "# Introduction\n\nA short overview.\n").expect("intro doc should exist");
+    fs::write(&setup, "# Installation\n\nSetup steps.\n").expect("setup doc should exist");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let result = engine.execute(CoreOperation::SemanticSearch {
+        query: "introduction overview".to_string(),
+        realm: None,
+        top_k: 3,
+        min_score: 0.0,
+    });
+
+    match result {
+        CoreOperationResult::SemanticMatches(matches) => {
+            assert!(!matches.is_empty(), "expected at least one semantic match");
+            assert_eq!(matches[0].heading, "Introduction");
+            assert!(matches[0].score > 0.0);
+            assert!(!matches[0].section_preview.is_empty());
+            assert!(
+                matches[0].section_preview.len() <= 200,
+                "preview should be truncated to 200 chars"
+            );
+        }
+        other => panic!("expected SemanticMatches result, got: {other:?}"),
+    }
+}
+
+#[cfg(feature = "semantic-search")]
+#[test]
+fn semantic_search_preview_stays_within_200_bytes_for_unicode() {
+    let ws = TempWorkspace::new("semantic-search-unicode-preview");
+    let unicode_doc = ws.root().join("unicode.md");
+    let long_emoji = "😀".repeat(260);
+    fs::write(&unicode_doc, format!("# Unicode\n\n{}\n", long_emoji))
+        .expect("unicode markdown should exist");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let result = engine.execute(CoreOperation::SemanticSearch {
+        query: "unicode".to_string(),
+        realm: None,
+        top_k: 1,
+        min_score: 0.0,
+    });
+
+    match result {
+        CoreOperationResult::SemanticMatches(matches) => {
+            assert!(!matches.is_empty(), "expected at least one semantic match");
+            assert!(
+                matches[0].section_preview.len() <= 200,
+                "preview should be truncated to <= 200 bytes"
+            );
+        }
+        other => panic!("expected SemanticMatches result, got: {other:?}"),
+    }
+}
+
+#[test]
+fn realm_stats_token_count_is_none_when_source_files_are_missing() {
+    let ws = TempWorkspace::new("realm-stats-missing-source");
+    let doc = ws.root().join("missing-after-index.md");
+    fs::write(&doc, "# Title\n\nsome content\n").expect("doc should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    fs::remove_file(&doc).expect("doc should be removable after indexing");
+
+    let result = engine.execute(CoreOperation::RealmStats {
+        realm: "default".to_string(),
+        check_duplicates: false,
+        include_token_counts: true,
+    });
+
+    match result {
+        CoreOperationResult::RealmStats { total_tokens, .. } => {
+            assert!(
+                total_tokens.is_none(),
+                "token count should be omitted when indexed files are unreadable"
+            );
+        }
+        other => panic!("expected RealmStats result, got: {other:?}"),
+    }
+}
+
 // --- export-index integration tests ---
 
 #[test]
@@ -867,7 +1098,10 @@ fn export_index_returns_full_document_data() {
         RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
 
     let uri = DocumentUri::from_file_path(&doc);
-    let result = engine.execute(CoreOperation::ExportIndex { uri: uri.clone() });
+    let result = engine.execute(CoreOperation::ExportIndex {
+        uri: uri.clone(),
+        realm: None,
+    });
 
     match result {
         CoreOperationResult::DocumentExport {
@@ -907,6 +1141,7 @@ fn export_index_errors_for_unindexed_document() {
 
     let result = engine.execute(CoreOperation::ExportIndex {
         uri: DocumentUri::from_file_path(&ws.root().join("nonexistent.md")),
+        realm: None,
     });
 
     match result {
@@ -928,6 +1163,8 @@ fn workspace_with_mixed_formats_indexes_all_supported_types() {
 
     let result = engine.execute(CoreOperation::RealmStats {
         realm: "default".to_string(),
+        check_duplicates: false,
+        include_token_counts: false,
     });
 
     match result {
@@ -957,7 +1194,10 @@ fn export_index_returns_empty_lists_for_minimal_document() {
         RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
 
     let uri = DocumentUri::from_file_path(&doc);
-    let result = engine.execute(CoreOperation::ExportIndex { uri: uri.clone() });
+    let result = engine.execute(CoreOperation::ExportIndex {
+        uri: uri.clone(),
+        realm: None,
+    });
 
     match result {
         CoreOperationResult::DocumentExport {
