@@ -98,7 +98,9 @@ impl ServerState {
                 // 2. Search all documents for wiki links referencing the old slug
                 for (doc_uri, index) in self.realm.iter_documents() {
                     for wl in index.wiki_links() {
-                        if wl.heading == Some(old_slug) {
+                        let wl_heading_slug =
+                            wl.heading.map(|h| slugify(h));
+                        if wl_heading_slug.as_deref() == Some(old_slug) {
                             let doc_text = self.get_document_text(doc_uri);
                             if let Some(anchor_range) =
                                 find_wiki_link_heading_range(doc_text, wl, old_slug)
@@ -310,6 +312,22 @@ mod tests {
         // "short" is 5 bytes; character=9999 is way out of bounds — must not panic.
         let result = find_wiki_link_heading_range(Some("short\n"), &wl, "heading");
         assert_eq!(result, None);
+    }
+
+    /// Regression: wiki link heading comparison must slugify before matching.
+    /// Raw heading text like "My Section" must match slug "my-section".
+    #[test]
+    fn test_wiki_link_heading_slug_comparison() {
+        // Simulates the rename_at loop: wl.heading is raw text, old_slug is slugified.
+        let raw_heading = "My Section";
+        let old_slug = "my-section";
+
+        // Old (broken) comparison: raw text != slug
+        assert_ne!(Some(raw_heading), Some(old_slug));
+
+        // New (fixed) comparison: slugify raw heading, then compare
+        let slugified = slugify(raw_heading);
+        assert_eq!(slugified.as_str(), old_slug);
     }
 
     /// marky-u46: character offset beyond line length must return None, not panic.
