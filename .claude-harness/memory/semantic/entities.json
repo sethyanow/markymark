@@ -332,7 +332,27 @@
         "preserves non-ASCII UTF-8 bytes during normalization",
         "used for markdown heading slug generation in BRZA track"
       ]
+    },
+    {
+      "name": "marky_fuzzy_match_batch",
+      "type": "zig-c-abi-export",
+      "location": "zig/src/c_adapter.zig",
+      "relationships": [
+        "batch fuzzy matcher with top-k selection",
+        "deterministic score-desc/index-asc ordering",
+        "consumed by markymark-kernels scan wrapper"
+      ]
+    },
+    {
+      "name": "runtime_engine batch fuzzy ranking",
+      "type": "mcp-ranking-policy",
+      "location": "markymark-mcp/src/runtime_engine.rs",
+      "relationships": [
+        "SearchSymbols gathers candidates then calls fuzzy_match_batch",
+        "ranked indexes map back to (name, uri, range) metadata",
+        "fallback preserves previous per-candidate scoring path on kernel error"
+      ]
     }
   ],
-  "lastUpdated": "2026-02-17T20:45:28Z"
+  "lastUpdated": "2026-02-18T03:56:18Z"
 }

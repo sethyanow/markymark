@@ -867,6 +867,42 @@
         "Leave padding unspecified"
       ],
       "impact": "zig/src/kernels/index_serde.zig serialize_index"
+    },
+    {
+      "id": "dec-8xt-batch-001",
+      "timestamp": "2026-02-18T03:56:18Z",
+      "feature": "marky-8xt",
+      "decision": "Implement batch fuzzy ranking in Zig with deterministic score-desc/index-asc ordering",
+      "rationale": "Moves hot-path ranking out of per-candidate Rust loop and aligns with original BRZA top-k API contract.",
+      "alternatives": [
+        "Keep per-candidate scoring and sort entirely in Rust",
+        "Add full-sort-only C ABI without top-k selection"
+      ],
+      "impact": "zig/src/shared/similarity.zig, zig/src/c_adapter.zig, markymark-kernels/src/scan.rs"
+    },
+    {
+      "id": "dec-8xt-batch-002",
+      "timestamp": "2026-02-18T03:56:18Z",
+      "feature": "marky-8xt",
+      "decision": "Route RuntimeEngine SearchSymbols through fuzzy_match_batch with fallback to fuzzy_match",
+      "rationale": "Preserves behavior and resilience while adopting batch-ranked ordering path.",
+      "alternatives": [
+        "Hard fail on batch errors",
+        "Keep dual scoring paths active unconditionally"
+      ],
+      "impact": "markymark-mcp/src/runtime_engine.rs, markymark-mcp/tests/runtime_engine_tests.rs"
+    },
+    {
+      "id": "dec-8xt-batch-003",
+      "timestamp": "2026-02-18T03:56:18Z",
+      "feature": "marky-8xt",
+      "decision": "Record 100k candidate benchmark via env-gated test command during checkpoint",
+      "rationale": "Provides reproducible runtime evidence inside cargo-mcp flow without blocking normal test runs.",
+      "alternatives": [
+        "Rely only on criterion output artifacts",
+        "Always run 100k benchmark as part of package tests"
+      ],
+      "impact": "markymark-kernels/src/scan.rs, markymark-kernels/benches/brza_kernels.rs"
     }
   ],
   "lastUpdated": "2026-02-17T21:38:00Z"

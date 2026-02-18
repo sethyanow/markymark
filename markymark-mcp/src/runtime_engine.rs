@@ -16,8 +16,8 @@ use markymark_core::prelude::{EmbedError, EmbeddingProvider};
 use markymark_core::structured::DocumentKind;
 use markymark_core::{CoreError, DocumentUri, Range};
 use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
-use markymark_kernels::fuzzy_match;
 use markymark_kernels::tokens;
+use markymark_kernels::{fuzzy_match, fuzzy_match_batch};
 use markymark_parser::structured::parse_structured;
 use markymark_parser::Parser;
 
@@ -270,50 +270,71 @@ impl CoreEngine for RuntimeEngine {
                     )));
                 };
                 let realm = &realm_data.index;
-                let mut scored_matches: Vec<(i32, bool, String, DocumentUri, Range)> = Vec::new();
+                let mut candidates: Vec<(String, DocumentUri, Range)> = Vec::new();
 
-                // Search markdown headings with fuzzy ranking.
+                // Collect markdown heading candidates.
                 for (uri, index) in realm.iter_documents() {
                     for heading in index.headings() {
-                        if let Ok(m) = fuzzy_match(&query, heading.text) {
-                            if m.score > 0 {
-                                scored_matches.push((
-                                    m.score,
-                                    m.starts_with,
-                                    heading.text.to_string(),
-                                    uri.clone(),
-                                    heading.range,
-                                ));
+                        candidates.push((heading.text.to_string(), uri.clone(), heading.range));
+                    }
+                }
+
+                // Collect structured key-path candidates.
+                for (uri, path, _key, _kind, range) in realm.search_key_paths(&query) {
+                    candidates.push((path, uri, range));
+                }
+
+                let candidate_refs: Vec<&str> = candidates
+                    .iter()
+                    .map(|(name, _, _)| name.as_str())
+                    .collect();
+                let top_k = candidate_refs.len();
+
+                let matches = match fuzzy_match_batch(&query, &candidate_refs, top_k) {
+                    Ok(ranked) => ranked
+                        .into_iter()
+                        .filter_map(|m| {
+                            candidates
+                                .get(m.index as usize)
+                                .map(|(name, uri, range)| (name.clone(), uri.clone(), *range))
+                        })
+                        .collect(),
+                    Err(_) => {
+                        // Fallback path keeps previous per-candidate behavior.
+                        let mut scored_matches: Vec<(i32, bool, String, DocumentUri, Range)> =
+                            Vec::new();
+                        for (name, uri, range) in &candidates {
+                            if let Ok(m) = fuzzy_match(&query, name) {
+                                if m.score > 0 {
+                                    scored_matches.push((
+                                        m.score,
+                                        m.starts_with,
+                                        name.clone(),
+                                        uri.clone(),
+                                        *range,
+                                    ));
+                                }
                             }
                         }
+
+                        scored_matches.sort_by(
+                            |(score_a, starts_a, name_a, uri_a, range_a),
+                             (score_b, starts_b, name_b, uri_b, range_b)| {
+                                score_b
+                                    .cmp(score_a)
+                                    .then_with(|| starts_b.cmp(starts_a))
+                                    .then_with(|| name_a.cmp(name_b))
+                                    .then_with(|| uri_a.as_str().cmp(uri_b.as_str()))
+                                    .then_with(|| compare_ranges(*range_a, *range_b))
+                            },
+                        );
+
+                        scored_matches
+                            .into_iter()
+                            .map(|(_, _, name, uri, range)| (name, uri, range))
+                            .collect()
                     }
-                }
-
-                // Search structured document key paths with fuzzy ranking.
-                for (uri, path, _key, _kind, range) in realm.search_key_paths(&query) {
-                    if let Ok(m) = fuzzy_match(&query, &path) {
-                        if m.score > 0 {
-                            scored_matches.push((m.score, m.starts_with, path, uri, range));
-                        }
-                    }
-                }
-
-                scored_matches.sort_by(
-                    |(score_a, starts_a, name_a, uri_a, range_a),
-                     (score_b, starts_b, name_b, uri_b, range_b)| {
-                        score_b
-                            .cmp(score_a)
-                            .then_with(|| starts_b.cmp(starts_a))
-                            .then_with(|| name_a.cmp(name_b))
-                            .then_with(|| uri_a.as_str().cmp(uri_b.as_str()))
-                            .then_with(|| compare_ranges(*range_a, *range_b))
-                    },
-                );
-
-                let matches = scored_matches
-                    .into_iter()
-                    .map(|(_, _, name, uri, range)| (name, uri, range))
-                    .collect();
+                };
 
                 CoreOperationResult::Symbols(matches)
             }

@@ -101,6 +101,20 @@ fn build_embedding_fixture(entry_count: usize) -> SearchFixture {
     SearchFixture { index, query }
 }
 
+fn generate_symbol_candidates(count: usize) -> Vec<String> {
+    let mut out = Vec::with_capacity(count);
+    for i in 0..count {
+        if i % 97 == 0 {
+            out.push(format!("state-machine-{i}"));
+        } else if i % 53 == 0 {
+            out.push(format!("stack-trace-{i}"));
+        } else {
+            out.push(format!("candidate-symbol-{i:06}"));
+        }
+    }
+    out
+}
+
 fn collect_markdown_files(dir: &Path, out: &mut Vec<PathBuf>, max_files: usize) {
     if out.len() >= max_files {
         return;
@@ -300,6 +314,80 @@ fn bench_content_hash_vs_md5(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_fuzzy_match_batch(c: &mut Criterion) {
+    let mut group = c.benchmark_group("fuzzy_match_batch");
+    group.warm_up_time(Duration::from_secs(1));
+    group.measurement_time(Duration::from_secs(4));
+
+    const QUERY: &str = "sta";
+
+    for (label, entries, top_k) in [
+        ("10k_candidates", 10_000usize, 25usize),
+        ("100k_candidates", 100_000usize, 25usize),
+    ] {
+        group.sample_size(if entries >= 100_000 {
+            sample_size(10)
+        } else {
+            sample_size(20)
+        });
+        group.throughput(Throughput::Elements(entries as u64));
+
+        let fixture = OnceLock::new();
+        group.bench_function(BenchmarkId::new("batch_topk", label), |b| {
+            let fixture = fixture.get_or_init(|| {
+                let symbols = generate_symbol_candidates(entries);
+                let refs = symbols
+                    .iter()
+                    .map(String::as_str)
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>();
+                (symbols, refs)
+            });
+            let refs: Vec<&str> = fixture.1.iter().map(String::as_str).collect();
+
+            b.iter(|| {
+                let hits = scan::fuzzy_match_batch(black_box(QUERY), black_box(&refs), top_k)
+                    .map(|v| v.len())
+                    .unwrap_or_default();
+                black_box(hits)
+            });
+        });
+
+        let fixture = OnceLock::new();
+        group.bench_function(BenchmarkId::new("per_candidate_sort", label), |b| {
+            let fixture = fixture.get_or_init(|| {
+                let symbols = generate_symbol_candidates(entries);
+                let refs = symbols
+                    .iter()
+                    .map(String::as_str)
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>();
+                (symbols, refs)
+            });
+            let refs: Vec<&str> = fixture.1.iter().map(String::as_str).collect();
+
+            b.iter(|| {
+                let mut scored = Vec::with_capacity(refs.len());
+                for (idx, candidate) in refs.iter().enumerate() {
+                    if let Ok(m) = scan::fuzzy_match(QUERY, candidate) {
+                        if m.score > 0 {
+                            scored.push((m.score, idx));
+                        }
+                    }
+                }
+
+                scored.sort_by(|(score_a, idx_a), (score_b, idx_b)| {
+                    score_b.cmp(score_a).then_with(|| idx_a.cmp(idx_b))
+                });
+
+                black_box(scored.len().min(top_k))
+            });
+        });
+    }
+
+    group.finish();
+}
+
 fn bench_bulk_reindex(c: &mut Criterion) {
     let docs = load_bulk_docs(BULK_DOC_TARGET);
     if docs.is_empty() {
@@ -348,6 +436,7 @@ criterion_group!(
     bench_link_scan_vs_regex,
     bench_embedding_search,
     bench_content_hash_vs_md5,
+    bench_fuzzy_match_batch,
     bench_bulk_reindex
 );
 criterion_main!(benches);

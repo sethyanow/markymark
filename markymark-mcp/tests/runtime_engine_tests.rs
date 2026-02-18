@@ -222,6 +222,32 @@ fn search_symbols_returns_no_results_when_query_cannot_be_matched() {
 }
 
 #[test]
+fn search_symbols_uses_batch_ranked_results_ordering() {
+    let ws = TempWorkspace::new("search-symbols-batch-ranked-order");
+    let file = ws.root().join("ranked.md");
+    fs::write(&file, "# acb\n# adb\n# aeb\n").expect("markdown should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let symbols = engine.execute(CoreOperation::SearchSymbols {
+        query: "ab".to_string(),
+        realm: None,
+    });
+
+    match symbols {
+        CoreOperationResult::Symbols(matches) => {
+            let names: Vec<_> = matches.into_iter().map(|(name, _, _)| name).collect();
+            assert_eq!(
+                names,
+                vec!["acb".to_string(), "adb".to_string(), "aeb".to_string()]
+            );
+        }
+        other => panic!("expected symbol matches, got: {other:?}"),
+    }
+}
+
+#[test]
 fn find_references_returns_wiki_link_refs_to_heading() {
     let ws = TempWorkspace::new("find-refs-heading");
     let a = ws.root().join("a.md");
