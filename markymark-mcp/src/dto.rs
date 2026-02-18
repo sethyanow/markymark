@@ -396,3 +396,72 @@ pub fn position_to_dto(position: Position) -> PositionDto {
         character: position.character,
     }
 }
+
+// --- search-workspace ---
+
+/// Request payload for `search-workspace`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchWorkspaceRequest {
+    /// Free-text query (case-insensitive substring). Omit to match all documents.
+    #[serde(default)]
+    pub query: Option<String>,
+    /// Frontmatter filter key. Must be paired with `frontmatter_filter_value`.
+    #[serde(default)]
+    pub frontmatter_filter_key: Option<String>,
+    /// Frontmatter filter value (case-insensitive substring match).
+    #[serde(default)]
+    pub frontmatter_filter_value: Option<String>,
+    /// Logseq property filter key. Must be paired with `property_filter_value`.
+    #[serde(default)]
+    pub property_filter_key: Option<String>,
+    /// Logseq property filter value (case-insensitive substring match).
+    #[serde(default)]
+    pub property_filter_value: Option<String>,
+    /// Tag filter: only include documents that have this tag (case-insensitive, without `#`).
+    #[serde(default)]
+    pub tag_filter: Option<String>,
+    /// Realm to search. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+    /// Max results to return (0–100, default 20). Values above 100 are clamped silently.
+    #[serde(default = "default_search_workspace_limit")]
+    pub limit: u32,
+}
+
+fn default_search_workspace_limit() -> u32 {
+    20
+}
+
+/// A single search-workspace result.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct WorkspaceSearchResultDto {
+    /// Document URI.
+    pub uri: String,
+    /// Document title (first H1 heading, or filename without extension).
+    pub title: String,
+    /// Relevance score (0.0–1.0).
+    pub score: f32,
+    /// Fields that matched the query (e.g. `["title", "frontmatter:status"]`).
+    pub matched_fields: Vec<String>,
+    /// First 3 frontmatter key-value pairs.
+    pub frontmatter_preview: Vec<(String, String)>,
+    /// First 3 Logseq property key-value pairs.
+    pub property_preview: Vec<(String, String)>,
+    /// All tag names on this document (without `#` prefix).
+    pub tags: Vec<String>,
+    /// Whether this document is a Logseq journal page.
+    pub is_journal: bool,
+    /// Journal date `[year, month, day]` if detected.
+    pub journal_date: Option<[u16; 3]>,
+}
+
+/// Response payload for `search-workspace`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchWorkspaceResponse {
+    /// Realm that was searched.
+    pub realm: String,
+    /// Original query, if provided.
+    pub query: Option<String>,
+    /// Ranked search results.
+    pub results: Vec<WorkspaceSearchResultDto>,
+}

@@ -182,6 +182,13 @@ impl CoreEngine for MockEngine {
                 frontmatter: vec![],
                 properties: vec![],
             },
+            (_, CoreOperation::SearchWorkspace { realm, query, .. }) => {
+                CoreOperationResult::WorkspaceSearchResults {
+                    realm: realm.unwrap_or_else(|| "default".to_string()),
+                    query,
+                    results: vec![],
+                }
+            }
         }
     }
 }

@@ -106,7 +106,7 @@ mod tests {
         };
         let rc = unsafe { marky_index_serialize(&empty, buf.as_mut_ptr(), 128, &mut written) };
         assert_eq!(rc, 0);
-        assert_eq!(written, 32); // Header.SIZE
+        assert_eq!(written, 36); // Header.SIZE (4-byte magic + 2-byte version + 2-byte flags + 5*u32 counts + u32 string_table_size + 4-byte reserved)
     }
 
     #[test]

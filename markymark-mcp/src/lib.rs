@@ -28,6 +28,7 @@ mod prompts;
 mod rename_ops;
 mod resources;
 mod runtime_engine;
+pub(crate) mod search;
 mod subscriptions;
 
 pub use dto::*;
@@ -728,6 +729,88 @@ impl MarkymarkMcp {
             }
             CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
             other => Ok(unexpected_result_error("export-index", &other)),
+        }
+    }
+
+    /// Search workspace documents by text, frontmatter, properties, or tags.
+    #[tool(
+        name = "search-workspace",
+        description = "Search workspace documents by free text, frontmatter, Logseq properties, or tags. Returns ranked results with metadata preview."
+    )]
+    pub async fn search_workspace_tool(
+        &self,
+        params: Parameters<SearchWorkspaceRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let req = &params.0;
+
+        // Validate paired filter params.
+        match (&req.frontmatter_filter_key, &req.frontmatter_filter_value) {
+            (Some(_), None) | (None, Some(_)) => {
+                return Ok(tool_error(
+                    "invalid_params",
+                    "frontmatter_filter_key and frontmatter_filter_value must both be provided",
+                ));
+            }
+            _ => {}
+        }
+        match (&req.property_filter_key, &req.property_filter_value) {
+            (Some(_), None) | (None, Some(_)) => {
+                return Ok(tool_error(
+                    "invalid_params",
+                    "property_filter_key and property_filter_value must both be provided",
+                ));
+            }
+            _ => {}
+        }
+
+        let frontmatter_filter = req.frontmatter_filter_key.as_ref().and_then(|k| {
+            req.frontmatter_filter_value
+                .as_ref()
+                .map(|v| (k.clone(), v.clone()))
+        });
+        let property_filter = req.property_filter_key.as_ref().and_then(|k| {
+            req.property_filter_value
+                .as_ref()
+                .map(|v| (k.clone(), v.clone()))
+        });
+
+        match self.engine.execute(CoreOperation::SearchWorkspace {
+            query: req.query.clone(),
+            frontmatter_filter,
+            property_filter,
+            tag_filter: req.tag_filter.clone(),
+            realm: req.realm.clone(),
+            limit: req.limit,
+        }) {
+            CoreOperationResult::WorkspaceSearchResults {
+                realm,
+                query,
+                results,
+            } => {
+                let dtos: Vec<WorkspaceSearchResultDto> = results
+                    .into_iter()
+                    .map(|r| WorkspaceSearchResultDto {
+                        uri: r.uri.as_str().to_string(),
+                        title: r.title,
+                        score: round_score(r.score),
+                        matched_fields: r.matched_fields,
+                        frontmatter_preview: r.frontmatter_preview,
+                        property_preview: r.property_preview,
+                        tags: r.tags,
+                        is_journal: r.is_journal,
+                        journal_date: r
+                            .journal_date
+                            .map(|(y, m, d)| [y, u16::from(m), u16::from(d)]),
+                    })
+                    .collect();
+                Ok(CallToolResult::structured(json!(SearchWorkspaceResponse {
+                    realm,
+                    query,
+                    results: dtos,
+                })))
+            }
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("search-workspace", &other)),
         }
     }
 }
