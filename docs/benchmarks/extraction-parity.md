@@ -4,30 +4,30 @@ This report compares Tier 1 (Zig scan via `DocumentIndex::from_scan`) against Ti
 
 ## Corpus
 
-- Parsed markdown files: 91
+- Parsed markdown files: 93
 - Skipped files (read/parse failures): 0
 - Files with setext headings: 3
 - Files with frontmatter: 1
-- Files with fenced code blocks: 61
+- Files with fenced code blocks: 63
 
 ## Aggregate Counts
 
 | Metric | AST Total | Scan Total | False Positives | False Negatives |
 |---|---:|---:|---:|---:|
-| Headings | 1103 | 1177 | 74 | 0 |
+| Headings | 1155 | 1232 | 77 | 0 |
 | Wiki Links | 54 | 54 | 0 | 0 |
-| Markdown Links | 394 | 392 | 0 | 2 |
-| Tags | 106 | 61 | 0 | 45 |
+| Markdown Links | 408 | 406 | 0 | 2 |
+| Tags | 108 | 61 | 0 | 47 |
 | Block IDs | 0 | 0 | 0 | 0 |
 
 ## Rates
 
-- Raw false positive rate: 4.47%
+- Raw false positive rate: 4.46%
 - Raw false negative rate: 2.84%
-- Adjusted false positive rate (excluding known setext/frontmatter gaps): 4.24%
-- Adjusted false negative rate (excluding known setext/frontmatter gaps): 2.56%
-- Code block false-positive doc rate: 32.79% (20 / 61)
-- Code block false-positive events: 74
+- Adjusted false positive rate (excluding known setext/frontmatter gaps): 4.38%
+- Adjusted false negative rate (excluding known setext/frontmatter gaps): 2.53%
+- Code block false-positive doc rate: 33.33% (21 / 63)
+- Code block false-positive events: 77
 
 ## Known Differences
 
@@ -46,6 +46,7 @@ This report compares Tier 1 (Zig scan via `DocumentIndex::from_scan`) against Ti
 | `docs/rust_agent_docs/reference/cargo-ref.md` | 6 | 0 | no | no |
 | `docs/tools/get_document_outline.md` | 5 | 0 | no | no |
 | `docs/rust_agent_docs/patterns/anti-patterns.md` | 4 | 0 | no | no |
+| `docs/research/wasm-zig-feasibility.md` | 3 | 1 | no | no |
 | `docs/rust_agent_docs/advanced/ffi.md` | 3 | 0 | no | no |
 | `docs/rust_agent_docs/advanced/unsafe.md` | 3 | 0 | no | no |
 | `docs/rust_agent_docs/core/modules.md` | 3 | 0 | no | no |
@@ -58,5 +59,4 @@ This report compares Tier 1 (Zig scan via `DocumentIndex::from_scan`) against Ti
 | `docs/tools/goto_definition.md` | 1 | 5 | no | no |
 | `docs/rust_guidelines/docs.md` | 1 | 3 | no | no |
 | `docs/rust_agent_docs/tooling/macros.md` | 1 | 1 | no | no |
-| `docs/rust_agent_docs/tooling/performance.md` | 1 | 0 | no | no |
 
