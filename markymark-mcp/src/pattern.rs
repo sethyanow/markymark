@@ -277,11 +277,8 @@ mod tests {
     }
 
     /// Build a RuntimeEngine with a named realm rooted at `dir`.
-    fn make_engine_with_realm(
-        realm: &str,
-        dir: &std::path::Path,
-    ) -> crate::runtime_engine::RuntimeEngine {
-        let engine = crate::runtime_engine::RuntimeEngine::default();
+    fn make_engine_with_realm(realm: &str, dir: &std::path::Path) -> crate::engine::RuntimeEngine {
+        let engine = crate::engine::RuntimeEngine::default();
         engine.execute(CoreOperation::CreateRealm {
             name: realm.to_string(),
         });

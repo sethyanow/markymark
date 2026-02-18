@@ -24,17 +24,17 @@ use rmcp::{
 use serde_json::json;
 
 pub mod dto;
+mod engine;
 mod graph;
 mod pattern;
 mod prompts;
 mod rename_ops;
 mod resources;
-mod runtime_engine;
 pub(crate) mod search;
 mod subscriptions;
 
 pub use dto::*;
-pub use runtime_engine::RuntimeEngine;
+pub use engine::RuntimeEngine;
 
 const SEMANTIC_SEARCH_MAX_TOP_K: u32 = 100;
 
