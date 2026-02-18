@@ -8,6 +8,11 @@ const content_hash_mod = @import("kernels/content_hash.zig");
 const fence_map = @import("kernels/fence_map.zig");
 const multi_scan = @import("kernels/multi_scan.zig");
 const slug_kernel = @import("kernels/slug.zig");
+const env_scan = @import("kernels/formats/env_scan.zig");
+const ini_scan = @import("kernels/formats/ini_scan.zig");
+const toml_scan = @import("kernels/formats/toml_scan.zig");
+const yaml_scan = @import("kernels/formats/yaml_scan.zig");
+const json_keys = @import("kernels/formats/json_keys.zig");
 const similarity = @import("shared/similarity.zig");
 const normalize = @import("shared/normalize.zig");
 const entities = @import("shared/entities.zig");
@@ -29,6 +34,12 @@ pub const TagScan = tag_scan.TagScan;
 pub const BlockIdScan = block_scan.BlockIdScan;
 pub const FenceRange = fence_map.FenceRange;
 pub const ScanResult = multi_scan.ScanResult;
+pub const EnvEntry = env_scan.EnvEntry;
+pub const IniEntry = ini_scan.IniEntry;
+pub const TomlEntry = toml_scan.TomlEntry;
+pub const TomlKind = toml_scan.TomlKind;
+pub const YamlEntry = yaml_scan.YamlEntry;
+pub const JsonKeyEntry = json_keys.JsonKeyEntry;
 
 /// Version constant for markymark kernels
 /// Format: 0xMMmmpp (major, minor, patch)
@@ -531,6 +542,49 @@ export fn marky_fuzzy_match(
     return similarity.fuzzy_match_score(q, query_len, c, candidate_len);
 }
 
+/// Batched fuzzy match top-k ranking.
+///
+/// Candidate ordering is deterministic:
+/// - score descending
+/// - candidate index ascending on ties
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointers)
+///  -2  — invalid capacity (`top_k > output_cap` or `output_cap == 0` while `top_k > 0`)
+export fn marky_fuzzy_match_batch(
+    query: ?[*]const u8,
+    query_len: u32,
+    candidate_ptrs: ?[*]const ?[*]const u8,
+    candidate_lens: ?[*]const u32,
+    candidate_count: u32,
+    scores_out: ?[*]i32,
+    indices_out: ?[*]u32,
+    output_cap: u32,
+    top_k: u32,
+    written: ?*u32,
+) i32 {
+    const q = query orelse return -1;
+    const ptrs = candidate_ptrs orelse return -1;
+    const lens = candidate_lens orelse return -1;
+    const scores = scores_out orelse return -1;
+    const indices = indices_out orelse return -1;
+    const w = written orelse return -1;
+
+    return similarity.fuzzy_match_top_k(
+        q,
+        query_len,
+        ptrs,
+        lens,
+        candidate_count,
+        scores,
+        indices,
+        output_cap,
+        top_k,
+        w,
+    );
+}
+
 /// SIMD-accelerated slug generation from heading text.
 ///
 /// Converts ASCII uppercase to lowercase, maps whitespace/punctuation to '-',
@@ -557,6 +611,239 @@ export fn marky_slugify(
     if (output_cap == 0) return -2;
 
     return slug_kernel.slugify(t, len, out, output_cap);
+}
+
+/// SIMD-accelerated .env file key-value extractor.
+///
+/// Scans `text[0..len]` for KEY=value pairs. Writes results into `out[0..cap]`,
+/// sets `*written` to the number of entries found.
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointer)
+///  -2  — buffer too small (cap=0, or more entries than cap)
+export fn marky_scan_env(
+    text: ?[*]const u8,
+    len: u32,
+    out: ?[*]EnvEntry,
+    cap: u32,
+    written: ?*u32,
+) i32 {
+    const w = written orelse return -1;
+    const t = text orelse {
+        if (len == 0) {
+            w.* = 0;
+            return 0;
+        }
+        return -1;
+    };
+    const o = out orelse return -1;
+
+    if (len == 0) {
+        w.* = 0;
+        return 0;
+    }
+
+    if (cap == 0) {
+        w.* = 0;
+        return -2;
+    }
+
+    const count = env_scan.scan_env(t, len, o, cap);
+    w.* = count;
+
+    if (count >= cap) return -2;
+
+    return 0;
+}
+
+/// SIMD-accelerated INI file key-value extractor.
+///
+/// Scans `text[0..len]` for `[section]` headers and `key=value` pairs.
+/// Each entry embeds the section it belongs to.  Keys before any section
+/// have section_len=0 (global section).
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointer)
+///  -2  — buffer too small (cap=0, or more entries than cap)
+export fn marky_scan_ini(
+    text: ?[*]const u8,
+    len: u32,
+    out: ?[*]IniEntry,
+    cap: u32,
+    written: ?*u32,
+) i32 {
+    const w = written orelse return -1;
+    const t = text orelse {
+        if (len == 0) {
+            w.* = 0;
+            return 0;
+        }
+        return -1;
+    };
+    const o = out orelse return -1;
+
+    if (len == 0) {
+        w.* = 0;
+        return 0;
+    }
+
+    if (cap == 0) {
+        w.* = 0;
+        return -2;
+    }
+
+    const count = ini_scan.scan_ini(t, len, o, cap);
+    w.* = count;
+
+    if (count >= cap) return -2;
+
+    return 0;
+}
+
+/// SIMD-accelerated TOML file key-value extractor.
+///
+/// Scans `text[0..len]` for TOML structure: [table] headers, [[array_table]]
+/// headers, and key = value assignments.  Each entry embeds its table context.
+///
+/// Entry kinds (entry.kind field):
+///   0 — key-value pair (table_offset/len = current table; key_offset/len = key; val_offset/len = value)
+///   1 — [table] header (table_offset/len = header name; key/val zero)
+///   2 — [[array_table]] header (table_offset/len = header name; key/val zero)
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointer)
+///  -2  — buffer too small (cap=0, or more entries than cap)
+export fn marky_scan_toml(
+    text: ?[*]const u8,
+    len: u32,
+    out: ?[*]TomlEntry,
+    cap: u32,
+    written: ?*u32,
+) i32 {
+    const w = written orelse return -1;
+    const t = text orelse {
+        if (len == 0) {
+            w.* = 0;
+            return 0;
+        }
+        return -1;
+    };
+    const o = out orelse return -1;
+
+    if (len == 0) {
+        w.* = 0;
+        return 0;
+    }
+
+    if (cap == 0) {
+        w.* = 0;
+        return -2;
+    }
+
+    const count = toml_scan.scan_toml(t, len, o, cap);
+    w.* = count;
+
+    if (count >= cap) return -2;
+
+    return 0;
+}
+
+/// SIMD-accelerated YAML key extractor.
+///
+/// Scans `text[0..len]` for YAML mapping keys at all indentation levels.
+/// Each entry records the key name's byte offset, length, and indentation
+/// depth (in spaces; tabs normalised to 1 space each).  Callers reconstruct
+/// key-path hierarchy by tracking indent level transitions.
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointer)
+///  -2  — buffer too small (cap=0, or more entries than cap)
+export fn marky_scan_yaml_keys(
+    text: ?[*]const u8,
+    len: u32,
+    out: ?[*]YamlEntry,
+    cap: u32,
+    written: ?*u32,
+) i32 {
+    const w = written orelse return -1;
+    const t = text orelse {
+        if (len == 0) {
+            w.* = 0;
+            return 0;
+        }
+        return -1;
+    };
+    const o = out orelse return -1;
+
+    if (len == 0) {
+        w.* = 0;
+        return 0;
+    }
+
+    if (cap == 0) {
+        w.* = 0;
+        return -2;
+    }
+
+    const count = yaml_scan.scan_yaml_keys(t, len, o, cap);
+    w.* = count;
+
+    if (count >= cap) return -2;
+
+    return 0;
+}
+
+/// SIMD-accelerated JSON key extractor.
+///
+/// Scans `text[0..len]` for JSON object keys at all nesting levels.
+/// Each entry records the key's byte offset (content only, excluding quotes),
+/// byte length, and 0-indexed nesting depth.  Callers reconstruct dot-
+/// separated key paths by tracking depth transitions.
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointer)
+///  -2  — buffer too small (cap=0, or more entries than cap), or nesting
+///         depth exceeded MAX_DEPTH (100)
+export fn marky_scan_json_keys(
+    text: ?[*]const u8,
+    len: u32,
+    out: ?[*]JsonKeyEntry,
+    cap: u32,
+    written: ?*u32,
+) i32 {
+    const w = written orelse return -1;
+    const t = text orelse {
+        if (len == 0) {
+            w.* = 0;
+            return 0;
+        }
+        return -1;
+    };
+    const o = out orelse return -1;
+
+    if (len == 0) {
+        w.* = 0;
+        return 0;
+    }
+
+    if (cap == 0) {
+        w.* = 0;
+        return -2;
+    }
+
+    var depth_exceeded: bool = false;
+    const count = json_keys.scan_json_keys(t, len, o, cap, &depth_exceeded);
+    w.* = count;
+
+    if (depth_exceeded) return -2;
+    if (count >= cap) return -2;
+
+    return 0;
 }
 
 /// SIMD-accelerated entity hash extraction.
@@ -687,6 +974,12 @@ test {
     _ = @import("kernels/link_graph.zig");
     // Link graph C ABI exports + tests
     _ = @import("exports_graph.zig");
+    // Format extractors
+    _ = @import("kernels/formats/env_scan.zig");
+    _ = @import("kernels/formats/ini_scan.zig");
+    _ = @import("kernels/formats/toml_scan.zig");
+    _ = @import("kernels/formats/yaml_scan.zig");
+    _ = @import("kernels/formats/json_keys.zig");
 }
 
 test "marky_version returns expected version" {
@@ -1031,6 +1324,138 @@ test "marky_fuzzy_match null input returns -1" {
     const score2 = marky_fuzzy_match("st".ptr, 2, null, 5);
     try std.testing.expectEqual(@as(i32, -1), score1);
     try std.testing.expectEqual(@as(i32, -1), score2);
+}
+
+test "marky_fuzzy_match_batch stable top-k ordering" {
+    const query = "ab";
+    const candidates = [_]?[*]const u8{
+        "acb".ptr,
+        "adb".ptr,
+        "aeb".ptr,
+    };
+    const lengths = [_]u32{ 3, 3, 3 };
+    var scores: [3]i32 = undefined;
+    var indices: [3]u32 = undefined;
+    var written: u32 = 0;
+
+    const rc = marky_fuzzy_match_batch(
+        query.ptr,
+        query.len,
+        &candidates,
+        &lengths,
+        candidates.len,
+        &scores,
+        &indices,
+        scores.len,
+        2,
+        &written,
+    );
+
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    try std.testing.expectEqual(@as(u32, 2), written);
+    try std.testing.expectEqual(@as(u32, 0), indices[0]);
+    try std.testing.expectEqual(@as(u32, 1), indices[1]);
+    try std.testing.expect(scores[0] >= scores[1]);
+}
+
+test "marky_fuzzy_match_batch returns no matches for impossible query" {
+    const query = "zzz";
+    const candidates = [_]?[*]const u8{
+        "stage".ptr,
+        "setup".ptr,
+    };
+    const lengths = [_]u32{ 5, 5 };
+    var scores: [2]i32 = undefined;
+    var indices: [2]u32 = undefined;
+    var written: u32 = 99;
+
+    const rc = marky_fuzzy_match_batch(
+        query.ptr,
+        query.len,
+        &candidates,
+        &lengths,
+        candidates.len,
+        &scores,
+        &indices,
+        scores.len,
+        2,
+        &written,
+    );
+
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    try std.testing.expectEqual(@as(u32, 0), written);
+}
+
+test "marky_fuzzy_match_batch capacity guard returns -2" {
+    const query = "st";
+    const candidates = [_]?[*]const u8{"stage".ptr};
+    const lengths = [_]u32{5};
+    var scores: [1]i32 = undefined;
+    var indices: [1]u32 = undefined;
+    var written: u32 = 0;
+
+    const rc = marky_fuzzy_match_batch(
+        query.ptr,
+        query.len,
+        &candidates,
+        &lengths,
+        candidates.len,
+        &scores,
+        &indices,
+        scores.len,
+        2,
+        &written,
+    );
+
+    try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqual(@as(u32, 0), written);
+}
+
+test "marky_fuzzy_match_batch matches scalar reference ranking" {
+    const fuzzy_ref = @import("reference/fuzzy_match_ref.zig");
+
+    const query = "st";
+    const candidate_text = [_][]const u8{
+        "setup",
+        "stage",
+        "toast",
+        "street",
+        "rust",
+    };
+    const candidates = [_]?[*]const u8{
+        candidate_text[0].ptr,
+        candidate_text[1].ptr,
+        candidate_text[2].ptr,
+        candidate_text[3].ptr,
+        candidate_text[4].ptr,
+    };
+    const lengths = [_]u32{ 5, 5, 5, 6, 4 };
+    var scores: [5]i32 = undefined;
+    var indices: [5]u32 = undefined;
+    var written: u32 = 0;
+
+    const rc = marky_fuzzy_match_batch(
+        query.ptr,
+        query.len,
+        &candidates,
+        &lengths,
+        candidates.len,
+        &scores,
+        &indices,
+        scores.len,
+        5,
+        &written,
+    );
+
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    const expected = try fuzzy_ref.rank_candidates(std.testing.allocator, query, &candidate_text, 5);
+    defer std.testing.allocator.free(expected);
+
+    try std.testing.expectEqual(expected.len, @as(usize, @intCast(written)));
+    for (expected, 0..) |exp, i| {
+        try std.testing.expectEqual(exp.index, indices[i]);
+        try std.testing.expectEqual(exp.score, scores[i]);
+    }
 }
 
 test "marky_slugify basic heading" {
