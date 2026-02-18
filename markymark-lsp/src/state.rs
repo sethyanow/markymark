@@ -4,13 +4,15 @@ use std::collections::HashMap;
 
 use markymark_core::structured::{DocumentKind, KeyEntry, ValueKind};
 use markymark_core::{DocumentUri, Position, Range};
-use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link};
 use markymark_index::{
-    slugify, AnyDocumentIndex, BlockOwned, DocumentIndex, HeadingEntry, MarkdownLinkEntry,
-    RealmIndex, StructuredDocumentIndex, WikiLinkEntry, WikiLinkOwned, XmlTagEntry,
+    AnyDocumentIndex, BlockOwned, DocumentIndex, HeadingEntry, MarkdownLinkEntry, MarkdownLinkOwned,
+    RealmIndex, StructuredDocumentIndex, WikiLinkEntry, WikiLinkOwned, XmlTagEntry, XmlTagOwned,
 };
 use markymark_parser::structured::parse_structured;
 use markymark_parser::{byte_to_point, InputEdit, MarkdownTree, Parser};
+
+pub use crate::diagnostics::{DiagnosticSeverity, MarkyDiagnostic};
+use crate::incremental::{self, incremental_byte_bounds};
 
 /// Detected completion trigger context based on cursor position.
 #[derive(Debug, Clone, PartialEq)]
@@ -90,25 +92,6 @@ pub struct RenameEdit {
     pub new_text: String,
 }
 
-/// Severity level for a diagnostic.
-#[derive(Debug, Clone, PartialEq)]
-pub enum DiagnosticSeverity {
-    /// An error (e.g., broken link).
-    Error,
-    /// A warning (e.g., duplicate slug).
-    Warning,
-}
-
-/// A diagnostic produced by document analysis.
-#[derive(Debug, Clone)]
-pub struct MarkyDiagnostic {
-    /// Source range of the problem.
-    pub range: Range,
-    /// Severity level.
-    pub severity: DiagnosticSeverity,
-    /// Human-readable message.
-    pub message: String,
-}
 
 /// Describes what symbol (if any) the cursor is sitting on.
 #[derive(Debug, Clone)]
@@ -175,51 +158,6 @@ pub enum DocumentChange {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct IncrementalByteBounds {
-    start_byte: usize,
-    old_end_byte: usize,
-    start_clamped: bool,
-    end_clamped: bool,
-    /// True when raw end position was before raw start (would be coerced to insertion).
-    end_before_start: bool,
-}
-
-fn incremental_byte_bounds(
-    text: &str,
-    start_line: u32,
-    start_character: u32,
-    end_line: u32,
-    end_character: u32,
-) -> IncrementalByteBounds {
-    let raw_start_byte =
-        crate::convert::lsp_position_to_byte_offset(text, start_line, start_character);
-    let raw_end_byte = crate::convert::lsp_position_to_byte_offset(text, end_line, end_character);
-
-    let end_before_start = raw_end_byte < raw_start_byte;
-    let start_byte = raw_start_byte.min(text.len());
-    let old_end_byte = raw_end_byte.min(text.len()).max(start_byte);
-
-    IncrementalByteBounds {
-        start_byte,
-        old_end_byte,
-        start_clamped: position_was_clamped(text, start_line, start_character),
-        end_clamped: position_was_clamped(text, end_line, end_character),
-        end_before_start,
-    }
-}
-
-fn position_was_clamped(text: &str, line: u32, character: u32) -> bool {
-    let target_line = line as usize;
-    let target_character = character as usize;
-    let Some(line_text) = text.split('\n').nth(target_line) else {
-        return true;
-    };
-
-    // CRLF is normalized for offset math in lsp_position_to_byte_offset.
-    let content = line_text.strip_suffix('\r').unwrap_or(line_text);
-    target_character > content.encode_utf16().count()
-}
 
 /// The internal state of the LSP server.
 ///
@@ -262,272 +200,33 @@ impl ServerState {
     /// Returns both the index and the tree-sitter parse tree. The tree is
     /// retained per-document for future incremental parsing.
     fn build_markdown_index(&mut self, text: &str) -> (DocumentIndex, Option<MarkdownTree>) {
-        self.build_markdown_index_with_old_tree(text, None, None, None, &[])
-    }
-
-    fn range_intersects_edit(range: Range, edit: &InputEdit) -> bool {
-        let range_start = (range.start.line, range.start.character);
-        let range_end = (range.end.line, range.end.character);
-        let edit_start = (
-            edit.start_position.row as u32,
-            edit.start_position.column as u32,
-        );
-        let edit_end = (
-            edit.old_end_position.row as u32,
-            edit.old_end_position.column as u32,
-        );
-
-        range_start < edit_end && range_end > edit_start
-    }
-
-    fn range_is_after_edit_start(range: Range, edit: &InputEdit) -> bool {
-        let range_start = (range.start.line, range.start.character);
-        let edit_start = (
-            edit.start_position.row as u32,
-            edit.start_position.column as u32,
-        );
-        range_start >= edit_start
-    }
-
-    fn range_within_neighbor_window(
-        start_byte: usize,
-        end_byte: usize,
-        edit: &InputEdit,
-        window_bytes: usize,
-    ) -> bool {
-        start_byte <= edit.old_end_byte.saturating_add(window_bytes)
-            && end_byte.saturating_add(window_bytes) >= edit.start_byte
-    }
-
-    fn wiki_link_affected_by_edits(wl: &WikiLinkOwned, pending_edits: &[InputEdit]) -> bool {
-        pending_edits.iter().any(|edit| {
-            Self::range_intersects_edit(wl.range, edit)
-                || Self::range_is_after_edit_start(wl.range, edit)
-                || Self::range_within_neighbor_window(wl.start_byte, wl.end_byte, edit, 100)
-        })
-    }
-
-    fn wiki_links_need_update(
-        old_wiki_links: &[WikiLinkOwned],
-        pending_edits: &[InputEdit],
-    ) -> bool {
-        old_wiki_links
-            .iter()
-            .any(|link| Self::wiki_link_affected_by_edits(link, pending_edits))
-            || Self::any_edit_starts_at_or_after_last_wiki_link(old_wiki_links, pending_edits)
-    }
-
-    fn any_edit_starts_at_or_after_last_wiki_link(
-        old_wiki_links: &[WikiLinkOwned],
-        pending_edits: &[InputEdit],
-    ) -> bool {
-        let Some(last_old_end) = old_wiki_links
-            .iter()
-            .map(|link| (link.range.end.line, link.range.end.character))
-            .max()
-        else {
-            return false;
-        };
-
-        pending_edits.iter().any(|edit| {
-            let edit_start = (
-                edit.start_position.row as u32,
-                edit.start_position.column as u32,
-            );
-            edit_start >= last_old_end
-        })
-    }
-
-    fn extract_wiki_links_owned(ast: &markymark_parser::Ast) -> Vec<WikiLinkOwned> {
-        ast.extract_wiki_links()
-            .into_iter()
-            .filter(|wl| {
-                wl.target_page().is_some()
-                    || wl.target_heading().is_some()
-                    || wl.target_block_id().is_some()
-            })
-            .map(|wl| {
-                let (start_byte, end_byte) = wl.byte_range();
-                WikiLinkOwned {
-                    target: wl.target_page().unwrap_or("").to_string(),
-                    alias: wl.alias().map(str::to_string),
-                    heading: wl.target_heading().map(str::to_string),
-                    range: wl.range(),
-                    start_byte,
-                    end_byte,
-                }
-            })
-            .collect()
-    }
-
-    fn merge_incremental_wiki_links(
-        old_wiki_links: &[WikiLinkOwned],
-        new_wiki_links: &[WikiLinkOwned],
-        pending_edits: &[InputEdit],
-    ) -> Vec<WikiLinkOwned> {
-        let mut merged = Vec::new();
-        for old in old_wiki_links {
-            if !Self::wiki_link_affected_by_edits(old, pending_edits) {
-                merged.push(old.clone());
-            }
-        }
-
-        for new_link in new_wiki_links {
-            if Self::wiki_link_affected_by_edits(new_link, pending_edits) {
-                merged.push(new_link.clone());
-            }
-        }
-
-        merged.sort_by_key(|wl| (wl.range.start.line, wl.range.start.character));
-        merged
-    }
-
-    fn block_affected_by_edits(block: &BlockOwned, pending_edits: &[InputEdit]) -> bool {
-        pending_edits.iter().any(|edit| {
-            Self::range_intersects_edit(block.range, edit)
-                || Self::range_is_after_edit_start(block.range, edit)
-                || Self::range_within_neighbor_window(block.start_byte, block.end_byte, edit, 100)
-        })
-    }
-
-    fn blocks_need_update(old_blocks: &[BlockOwned], pending_edits: &[InputEdit]) -> bool {
-        if pending_edits.is_empty() {
-            return false;
-        }
-        old_blocks
-            .iter()
-            .any(|block| Self::block_affected_by_edits(block, pending_edits))
-            || Self::any_edit_starts_at_or_after_last_block(old_blocks, pending_edits)
-    }
-
-    fn any_edit_starts_at_or_after_last_block(
-        old_blocks: &[BlockOwned],
-        pending_edits: &[InputEdit],
-    ) -> bool {
-        let Some(last_old_end) = old_blocks
-            .iter()
-            .map(|block| (block.range.end.line, block.range.end.character))
-            .max()
-        else {
-            return false;
-        };
-
-        pending_edits.iter().any(|edit| {
-            let edit_start = (
-                edit.start_position.row as u32,
-                edit.start_position.column as u32,
-            );
-            edit_start >= last_old_end
-        })
-    }
-
-    fn extract_blocks_owned(ast: &markymark_parser::Ast) -> Vec<BlockOwned> {
-        ast.extract_block_ids()
-            .into_iter()
-            .map(|b| BlockOwned {
-                id: b.id().to_string(),
-                range: b.range(),
-                start_byte: b.start_byte(),
-                end_byte: b.end_byte(),
-            })
-            .collect()
-    }
-
-    fn merge_incremental_blocks(
-        old_blocks: &[BlockOwned],
-        new_blocks: &[BlockOwned],
-        pending_edits: &[InputEdit],
-    ) -> Vec<BlockOwned> {
-        let mut merged = Vec::new();
-        for old in old_blocks {
-            if !Self::block_affected_by_edits(old, pending_edits) {
-                merged.push(old.clone());
-            }
-        }
-        for new_block in new_blocks {
-            if Self::block_affected_by_edits(new_block, pending_edits) {
-                merged.push(new_block.clone());
-            }
-        }
-        merged.sort_by_key(|b| (b.range.start.line, b.range.start.character));
-        merged
-    }
-
-    fn build_markdown_index_incremental(
-        old_wiki_links: Option<&[WikiLinkOwned]>,
-        old_blocks: Option<&[BlockOwned]>,
-        ast: markymark_parser::Ast,
-        pending_edits: &[InputEdit],
-    ) -> DocumentIndex {
-        if pending_edits.is_empty() {
-            return DocumentIndex::from_ast(ast);
-        }
-
-        // Compute merged wiki-links
-        let merged_wiki_links = if let Some(old_wiki_links) = old_wiki_links {
-            if old_wiki_links.is_empty() {
-                Some(Self::extract_wiki_links_owned(&ast))
-            } else if !Self::wiki_links_need_update(old_wiki_links, pending_edits) {
-                Some(old_wiki_links.to_vec())
-            } else {
-                let new_wiki_links = Self::extract_wiki_links_owned(&ast);
-                Some(Self::merge_incremental_wiki_links(
-                    old_wiki_links,
-                    &new_wiki_links,
-                    pending_edits,
-                ))
-            }
-        } else {
-            None
-        };
-
-        // Compute merged blocks
-        let merged_blocks = if let Some(old_blocks) = old_blocks {
-            if old_blocks.is_empty() {
-                Some(Self::extract_blocks_owned(&ast))
-            } else if !Self::blocks_need_update(old_blocks, pending_edits) {
-                Some(old_blocks.to_vec())
-            } else {
-                let new_blocks = Self::extract_blocks_owned(&ast);
-                Some(Self::merge_incremental_blocks(
-                    old_blocks,
-                    &new_blocks,
-                    pending_edits,
-                ))
-            }
-        } else {
-            None
-        };
-
-        match (merged_wiki_links, merged_blocks) {
-            (Some(wl), Some(bl)) => DocumentIndex::from_ast_with_wiki_links_and_blocks(ast, wl, bl),
-            (Some(wl), None) => DocumentIndex::from_ast_with_wiki_links(ast, wl),
-            (None, Some(bl)) => DocumentIndex::from_ast_with_blocks(ast, bl),
-            (None, None) => DocumentIndex::from_ast(ast),
-        }
+        self.build_markdown_index_with_old_tree(text, None, &[], None, None, None, None)
     }
 
     /// Parse text with optional old tree reuse and build a markdown document index.
     ///
-    /// When `old_tree` is `Some`, tree-sitter reuses unchanged subtrees for
-    /// O(edit_size) reparsing. The old tree must have been updated via
-    /// `MarkdownTree::edit()` with all changes since it was last parsed.
+    /// Delegates to [`incremental::build_markdown_index_with_old_tree`] which handles
+    /// all 5 independent extractors (wiki_links, blocks, tags, markdown_links, xml_tags).
     fn build_markdown_index_with_old_tree(
         &mut self,
         text: &str,
         old_tree: Option<&MarkdownTree>,
+        pending_edits: &[InputEdit],
         old_wiki_links: Option<&[WikiLinkOwned]>,
         old_blocks: Option<&[BlockOwned]>,
-        pending_edits: &[InputEdit],
+        old_markdown_links: Option<&[MarkdownLinkOwned]>,
+        old_xml_tags: Option<&[XmlTagOwned]>,
     ) -> (DocumentIndex, Option<MarkdownTree>) {
-        let mut ast = self
-            .parser
-            .parse_with_old_tree(text, old_tree)
-            .expect("failed to parse document");
-        let md_tree = ast.take_md_tree();
-        let index =
-            Self::build_markdown_index_incremental(old_wiki_links, old_blocks, ast, pending_edits);
-        (index, md_tree)
+        incremental::build_markdown_index_with_old_tree(
+            &mut self.parser,
+            text,
+            old_tree,
+            pending_edits,
+            old_wiki_links,
+            old_blocks,
+            old_markdown_links,
+            old_xml_tags,
+        )
     }
 
     /// Detect document kind from URI file extension.

@@ -4,7 +4,7 @@ This report compares Tier 1 (Zig scan via `DocumentIndex::from_scan`) against Ti
 
 ## Corpus
 
-- Parsed markdown files: 89
+- Parsed markdown files: 91
 - Skipped files (read/parse failures): 0
 - Files with setext headings: 2
 - Files with frontmatter: 1
@@ -14,18 +14,18 @@ This report compares Tier 1 (Zig scan via `DocumentIndex::from_scan`) against Ti
 
 | Metric | AST Total | Scan Total | False Positives | False Negatives |
 |---|---:|---:|---:|---:|
-| Headings | 1055 | 1129 | 74 | 0 |
+| Headings | 1103 | 1177 | 74 | 0 |
 | Wiki Links | 54 | 54 | 0 | 0 |
-| Markdown Links | 393 | 391 | 0 | 2 |
-| Tags | 104 | 59 | 0 | 45 |
+| Markdown Links | 394 | 392 | 0 | 2 |
+| Tags | 106 | 61 | 0 | 45 |
 | Block IDs | 0 | 0 | 0 | 0 |
 
 ## Rates
 
-- Raw false positive rate: 4.61%
-- Raw false negative rate: 2.93%
-- Adjusted false positive rate (excluding known setext/frontmatter gaps): 4.38%
-- Adjusted false negative rate (excluding known setext/frontmatter gaps): 2.64%
+- Raw false positive rate: 4.47%
+- Raw false negative rate: 2.84%
+- Adjusted false positive rate (excluding known setext/frontmatter gaps): 4.24%
+- Adjusted false negative rate (excluding known setext/frontmatter gaps): 2.56%
 - Code block false-positive doc rate: 32.79% (20 / 61)
 - Code block false-positive events: 74
 
