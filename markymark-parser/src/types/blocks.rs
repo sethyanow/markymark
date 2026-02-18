@@ -8,12 +8,21 @@ pub struct BlockId<'arena> {
     id: &'arena str,
     /// Source range of the block ID occurrence (covers `^block-id` in source).
     range: Range,
+    /// Byte offset of the `^` character.
+    start_byte: usize,
+    /// Byte offset one past the last character of the block ID.
+    end_byte: usize,
 }
 
 impl<'arena> BlockId<'arena> {
-    /// Create a new block ID with its source range.
-    pub(crate) fn new(id: &'arena str, range: Range) -> Self {
-        Self { id, range }
+    /// Create a new block ID with its source range and byte offsets.
+    pub(crate) fn new(id: &'arena str, range: Range, start_byte: usize, end_byte: usize) -> Self {
+        Self {
+            id,
+            range,
+            start_byte,
+            end_byte,
+        }
     }
 
     /// Get ID
@@ -24,6 +33,16 @@ impl<'arena> BlockId<'arena> {
     /// Get the source range of this block ID.
     pub fn range(&self) -> Range {
         self.range
+    }
+
+    /// Byte offset of the `^` character.
+    pub fn start_byte(&self) -> usize {
+        self.start_byte
+    }
+
+    /// Byte offset one past the last character of the block ID.
+    pub fn end_byte(&self) -> usize {
+        self.end_byte
     }
 }
 
