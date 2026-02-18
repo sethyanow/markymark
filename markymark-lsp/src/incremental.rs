@@ -541,6 +541,7 @@ pub fn build_markdown_index_incremental(
 ///
 /// This is the incremental-aware entry point used by `ServerState`. When
 /// `old_tree` is `Some`, tree-sitter reuses unchanged subtrees.
+#[allow(clippy::too_many_arguments)]
 pub fn build_markdown_index_with_old_tree(
     parser: &mut markymark_parser::Parser,
     text: &str,
@@ -665,7 +666,11 @@ mod tests {
         // ml2 is after edit start so it's "affected" — both old and new ml2 will be considered.
         // Let's test the simpler case: edit before both links.
         let edit = make_edit(0, 5, 0, 8); // overlaps ml1
-        let merged = merge_incremental_markdown_links(&[ml1.clone(), ml2.clone()], &[ml2.clone()], &[edit]);
+        let merged = merge_incremental_markdown_links(
+            &[ml1.clone(), ml2.clone()],
+            std::slice::from_ref(&ml2),
+            &[edit],
+        );
         // ml1 is affected -> dropped from old; ml2 comes from "new" only if it's affected too.
         // ml2 is after edit start (line 10 >= line 0), so affected -> dropped from old, added from new.
         assert_eq!(merged.len(), 1);
@@ -675,7 +680,10 @@ mod tests {
     #[test]
     fn test_markdown_links_need_update_false_when_edit_before_all_links() {
         // No links; edit_starts_at_or_after check returns false for empty slice
-        assert!(!any_edit_starts_at_or_after_last_markdown_link(&[], &[make_edit(0, 0, 0, 5)]));
+        assert!(!any_edit_starts_at_or_after_last_markdown_link(
+            &[],
+            &[make_edit(0, 0, 0, 5)]
+        ));
     }
 
     // ─── XmlTag tests ─────────────────────────────────────────────────────────
@@ -702,10 +710,13 @@ mod tests {
         let old_xt = make_xt(5, 0, 5, 20, "goal");
         let new_xt = make_xt(5, 0, 5, 20, "goal"); // same after re-extraction
         let edit = make_edit(0, 0, 0, 3);
-        let merged = merge_incremental_xml_tags(&[old_xt], &[new_xt.clone()], &[edit]);
+        let merged = merge_incremental_xml_tags(&[old_xt], std::slice::from_ref(&new_xt), &[edit]);
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].tag_name, "goal");
-        assert_eq!(merged[0].attributes, vec![("key".to_string(), "val".to_string())]);
+        assert_eq!(
+            merged[0].attributes,
+            vec![("key".to_string(), "val".to_string())]
+        );
     }
 
     #[test]

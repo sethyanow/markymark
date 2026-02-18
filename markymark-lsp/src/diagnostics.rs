@@ -6,7 +6,10 @@
 use std::collections::HashMap;
 
 use markymark_core::{DocumentUri, Range};
-use markymark_index::{resolution::{resolve_markdown_link, resolve_wiki_link}, slugify, DocumentIndex, RealmIndex};
+use markymark_index::{
+    resolution::{resolve_markdown_link, resolve_wiki_link},
+    slugify, DocumentIndex, RealmIndex,
+};
 
 /// Severity level for a diagnostic.
 #[derive(Debug, Clone, PartialEq)]
