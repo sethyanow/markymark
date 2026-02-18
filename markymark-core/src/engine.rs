@@ -173,6 +173,15 @@ pub enum CoreOperation {
         /// Max results to return. `0` returns empty (not an error). Clamped to 100 silently.
         limit: u32,
     },
+    /// Analyse the link graph of a realm: orphans, hubs, broken links, clusters, stats.
+    GraphAnalysis {
+        /// Realm to analyse. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+        /// Number of top hub documents to return (by incoming link count). Default 10.
+        top_n_hubs: u32,
+        /// Whether to compute weakly-connected clusters (can be expensive for large workspaces).
+        include_clusters: bool,
+    },
 }
 
 /// A single match result from a regex pattern search.
@@ -303,6 +312,24 @@ pub enum CoreOperationResult {
         matches: Vec<PatternMatch>,
         /// `true` when the result was truncated at `limit`.
         truncated: bool,
+    },
+    /// Results from a link graph analysis of the workspace.
+    GraphAnalysis {
+        /// Realm that was analysed.
+        realm: String,
+        /// Total markdown documents in the realm.
+        total_docs: u32,
+        /// Total resolved internal links (wiki + local markdown).
+        total_internal_links: u32,
+        /// Documents with zero incoming AND zero outgoing internal links.
+        orphans: Vec<DocumentUri>,
+        /// Top documents by incoming link count: `(uri, incoming_count)`, sorted descending.
+        hubs: Vec<(DocumentUri, u32)>,
+        /// Outgoing links that could not be resolved to any indexed document.
+        /// Each entry is `(source_uri, target_string, kind)` where kind is `"wiki"` or `"markdown"`.
+        broken_links: Vec<(DocumentUri, String, String)>,
+        /// Weakly-connected clusters. `None` when `include_clusters` was `false`.
+        clusters: Option<Vec<Vec<DocumentUri>>>,
     },
     /// Success with no payload.
     Ok,

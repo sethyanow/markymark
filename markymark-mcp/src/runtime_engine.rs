@@ -872,6 +872,25 @@ impl CoreEngine for RuntimeEngine {
                     case_insensitive,
                 )
             }
+            CoreOperation::GraphAnalysis {
+                realm: realm_name,
+                top_n_hubs,
+                include_clusters,
+            } => {
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
+                let state = self.state.read().expect("lock poisoned");
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
+                        format!("realm does not exist: {realm_key}"),
+                    ));
+                };
+                crate::graph::execute_graph_analysis(
+                    realm_key,
+                    &realm_data.index,
+                    top_n_hubs,
+                    include_clusters,
+                )
+            }
         }
     }
 }

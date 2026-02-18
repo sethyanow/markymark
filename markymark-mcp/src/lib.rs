@@ -24,6 +24,7 @@ use rmcp::{
 use serde_json::json;
 
 pub mod dto;
+mod graph;
 mod pattern;
 mod prompts;
 mod rename_ops;
@@ -868,6 +869,91 @@ impl MarkymarkMcp {
             }
             CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
             other => Ok(unexpected_result_error("search-for-pattern", &other)),
+        }
+    }
+
+    /// Analyse the link graph: orphans, hubs, broken links, clusters, and summary stats.
+    #[tool(
+        name = "graph-analysis",
+        description = "Analyse the markdown link graph of a workspace realm. Returns orphan documents (no resolved links in or out), hub documents (most incoming links), broken links (unresolvable wiki or markdown links), and summary statistics. Optionally computes weakly-connected clusters."
+    )]
+    pub async fn graph_analysis_tool(
+        &self,
+        params: Parameters<GraphAnalysisRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let req = &params.0;
+        match self.engine.execute(CoreOperation::GraphAnalysis {
+            realm: req.realm.clone(),
+            top_n_hubs: req.top_n_hubs,
+            include_clusters: req.include_clusters,
+        }) {
+            CoreOperationResult::GraphAnalysis {
+                realm,
+                total_docs,
+                total_internal_links,
+                orphans,
+                hubs,
+                broken_links,
+                clusters,
+            } => {
+                let orphan_count = orphans.len() as u32;
+                let broken_link_count = broken_links.len() as u32;
+                let cluster_count = clusters.as_ref().map(|c| c.len() as u32);
+                let stats = GraphStatsDto {
+                    total_docs,
+                    total_internal_links,
+                    orphan_count,
+                    broken_link_count,
+                    cluster_count,
+                };
+                let orphan_dtos: Vec<OrphanDto> = orphans
+                    .into_iter()
+                    .map(|u| OrphanDto {
+                        uri: u.as_str().to_string(),
+                    })
+                    .collect();
+                let hub_dtos: Vec<HubDto> = hubs
+                    .into_iter()
+                    .map(|(u, count)| HubDto {
+                        uri: u.as_str().to_string(),
+                        incoming_count: count,
+                    })
+                    .collect();
+                let broken_dtos: Vec<BrokenLinkDto> = broken_links
+                    .into_iter()
+                    .map(|(src, target, kind)| BrokenLinkDto {
+                        source_uri: src.as_str().to_string(),
+                        target,
+                        kind,
+                    })
+                    .collect();
+                let cluster_dtos: Option<Vec<ClusterDto>> = clusters.map(|cs| {
+                    cs.into_iter()
+                        .enumerate()
+                        .map(|(id, members)| {
+                            let size = members.len();
+                            ClusterDto {
+                                id,
+                                members: members
+                                    .into_iter()
+                                    .map(|u| u.as_str().to_string())
+                                    .collect(),
+                                size,
+                            }
+                        })
+                        .collect()
+                });
+                Ok(CallToolResult::structured(json!(GraphAnalysisResponse {
+                    realm,
+                    stats,
+                    orphans: orphan_dtos,
+                    hubs: hub_dtos,
+                    broken_links: broken_dtos,
+                    clusters: cluster_dtos,
+                })))
+            }
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("graph-analysis", &other)),
         }
     }
 }
