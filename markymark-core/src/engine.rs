@@ -3,6 +3,29 @@
 use crate::structured::DocumentKind;
 use crate::{CoreError, DocumentUri, Range};
 
+/// A single result from a workspace-wide search.
+#[derive(Debug, Clone)]
+pub struct WorkspaceSearchResult {
+    /// Document URI.
+    pub uri: DocumentUri,
+    /// First H1 heading text, or filename derived from URI (stripped extension, underscores to spaces).
+    pub title: String,
+    /// Relevance score: 1.0 = title match, 0.8 = heading match, 0.6 = frontmatter/property match, 1.0 = filter-only (no query).
+    pub score: f32,
+    /// Which fields matched the query, e.g. ["title", "frontmatter:status", "property:type", "heading"].
+    pub matched_fields: Vec<String>,
+    /// First 3 frontmatter key-value pairs (value stringified for display).
+    pub frontmatter_preview: Vec<(String, String)>,
+    /// First 3 Logseq inline property key-value pairs.
+    pub property_preview: Vec<(String, String)>,
+    /// All tag names on this document (without `#` prefix).
+    pub tags: Vec<String>,
+    /// Whether this document was detected as a Logseq journal page.
+    pub is_journal: bool,
+    /// Logseq journal date `(year, month, day)` if detected.
+    pub journal_date: Option<(u16, u8, u8)>,
+}
+
 /// Semantic search match payload shared across transports.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SemanticSearchMatch {
@@ -115,6 +138,25 @@ pub enum CoreOperation {
         /// Output format: "json" or "dot".
         format: String,
     },
+    /// Search workspace documents by text, frontmatter, and property queries.
+    SearchWorkspace {
+        /// Free-text search query. Case-insensitive substring match against title, heading
+        /// text, frontmatter values, and property values. `None` means no text filter.
+        query: Option<String>,
+        /// Filter: only include docs where `frontmatter[key]` value contains the given string.
+        /// Key match is case-insensitive and exact. Value match is case-insensitive substring.
+        /// For list frontmatter values (e.g. `aliases`), any element matching is sufficient.
+        frontmatter_filter: Option<(String, String)>,
+        /// Filter: only include docs where Logseq property `key:: value` matches.
+        /// Key is case-insensitive exact match; value is case-insensitive substring.
+        property_filter: Option<(String, String)>,
+        /// Filter: only include docs that have this tag (case-insensitive, exact name after `#`).
+        tag_filter: Option<String>,
+        /// Realm to search. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+        /// Max results to return. `0` returns empty (not an error). Clamped to 100 silently.
+        limit: u32,
+    },
 }
 
 /// Transport-agnostic interface for executing core operations.
@@ -200,6 +242,15 @@ pub enum CoreOperationResult {
         format: String,
         /// Serialized graph content.
         content: String,
+    },
+    /// Results from a workspace-wide search.
+    WorkspaceSearchResults {
+        /// Realm that was searched.
+        realm: String,
+        /// The original query, if any.
+        query: Option<String>,
+        /// Ranked search results.
+        results: Vec<WorkspaceSearchResult>,
     },
     /// Success with no payload.
     Ok,
