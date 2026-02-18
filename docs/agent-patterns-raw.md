@@ -24,7 +24,7 @@ Curate into reusable agent guidance as patterns solidify.
 
 - `rmcp` structured error envelope: `CallToolResult::structured` and `structured_error` for MCP payloads.
 - Optional PromptArgument in rmcp: `PromptArgument { required: Some(false) }`, extract with `.get(key).and_then(|v| v.as_str())`.
-- FULL text document sync (not INCREMENTAL) was the v1 LSP approach. Incremental sync landed later.
+- Full-text document sync (not INCREMENTAL) was the v1 LSP approach. Incremental sync landed later.
 - Deterministic sort by URI then range for stable output in LSP responses.
 
 ## Tree-Sitter & Parsing

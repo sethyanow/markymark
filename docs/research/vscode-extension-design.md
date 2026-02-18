@@ -292,7 +292,7 @@ Well within Marketplace limits (typical extensions: 1–50MB).
 
 ## Architecture Diagram
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │  VS Code Extension Host (Web Worker)                            │
 │                                                                 │

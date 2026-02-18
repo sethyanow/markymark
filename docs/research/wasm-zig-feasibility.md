@@ -57,7 +57,7 @@ Build succeeds and the module executes correctly in wasmtime 41.0.3.
 
 ### Benchmark Method
 
-Both built at `ReleaseFast`. Loop: scan a 70-byte markdown document, 1M/10M times.
+Both built at `ReleaseFast`. Loop: scan a 70-byte Markdown document, 1M/10M times.
 
 | Target | Iterations | Wall time | Per-iteration |
 |--------|-----------|-----------|---------------|

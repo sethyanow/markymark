@@ -113,7 +113,7 @@ fn process_line(
     var p: u32 = raw_start;
     while (p < line_end and (buf[p] == ' ' or buf[p] == '\t')) : (p += 1) {}
 
-    const indent: u32 = p - raw_start;
+    var indent: u32 = p - raw_start;
 
     // Blank lines do not exit block-scalar mode (they are scalar content).
     if (p >= line_end) return false;
@@ -142,10 +142,14 @@ fn process_line(
     if (buf[p] == '%') return false;
 
     // Strip list-item prefix "- " to expose mapping keys within sequences.
+    // Recompute indent to the key column (after "- " and any extra whitespace),
+    // not the dash column, so that hierarchy and block-scalar detection are correct.
     if (buf[p] == '-' and p + 1 < line_end and buf[p + 1] == ' ') {
+        const list_prefix_start = p;
         p += 2;
         // Skip any additional whitespace after "- ".
         while (p < line_end and (buf[p] == ' ' or buf[p] == '\t')) : (p += 1) {}
+        indent += p - list_prefix_start;
     }
 
     if (p >= line_end) return false;
@@ -429,4 +433,15 @@ test "yaml_cap_enforcement: stops writing when cap is reached" {
     try std.testing.expectEqual(@as(u32, 2), w);
     try std.testing.expectEqual(@as(u16, 1), out[0].key_len); // "a"
     try std.testing.expectEqual(@as(u16, 1), out[1].key_len); // "b"
+}
+
+test "yaml_list_item_indent: indent reflects key column not dash column" {
+    // "  - host: a" — 2 spaces before '-', so key "host" is at column 4 (after "- ").
+    const text = "  - host: a\n";
+    var out: [2]YamlEntry = undefined;
+    const w = scan_yaml_keys(text.ptr, text.len, &out, 2);
+    try std.testing.expectEqual(@as(u32, 1), w);
+    try std.testing.expectEqual(@as(u16, 4), out[0].key_len); // "host"
+    // Indent must be 4 (key column), not 2 (dash column).
+    try std.testing.expectEqual(@as(u16, 4), out[0].indent);
 }

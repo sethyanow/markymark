@@ -90,6 +90,11 @@ unsafe impl Send for EmbeddingIndex {}
 // read-only operations on the Zig side (no interior mutation). Concurrent
 // readers are safe. The `RwLock` in RuntimeEngine ensures no reader overlaps
 // with a writer.
+//
+// WARNING: This `Sync` impl is only safe under external read-write locking.
+// If `EmbeddingIndex` is accessed without the `RwLock` guard held by the
+// caller, data races are possible. Do not share this type across threads
+// without external synchronization.
 // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage
 unsafe impl Sync for EmbeddingIndex {}
 

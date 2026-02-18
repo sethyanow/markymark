@@ -492,13 +492,15 @@ pub fn fuzzy_match_batch(
     let mut indices = vec![0_u32; output_cap];
     let mut written: u32 = 0;
 
+    let query_len_u32 = u32::try_from(query.len()).map_err(|_| KernelError::InvalidInput)?;
+
     // SAFETY: all pointers are derived from live Rust slices/vectors for the duration
     // of this call; output buffers are sized to `output_cap`.
     // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let rc = unsafe {
         marky_fuzzy_match_batch(
             query.as_ptr(),
-            u32::try_from(query.len()).map_err(|_| KernelError::InvalidInput)?,
+            query_len_u32,
             candidate_ptrs.as_ptr(),
             candidate_lens.as_ptr(),
             candidate_count,
