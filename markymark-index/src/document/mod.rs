@@ -232,11 +232,16 @@ impl DocumentIndex {
         } else {
             ast.extract_markdown_links()
                 .into_iter()
-                .map(|ml| MarkdownLinkOwned {
-                    text: ml.text().to_string(),
-                    url: ml.url().to_string(),
-                    anchor: ml.anchor().map(str::to_string),
-                    range: ml.range(),
+                .map(|ml| {
+                    let (start_byte, end_byte) = ml.byte_range();
+                    MarkdownLinkOwned {
+                        text: ml.text().to_string(),
+                        url: ml.url().to_string(),
+                        anchor: ml.anchor().map(str::to_string),
+                        range: ml.range(),
+                        start_byte,
+                        end_byte,
+                    }
                 })
                 .collect()
         };
@@ -253,12 +258,15 @@ impl DocumentIndex {
                         .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
                         .collect();
                     attributes.sort_by(|a, b| a.0.cmp(&b.0));
+                    let (start_byte, end_byte) = xt.byte_range();
                     XmlTagOwned {
                         tag_name: xt.tag_name().to_string(),
                         attributes,
                         is_self_closing: xt.is_self_closing(),
                         is_unclosed: xt.is_unclosed(),
                         range: xt.range(),
+                        start_byte,
+                        end_byte,
                     }
                 })
                 .collect()
@@ -424,6 +432,8 @@ impl DocumentIndex {
                     url: arena_alloc_str(arena_ref, &ml.url),
                     anchor: ml.anchor.as_deref().map(|a| arena_alloc_str(arena_ref, a)),
                     range: ml.range,
+                    start_byte: ml.start_byte,
+                    end_byte: ml.end_byte,
                 });
             }
             let markdown_links = markdown_links_builder.into_bump_slice();
@@ -442,6 +452,8 @@ impl DocumentIndex {
                     is_self_closing: xt.is_self_closing,
                     is_unclosed: xt.is_unclosed,
                     range: xt.range,
+                    start_byte: xt.start_byte,
+                    end_byte: xt.end_byte,
                 });
             }
             let xml_tags = xml_tags_builder.into_bump_slice();
@@ -623,6 +635,8 @@ impl DocumentIndex {
                             url,
                             anchor,
                             range,
+                            start_byte: l.offset as usize,
+                            end_byte: end_offset as usize,
                         });
                     }
                 }

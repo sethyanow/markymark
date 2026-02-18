@@ -125,6 +125,9 @@ impl SemanticIndex {
         } else {
             for (i, heading) in index.headings().iter().enumerate() {
                 let embedding_input = heading.text.to_string();
+                if embedding_input.trim().is_empty() {
+                    continue;
+                }
                 let embedding = self.provider.embed(&embedding_input)?;
                 let id = format!("{}#{}#{i}", uri.as_str(), heading.slug);
                 self.index
@@ -182,7 +185,7 @@ impl SemanticIndex {
         let query_embedding = self.provider.embed(query)?;
         let score_floor = min_score.clamp(0.0, 1.0);
 
-        let fetch_k = compute_fetch_k(self.index.count(), top_k);
+        let fetch_k = compute_fetch_k(self.index.count(), self.entries_by_id.len() as u32, top_k);
         let raw = self
             .index
             .search(&query_embedding, fetch_k)
@@ -279,12 +282,16 @@ fn token_hashes(text: &str) -> Vec<u32> {
         .collect()
 }
 
-fn compute_fetch_k(index_count: u32, top_k: u32) -> u32 {
-    if index_count == 0 || top_k == 0 {
+fn compute_fetch_k(index_count: u32, active_count: u32, top_k: u32) -> u32 {
+    if index_count == 0 || top_k == 0 || active_count == 0 {
         return 0;
     }
-    let overfetch = top_k.saturating_mul(FETCH_OVERFETCH_MULTIPLIER);
-    index_count.min(overfetch.max(top_k))
+    // Scale fetch size by stale ratio so enough active entries survive filtering.
+    // If 80% of vectors are stale, we need ~5x raw hits per desired result.
+    let stale_adjusted = ((top_k as u64 * index_count as u64) / active_count as u64) as u32;
+    let baseline = top_k.saturating_mul(FETCH_OVERFETCH_MULTIPLIER);
+    let needed = stale_adjusted.max(baseline);
+    index_count.min(needed)
 }
 
 fn fnv1a32(text: &str) -> u32 {
@@ -316,20 +323,134 @@ fn jaccard_similarity(a: &BTreeSet<u32>, b: &BTreeSet<u32>) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::compute_fetch_k;
+    use super::*;
+    use std::sync::Arc;
+
+    use markymark_core::prelude::EmbedError;
+
+    // --- compute_fetch_k unit tests ---
 
     #[test]
     fn compute_fetch_k_limits_overfetch_for_small_top_k() {
-        assert_eq!(compute_fetch_k(1_000, 5), 20);
+        // All active: stale_adjusted = 5*1000/1000 = 5, baseline = 20 → 20
+        assert_eq!(compute_fetch_k(1_000, 1_000, 5), 20);
     }
 
     #[test]
     fn compute_fetch_k_never_exceeds_index_count() {
-        assert_eq!(compute_fetch_k(17, 8), 17);
+        assert_eq!(compute_fetch_k(17, 17, 8), 17);
     }
 
     #[test]
     fn compute_fetch_k_handles_empty_index() {
-        assert_eq!(compute_fetch_k(0, 8), 0);
+        assert_eq!(compute_fetch_k(0, 0, 8), 0);
+    }
+
+    #[test]
+    fn compute_fetch_k_zero_active_returns_zero() {
+        assert_eq!(compute_fetch_k(100, 0, 5), 0);
+    }
+
+    #[test]
+    fn compute_fetch_k_scales_up_for_stale_vectors() {
+        // 100 total, 20 active (80% stale), top_k=5
+        // stale_adjusted = 5 * 100 / 20 = 25, baseline = 20 → 25
+        assert_eq!(compute_fetch_k(100, 20, 5), 25);
+    }
+
+    #[test]
+    fn compute_fetch_k_heavily_stale_fetches_all() {
+        // 100 total, 2 active (98% stale), top_k=5
+        // stale_adjusted = 5 * 100 / 2 = 250, capped at index_count → 100
+        assert_eq!(compute_fetch_k(100, 2, 5), 100);
+    }
+
+    // --- Helper: deterministic test embedding provider ---
+
+    struct TestEmbeddingProvider {
+        dims: u32,
+        /// When true, rejects empty/whitespace text (like HashEmbeddingProvider).
+        reject_empty: bool,
+    }
+
+    impl TestEmbeddingProvider {
+        fn new(dims: u32) -> Self {
+            Self {
+                dims,
+                reject_empty: true,
+            }
+        }
+    }
+
+    impl EmbeddingProvider for TestEmbeddingProvider {
+        fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+            if self.reject_empty && text.trim().is_empty() {
+                return Err(EmbedError::InvalidInput("empty text rejected".to_string()));
+            }
+            // Simple bag-of-words hash embedding (mirrors HashEmbeddingProvider).
+            let mut out = vec![0.0_f32; self.dims as usize];
+            for token in text
+                .trim()
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|t| !t.is_empty())
+            {
+                let idx = (fnv1a32(token) as usize) % out.len();
+                out[idx] += 1.0;
+            }
+            let norm = out.iter().map(|v| v * v).sum::<f32>().sqrt();
+            if norm > 0.0 {
+                for v in &mut out {
+                    *v /= norm;
+                }
+            }
+            Ok(out)
+        }
+
+        fn dimensions(&self) -> u32 {
+            self.dims
+        }
+    }
+
+    fn build_doc_index(markdown: &str) -> DocumentIndex {
+        let mut parser = markymark_parser::Parser::new().unwrap();
+        let ast = parser.parse(markdown).unwrap();
+        DocumentIndex::from_ast(ast)
+    }
+
+    // --- P2: empty heading skip tests ---
+
+    #[test]
+    fn add_document_skips_empty_headings() {
+        let provider = Arc::new(TestEmbeddingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider).unwrap();
+
+        // Tree-sitter parses "# \n" as a heading with empty content.
+        let doc_idx = build_doc_index("# Introduction\n# \n## Conclusion\n");
+
+        let uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/test.md"));
+        // Must succeed, not abort on empty headings.
+        sem.add_document(uri.clone(), &doc_idx).unwrap();
+
+        // The empty heading should be skipped; only valid headings indexed.
+        assert!(
+            sem.entry_count() >= 2,
+            "expected at least 2 entries, got {}",
+            sem.entry_count()
+        );
+    }
+
+    #[test]
+    fn add_document_no_headings_uses_fallback() {
+        let provider = Arc::new(TestEmbeddingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider).unwrap();
+
+        let doc_idx = build_doc_index("Just some text, no headings.\n");
+        let uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/plain.md"));
+        sem.add_document(uri, &doc_idx).unwrap();
+        assert_eq!(
+            sem.entry_count(),
+            1,
+            "no-heading doc should get fallback entry"
+        );
     }
 }

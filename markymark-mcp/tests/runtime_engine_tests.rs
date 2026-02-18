@@ -5,7 +5,6 @@
 use std::cmp::Ordering;
 use std::fs;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_core::{DocumentUri, Position, Range};
@@ -17,31 +16,22 @@ fn compare_ranges(a: Range, b: Range) -> Ordering {
 }
 
 struct TempWorkspace {
+    _dir: tempfile::TempDir,
     root: PathBuf,
 }
 
 impl TempWorkspace {
     fn new(name: &str) -> Self {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock should be after unix epoch")
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!(
-            "markymark-mcp-runtime-{name}-{}-{nanos}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&root).expect("temporary workspace directory should be created");
-        Self { root }
+        let dir = tempfile::Builder::new()
+            .prefix(&format!("markymark-mcp-runtime-{name}-"))
+            .tempdir()
+            .expect("secure temporary workspace directory should be created");
+        let root = dir.path().to_path_buf();
+        Self { _dir: dir, root }
     }
 
     fn root(&self) -> PathBuf {
         self.root.clone()
-    }
-}
-
-impl Drop for TempWorkspace {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.root);
     }
 }
 
@@ -58,10 +48,9 @@ fn rejects_empty_workspace_roots() {
 
 #[test]
 fn rejects_missing_workspace_root() {
-    let missing = std::env::temp_dir().join("markymark-missing-workspace");
-    if missing.exists() {
-        fs::remove_dir_all(&missing).expect("stale missing-workspace path should be removable");
-    }
+    let dir = tempfile::TempDir::new().expect("temp dir should be created");
+    let missing = dir.path().to_path_buf();
+    drop(dir); // delete the directory so `missing` is a non-existent path
 
     let err = match RuntimeEngine::from_workspace_roots(vec![missing.clone()]) {
         Ok(_) => panic!("missing workspace root should fail"),
@@ -1145,6 +1134,140 @@ fn realm_stats_token_count_is_none_when_source_files_are_missing() {
         }
         other => panic!("expected RealmStats result, got: {other:?}"),
     }
+}
+
+// --- realm isolation tests ---
+
+/// Regression test for marky-uux: search-symbols must not return results from a
+/// different realm. Both realms exist simultaneously; querying realm_a must not
+/// surface symbols that only exist in realm_b.
+#[test]
+fn search_symbols_scopes_results_to_realm() {
+    let ws_a = TempWorkspace::new("realm-isolate-a");
+    let ws_b = TempWorkspace::new("realm-isolate-b");
+
+    // Each realm has a document with a heading that is unique to that realm.
+    fs::write(ws_a.root().join("a.md"), "# HeadingOnlyInRealmAlpha\n")
+        .expect("a.md should be created");
+    fs::write(ws_b.root().join("b.md"), "# HeadingOnlyInRealmBeta\n")
+        .expect("b.md should be created");
+
+    let engine = RuntimeEngine::default();
+
+    engine.execute(CoreOperation::CreateRealm {
+        name: "realm-alpha".to_string(),
+    });
+    engine.execute(CoreOperation::AddRoot {
+        realm: "realm-alpha".to_string(),
+        root: ws_a.root(),
+    });
+
+    engine.execute(CoreOperation::CreateRealm {
+        name: "realm-beta".to_string(),
+    });
+    engine.execute(CoreOperation::AddRoot {
+        realm: "realm-beta".to_string(),
+        root: ws_b.root(),
+    });
+
+    // Searching realm-alpha for the beta-unique heading must return empty.
+    let result = engine.execute(CoreOperation::SearchSymbols {
+        query: "HeadingOnlyInRealmBeta".to_string(),
+        realm: Some("realm-alpha".to_string()),
+    });
+    match result {
+        CoreOperationResult::Symbols(matches) => {
+            assert!(
+                matches.is_empty(),
+                "realm-alpha search must not return realm-beta symbol; got: {matches:?}"
+            );
+        }
+        other => panic!("expected Symbols result, got: {other:?}"),
+    }
+
+    // Searching realm-beta for the alpha-unique heading must also return empty.
+    let result = engine.execute(CoreOperation::SearchSymbols {
+        query: "HeadingOnlyInRealmAlpha".to_string(),
+        realm: Some("realm-beta".to_string()),
+    });
+    match result {
+        CoreOperationResult::Symbols(matches) => {
+            assert!(
+                matches.is_empty(),
+                "realm-beta search must not return realm-alpha symbol; got: {matches:?}"
+            );
+        }
+        other => panic!("expected Symbols result, got: {other:?}"),
+    }
+
+    // Each realm correctly finds its own symbol.
+    let result = engine.execute(CoreOperation::SearchSymbols {
+        query: "HeadingOnlyInRealmAlpha".to_string(),
+        realm: Some("realm-alpha".to_string()),
+    });
+    match result {
+        CoreOperationResult::Symbols(matches) => {
+            assert!(
+                !matches.is_empty(),
+                "realm-alpha search must find its own symbol"
+            );
+        }
+        other => panic!("expected Symbols result, got: {other:?}"),
+    }
+}
+
+/// Regression test for marky-uux: after destroy-realm, search-symbols for that
+/// realm must return an error (realm no longer exists), not stale results.
+#[test]
+fn search_symbols_returns_empty_after_destroy_realm() {
+    let ws = TempWorkspace::new("realm-destroy-symbols");
+    fs::write(ws.root().join("doc.md"), "# UniqueHeadingForDestroyTest\n")
+        .expect("doc.md should be created");
+
+    let engine = RuntimeEngine::default();
+
+    engine.execute(CoreOperation::CreateRealm {
+        name: "transient-realm".to_string(),
+    });
+    engine.execute(CoreOperation::AddRoot {
+        realm: "transient-realm".to_string(),
+        root: ws.root(),
+    });
+
+    // Verify symbol is found before destroy.
+    let result = engine.execute(CoreOperation::SearchSymbols {
+        query: "UniqueHeadingForDestroyTest".to_string(),
+        realm: Some("transient-realm".to_string()),
+    });
+    match result {
+        CoreOperationResult::Symbols(matches) => {
+            assert!(
+                !matches.is_empty(),
+                "symbol should be found before realm is destroyed"
+            );
+        }
+        other => panic!("expected Symbols result before destroy, got: {other:?}"),
+    }
+
+    // Destroy the realm.
+    let destroy = engine.execute(CoreOperation::DestroyRealm {
+        name: "transient-realm".to_string(),
+    });
+    assert!(
+        matches!(destroy, CoreOperationResult::Ok),
+        "destroy-realm should succeed; got: {destroy:?}"
+    );
+
+    // After destroy, searching for the symbol in that realm must return an error
+    // (realm does not exist), not a stale Symbols result.
+    let result = engine.execute(CoreOperation::SearchSymbols {
+        query: "UniqueHeadingForDestroyTest".to_string(),
+        realm: Some("transient-realm".to_string()),
+    });
+    assert!(
+        matches!(result, CoreOperationResult::Error(_)),
+        "search-symbols must return error for destroyed realm, not stale results; got: {result:?}"
+    );
 }
 
 // --- export-index integration tests ---

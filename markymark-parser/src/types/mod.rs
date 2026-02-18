@@ -104,6 +104,8 @@ mod arena_allocation_tests {
             Some(arena.alloc_str("anchor")),
             None,
             Range::new(Position::new(0, 0), Position::new(0, 9)),
+            0,
+            9,
         );
 
         assert_eq!(link.text(), "link text");
@@ -242,6 +244,8 @@ mod arena_allocation_tests {
             false,
             Some(arena_alloc_str(&arena, "content")),
             Range::new(Position::new(0, 0), Position::new(0, 10)),
+            0,
+            10,
         );
 
         assert_eq!(tag.tag_name(), "agent");

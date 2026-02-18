@@ -221,6 +221,8 @@ impl ServerState {
                         url: entry.url.to_string(),
                         anchor: entry.anchor.map(str::to_string),
                         range: entry.range,
+                        start_byte: entry.start_byte,
+                        end_byte: entry.end_byte,
                     })
                     .collect::<Vec<_>>();
                 let xt = index
@@ -236,6 +238,8 @@ impl ServerState {
                         is_self_closing: entry.is_self_closing,
                         is_unclosed: entry.is_unclosed,
                         range: entry.range,
+                        start_byte: entry.start_byte,
+                        end_byte: entry.end_byte,
                     })
                     .collect::<Vec<_>>();
                 (Some(wl), Some(bl), Some(ml), Some(xt))
