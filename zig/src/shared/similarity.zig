@@ -139,6 +139,138 @@ pub fn fuzzy_match_score(
     return score;
 }
 
+fn is_worse(score_a: i32, index_a: u32, score_b: i32, index_b: u32) bool {
+    if (score_a != score_b) return score_a < score_b;
+    return index_a > index_b;
+}
+
+fn heap_sift_up(scores: []i32, indices: []u32, start_idx: u32) void {
+    var idx = start_idx;
+    while (idx > 0) {
+        const parent = (idx - 1) / 2;
+        if (!is_worse(scores[idx], indices[idx], scores[parent], indices[parent])) break;
+
+        const score_tmp = scores[idx];
+        scores[idx] = scores[parent];
+        scores[parent] = score_tmp;
+
+        const index_tmp = indices[idx];
+        indices[idx] = indices[parent];
+        indices[parent] = index_tmp;
+
+        idx = parent;
+    }
+}
+
+fn heap_sift_down(scores: []i32, indices: []u32, heap_len: u32, start_idx: u32) void {
+    var idx = start_idx;
+    while (true) {
+        const left = idx * 2 + 1;
+        if (left >= heap_len) break;
+
+        var worst = left;
+        const right = left + 1;
+        if (right < heap_len and is_worse(scores[right], indices[right], scores[left], indices[left])) {
+            worst = right;
+        }
+
+        if (!is_worse(scores[worst], indices[worst], scores[idx], indices[idx])) break;
+
+        const score_tmp = scores[idx];
+        scores[idx] = scores[worst];
+        scores[worst] = score_tmp;
+
+        const index_tmp = indices[idx];
+        indices[idx] = indices[worst];
+        indices[worst] = index_tmp;
+
+        idx = worst;
+    }
+}
+
+fn heap_sort_descending(scores: []i32, indices: []u32, count: u32) void {
+    if (count <= 1) return;
+
+    var end = count;
+    while (end > 1) {
+        end -= 1;
+
+        const score_tmp = scores[0];
+        scores[0] = scores[end];
+        scores[end] = score_tmp;
+
+        const index_tmp = indices[0];
+        indices[0] = indices[end];
+        indices[end] = index_tmp;
+
+        heap_sift_down(scores, indices, end, 0);
+    }
+}
+
+/// Batched top-k fuzzy matching across candidate strings.
+///
+/// Candidate selection is deterministic:
+/// - score descending
+/// - candidate index ascending on ties
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null candidate pointer with non-zero length)
+///  -2  — invalid output capacity (`top_k > output_cap` or `output_cap == 0` when `top_k > 0`)
+pub fn fuzzy_match_top_k(
+    query_ptr: [*]const u8,
+    query_len: u32,
+    candidate_ptrs: [*]const ?[*]const u8,
+    candidate_lens: [*]const u32,
+    candidate_count: u32,
+    scores_out: [*]i32,
+    indices_out: [*]u32,
+    output_cap: u32,
+    top_k: u32,
+    written: *u32,
+) i32 {
+    written.* = 0;
+
+    if (query_len == 0 or candidate_count == 0 or top_k == 0) return 0;
+    if (output_cap == 0 or top_k > output_cap) return -2;
+
+    const effective_k = @min(top_k, candidate_count);
+    const scores = scores_out[0..output_cap];
+    const indices = indices_out[0..output_cap];
+
+    var selected: u32 = 0;
+    var i: u32 = 0;
+    while (i < candidate_count) : (i += 1) {
+        const candidate_len = candidate_lens[i];
+        const candidate_ptr = candidate_ptrs[i] orelse {
+            if (candidate_len == 0) continue;
+            written.* = 0;
+            return -1;
+        };
+
+        const score = fuzzy_match_score(query_ptr, query_len, candidate_ptr, candidate_len);
+        if (score <= 0) continue;
+
+        if (selected < effective_k) {
+            scores[selected] = score;
+            indices[selected] = i;
+            heap_sift_up(scores, indices, selected);
+            selected += 1;
+            continue;
+        }
+
+        if (selected > 0 and is_worse(scores[0], indices[0], score, i)) {
+            scores[0] = score;
+            indices[0] = i;
+            heap_sift_down(scores, indices, selected, 0);
+        }
+    }
+
+    heap_sort_descending(scores, indices, selected);
+    written.* = selected;
+    return 0;
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -258,10 +390,140 @@ test "test_fuzzy_match_no_match_returns_zero" {
     try testing.expectEqual(@as(i32, 0), score);
 }
 
+test "test_fuzzy_match_top_k_stable_ties" {
+    const query = "ab";
+    const candidates = [_]?[*]const u8{
+        "acb".ptr,
+        "adb".ptr,
+        "aeb".ptr,
+    };
+    const lengths = [_]u32{ 3, 3, 3 };
+    var scores: [3]i32 = undefined;
+    var indices: [3]u32 = undefined;
+    var written: u32 = 0;
+
+    const rc = fuzzy_match_top_k(
+        query.ptr,
+        query.len,
+        &candidates,
+        &lengths,
+        candidates.len,
+        &scores,
+        &indices,
+        scores.len,
+        2,
+        &written,
+    );
+
+    try testing.expectEqual(@as(i32, 0), rc);
+    try testing.expectEqual(@as(u32, 2), written);
+    try testing.expectEqual(@as(u32, 0), indices[0]);
+    try testing.expectEqual(@as(u32, 1), indices[1]);
+    try testing.expect(scores[0] >= scores[1]);
+}
+
+test "test_fuzzy_match_top_k_empty_query_returns_zero" {
+    const candidates = [_]?[*]const u8{"stage".ptr};
+    const lengths = [_]u32{5};
+    var scores: [1]i32 = undefined;
+    var indices: [1]u32 = undefined;
+    var written: u32 = 123;
+
+    const rc = fuzzy_match_top_k(
+        "".ptr,
+        0,
+        &candidates,
+        &lengths,
+        candidates.len,
+        &scores,
+        &indices,
+        scores.len,
+        1,
+        &written,
+    );
+
+    try testing.expectEqual(@as(i32, 0), rc);
+    try testing.expectEqual(@as(u32, 0), written);
+}
+
+test "test_fuzzy_match_top_k_capacity_guard" {
+    const query = "st";
+    const candidates = [_]?[*]const u8{"stage".ptr};
+    const lengths = [_]u32{5};
+    var scores: [1]i32 = undefined;
+    var indices: [1]u32 = undefined;
+    var written: u32 = 0;
+
+    const rc = fuzzy_match_top_k(
+        query.ptr,
+        query.len,
+        &candidates,
+        &lengths,
+        candidates.len,
+        &scores,
+        &indices,
+        scores.len,
+        2,
+        &written,
+    );
+
+    try testing.expectEqual(@as(i32, -2), rc);
+    try testing.expectEqual(@as(u32, 0), written);
+}
+
 test "test_jaccard_simd_scalar_parity" {
     const s1 = [_]u32{ 10, 20, 30, 40, 50 };
     const s2 = [_]u32{ 20, 40, 60, 80 };
     const simd_result = jaccard_similarity(&s1, 5, &s2, 4);
     const scalar_result = ref.jaccard_similarity(&s1, 5, &s2, 4);
     try testing.expectEqual(scalar_result, simd_result);
+}
+
+// ============================================================================
+// PR29 Copilot triage: prefix bonus false-positive investigation (marky-8s3.10)
+//
+// Copilot claimed the prefix bonus could be applied incorrectly because it
+// "happens AFTER the main matching loop" and "the matches might not be
+// consecutive from position 0".
+//
+// Finding: FALSE POSITIVE. The prefix check is an intentional, independent
+// text comparison (candidate[0..N] == query). The greedy left-to-right
+// subsequence scan guarantees that when a candidate starts with the query
+// text, the matches ARE found at positions 0..N-1. The two checks are
+// deliberately decoupled: one scores the match, the other awards a relevance
+// bonus for text-prefix candidates.
+// ============================================================================
+
+test "test_fuzzy_prefix_bonus_applied_when_candidate_starts_with_query" {
+    // "stage" starts with "st": s(0) t(1) consecutive, prefix bonus applied.
+    // Expected: 10 (s) + 10 (t) + 5 (consecutive) + 200 (prefix) = 225
+    const score = fuzzy_match_score("st".ptr, 2, "stage".ptr, 5);
+    try testing.expectEqual(@as(i32, 225), score);
+}
+
+test "test_fuzzy_prefix_bonus_not_applied_for_non_prefix_subsequence" {
+    // "restart" contains "st" as consecutive subsequence at positions 2,3,
+    // but "restart" does NOT start with "st". No prefix bonus.
+    // Expected: 10 (s) + 10 (t) + 5 (consecutive) = 25
+    const score = fuzzy_match_score("st".ptr, 2, "restart".ptr, 7);
+    try testing.expectEqual(@as(i32, 25), score);
+}
+
+test "test_fuzzy_prefix_bonus_greedy_guarantees_prefix_positions" {
+    // Copilot concern: subsequence matches might not be at prefix positions
+    // even when candidate starts with query.  Counter-evidence: greedy
+    // left-to-right scan always takes the earliest match, so for "acid"
+    // and query "ac", positions 0 and 1 are taken (consecutive = +5) and
+    // the prefix check sees "ac" == "ac" → correct.
+    // Expected: 10 + 10 + 5 + 200 = 225
+    const score = fuzzy_match_score("ac".ptr, 2, "acid".ptr, 4);
+    try testing.expectEqual(@as(i32, 225), score);
+}
+
+test "test_fuzzy_prefix_bonus_not_applied_for_non_prefix_gap_match" {
+    // "abcd": query "ac" matches a(0) c(2) with gap=1.
+    // "abcd" does NOT start with "ac" (starts with "ab"). No prefix bonus.
+    // Expected: 10 (a) + 10 (c) - 1 (gap of 1) = 19
+    const score = fuzzy_match_score("ac".ptr, 2, "abcd".ptr, 4);
+    try testing.expectEqual(@as(i32, 19), score);
 }

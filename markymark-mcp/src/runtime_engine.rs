@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 use std::fs;
-#[cfg(feature = "semantic-search")]
-use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 #[cfg(feature = "semantic-search")]
 use std::sync::Arc;
@@ -16,8 +14,8 @@ use markymark_core::prelude::{EmbedError, EmbeddingProvider};
 use markymark_core::structured::DocumentKind;
 use markymark_core::{CoreError, DocumentUri, Range};
 use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
-use markymark_kernels::fuzzy_match;
 use markymark_kernels::tokens;
+use markymark_kernels::{fuzzy_match, fuzzy_match_batch};
 use markymark_parser::structured::parse_structured;
 use markymark_parser::Parser;
 
@@ -57,6 +55,24 @@ fn build_realm_index() -> RealmIndex {
     }
 }
 
+/// FNV-1a 32-bit hash for stable, cross-version token hashing.
+///
+/// `DefaultHasher` (SipHash 1-3) is explicitly not guaranteed to be stable
+/// across Rust versions. FNV-1a is a well-specified algorithm that produces
+/// identical output forever for the same input, making it appropriate for
+/// the bag-of-words hash embedding used in [`HashEmbeddingProvider`].
+#[cfg(feature = "semantic-search")]
+fn fnv1a32(bytes: &[u8]) -> u32 {
+    const OFFSET: u32 = 0x811c9dc5;
+    const PRIME: u32 = 0x0100_0193;
+    let mut hash = OFFSET;
+    for &byte in bytes {
+        hash ^= u32::from(byte);
+        hash = hash.wrapping_mul(PRIME);
+    }
+    hash
+}
+
 #[cfg(feature = "semantic-search")]
 #[derive(Debug, Clone)]
 struct HashEmbeddingProvider {
@@ -92,9 +108,7 @@ impl EmbeddingProvider for HashEmbeddingProvider {
             .filter(|token| !token.is_empty())
         {
             let norm = token.to_ascii_lowercase();
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            norm.hash(&mut hasher);
-            let idx = (hasher.finish() as usize) % out.len();
+            let idx = (fnv1a32(norm.as_bytes()) as usize) % out.len();
             out[idx] += 1.0;
         }
 
@@ -270,50 +284,91 @@ impl CoreEngine for RuntimeEngine {
                     )));
                 };
                 let realm = &realm_data.index;
-                let mut scored_matches: Vec<(i32, bool, String, DocumentUri, Range)> = Vec::new();
+                let mut candidates: Vec<(String, DocumentUri, Range)> = Vec::new();
 
-                // Search markdown headings with fuzzy ranking.
+                // Collect markdown heading candidates.
                 for (uri, index) in realm.iter_documents() {
                     for heading in index.headings() {
-                        if let Ok(m) = fuzzy_match(&query, heading.text) {
-                            if m.score > 0 {
-                                scored_matches.push((
-                                    m.score,
-                                    m.starts_with,
-                                    heading.text.to_string(),
-                                    uri.clone(),
-                                    heading.range,
-                                ));
+                        candidates.push((heading.text.to_string(), uri.clone(), heading.range));
+                    }
+                }
+
+                // Collect structured key-path candidates.
+                for (uri, path, _key, _kind, range) in realm.search_key_paths(&query) {
+                    candidates.push((path, uri, range));
+                }
+
+                let candidate_refs: Vec<&str> = candidates
+                    .iter()
+                    .map(|(name, _, _)| name.as_str())
+                    .collect();
+                // Cap top_k to avoid O(n log n) heap degradation when all candidates are ranked.
+                const TOP_K_LIMIT: usize = 100;
+                let top_k = candidate_refs.len().min(TOP_K_LIMIT);
+
+                let matches = match fuzzy_match_batch(&query, &candidate_refs, top_k) {
+                    Ok(ranked) => {
+                        let mut results: Vec<(i32, bool, String, DocumentUri, Range)> = ranked
+                            .into_iter()
+                            .filter(|m| m.score > 0)
+                            .filter_map(|m| {
+                                candidates.get(m.index as usize).map(|(name, uri, range)| {
+                                    (m.score, m.starts_with, name.clone(), uri.clone(), *range)
+                                })
+                            })
+                            .collect();
+                        results.sort_by(
+                            |(score_a, starts_a, name_a, uri_a, range_a),
+                             (score_b, starts_b, name_b, uri_b, range_b)| {
+                                score_b
+                                    .cmp(score_a)
+                                    .then_with(|| starts_b.cmp(starts_a))
+                                    .then_with(|| name_a.cmp(name_b))
+                                    .then_with(|| uri_a.as_str().cmp(uri_b.as_str()))
+                                    .then_with(|| compare_ranges(*range_a, *range_b))
+                            },
+                        );
+                        results
+                            .into_iter()
+                            .map(|(_, _, name, uri, range)| (name, uri, range))
+                            .collect()
+                    }
+                    Err(_) => {
+                        // Fallback path keeps previous per-candidate behavior.
+                        let mut scored_matches: Vec<(i32, bool, String, DocumentUri, Range)> =
+                            Vec::new();
+                        for (name, uri, range) in &candidates {
+                            if let Ok(m) = fuzzy_match(&query, name) {
+                                if m.score > 0 {
+                                    scored_matches.push((
+                                        m.score,
+                                        m.starts_with,
+                                        name.clone(),
+                                        uri.clone(),
+                                        *range,
+                                    ));
+                                }
                             }
                         }
+
+                        scored_matches.sort_by(
+                            |(score_a, starts_a, name_a, uri_a, range_a),
+                             (score_b, starts_b, name_b, uri_b, range_b)| {
+                                score_b
+                                    .cmp(score_a)
+                                    .then_with(|| starts_b.cmp(starts_a))
+                                    .then_with(|| name_a.cmp(name_b))
+                                    .then_with(|| uri_a.as_str().cmp(uri_b.as_str()))
+                                    .then_with(|| compare_ranges(*range_a, *range_b))
+                            },
+                        );
+
+                        scored_matches
+                            .into_iter()
+                            .map(|(_, _, name, uri, range)| (name, uri, range))
+                            .collect()
                     }
-                }
-
-                // Search structured document key paths with fuzzy ranking.
-                for (uri, path, _key, _kind, range) in realm.search_key_paths(&query) {
-                    if let Ok(m) = fuzzy_match(&query, &path) {
-                        if m.score > 0 {
-                            scored_matches.push((m.score, m.starts_with, path, uri, range));
-                        }
-                    }
-                }
-
-                scored_matches.sort_by(
-                    |(score_a, starts_a, name_a, uri_a, range_a),
-                     (score_b, starts_b, name_b, uri_b, range_b)| {
-                        score_b
-                            .cmp(score_a)
-                            .then_with(|| starts_b.cmp(starts_a))
-                            .then_with(|| name_a.cmp(name_b))
-                            .then_with(|| uri_a.as_str().cmp(uri_b.as_str()))
-                            .then_with(|| compare_ranges(*range_a, *range_b))
-                    },
-                );
-
-                let matches = scored_matches
-                    .into_iter()
-                    .map(|(_, _, name, uri, range)| (name, uri, range))
-                    .collect();
+                };
 
                 CoreOperationResult::Symbols(matches)
             }
@@ -1195,6 +1250,94 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    // ---------------------------------------------------------------------------
+    // HashEmbeddingProvider tests (semantic-search feature required)
+    // ---------------------------------------------------------------------------
+
+    /// fnv1a32 must produce the same u32 for the same bytes every time.
+    ///
+    /// This pins the hash algorithm choice: `DefaultHasher` (SipHash 1-3) is
+    /// explicitly not stable across Rust versions per std docs.  FNV-1a 32-bit
+    /// is a fixed, well-specified algorithm that produces identical output
+    /// forever for the same input.
+    ///
+    /// The constant 0x4f9f2cab is the standard FNV-1a 32-bit hash of "hello"
+    /// (verified against the reference implementation and online calculators).
+    #[cfg(feature = "semantic-search")]
+    #[test]
+    fn fnv1a32_is_stable_and_deterministic() {
+        let h1 = fnv1a32(b"hello");
+        let h2 = fnv1a32(b"hello");
+        assert_eq!(h1, h2, "same input must produce same hash");
+        assert_ne!(
+            fnv1a32(b"hello"),
+            fnv1a32(b"world"),
+            "distinct tokens must hash differently"
+        );
+        // Pin the exact value (verified against FNV-1a 32-bit reference implementation).
+        assert_eq!(
+            fnv1a32(b"hello"),
+            0x4f9f2cab,
+            "FNV-1a 32-bit hash of 'hello' must be 0x4f9f2cab"
+        );
+        // Empty string → offset basis unchanged
+        assert_eq!(
+            fnv1a32(b""),
+            0x811c9dc5,
+            "empty bytes must return FNV offset basis"
+        );
+    }
+
+    /// HashEmbeddingProvider must produce a normalized output vector of the
+    /// expected dimensionality.
+    #[cfg(feature = "semantic-search")]
+    #[test]
+    fn hash_embedding_output_is_normalized_and_correct_dims() {
+        let provider = HashEmbeddingProvider::new(128);
+        let emb = provider.embed("hello world").unwrap();
+        assert_eq!(emb.len(), 128, "embedding length must match dims");
+        let norm_sq: f32 = emb.iter().map(|v| v * v).sum();
+        assert!(
+            (norm_sq - 1.0).abs() < 1e-5,
+            "embedding must be L2-normalised, got norm²={norm_sq}"
+        );
+    }
+
+    /// HashEmbeddingProvider must produce identical vectors for identical input.
+    /// This test detects accidental use of randomised hashing (e.g. RandomState).
+    #[cfg(feature = "semantic-search")]
+    #[test]
+    fn hash_embedding_is_deterministic() {
+        let provider = HashEmbeddingProvider::new(64);
+        let a = provider.embed("markymark semantic search").unwrap();
+        let b = provider.embed("markymark semantic search").unwrap();
+        assert_eq!(a, b, "identical input must produce identical embedding");
+    }
+
+    /// Empty text must fail with InvalidInput (not panic).
+    #[cfg(feature = "semantic-search")]
+    #[test]
+    fn hash_embedding_rejects_empty_text() {
+        let provider = HashEmbeddingProvider::new(32);
+        let err = provider.embed("   ").unwrap_err();
+        assert!(
+            matches!(err, markymark_core::prelude::EmbedError::InvalidInput(_)),
+            "whitespace-only input must return InvalidInput, got {err:?}"
+        );
+    }
+
+    /// Zero dims must fail with InvalidInput (not divide-by-zero).
+    #[cfg(feature = "semantic-search")]
+    #[test]
+    fn hash_embedding_rejects_zero_dims() {
+        let provider = HashEmbeddingProvider::new(0);
+        let err = provider.embed("hello").unwrap_err();
+        assert!(
+            matches!(err, markymark_core::prelude::EmbedError::InvalidInput(_)),
+            "zero dims must return InvalidInput, got {err:?}"
+        );
+    }
+
     #[test]
     fn collect_documents_markdown_unchanged() {
         let dir = std::env::temp_dir().join(format!("marky-collect-md-{}", std::process::id()));
@@ -1206,6 +1349,232 @@ mod tests {
         let docs = collect_documents(&dir);
         assert_eq!(docs.len(), 2);
         assert!(docs.iter().all(|(_, k)| *k == DocumentKind::Markdown));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // -------------------------------------------------------------------------
+    // preview_for_range I/O profiling
+    //
+    // These tests measure the cost of the current full-file-read approach vs a
+    // streaming BufReader alternative.  They are marked `#[ignore]` so they
+    // don't run by default.
+    //
+    // Run manually:
+    //   cargo test -p markymark-mcp --features semantic-search \
+    //       -- preview_io_cost --ignored --nocapture
+    // -------------------------------------------------------------------------
+
+    /// Generate a synthetic markdown corpus of approximately `target_bytes`.
+    /// Each section is ~130 bytes so 1 MB ≈ 7 600 sections ≈ 45 600 lines.
+    #[cfg(feature = "semantic-search")]
+    fn generate_preview_corpus(target_bytes: usize) -> String {
+        let mut doc = String::with_capacity(target_bytes + 512);
+        doc.push_str("# Preview I/O Profile Corpus\n\n");
+        let mut section = 1usize;
+        while doc.len() < target_bytes {
+            doc.push_str(&format!("## Section {section}\n\n"));
+            doc.push_str(
+                "This section exists to test streaming vs full-read preview extraction.\n",
+            );
+            doc.push_str("Content should be realistic length to exercise I/O paths.\n\n");
+            section += 1;
+        }
+        doc
+    }
+
+    /// Alternative preview extraction using `BufRead::lines()` — reads only
+    /// until the target line rather than the whole file.
+    #[cfg(feature = "semantic-search")]
+    fn streamed_preview(path: &std::path::Path, target_line: u32, max_bytes: usize) -> String {
+        use std::io::BufRead as _;
+        let Ok(file) = std::fs::File::open(path) else {
+            return String::new();
+        };
+        let reader = std::io::BufReader::new(file);
+        let mut buf = String::with_capacity(max_bytes + 256);
+        for (i, line) in reader.lines().enumerate() {
+            let Ok(line) = line else { break };
+            if i as u32 >= target_line {
+                buf.push_str(&line);
+                buf.push('\n');
+                if buf.len() >= max_bytes {
+                    break;
+                }
+            }
+        }
+        let end = buf.len().min(max_bytes);
+        let mut end = end;
+        while end > 0 && !buf.is_char_boundary(end) {
+            end -= 1;
+        }
+        buf[..end].split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    /// Profiles `preview_for_range` (full read) vs `streamed_preview`
+    /// (BufReader) across file sizes from 10 KB to 5 MB.
+    ///
+    /// Output columns: file_bytes | target_line | full_read_avg | stream_avg | speedup
+    ///
+    /// Interpretation: speedup > 1.0 means streaming is faster.  Speedup is
+    /// meaningful only when files are large enough for I/O to dominate (~>500 KB).
+    #[cfg(feature = "semantic-search")]
+    #[test]
+    #[ignore = "performance profiling — run manually: cargo test -p markymark-mcp --features semantic-search -- preview_io_cost_large_file --ignored --nocapture"]
+    fn preview_io_cost_large_file() {
+        use markymark_core::Position;
+        use std::time::Instant;
+
+        let dir = make_temp_realm_dir("preview-io-profile");
+        const ITERS: u32 = 50;
+
+        eprintln!(
+            "\n{:<12} {:<12} {:<16} {:<16} {:<10}",
+            "file_bytes", "target_line", "full_read_avg", "stream_avg", "speedup"
+        );
+        eprintln!("{}", "-".repeat(70));
+
+        for &target_bytes in &[10_000usize, 100_000, 500_000, 1_000_000, 5_000_000] {
+            let content = generate_preview_corpus(target_bytes);
+            let line_count = content.lines().count() as u32;
+            let path = dir.join(format!("doc_{target_bytes}.md"));
+            fs::write(&path, &content).unwrap();
+
+            let uri_str = format!("file://{}", path.display());
+            let uri = DocumentUri::new(&uri_str).unwrap();
+
+            // Target a section 75% into the file (worst-case for streaming too).
+            let target_line = line_count * 3 / 4;
+            let range = Range {
+                start: Position {
+                    line: target_line,
+                    character: 0,
+                },
+                end: Position {
+                    line: target_line + 6,
+                    character: 0,
+                },
+            };
+
+            // Warm up OS page cache for a fair comparison.
+            let _ = preview_for_range(&uri, range, "fallback");
+            let _ = streamed_preview(&path, target_line, 200);
+
+            // Measure: current approach (full fs::read_to_string).
+            let t0 = Instant::now();
+            for _ in 0..ITERS {
+                let _ = preview_for_range(&uri, range, "fallback");
+            }
+            let full_avg = t0.elapsed() / ITERS;
+
+            // Measure: streaming BufReader approach.
+            let t1 = Instant::now();
+            for _ in 0..ITERS {
+                let _ = streamed_preview(&path, target_line, 200);
+            }
+            let stream_avg = t1.elapsed() / ITERS;
+
+            let speedup = full_avg.as_nanos() as f64 / stream_avg.as_nanos().max(1) as f64;
+            eprintln!(
+                "{:<12} {:<12} {:<16?} {:<16?} {:<.2}x",
+                target_bytes, target_line, full_avg, stream_avg, speedup
+            );
+        }
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Profiles the cumulative I/O cost of N `preview_for_range` calls across
+    /// N distinct files — mirrors what semantic search does for top_k results.
+    ///
+    /// This establishes whether batching/caching previews at the call site
+    /// (in the SemanticSearch arm of `execute`) would yield meaningful savings.
+    #[cfg(feature = "semantic-search")]
+    #[test]
+    #[ignore = "performance profiling — run manually: cargo test -p markymark-mcp --features semantic-search -- preview_io_cost_multi_file --ignored --nocapture"]
+    fn preview_io_cost_multi_file() {
+        use markymark_core::Position;
+        use std::time::Instant;
+
+        let dir = make_temp_realm_dir("preview-io-multi");
+        const FILE_BYTES: usize = 500_000; // 500 KB per file
+        const ITERS: u32 = 20;
+
+        eprintln!(
+            "\n{:<8} {:<12} {:<16} {:<16} {:<16}",
+            "n_files", "total_bytes", "full_total_avg", "stream_total_avg", "savings"
+        );
+        eprintln!("{}", "-".repeat(72));
+
+        for &n_files in &[1usize, 5, 10, 20] {
+            let mut uris = Vec::new();
+            let mut paths = Vec::new();
+            let mut target_lines = Vec::new();
+
+            for i in 0..n_files {
+                let content = generate_preview_corpus(FILE_BYTES);
+                let line_count = content.lines().count() as u32;
+                let path = dir.join(format!("multi_{n_files}_file_{i}.md"));
+                fs::write(&path, &content).unwrap();
+                let uri_str = format!("file://{}", path.display());
+                uris.push(DocumentUri::new(&uri_str).unwrap());
+                target_lines.push(line_count * 3 / 4);
+                paths.push(path);
+            }
+
+            // Warm up.
+            for (uri, &tl) in uris.iter().zip(target_lines.iter()) {
+                let range = Range {
+                    start: Position {
+                        line: tl,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: tl + 6,
+                        character: 0,
+                    },
+                };
+                let _ = preview_for_range(uri, range, "fallback");
+            }
+
+            // Measure: full-read approach across all files.
+            let t0 = Instant::now();
+            for _ in 0..ITERS {
+                for (uri, &tl) in uris.iter().zip(target_lines.iter()) {
+                    let range = Range {
+                        start: Position {
+                            line: tl,
+                            character: 0,
+                        },
+                        end: Position {
+                            line: tl + 6,
+                            character: 0,
+                        },
+                    };
+                    let _ = preview_for_range(uri, range, "fallback");
+                }
+            }
+            let full_avg = t0.elapsed() / ITERS;
+
+            // Measure: streaming approach across all files.
+            let t1 = Instant::now();
+            for _ in 0..ITERS {
+                for (path, &tl) in paths.iter().zip(target_lines.iter()) {
+                    let _ = streamed_preview(path, tl, 200);
+                }
+            }
+            let stream_avg = t1.elapsed() / ITERS;
+
+            let savings_us = full_avg.as_micros().saturating_sub(stream_avg.as_micros());
+            eprintln!(
+                "{:<8} {:<12} {:<16?} {:<16?} {:<}µs saved",
+                n_files,
+                n_files * FILE_BYTES,
+                full_avg,
+                stream_avg,
+                savings_us,
+            );
+        }
 
         let _ = fs::remove_dir_all(&dir);
     }

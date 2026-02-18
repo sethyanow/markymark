@@ -39,6 +39,76 @@ pub fn build(b: *std.Build) void {
     const lib_step = b.step("lib", "Build libmarky_kernels.a static library");
     lib_step.dependOn(&install.step);
 
+    // ── WASM Spike (research only, not production) ──────────────────────────
+    // Build: zig build wasm-spike
+    // Output: zig-out/wasm/heading_scan.wasm
+    const wasm_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .freestanding,
+        // Enable WASM SIMD128 extension to test @Vector -> wasm SIMD mapping
+        .cpu_features_add = std.Target.wasm.featureSet(&.{.simd128}),
+    });
+    // heading_scan_ref is a dependency of heading_scan
+    const wasm_ref_mod = b.createModule(.{
+        .root_source_file = b.path("src/reference/heading_scan_ref.zig"),
+        .target = wasm_target,
+        .optimize = .ReleaseFast,
+    });
+    const wasm_hs_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernels/heading_scan.zig"),
+        .target = wasm_target,
+        .optimize = .ReleaseFast,
+    });
+    wasm_hs_mod.addImport("../reference/heading_scan_ref.zig", wasm_ref_mod);
+    const wasm_spike_mod = b.createModule(.{
+        .root_source_file = b.path("spike/wasm/wasm_spike.zig"),
+        .target = wasm_target,
+        .optimize = .ReleaseFast,
+    });
+    wasm_spike_mod.addImport("../../src/kernels/heading_scan.zig", wasm_hs_mod);
+    const wasm_exe = b.addExecutable(.{
+        .name = "heading_scan",
+        .root_module = wasm_spike_mod,
+    });
+    wasm_exe.rdynamic = true; // Export symbols via rdynamic
+    wasm_exe.entry = .disabled; // Library-style WASM: no _start entry point
+    const wasm_install = b.addInstallArtifact(wasm_exe, .{
+        .dest_dir = .{ .override = .{ .custom = "wasm" } },
+    });
+    const wasm_step = b.step("wasm-spike", "Build WASM spike (research) at zig-out/wasm/heading_scan.wasm");
+    wasm_step.dependOn(&wasm_install.step);
+    // ────────────────────────────────────────────────────────────────────────
+
+    // ── Native Bench Spike (for comparison vs WASM) ─────────────────────────
+    // Run: zig build native-bench
+    const native_bench_mod = b.createModule(.{
+        .root_source_file = b.path("spike/wasm/native_bench.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    const native_hs_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernels/heading_scan.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    const native_ref_mod = b.createModule(.{
+        .root_source_file = b.path("src/reference/heading_scan_ref.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    native_hs_mod.addImport("../reference/heading_scan_ref.zig", native_ref_mod);
+    native_bench_mod.addImport("../../src/kernels/heading_scan.zig", native_hs_mod);
+    const native_bench_exe = b.addExecutable(.{
+        .name = "native_bench",
+        .root_module = native_bench_mod,
+    });
+    const native_bench_install = b.addInstallArtifact(native_bench_exe, .{});
+    const run_native_bench = b.addRunArtifact(native_bench_exe);
+    run_native_bench.step.dependOn(&native_bench_install.step);
+    const native_bench_step = b.step("native-bench", "Run native heading_scan benchmark (1M iterations)");
+    native_bench_step.dependOn(&run_native_bench.step);
+    // ────────────────────────────────────────────────────────────────────────
+
     // Unit tests (c_adapter tests)
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/c_adapter.zig"),

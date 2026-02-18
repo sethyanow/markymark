@@ -128,6 +128,19 @@ extern "C" {
         candidate: *const u8,
         candidate_len: u32,
     ) -> i32;
+
+    fn marky_fuzzy_match_batch(
+        query: *const u8,
+        query_len: u32,
+        candidate_ptrs: *const *const u8,
+        candidate_lens: *const u32,
+        candidate_count: u32,
+        scores_out: *mut i32,
+        indices_out: *mut u32,
+        output_cap: u32,
+        top_k: u32,
+        written: *mut u32,
+    ) -> i32;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +207,17 @@ pub struct FuzzyMatch {
     pub starts_with: bool,
 }
 
+/// Ranked result from batched fuzzy matching.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FuzzyBatchMatch {
+    /// Original candidate index in the provided input slice.
+    pub index: u32,
+    /// Integer score where 0 means no match and higher is better.
+    pub score: i32,
+    /// True when the match begins at candidate position 0.
+    pub starts_with: bool,
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -230,6 +254,17 @@ fn safe_slice(source: &str, offset: u32, length: u32) -> &str {
     };
 
     &source[start..end]
+}
+
+fn starts_with_ascii_case_insensitive(query: &str, candidate: &str) -> bool {
+    if candidate.chars().count() < query.chars().count() {
+        return false;
+    }
+
+    query
+        .chars()
+        .zip(candidate.chars())
+        .all(|(q, c)| q.eq_ignore_ascii_case(&c))
 }
 
 /// Call an FFI scan function with exponential buffer retry.
@@ -422,14 +457,81 @@ pub fn fuzzy_match(query: &str, candidate: &str) -> Result<FuzzyMatch, KernelErr
         return Err(KernelError::InvalidInput);
     }
 
-    let starts_with = score > 0
-        && candidate.chars().count() >= query.chars().count()
-        && query
-            .chars()
-            .zip(candidate.chars())
-            .all(|(q, c)| q.eq_ignore_ascii_case(&c));
+    let starts_with = score > 0 && starts_with_ascii_case_insensitive(query, candidate);
 
     Ok(FuzzyMatch { score, starts_with })
+}
+
+/// Batched fuzzy-match ranking with deterministic top-k ordering.
+///
+/// Returns up to `top_k` matches sorted by:
+/// 1. score descending
+/// 2. candidate index ascending
+pub fn fuzzy_match_batch(
+    query: &str,
+    candidates: &[&str],
+    top_k: usize,
+) -> Result<Vec<FuzzyBatchMatch>, KernelError> {
+    if query.is_empty() || candidates.is_empty() || top_k == 0 {
+        return Ok(Vec::new());
+    }
+
+    let candidate_count = u32::try_from(candidates.len()).map_err(|_| KernelError::InvalidInput)?;
+    let output_cap = top_k.min(candidates.len());
+    let output_cap_u32 = u32::try_from(output_cap).map_err(|_| KernelError::InvalidInput)?;
+    let top_k_u32 = output_cap_u32;
+
+    let mut candidate_ptrs: Vec<*const u8> = Vec::with_capacity(candidates.len());
+    let mut candidate_lens: Vec<u32> = Vec::with_capacity(candidates.len());
+    for candidate in candidates {
+        candidate_ptrs.push(candidate.as_ptr());
+        candidate_lens.push(u32::try_from(candidate.len()).map_err(|_| KernelError::InvalidInput)?);
+    }
+
+    let mut scores = vec![0_i32; output_cap];
+    let mut indices = vec![0_u32; output_cap];
+    let mut written: u32 = 0;
+
+    let query_len_u32 = u32::try_from(query.len()).map_err(|_| KernelError::InvalidInput)?;
+
+    // SAFETY: all pointers are derived from live Rust slices/vectors for the duration
+    // of this call; output buffers are sized to `output_cap`.
+    // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+    let rc = unsafe {
+        marky_fuzzy_match_batch(
+            query.as_ptr(),
+            query_len_u32,
+            candidate_ptrs.as_ptr(),
+            candidate_lens.as_ptr(),
+            candidate_count,
+            scores.as_mut_ptr(),
+            indices.as_mut_ptr(),
+            output_cap_u32,
+            top_k_u32,
+            &mut written,
+        )
+    };
+
+    match rc {
+        0 => {
+            let mut out = Vec::with_capacity(written as usize);
+            for i in 0..(written as usize) {
+                let index = indices[i];
+                let candidate = candidates
+                    .get(index as usize)
+                    .ok_or(KernelError::InternalError(-99))?;
+                out.push(FuzzyBatchMatch {
+                    index,
+                    score: scores[i],
+                    starts_with: starts_with_ascii_case_insensitive(query, candidate),
+                });
+            }
+            Ok(out)
+        }
+        -1 => Err(KernelError::InvalidInput),
+        -2 => Err(KernelError::BufferTooSmall),
+        other => Err(KernelError::InternalError(other)),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -617,6 +719,84 @@ mod tests {
         let no_match = fuzzy_match("setup", "set").unwrap();
         assert_eq!(no_match.score, 0);
         assert!(!no_match.starts_with);
+    }
+
+    #[test]
+    fn test_fuzzy_match_batch_top_k_stable_ties() {
+        let candidates = vec!["acb", "adb", "aeb"];
+        let results = fuzzy_match_batch("ab", &candidates, 2).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].index, 0);
+        assert_eq!(results[1].index, 1);
+        assert!(results[0].score >= results[1].score);
+    }
+
+    #[test]
+    fn test_fuzzy_match_batch_empty_query_contract() {
+        let candidates = vec!["stage", "setup"];
+        let results = fuzzy_match_batch("", &candidates, 10).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_fuzzy_match_batch_no_match_returns_zero_written() {
+        let candidates = vec!["stage", "setup"];
+        let results = fuzzy_match_batch("zzz", &candidates, 10).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_fuzzy_match_batch_subsequence_ranking_order() {
+        let candidates = vec!["setup", "stop", "list"];
+        let results = fuzzy_match_batch("stp", &candidates, 3).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].index, 1);
+        assert_eq!(results[1].index, 0);
+    }
+
+    #[test]
+    fn test_fuzzy_match_batch_case_insensitive_match() {
+        let candidates = vec!["Setup", "stage"];
+        let results = fuzzy_match_batch("ST", &candidates, 2).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].index, 1);
+    }
+
+    #[test]
+    fn test_fuzzy_match_batch_large_fixture_correct_top_k() {
+        let mut candidates: Vec<String> =
+            (0..10_000).map(|i| format!("candidate-{i:05}")).collect();
+        candidates[123] = "start-of-line".to_string();
+        candidates[4567] = "stateful".to_string();
+        candidates[9876] = "stack".to_string();
+
+        let refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
+        let results = fuzzy_match_batch("sta", &refs, 3).unwrap();
+        assert_eq!(results.len(), 3);
+        assert!(results.iter().all(|m| m.score > 0));
+    }
+
+    #[test]
+    fn benchmark_fuzzy_match_batch_100k_candidates() {
+        if std::env::var("MARKYMARK_RUN_100K_BENCH").ok().as_deref() != Some("1") {
+            return;
+        }
+
+        let mut candidates: Vec<String> =
+            (0..100_000).map(|i| format!("candidate-{i:05}")).collect();
+        candidates[123] = "start-of-line".to_string();
+        candidates[4567] = "stateful".to_string();
+        candidates[98_765] = "stack".to_string();
+
+        let refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
+        let started = std::time::Instant::now();
+        let results = fuzzy_match_batch("sta", &refs, 25).unwrap();
+        let elapsed = started.elapsed();
+
+        eprintln!("fuzzy_match_batch benchmark (100k candidates): {elapsed:?}");
+        assert!(!results.is_empty());
+        assert!(results.len() <= 25);
+        assert!(results.iter().all(|m| m.score > 0));
     }
 
     // -- safe_slice tests --
