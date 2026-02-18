@@ -101,6 +101,8 @@ fn markdown_link_entry_uses_arena_lifetime() {
         url: arena.alloc_str("https://example.com"),
         anchor: Some(arena.alloc_str("a")),
         range: Range::new(Position::new(0, 0), Position::new(0, 7)),
+        start_byte: 0,
+        end_byte: 7,
     };
 
     assert_eq!(entry.text, "Example");
@@ -122,6 +124,8 @@ fn xml_tag_entry_uses_arena_lifetime() {
         is_self_closing: false,
         is_unclosed: false,
         range: Range::new(Position::new(0, 0), Position::new(0, 6)),
+        start_byte: 0,
+        end_byte: 6,
     };
 
     assert_eq!(entry.tag_name, "goal");
@@ -441,6 +445,8 @@ fn test_markdown_link_override_reuses_when_provided() {
         url: "https://injected.com".to_string(),
         anchor: None,
         range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+        start_byte: 0,
+        end_byte: 10,
     };
     let overrides = IncrementalOverrides {
         wiki_links: None,
@@ -468,6 +474,8 @@ fn test_xml_tag_override_reuses_when_provided() {
         is_self_closing: false,
         is_unclosed: false,
         range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+        start_byte: 0,
+        end_byte: 10,
     };
     let overrides = IncrementalOverrides {
         wiki_links: None,
@@ -509,6 +517,8 @@ fn test_incremental_overrides_all_five() {
             url: "https://injected.com".to_string(),
             anchor: None,
             range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+            start_byte: 0,
+            end_byte: 10,
         }]),
         xml_tags: Some(vec![XmlTagOwned {
             tag_name: "injected-xml".to_string(),
@@ -516,6 +526,8 @@ fn test_incremental_overrides_all_five() {
             is_self_closing: true,
             is_unclosed: false,
             range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+            start_byte: 0,
+            end_byte: 10,
         }]),
     };
     let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);

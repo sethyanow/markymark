@@ -207,6 +207,16 @@ Expected: block 5.7ms + inline ~13us = **~2.8x** vs 15.8ms full.
 of changed region) from slow AST rebuild (tree-sitter). Defer parse until request needs AST.
 Requires marky-v8g (TreeSitterScanBackend). Potentially 10x+.
 
+### Byte Offsets for MarkdownLink/XmlTag (2026-02-18, IN PROGRESS)
+
+Added `start_byte`/`end_byte` to MarkdownLink and XmlTag across the full crate chain
+(parser types → extraction → index types → incremental logic). This enables the same
+`range_within_neighbor_window` (100-byte) heuristic used by wiki_links/blocks, making
+all four extractors consistent. See handoff prompt below for remaining work.
+
+**Key decision:** All four non-heading extractors now use the same three-check pattern:
+`range_intersects_edit` || `range_within_neighbor_window` || `any_edit_starts_at_or_after_last_*`.
+
 ### Decision: 10x not achievable at parse level
 
 Epic assumed extractors = 60% of cost. In release mode: 3%. Tree-sitter is the wall.

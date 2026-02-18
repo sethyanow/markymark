@@ -361,15 +361,17 @@ pub fn merge_incremental_blocks(
 
 /// Returns true if this markdown link is affected by any of the pending edits.
 ///
-/// Only entries that directly intersect the edit need re-extraction.
-/// MarkdownLink has no byte offsets, so neighbor-window is not applicable.
+/// Entries that directly intersect the edit or are within the byte-level
+/// neighbor window need re-extraction. Entries merely *after* the edit are
+/// retained with adjusted positions instead of being re-extracted.
 pub fn markdown_link_affected_by_edits(
     ml: &MarkdownLinkOwned,
     pending_edits: &[InputEdit],
 ) -> bool {
-    pending_edits
-        .iter()
-        .any(|edit| range_intersects_edit(ml.range, edit))
+    pending_edits.iter().any(|edit| {
+        range_intersects_edit(ml.range, edit)
+            || range_within_neighbor_window(ml.start_byte, ml.end_byte, edit, 100)
+    })
 }
 
 /// Returns true if any markdown link in the old index needs re-extraction.
@@ -387,6 +389,7 @@ pub fn markdown_links_need_update(
 }
 
 /// Returns true if any edit starts at or after the last markdown link end.
+/// Catches insertions after the last link that might create new links.
 pub fn any_edit_starts_at_or_after_last_markdown_link(
     old_mls: &[MarkdownLinkOwned],
     pending_edits: &[InputEdit],
@@ -412,11 +415,16 @@ pub fn any_edit_starts_at_or_after_last_markdown_link(
 pub fn extract_markdown_links_owned(ast: &markymark_parser::Ast) -> Vec<MarkdownLinkOwned> {
     ast.extract_markdown_links()
         .into_iter()
-        .map(|ml| MarkdownLinkOwned {
-            text: ml.text().to_string(),
-            url: ml.url().to_string(),
-            anchor: ml.anchor().map(str::to_string),
-            range: ml.range(),
+        .map(|ml| {
+            let (start_byte, end_byte) = ml.byte_range();
+            MarkdownLinkOwned {
+                text: ml.text().to_string(),
+                url: ml.url().to_string(),
+                anchor: ml.anchor().map(str::to_string),
+                range: ml.range(),
+                start_byte,
+                end_byte,
+            }
         })
         .collect()
 }
@@ -434,6 +442,7 @@ pub fn merge_incremental_markdown_links(
             for edit in pending_edits {
                 if range_is_after_edit_end(adjusted.range, edit) {
                     adjust_range_after_edit(&mut adjusted.range, edit);
+                    adjust_bytes_after_edit(&mut adjusted.start_byte, &mut adjusted.end_byte, edit);
                 }
             }
             merged.push(adjusted);
@@ -455,12 +464,13 @@ pub fn merge_incremental_markdown_links(
 
 /// Returns true if this XML tag is affected by any of the pending edits.
 ///
-/// Only entries that directly intersect the edit need re-extraction.
-/// XmlTag has no byte offsets, so neighbor-window is not applicable.
+/// Entries that directly intersect the edit or are within the byte-level
+/// neighbor window need re-extraction.
 pub fn xml_tag_affected_by_edits(xt: &XmlTagOwned, pending_edits: &[InputEdit]) -> bool {
-    pending_edits
-        .iter()
-        .any(|edit| range_intersects_edit(xt.range, edit))
+    pending_edits.iter().any(|edit| {
+        range_intersects_edit(xt.range, edit)
+            || range_within_neighbor_window(xt.start_byte, xt.end_byte, edit, 100)
+    })
 }
 
 /// Returns true if any XML tag in the old index needs re-extraction.
@@ -507,12 +517,15 @@ pub fn extract_xml_tags_owned(ast: &markymark_parser::Ast) -> Vec<XmlTagOwned> {
                 .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
                 .collect();
             attributes.sort_by(|a, b| a.0.cmp(&b.0));
+            let (start_byte, end_byte) = xt.byte_range();
             XmlTagOwned {
                 tag_name: xt.tag_name().to_string(),
                 attributes,
                 is_self_closing: xt.is_self_closing(),
                 is_unclosed: xt.is_unclosed(),
                 range: xt.range(),
+                start_byte,
+                end_byte,
             }
         })
         .collect()
@@ -531,6 +544,7 @@ pub fn merge_incremental_xml_tags(
             for edit in pending_edits {
                 if range_is_after_edit_end(adjusted.range, edit) {
                     adjust_range_after_edit(&mut adjusted.range, edit);
+                    adjust_bytes_after_edit(&mut adjusted.start_byte, &mut adjusted.end_byte, edit);
                 }
             }
             merged.push(adjusted);
@@ -624,6 +638,7 @@ pub fn build_markdown_index_incremental(
                     for edit in pending_edits {
                         if range_is_after_edit_end(adj.range, edit) {
                             adjust_range_after_edit(&mut adj.range, edit);
+                            adjust_bytes_after_edit(&mut adj.start_byte, &mut adj.end_byte, edit);
                         }
                     }
                     adj
@@ -646,6 +661,7 @@ pub fn build_markdown_index_incremental(
                     for edit in pending_edits {
                         if range_is_after_edit_end(adj.range, edit) {
                             adjust_range_after_edit(&mut adj.range, edit);
+                            adjust_bytes_after_edit(&mut adj.start_byte, &mut adj.end_byte, edit);
                         }
                     }
                     adj
