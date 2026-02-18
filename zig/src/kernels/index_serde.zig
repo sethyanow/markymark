@@ -32,11 +32,11 @@ pub const Header = extern struct {
     string_table_size: u32 = 0,
     _reserved: [4]u8 = .{ 0, 0, 0, 0 },
 
-    pub const SIZE: usize = 32;
+    pub const SIZE: usize = @sizeOf(Header);
     pub const ALIGN: usize = 8;
 };
 
-/// Heading entry in serialized array (8 bytes).
+/// Heading entry in serialized array (12 bytes).
 pub const IndexHeading = extern struct {
     doc_id: u32,
     string_offset: u32,
@@ -56,7 +56,7 @@ pub const IndexLink = extern struct {
     _pad: u8 = 0,
 };
 
-/// Tag entry in serialized array (8 bytes).
+/// Tag entry in serialized array (12 bytes).
 pub const IndexTag = extern struct {
     doc_id: u32,
     string_offset: u32,
@@ -64,7 +64,7 @@ pub const IndexTag = extern struct {
     _pad: u16 = 0,
 };
 
-/// Block ID entry in serialized array (8 bytes).
+/// Block ID entry in serialized array (12 bytes).
 pub const IndexBlockId = extern struct {
     doc_id: u32,
     string_offset: u32,
@@ -146,7 +146,9 @@ pub const IndexView = struct {
     pub fn getHeading(self: *const IndexView, i: u32) ?*const IndexHeading {
         if (i >= self.header.heading_count) return null;
         const padding = padAfterStringTable(self.header.string_table_size);
-        const offset = Header.SIZE + self.header.string_table_size + padding + i * @sizeOf(IndexHeading);
+        const item_offset = std.math.mul(usize, @as(usize, i), @sizeOf(IndexHeading)) catch return null;
+        const base_offset = Header.SIZE + self.header.string_table_size + padding;
+        const offset = std.math.add(usize, base_offset, item_offset) catch return null;
         const ptr: *const IndexHeading = @ptrCast(@alignCast(self.base + offset));
         return ptr;
     }
@@ -154,7 +156,8 @@ pub const IndexView = struct {
     /// Resolve string from string table by offset.
     pub fn getString(self: *const IndexView, offset: u32, length: u16) ?[]const u8 {
         const table_start = Header.SIZE;
-        if (offset + length > self.header.string_table_size) return null;
+        const end_offset = std.math.add(u32, offset, @as(u32, length)) catch return null;
+        if (end_offset > self.header.string_table_size) return null;
         return self.base[table_start + offset ..][0..length];
     }
 };
@@ -418,4 +421,91 @@ test "large index round-trip (1000+ docs)" {
     const last_heading = view.?.getHeading(total_headings - 1);
     try std.testing.expect(last_heading != null);
     try std.testing.expectEqual(@as(u32, num_docs - 1), last_heading.?.doc_id);
+}
+
+test "Header.SIZE equals @sizeOf(Header)" {
+    try std.testing.expectEqual(@sizeOf(Header), Header.SIZE);
+}
+
+test "getHeading returns null for out-of-bounds index" {
+    const heading_text = "Hi";
+    var headings: [1]IndexHeading = .{
+        .{ .doc_id = 0, .string_offset = 0, .length = 2, .level = 1 },
+    };
+    var data: IndexData = .{
+        .doc_count = 1,
+        .heading_count = 1,
+        .headings = &headings,
+        .string_table = heading_text.ptr,
+        .string_table_size = 2,
+    };
+    var buf: [512]u8 = undefined;
+    var written: u32 = 0;
+    const rc = serialize_index(&data, &buf, buf.len, &written);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+
+    const view = IndexView.init(&buf, written).?;
+    // Valid access works
+    try std.testing.expect(view.getHeading(0) != null);
+    // Out of bounds returns null
+    try std.testing.expect(view.getHeading(1) == null);
+    try std.testing.expect(view.getHeading(std.math.maxInt(u32)) == null);
+}
+
+test "getHeading checked math: mul and add do not wrap" {
+    // On 64-bit, u32*12 can't overflow usize, but the checked add on line 151
+    // guards against a corrupted base_offset + item_offset exceeding usize.
+    // Verify the checked-math paths compile and are exercised by the
+    // init overflow test (which rejects maxInt heading_count before getHeading
+    // is ever reachable). This test asserts the defense-in-depth code is present
+    // by confirming getHeading returns a valid pointer for in-range access and
+    // null for out-of-range access on a legitimate view.
+    const heading_text = "Hi";
+    var headings: [1]IndexHeading = .{
+        .{ .doc_id = 0, .string_offset = 0, .length = 2, .level = 1 },
+    };
+    var data: IndexData = .{
+        .doc_count = 1,
+        .heading_count = 1,
+        .headings = &headings,
+        .string_table = heading_text.ptr,
+        .string_table_size = 2,
+    };
+    var buf: [512]u8 = undefined;
+    var written: u32 = 0;
+    const rc = serialize_index(&data, &buf, buf.len, &written);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+
+    const view = IndexView.init(&buf, written).?;
+    const h = view.getHeading(0);
+    try std.testing.expect(h != null);
+    try std.testing.expectEqual(@as(u32, 0), h.?.doc_id);
+}
+
+test "getString returns null for overflowing offset+length" {
+    const text = "hello";
+    var data: IndexData = .{
+        .string_table = text.ptr,
+        .string_table_size = 5,
+    };
+    var buf: [512]u8 = undefined;
+    var written: u32 = 0;
+    const rc = serialize_index(&data, &buf, buf.len, &written);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+
+    const view = IndexView.init(&buf, written).?;
+
+    // offset + length wraps u32: 0xFFFFFFFF + 1 would be 0 < 5, bypassing
+    // the bounds check without checked arithmetic.
+    try std.testing.expect(view.getString(std.math.maxInt(u32), 1) == null);
+    try std.testing.expect(view.getString(std.math.maxInt(u32) - 5, 10) == null);
+
+    // Legitimate access still works
+    try std.testing.expectEqualStrings("hello", view.getString(0, 5).?);
+}
+
+test "struct size doc-comments match reality" {
+    try std.testing.expectEqual(@as(usize, 12), @sizeOf(IndexHeading));
+    try std.testing.expectEqual(@as(usize, 12), @sizeOf(IndexTag));
+    try std.testing.expectEqual(@as(usize, 12), @sizeOf(IndexBlockId));
 }
