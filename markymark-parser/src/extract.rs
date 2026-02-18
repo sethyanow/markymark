@@ -69,6 +69,8 @@ pub fn extract_wiki_links<'a>(
                     Position::new(line, start_char),
                     Position::new(line, end_char),
                 ),
+                start,
+                end,
             ));
         }
     }

@@ -85,6 +85,8 @@ mod arena_allocation_tests {
             Some(arena.alloc_str("section")),
             None,
             Range::new(Position::new(0, 0), Position::new(0, 12)),
+            0,
+            12,
         );
 
         assert_eq!(link.target_page(), Some("target-page"));
