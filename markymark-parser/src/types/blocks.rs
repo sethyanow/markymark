@@ -31,17 +31,24 @@ impl<'arena> BlockId<'arena> {
 #[derive(Debug, Clone)]
 pub struct BlockRef<'arena> {
     uuid: &'arena str,
+    /// Source range covering the full `((uuid))` pattern.
+    range: Range,
 }
 
 impl<'arena> BlockRef<'arena> {
     /// Create a new block reference
-    pub(crate) fn new(uuid: &'arena str) -> Self {
-        Self { uuid }
+    pub(crate) fn new(uuid: &'arena str, range: Range) -> Self {
+        Self { uuid, range }
     }
 
     /// Get UUID
     pub fn uuid(&self) -> &'arena str {
         self.uuid
+    }
+
+    /// Get source range of the `((uuid))` pattern.
+    pub fn range(&self) -> Range {
+        self.range
     }
 }
 

@@ -503,3 +503,85 @@ mod scan_tests {
         assert_ne!(block.range.start, block.range.end);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Block ref wiring tests (marky-waw)
+// ---------------------------------------------------------------------------
+
+const UUID_A: &str = "550e8400-e29b-41d4-a716-446655440000";
+const UUID_B: &str = "7f6c1b2a-3d4e-5f60-a7b8-c9d0e1f20304";
+
+#[test]
+fn test_block_refs_stored_in_document_index() {
+    // Bug this catches: extract_block_refs called but result dropped during index construction
+    let source = format!("Some text (({UUID_A})) more text");
+    let index = build_index(&source);
+    let refs = index.block_refs();
+    assert_eq!(refs.len(), 1, "expected 1 block ref, got {}", refs.len());
+    assert_eq!(refs[0].uuid, UUID_A);
+}
+
+#[test]
+fn test_multiple_block_refs_all_returned() {
+    // Bug this catches: only first block ref extracted, Vec truncated early
+    let source = format!("(({UUID_A})) text (({UUID_B}))");
+    let index = build_index(&source);
+    let refs = index.block_refs();
+    assert_eq!(refs.len(), 2, "expected 2 block refs, got {}", refs.len());
+    let uuids: Vec<&str> = refs.iter().map(|r| r.uuid).collect();
+    assert!(uuids.contains(&UUID_A), "missing UUID_A");
+    assert!(uuids.contains(&UUID_B), "missing UUID_B");
+}
+
+#[test]
+fn test_no_block_refs_returns_empty_slice() {
+    // Bug this catches: uninitialized field or wrong default, panics instead of empty
+    let index = build_index("# Heading\nno block refs here");
+    assert!(
+        index.block_refs().is_empty(),
+        "expected empty block_refs for document without ((uuid))"
+    );
+}
+
+#[test]
+fn test_block_ref_range_matches_position() {
+    // Bug this catches: range computation off by one or character vs byte offset confusion
+    let source = format!("(({UUID_A}))");
+    let index = build_index(&source);
+    let refs = index.block_refs();
+    assert_eq!(refs.len(), 1);
+    // Full match including (( and )) spans the whole string on line 0
+    // Length: "((550e8400-e29b-41d4-a716-446655440000))" = 2 + 36 + 2 = 40
+    let r = refs[0].range;
+    assert_eq!(
+        r.start,
+        Position::new(0, 0),
+        "range should start at column 0"
+    );
+    assert_eq!(r.end, Position::new(0, 40), "range should end at column 40");
+    assert_ne!(r.start, r.end, "range must have non-zero width");
+}
+
+#[test]
+fn test_block_ref_not_extracted_for_short_uuid() {
+    // Bug this catches: regex accepts partial/short UUIDs, produces garbage entries
+    // BLOCK_REF_RE requires exactly 36 [0-9a-f-] chars — short UUIDs must NOT match
+    let index = build_index("((abc-123)) ((too-short))");
+    assert!(
+        index.block_refs().is_empty(),
+        "short non-UUID patterns should not be extracted as block refs"
+    );
+}
+
+#[test]
+fn test_block_ref_uuid_v4_format_preserved_exactly() {
+    // Bug this catches: UUID normalization or truncation at dash characters
+    let source = format!("ref: (({UUID_A}))");
+    let index = build_index(&source);
+    let refs = index.block_refs();
+    assert_eq!(refs.len(), 1);
+    assert_eq!(
+        refs[0].uuid, UUID_A,
+        "UUID must be preserved exactly including dashes"
+    );
+}
