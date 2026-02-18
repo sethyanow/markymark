@@ -58,7 +58,15 @@ pub fn execute_search_for_pattern(
     let effective_limit = limit.clamp(1, MAX_LIMIT) as usize;
 
     // 4. Compile glob filter (optional).
-    let glob_filter = include_glob.and_then(compile_glob);
+    let glob_filter = match include_glob {
+        Some(g) => match compile_glob(g) {
+            Ok(gf) => Some(gf),
+            Err(msg) => {
+                return CoreOperationResult::Error(CoreError::Message(msg));
+            }
+        },
+        None => None,
+    };
 
     // 5. Collect URIs in deterministic order.
     let mut uris: Vec<_> = realm
@@ -194,13 +202,13 @@ struct GlobFilter {
 
 /// Compile a glob pattern into a `GlobFilter`.
 ///
-/// Returns `None` if the resulting regex is invalid (shouldn't happen for
-/// well-formed globs, but we handle it gracefully).
-fn compile_glob(glob: &str) -> Option<GlobFilter> {
+/// Returns `Err` with a message if the resulting regex is invalid.
+fn compile_glob(glob: &str) -> Result<GlobFilter, String> {
     let full_path = glob.contains('/');
     let regex_str = glob_to_regex(glob);
-    let re = regex::Regex::new(&regex_str).ok()?;
-    Some(GlobFilter { full_path, re })
+    let re = regex::Regex::new(&regex_str)
+        .map_err(|e| format!("invalid_glob: failed to compile '{glob}': {e}"))?;
+    Ok(GlobFilter { full_path, re })
 }
 
 /// Test whether `path` matches the compiled `GlobFilter`.
