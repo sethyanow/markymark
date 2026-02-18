@@ -919,6 +919,7 @@ dependencies = [
  "insta",
  "libc",
  "markymark-core",
+ "markymark-kernels",
  "markymark-parser",
  "memory-stats",
  "petgraph",

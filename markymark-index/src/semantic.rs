@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use crate::DocumentIndex;
 use markymark_core::prelude::*;
+use markymark_kernels::embed::EmbeddingIndex as ZigEmbeddingIndex;
 
 /// Semantic metadata for a heading-level search entry.
 #[derive(Debug, Clone)]
@@ -77,7 +78,8 @@ impl SemanticIndex {
 
         Ok(Self {
             provider,
-            index: ZigEmbeddingIndex::new(dims)?,
+            index: ZigEmbeddingIndex::new(dims)
+                .map_err(|e| EmbedError::InternalError(e.to_string()))?,
             entries_by_id: HashMap::new(),
             doc_to_ids: HashMap::new(),
             doc_token_sets: HashMap::new(),
@@ -104,7 +106,9 @@ impl SemanticIndex {
             let fallback_heading = fallback_heading(&uri);
             let embedding = self.provider.embed(&fallback_heading)?;
             let id = format!("{}#fallback", uri.as_str());
-            self.index.add(&id, &embedding)?;
+            self.index
+                .add(&id, &embedding)
+                .map_err(|e| EmbedError::InternalError(e.to_string()))?;
 
             token_set.extend(token_hashes(&fallback_heading));
             pending_entries.push((
@@ -123,7 +127,9 @@ impl SemanticIndex {
                 let embedding_input = heading.text.to_string();
                 let embedding = self.provider.embed(&embedding_input)?;
                 let id = format!("{}#{}#{i}", uri.as_str(), heading.slug);
-                self.index.add(&id, &embedding)?;
+                self.index
+                    .add(&id, &embedding)
+                    .map_err(|e| EmbedError::InternalError(e.to_string()))?;
 
                 token_set.extend(token_hashes(&embedding_input));
                 pending_entries.push((
@@ -177,7 +183,10 @@ impl SemanticIndex {
         let score_floor = min_score.clamp(0.0, 1.0);
 
         let fetch_k = compute_fetch_k(self.index.count(), top_k);
-        let raw = self.index.search(&query_embedding, fetch_k)?;
+        let raw = self
+            .index
+            .search(&query_embedding, fetch_k)
+            .map_err(|e| EmbedError::InternalError(e.to_string()))?;
 
         let mut out = Vec::new();
         for candidate in raw {

@@ -69,6 +69,8 @@ pub fn extract_wiki_links<'a>(
                     Position::new(line, start_char),
                     Position::new(line, end_char),
                 ),
+                start,
+                end,
             ));
         }
     }
@@ -250,6 +252,8 @@ pub fn extract_block_ids<'a>(
             blocks.push(BlockId::new(
                 arena_alloc_str(arena, id_match.as_str()),
                 range,
+                start,
+                end,
             ));
         }
     }

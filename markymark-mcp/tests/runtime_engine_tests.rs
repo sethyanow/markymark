@@ -222,6 +222,71 @@ fn search_symbols_returns_no_results_when_query_cannot_be_matched() {
 }
 
 #[test]
+fn search_symbols_uses_batch_ranked_results_ordering() {
+    let ws = TempWorkspace::new("search-symbols-batch-ranked-order");
+    let file = ws.root().join("ranked.md");
+    fs::write(&file, "# acb\n# adb\n# aeb\n").expect("markdown should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let symbols = engine.execute(CoreOperation::SearchSymbols {
+        query: "ab".to_string(),
+        realm: None,
+    });
+
+    match symbols {
+        CoreOperationResult::Symbols(matches) => {
+            let names: Vec<_> = matches.into_iter().map(|(name, _, _)| name).collect();
+            assert_eq!(
+                names,
+                vec!["acb".to_string(), "adb".to_string(), "aeb".to_string()]
+            );
+        }
+        other => panic!("expected symbol matches, got: {other:?}"),
+    }
+}
+
+// Regression test for: fuzzy_match_batch path lacked alphabetical tie-breaking.
+// Candidates from multiple files arrive in HashMap iteration order (non-deterministic).
+// When all scores are equal, the sort must fall back to name ASC so the result is
+// stable regardless of which document the realm iterates first.
+// Bug introduced in feat(marky-8xt), fixed by adding the same comparator used in
+// the single-candidate fallback path.
+#[test]
+fn search_symbols_batch_path_uses_alphabetical_tiebreak_across_files() {
+    let ws = TempWorkspace::new("batch-tiebreak-cross-file");
+    // Three files, one heading each. All headings contain 'a', so all score equally
+    // for query "a". The correct result is alphabetical regardless of which file the
+    // realm's HashMap happens to iterate first.
+    fs::write(ws.root().join("c.md"), "# Zebra\n").expect("c.md");
+    fs::write(ws.root().join("a.md"), "# Alpha\n").expect("a.md");
+    fs::write(ws.root().join("b.md"), "# Beta\n").expect("b.md");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let result = engine.execute(CoreOperation::SearchSymbols {
+        query: "a".to_string(),
+        realm: None,
+    });
+
+    match result {
+        CoreOperationResult::Symbols(matches) => {
+            let names: Vec<_> = matches.into_iter().map(|(name, _, _)| name).collect();
+            // Must be alphabetical: Alpha < Beta < Zebra.
+            // Before the fix this returned in HashMap iteration order, e.g. ["Zebra", "Alpha", "Beta"].
+            assert_eq!(
+                names,
+                vec!["Alpha".to_string(), "Beta".to_string(), "Zebra".to_string()],
+                "batch path must use alphabetical tiebreak; got {names:?}"
+            );
+        }
+        other => panic!("expected symbol matches, got: {other:?}"),
+    }
+}
+
+#[test]
 fn find_references_returns_wiki_link_refs_to_heading() {
     let ws = TempWorkspace::new("find-refs-heading");
     let a = ws.root().join("a.md");

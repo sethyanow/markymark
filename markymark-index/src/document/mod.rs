@@ -103,41 +103,66 @@ impl DocumentIndex {
     /// Extracts owned intermediate records, moves the parser arena into this
     /// index, and allocates the final index entries in one arena-backed pass.
     pub fn from_ast(ast: Ast) -> Self {
+        Self::from_ast_with_overrides_opt(ast, IncrementalOverrides::default())
+    }
+
+    /// Build a document index from a parsed AST while overriding wiki-links.
+    ///
+    /// This is used by incremental reindexing paths that already computed
+    /// a selective wiki-link merge and want to avoid full re-extraction.
+    pub fn from_ast_with_wiki_links(ast: Ast, wiki_links: Vec<WikiLinkOwned>) -> Self {
+        Self::from_ast_with_overrides_opt(
+            ast,
+            IncrementalOverrides {
+                wiki_links: Some(wiki_links),
+                ..Default::default()
+            },
+        )
+    }
+
+    /// Build a document index from a parsed AST while overriding blocks.
+    ///
+    /// This is used by incremental reindexing paths that already computed
+    /// a selective block merge and want to avoid full re-extraction.
+    pub fn from_ast_with_blocks(ast: Ast, blocks: Vec<BlockOwned>) -> Self {
+        Self::from_ast_with_overrides_opt(
+            ast,
+            IncrementalOverrides {
+                blocks: Some(blocks),
+                ..Default::default()
+            },
+        )
+    }
+
+    /// Build a document index from a parsed AST while overriding both wiki-links and blocks.
+    ///
+    /// This is the primary incremental path when both extractors have been merged.
+    pub fn from_ast_with_wiki_links_and_blocks(
+        ast: Ast,
+        wiki_links: Vec<WikiLinkOwned>,
+        blocks: Vec<BlockOwned>,
+    ) -> Self {
+        Self::from_ast_with_overrides_opt(
+            ast,
+            IncrementalOverrides {
+                wiki_links: Some(wiki_links),
+                blocks: Some(blocks),
+                ..Default::default()
+            },
+        )
+    }
+
+    /// Build a document index from a parsed AST with selective extractor overrides.
+    ///
+    /// This is the primary construction path used by incremental reindexing. For each
+    /// extractor, a `Some` override skips re-extraction and uses the provided data;
+    /// `None` extracts fresh from the AST. Always use [`IncrementalOverrides`] rather
+    /// than calling the convenience functions when multiple extractors need overrides.
+    pub fn from_ast_with_overrides_opt(ast: Ast, overrides: IncrementalOverrides) -> Self {
         #[derive(Debug)]
         struct HeadingOwned {
             text: String,
             level: u8,
-            range: Range,
-        }
-        #[derive(Debug)]
-        struct BlockOwned {
-            id: String,
-            range: Range,
-        }
-        #[derive(Debug)]
-        struct WikiLinkOwned {
-            target: String,
-            alias: Option<String>,
-            heading: Option<String>,
-            range: Range,
-        }
-        #[derive(Debug)]
-        struct TagOwned {
-            name: String,
-        }
-        #[derive(Debug)]
-        struct MarkdownLinkOwned {
-            text: String,
-            url: String,
-            anchor: Option<String>,
-            range: Range,
-        }
-        #[derive(Debug)]
-        struct XmlTagOwned {
-            tag_name: String,
-            attributes: Vec<(String, String)>,
-            is_self_closing: bool,
-            is_unclosed: bool,
             range: Range,
         }
 
@@ -152,63 +177,92 @@ impl DocumentIndex {
             }
         }
 
-        let mut blocks_owned = Vec::new();
-        for block_id in ast.extract_block_ids() {
-            blocks_owned.push(BlockOwned {
-                id: block_id.id().to_string(),
-                range: block_id.range(),
-            });
-        }
-
-        let mut wiki_links_owned = Vec::new();
-        for wl in ast.extract_wiki_links() {
-            if wl.target_page().is_none()
-                && wl.target_heading().is_none()
-                && wl.target_block_id().is_none()
-            {
-                continue;
+        let blocks_owned = if let Some(blocks_override) = overrides.blocks {
+            blocks_override
+        } else {
+            let mut blocks_owned = Vec::new();
+            for block_id in ast.extract_block_ids() {
+                blocks_owned.push(BlockOwned {
+                    id: block_id.id().to_string(),
+                    range: block_id.range(),
+                    start_byte: block_id.start_byte(),
+                    end_byte: block_id.end_byte(),
+                });
             }
+            blocks_owned
+        };
 
-            wiki_links_owned.push(WikiLinkOwned {
-                target: wl.target_page().unwrap_or("").to_string(),
-                alias: wl.alias().map(str::to_string),
-                heading: wl.target_heading().map(str::to_string),
-                range: wl.range(),
-            });
-        }
+        let wiki_links_owned = if let Some(wiki_links_override) = overrides.wiki_links {
+            wiki_links_override
+        } else {
+            let mut wiki_links_owned = Vec::new();
+            for wl in ast.extract_wiki_links() {
+                if wl.target_page().is_none()
+                    && wl.target_heading().is_none()
+                    && wl.target_block_id().is_none()
+                {
+                    continue;
+                }
 
-        let mut tags_owned = Vec::new();
-        for tag in ast.extract_tags() {
-            tags_owned.push(TagOwned {
+                let (start_byte, end_byte) = wl.byte_range();
+                wiki_links_owned.push(WikiLinkOwned {
+                    target: wl.target_page().unwrap_or("").to_string(),
+                    alias: wl.alias().map(str::to_string),
+                    heading: wl.target_heading().map(str::to_string),
+                    range: wl.range(),
+                    start_byte,
+                    end_byte,
+                });
+            }
+            wiki_links_owned
+        };
+
+        // Tags have no source range in the parser — always re-extract.
+        // The `overrides.tags` field is present for API completeness but is always `None`.
+        let tags_owned: Vec<TagOwned> = ast
+            .extract_tags()
+            .into_iter()
+            .map(|tag| TagOwned {
                 name: tag.name().to_string(),
-            });
-        }
+            })
+            .collect();
 
-        let mut markdown_links_owned = Vec::new();
-        for ml in ast.extract_markdown_links() {
-            markdown_links_owned.push(MarkdownLinkOwned {
-                text: ml.text().to_string(),
-                url: ml.url().to_string(),
-                anchor: ml.anchor().map(str::to_string),
-                range: ml.range(),
-            });
-        }
+        let markdown_links_owned = if let Some(ml_override) = overrides.markdown_links {
+            ml_override
+        } else {
+            ast.extract_markdown_links()
+                .into_iter()
+                .map(|ml| MarkdownLinkOwned {
+                    text: ml.text().to_string(),
+                    url: ml.url().to_string(),
+                    anchor: ml.anchor().map(str::to_string),
+                    range: ml.range(),
+                })
+                .collect()
+        };
 
-        let mut xml_tags_owned = Vec::new();
-        for xt in ast.extract_xml_tags() {
-            let attributes = xt
-                .attributes()
-                .iter()
-                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
-                .collect::<Vec<_>>();
-            xml_tags_owned.push(XmlTagOwned {
-                tag_name: xt.tag_name().to_string(),
-                attributes,
-                is_self_closing: xt.is_self_closing(),
-                is_unclosed: xt.is_unclosed(),
-                range: xt.range(),
-            });
-        }
+        let xml_tags_owned = if let Some(xt_override) = overrides.xml_tags {
+            xt_override
+        } else {
+            ast.extract_xml_tags()
+                .into_iter()
+                .map(|xt| {
+                    let mut attributes: Vec<(String, String)> = xt
+                        .attributes()
+                        .iter()
+                        .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+                        .collect();
+                    attributes.sort_by(|a, b| a.0.cmp(&b.0));
+                    XmlTagOwned {
+                        tag_name: xt.tag_name().to_string(),
+                        attributes,
+                        is_self_closing: xt.is_self_closing(),
+                        is_unclosed: xt.is_unclosed(),
+                        range: xt.range(),
+                    }
+                })
+                .collect()
+        };
 
         // Extract frontmatter and properties as owned data BEFORE arena move.
         #[derive(Debug)]
@@ -332,6 +386,8 @@ impl DocumentIndex {
                     BlockEntry {
                         id,
                         range: block.range,
+                        start_byte: block.start_byte,
+                        end_byte: block.end_byte,
                     },
                 );
             }
@@ -340,12 +396,14 @@ impl DocumentIndex {
             let outline = helpers::build_outline(arena_ref, headings);
 
             let mut wiki_links_builder = BumpVec::new_in(arena_ref);
-            for wl in wiki_links_owned {
+            for wl in &wiki_links_owned {
                 wiki_links_builder.push(WikiLinkEntry {
                     target: arena_alloc_str(arena_ref, &wl.target),
                     alias: wl.alias.as_deref().map(|a| arena_alloc_str(arena_ref, a)),
                     heading: wl.heading.as_deref().map(|h| arena_alloc_str(arena_ref, h)),
                     range: wl.range,
+                    start_byte: wl.start_byte,
+                    end_byte: wl.end_byte,
                 });
             }
             let wiki_links = wiki_links_builder.into_bump_slice();
@@ -546,6 +604,8 @@ impl DocumentIndex {
                             alias,
                             heading: None,
                             range,
+                            start_byte: l.offset as usize,
+                            end_byte: end_offset as usize,
                         });
                     }
                     ScanLinkType::Markdown => {
@@ -587,11 +647,15 @@ impl DocumentIndex {
                     &line_starts,
                     b.offset + 1 + b.id.len() as u32,
                 );
+                let start_byte = b.offset as usize;
+                let end_byte = (b.offset + 1 + b.id.len() as u32) as usize;
                 blocks.insert(
                     id,
                     BlockEntry {
                         id,
                         range: Range::new(pos, end_pos),
+                        start_byte,
+                        end_byte,
                     },
                 );
             }
