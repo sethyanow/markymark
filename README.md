@@ -14,6 +14,7 @@ markymark is a Language Server Protocol (LSP) and Model Context Protocol (MCP) s
 - **Full Obsidian and Logseq flavor support** (wiki links, callouts, block IDs, page properties)
 - **Anchor link rename support** (updates heading references across workspace)
 - **Cross-format references** — wiki links resolve to structured document key paths
+- **Incremental indexing** — Byte-range selective merge for fast re-indexing on edit
 - **Dual-transport architecture** (LSP + MCP over stdio)
 
 ## Installation
@@ -34,6 +35,10 @@ cargo install markymark-cli
 
 Pre-built binaries for macOS (ARM64/x86_64), Linux (x86_64/ARM64), and Windows (x86_64) are available from [Releases](https://github.com/sethyanow/markymark/releases).
 
+### VSCode Extension
+
+Install `markymark` from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=sethyanow.markymark) or search "markymark" in the Extensions panel. The extension discovers the `markymark` binary on `$PATH` and starts the LSP client automatically.
+
 ### Claude Code Plugin
 
 See [markymark-plugin/README.md](markymark-plugin/README.md) for plugin installation.
@@ -49,6 +54,23 @@ markymark --lsp
 ```bash
 markymark --mcp /path/to/workspace
 ```
+
+## MCP Tools
+
+When running as an MCP server, markymark exposes these tools:
+
+| Tool | Description |
+|------|-------------|
+| `create-realm` | Create an isolated workspace realm |
+| `add-root` | Add a directory root to a realm for indexing |
+| `search-symbols` | Fuzzy symbol search across indexed documents |
+| `get-outline` | Heading/key outline for a single document |
+| `export-index` | Full index export (headings, tags, links) for a document |
+| `find-references` | All references to a heading or XML tag |
+| `rename` | Rename a heading or tag, updating all references |
+| `search-workspace` | Full-text search with frontmatter/property/tag filtering |
+| `search-for-pattern` | Regex search with glob filtering and context lines |
+| `graph-analysis` | Link graph intelligence (orphans, hubs, broken links, clusters, DOT export) |
 
 ## Claude Code Integration
 
@@ -118,6 +140,7 @@ This project uses markymark LSP. ALWAYS prefer LSP over reading raw files:
 | `markymark-lsp` | LSP server (tower-lsp-server) |
 | `markymark-mcp` | MCP server (rmcp) |
 | `markymark-cli` | CLI entry point |
+| `markymark-vscode` | VSCode extension with LSP client |
 
 ## Development
 
