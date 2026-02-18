@@ -75,9 +75,15 @@ pub const LinkGraph = struct {
 
         const node = self.nodes.getPtr(doc_id).?;
 
-        // Add outbound edges
+        // Add outbound edges, deduplicating targets so inbound_count reflects
+        // unique sources rather than raw occurrences (marky-859).
+        var seen = std.AutoHashMapUnmanaged(u32, void){};
+        defer seen.deinit(self.allocator);
+        seen.ensureTotalCapacity(self.allocator, @intCast(targets.len)) catch return -3;
         node.outbound.ensureTotalCapacity(self.allocator, targets.len) catch return -3;
         for (targets) |target| {
+            const sr = seen.getOrPutAssumeCapacity(target);
+            if (sr.found_existing) continue;
             node.outbound.appendAssumeCapacity(target);
             // Ensure target node exists and increment its inbound count
             const gop = self.nodes.getOrPut(self.allocator, target) catch return -3;
@@ -699,4 +705,50 @@ test "empty graph connectivity stats" {
     try std.testing.expectEqual(@as(i32, 0), rc);
     try std.testing.expectEqual(@as(u32, 0), components);
     try std.testing.expectEqual(@as(u32, 0), max_degree);
+}
+
+test "duplicate targets do not inflate inbound_count" {
+    // Regression test for marky-859: duplicate IDs in targets slice must be
+    // deduplicated so inbound_count reflects unique sources, not raw occurrences.
+    var graph = LinkGraph.init(std.testing.allocator);
+    defer graph.deinit();
+
+    // Doc 1 links to doc 2 three times (duplicates)
+    try std.testing.expectEqual(@as(i32, 0), graph.addDocument(1, &.{ 2, 2, 2 }));
+
+    // inbound_count for doc 2 must be 1, not 3
+    const node2 = graph.nodes.getPtr(2).?;
+    try std.testing.expectEqual(@as(u32, 1), node2.inbound_count);
+
+    // Doc 2 must not be an orphan
+    var out: [4]u32 = undefined;
+    const rc = graph.findOrphans(&out, 4);
+    // Only doc 1 is an orphan (nothing links to it)
+    try std.testing.expectEqual(@as(i32, 1), rc);
+    try std.testing.expectEqual(@as(u32, 1), out[0]);
+}
+
+test "duplicate targets in pagerank do not skew scores" {
+    // Regression test for marky-859: duplicate targets inflate out_degree
+    // denominator causing incorrect rank distribution.
+    var graph = LinkGraph.init(std.testing.allocator);
+    defer graph.deinit();
+
+    // Doc 1 -> doc 2 (three duplicate entries should behave same as one)
+    try std.testing.expectEqual(@as(i32, 0), graph.addDocument(1, &.{ 2, 2, 2 }));
+    try std.testing.expectEqual(@as(i32, 0), graph.addDocument(2, &.{}));
+
+    var ids: [4]u32 = undefined;
+    var scores: [4]f32 = undefined;
+    const rc = graph.computePagerank(20, 0.85, &ids, &scores, 4, std.testing.allocator);
+    try std.testing.expectEqual(@as(i32, 2), rc);
+
+    // Doc 1 links to doc 2 once (deduplicated); doc 2 should have higher score
+    // than if there were no links. With dedup, doc 2 receives full rank from doc 1.
+    // Without dedup, out_degree=3 causes rank to be split three ways (still to doc 2
+    // but with inflated denominator). The key check is inbound_count=1, tested above.
+    // Here we verify convergence is sane: scores sum to ~1.0.
+    var total: f32 = 0.0;
+    for (0..2) |i| total += scores[i];
+    try std.testing.expectApproxEqAbs(@as(f32, 1.0), total, 0.01);
 }

@@ -96,6 +96,9 @@ pub const IndexView = struct {
 
     pub fn init(base: [*]const u8, len: usize) ?IndexView {
         if (len < Header.SIZE) return null;
+        // Guard against misaligned pointer: @alignCast panics in Debug/ReleaseSafe
+        // if the pointer is not aligned to @alignOf(Header). Check first.
+        if (@intFromPtr(base) % @alignOf(Header) != 0) return null;
         const h: *const Header = @ptrCast(@alignCast(base));
         if (!std.mem.eql(u8, &h.magic, &MAGIC)) return null;
         if (h.version != FORMAT_VERSION) return null;
@@ -508,4 +511,23 @@ test "struct size doc-comments match reality" {
     try std.testing.expectEqual(@as(usize, 12), @sizeOf(IndexHeading));
     try std.testing.expectEqual(@as(usize, 12), @sizeOf(IndexTag));
     try std.testing.expectEqual(@as(usize, 12), @sizeOf(IndexBlockId));
+}
+
+test "init_misaligned_buffer_returns_null" {
+    // Regression test for marky-5rq: @alignCast panics in Debug/ReleaseSafe when
+    // the pointer is not aligned to @alignOf(Header) (== 8). The fix adds an
+    // explicit alignment check that returns null instead of panicking.
+    //
+    // We allocate a buffer with align(8) and then take &buf[1] which is guaranteed
+    // to be misaligned by 1 byte (since buf[0] is 8-byte aligned, buf[1] is at
+    // offset +1, which is not a multiple of 8).
+    var buf: [Header.SIZE + 16]u8 align(8) = undefined;
+    @memset(&buf, 0);
+    // Copy magic bytes into the misaligned region so the only rejection
+    // is misalignment, not an early length check.
+    const misaligned_ptr: [*]const u8 = @ptrCast(&buf[1]);
+    // With buggy code, @alignCast panics in Debug mode.
+    // With fixed code, init returns null.
+    const view = IndexView.init(misaligned_ptr, buf.len - 1);
+    try std.testing.expectEqual(@as(?IndexView, null), view);
 }

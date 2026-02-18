@@ -8,27 +8,25 @@ This report compares Tier 1 (Zig scan via `DocumentIndex::from_scan`) against Ti
 - Skipped files (read/parse failures): 0
 - Files with setext headings: 2
 - Files with frontmatter: 1
-- Files with fenced code blocks: 63
+- Files with fenced code blocks: 62
 
 ## Aggregate Counts
 
 | Metric | AST Total | Scan Total | False Positives | False Negatives |
 |---|---:|---:|---:|---:|
-| Headings | 1176 | 1253 | 77 | 0 |
-| Wiki Links | 54 | 54 | 0 | 0 |
-| Markdown Links | 408 | 406 | 0 | 2 |
-| Tags | 108 | 61 | 0 | 47 |
+| Headings | 1165 | 1242 | 77 | 0 |
+| Wiki Links | 53 | 53 | 0 | 0 |
+| Markdown Links | 407 | 405 | 0 | 2 |
+| Tags | 103 | 58 | 0 | 45 |
 | Block IDs | 0 | 0 | 0 | 0 |
 
 ## Rates
 
-> Rates use AST totals as denominator.
-
-- Raw false positive rate: 4.41%
-- Raw false negative rate: 2.81%
-- Adjusted false positive rate (excluding known setext/frontmatter gaps): 4.20%
-- Adjusted false negative rate (excluding known setext/frontmatter gaps): 2.54%
-- Code block false-positive doc rate: 33.33% (21 / 63)
+- Raw false positive rate: 4.46%
+- Raw false negative rate: 2.72%
+- Adjusted false positive rate (excluding known setext/frontmatter gaps): 4.24%
+- Adjusted false negative rate (excluding known setext/frontmatter gaps): 2.45%
+- Code block false-positive doc rate: 33.87% (21 / 62)
 - Code block false-positive events: 77
 
 ## Known Differences

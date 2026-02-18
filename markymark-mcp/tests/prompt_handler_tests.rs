@@ -210,7 +210,14 @@ fn explain_link_returns_user_message_with_document_context() {
         "target": "other-page#section"
     });
     let result = mcp
-        .get_prompt_by_name("explain-link", Some(args.as_object().unwrap().clone()))
+        .get_prompt_by_name(
+            "explain-link",
+            Some(
+                args.as_object()
+                    .expect("json! macro always produces an object")
+                    .clone(),
+            ),
+        )
         .expect("prompt should succeed");
 
     assert!(result.description.is_some());
@@ -243,7 +250,14 @@ fn explain_link_returns_user_message_with_document_context() {
 fn explain_link_fails_on_missing_uri() {
     let mcp = make_mcp();
     let args = json!({ "target": "other-page" });
-    let result = mcp.get_prompt_by_name("explain-link", Some(args.as_object().unwrap().clone()));
+    let result = mcp.get_prompt_by_name(
+        "explain-link",
+        Some(
+            args.as_object()
+                .expect("json! macro always produces an object")
+                .clone(),
+        ),
+    );
     assert!(result.is_err(), "should fail without uri argument");
 }
 
@@ -251,7 +265,14 @@ fn explain_link_fails_on_missing_uri() {
 fn explain_link_fails_on_missing_target() {
     let mcp = make_mcp();
     let args = json!({ "uri": "file:///vault/notes.md" });
-    let result = mcp.get_prompt_by_name("explain-link", Some(args.as_object().unwrap().clone()));
+    let result = mcp.get_prompt_by_name(
+        "explain-link",
+        Some(
+            args.as_object()
+                .expect("json! macro always produces an object")
+                .clone(),
+        ),
+    );
     assert!(result.is_err(), "should fail without target argument");
 }
 
@@ -262,7 +283,14 @@ fn explain_link_fails_on_non_file_uri() {
         "uri": "https://example.com/notes.md",
         "target": "heading"
     });
-    let result = mcp.get_prompt_by_name("explain-link", Some(args.as_object().unwrap().clone()));
+    let result = mcp.get_prompt_by_name(
+        "explain-link",
+        Some(
+            args.as_object()
+                .expect("json! macro always produces an object")
+                .clone(),
+        ),
+    );
     assert!(result.is_err(), "should fail with non-file URI");
 }
 
@@ -281,7 +309,11 @@ fn suggest_references_returns_user_message_with_symbol_context() {
     let result = mcp
         .get_prompt_by_name(
             "suggest-references",
-            Some(args.as_object().unwrap().clone()),
+            Some(
+                args.as_object()
+                    .expect("json! macro always produces an object")
+                    .clone(),
+            ),
         )
         .expect("prompt should succeed");
 
@@ -308,7 +340,11 @@ fn suggest_references_fails_on_missing_uri() {
     let args = json!({ "line": 0, "character": 5 });
     let result = mcp.get_prompt_by_name(
         "suggest-references",
-        Some(args.as_object().unwrap().clone()),
+        Some(
+            args.as_object()
+                .expect("json! macro always produces an object")
+                .clone(),
+        ),
     );
     assert!(result.is_err(), "should fail without uri argument");
 }
@@ -322,7 +358,11 @@ fn suggest_references_fails_on_missing_line() {
     });
     let result = mcp.get_prompt_by_name(
         "suggest-references",
-        Some(args.as_object().unwrap().clone()),
+        Some(
+            args.as_object()
+                .expect("json! macro always produces an object")
+                .clone(),
+        ),
     );
     assert!(result.is_err(), "should fail without line argument");
 }
@@ -337,7 +377,11 @@ fn suggest_references_fails_on_non_file_uri() {
     });
     let result = mcp.get_prompt_by_name(
         "suggest-references",
-        Some(args.as_object().unwrap().clone()),
+        Some(
+            args.as_object()
+                .expect("json! macro always produces an object")
+                .clone(),
+        ),
     );
     assert!(result.is_err(), "should fail with non-file URI");
 }
@@ -354,7 +398,14 @@ fn explain_link_with_explicit_realm_succeeds() {
         "target": "other-page#section",
         "realm": "my-vault"
     });
-    let result = mcp.get_prompt_by_name("explain-link", Some(args.as_object().unwrap().clone()));
+    let result = mcp.get_prompt_by_name(
+        "explain-link",
+        Some(
+            args.as_object()
+                .expect("json! macro always produces an object")
+                .clone(),
+        ),
+    );
     assert!(
         result.is_ok(),
         "explain-link should succeed with explicit realm arg"
@@ -372,7 +423,11 @@ fn suggest_references_with_explicit_realm_succeeds() {
     });
     let result = mcp.get_prompt_by_name(
         "suggest-references",
-        Some(args.as_object().unwrap().clone()),
+        Some(
+            args.as_object()
+                .expect("json! macro always produces an object")
+                .clone(),
+        ),
     );
     assert!(
         result.is_ok(),
@@ -387,7 +442,14 @@ fn explain_link_without_realm_defaults_to_default_realm() {
         "uri": "file:///vault/notes.md",
         "target": "other-page#section"
     });
-    let result = mcp.get_prompt_by_name("explain-link", Some(args.as_object().unwrap().clone()));
+    let result = mcp.get_prompt_by_name(
+        "explain-link",
+        Some(
+            args.as_object()
+                .expect("json! macro always produces an object")
+                .clone(),
+        ),
+    );
     assert!(result.is_ok(), "explain-link should succeed");
     let captured = engine
         .captured_export_index_realm
@@ -411,7 +473,11 @@ fn suggest_references_without_realm_defaults_to_default_realm() {
     });
     let result = mcp.get_prompt_by_name(
         "suggest-references",
-        Some(args.as_object().unwrap().clone()),
+        Some(
+            args.as_object()
+                .expect("json! macro always produces an object")
+                .clone(),
+        ),
     );
     assert!(result.is_ok(), "suggest-references should succeed");
     let find_refs_realm = engine
