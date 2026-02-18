@@ -193,6 +193,9 @@ fn find_wiki_link_heading_range(
     let text = doc_text?;
     let line = text.lines().nth(wl.range.start.line as usize)?;
     let link_start = wl.range.start.character as usize;
+    if link_start > line.len() {
+        return None;
+    }
     let link_text = &line[link_start..];
 
     // Find `#heading` within the wiki link text
@@ -223,6 +226,9 @@ fn find_markdown_link_anchor_range(
     let text = doc_text?;
     let line = text.lines().nth(ml.range.start.line as usize)?;
     let link_start = ml.range.start.character as usize;
+    if link_start > line.len() {
+        return None;
+    }
     let link_text = &line[link_start..];
 
     // Find `(#slug)` within the markdown link text
@@ -237,5 +243,50 @@ fn find_markdown_link_anchor_range(
         ))
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use markymark_core::{Position, Range};
+    use markymark_index::{MarkdownLinkEntry, WikiLinkEntry};
+
+    /// marky-xpk: character offset beyond line length must return None, not panic.
+    #[test]
+    fn test_wiki_link_heading_range_oob_character_returns_none() {
+        let wl = WikiLinkEntry {
+            target: "page",
+            alias: None,
+            heading: Some("heading"),
+            range: Range {
+                start: Position::new(0, 9999),
+                end: Position::new(0, 10005),
+            },
+            start_byte: 0,
+            end_byte: 0,
+        };
+        // "short" is 5 bytes; character=9999 is way out of bounds — must not panic.
+        let result = find_wiki_link_heading_range(Some("short\n"), &wl, "heading");
+        assert_eq!(result, None);
+    }
+
+    /// marky-u46: character offset beyond line length must return None, not panic.
+    #[test]
+    fn test_markdown_link_anchor_range_oob_character_returns_none() {
+        let ml = MarkdownLinkEntry {
+            text: "text",
+            url: "#heading",
+            anchor: Some("heading"),
+            range: Range {
+                start: Position::new(0, 9999),
+                end: Position::new(0, 10005),
+            },
+            start_byte: 0,
+            end_byte: 0,
+        };
+        // "short" is 5 bytes; character=9999 is way out of bounds — must not panic.
+        let result = find_markdown_link_anchor_range(Some("short\n"), &ml, "heading");
+        assert_eq!(result, None);
     }
 }
