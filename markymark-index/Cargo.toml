@@ -15,9 +15,9 @@ zig-kernels = ["markymark-core/zig-kernels"]
 embeddings = ["zig-kernels", "dep:markymark-kernels"]
 
 [dependencies]
-markymark-core = { version = "0.3.0", path = "../markymark-core" }
-markymark-kernels = { version = "0.3.0", path = "../markymark-kernels", optional = true }
-markymark-parser = { version = "0.3.0", path = "../markymark-parser" }
+markymark-core = { version = "0.4.0", path = "../markymark-core" }
+markymark-kernels = { version = "0.4.0", path = "../markymark-kernels", optional = true }
+markymark-parser = { version = "0.4.0", path = "../markymark-parser" }
 petgraph = { workspace = true }
 bumpalo = { workspace = true }
 hashbrown = { workspace = true }
