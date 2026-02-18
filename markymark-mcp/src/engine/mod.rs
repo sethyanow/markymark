@@ -14,24 +14,25 @@ use markymark_core::prelude::{EmbedError, EmbeddingProvider};
 use markymark_core::structured::DocumentKind;
 use markymark_core::{CoreError, DocumentUri, Range};
 use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
-use markymark_kernels::tokens;
 use markymark_kernels::{fuzzy_match, fuzzy_match_batch};
 use markymark_parser::structured::parse_structured;
 use markymark_parser::Parser;
 
 use crate::rename_ops::{compare_ranges, rename_heading, rename_xml_tag};
 
+mod helpers;
+
 /// The name of the default realm created at startup.
-const DEFAULT_REALM: &str = "default";
+pub(crate) const DEFAULT_REALM: &str = "default";
 
 /// Per-realm state: index plus tracked workspace roots.
-struct RealmData {
-    index: RealmIndex,
-    roots: Vec<PathBuf>,
+pub(crate) struct RealmData {
+    pub(crate) index: RealmIndex,
+    pub(crate) roots: Vec<PathBuf>,
 }
 
 impl RealmData {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             index: build_realm_index(),
             roots: Vec::new(),
@@ -39,7 +40,7 @@ impl RealmData {
     }
 }
 
-fn build_realm_index() -> RealmIndex {
+pub(crate) fn build_realm_index() -> RealmIndex {
     #[cfg(feature = "semantic-search")]
     {
         let provider: Arc<dyn EmbeddingProvider> = Arc::new(HashEmbeddingProvider::new(128));
@@ -131,7 +132,7 @@ impl EmbeddingProvider for HashEmbeddingProvider {
 /// A "default" realm is always created at startup with the initial workspace roots.
 /// Additional realms can be created/destroyed dynamically via [`CoreOperation`].
 pub struct RuntimeEngine {
-    state: RwLock<HashMap<String, RealmData>>,
+    pub(crate) state: RwLock<HashMap<String, RealmData>>,
 }
 
 impl Default for RuntimeEngine {
@@ -159,7 +160,7 @@ impl RuntimeEngine {
         let mut default_realm = RealmData::new();
 
         for root in workspace_roots {
-            validate_workspace_root(&root)?;
+            helpers::validate_workspace_root(&root)?;
             index_root_into_realm(&mut parser, &root, &mut default_realm);
             default_realm.roots.push(root);
         }
@@ -174,8 +175,8 @@ impl RuntimeEngine {
 }
 
 /// Index all markdown files under a root into a realm.
-fn index_root_into_realm(parser: &mut Parser, root: &Path, realm: &mut RealmData) {
-    let documents = collect_documents(root);
+pub(crate) fn index_root_into_realm(parser: &mut Parser, root: &Path, realm: &mut RealmData) {
+    let documents = helpers::collect_documents(root);
 
     for (path, kind) in documents {
         let source = match fs::read_to_string(&path) {
@@ -204,7 +205,7 @@ fn index_root_into_realm(parser: &mut Parser, root: &Path, realm: &mut RealmData
 }
 
 /// Remove all documents under a root from a realm's index.
-fn unindex_root_from_realm(root: &Path, realm: &mut RealmData) {
+pub(crate) fn unindex_root_from_realm(root: &Path, realm: &mut RealmData) {
     let prefix = DocumentUri::from_file_path(root);
     let prefix_str = prefix.as_str();
 
@@ -423,7 +424,7 @@ impl CoreEngine for RuntimeEngine {
                         results
                             .into_iter()
                             .map(|result| {
-                                let section_preview = preview_for_range(
+                                let section_preview = helpers::preview_for_range(
                                     &result.doc_uri,
                                     result.section_range,
                                     &result.heading,
@@ -652,7 +653,7 @@ impl CoreEngine for RuntimeEngine {
                 CoreOperationResult::Ok
             }
             CoreOperation::AddRoot { realm, root } => {
-                if let Err(msg) = validate_workspace_root(&root) {
+                if let Err(msg) = helpers::validate_workspace_root(&root) {
                     return CoreOperationResult::Error(CoreError::Message(msg.to_string()));
                 }
 
@@ -773,7 +774,8 @@ impl CoreEngine for RuntimeEngine {
                 };
 
                 let total_tokens = if include_token_counts {
-                    let (total, unreadable_docs) = total_tokens_for_realm(&realm_data.index);
+                    let (total, unreadable_docs) =
+                        helpers::total_tokens_for_realm(&realm_data.index);
                     if unreadable_docs > 0 {
                         eprintln!(
                             "warning: token count omitted for realm '{realm}' due to {unreadable_docs} unreadable documents"
@@ -811,7 +813,7 @@ impl CoreEngine for RuntimeEngine {
                     }
                 };
 
-                let content = build_dependency_graph(&realm_data.index, &format);
+                let content = helpers::build_dependency_graph(&realm_data.index, &format);
                 match content {
                     Ok(content) => CoreOperationResult::DependencyGraph {
                         realm,
@@ -1005,177 +1007,7 @@ impl CoreEngine for RuntimeEngine {
     }
 }
 
-fn total_tokens_for_realm(realm: &RealmIndex) -> (u64, usize) {
-    let mut total_tokens = 0_u64;
-    let mut unreadable_docs = 0_usize;
-    for (uri, _) in realm.iter_all_documents() {
-        let Some(path) = uri.to_file_path() else {
-            unreadable_docs += 1;
-            continue;
-        };
-        match fs::read_to_string(path) {
-            Ok(source) => {
-                total_tokens += u64::from(tokens::estimate_tokens(&source));
-            }
-            Err(_) => {
-                unreadable_docs += 1;
-            }
-        }
-    }
-    (total_tokens, unreadable_docs)
-}
-
-#[cfg(feature = "semantic-search")]
-fn preview_for_range(uri: &DocumentUri, range: Range, fallback: &str) -> String {
-    let Some(path) = uri.to_file_path() else {
-        return truncate_preview(fallback);
-    };
-    let Ok(source) = fs::read_to_string(path) else {
-        return truncate_preview(fallback);
-    };
-    let Some(start_idx) = byte_offset_for_line(&source, range.start.line) else {
-        return truncate_preview(fallback);
-    };
-    truncate_preview(&source[start_idx..])
-}
-
-#[cfg(feature = "semantic-search")]
-fn byte_offset_for_line(source: &str, line: u32) -> Option<usize> {
-    if line == 0 {
-        return Some(0);
-    }
-
-    let mut current_line = 0_u32;
-    for (idx, ch) in source.char_indices() {
-        if ch == '\n' {
-            current_line += 1;
-            if current_line == line {
-                return Some(idx + 1);
-            }
-        }
-    }
-    None
-}
-
-#[cfg(feature = "semantic-search")]
-fn truncate_preview(text: &str) -> String {
-    const MAX_PREVIEW_BYTES: usize = 200;
-    let mut end = text.len().min(MAX_PREVIEW_BYTES);
-    while end > 0 && !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    text[..end].split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn validate_workspace_root(root: &Path) -> anyhow::Result<()> {
-    if !root.exists() {
-        bail!("workspace root does not exist: {}", root.display());
-    }
-    if !root.is_dir() {
-        bail!("workspace root is not a directory: {}", root.display());
-    }
-    Ok(())
-}
-
-fn collect_documents(root: &Path) -> Vec<(PathBuf, DocumentKind)> {
-    let mut stack = vec![root.to_path_buf()];
-    let mut files = Vec::new();
-
-    while let Some(dir) = stack.pop() {
-        let read_dir = match fs::read_dir(&dir) {
-            Ok(read_dir) => read_dir,
-            Err(_) => continue,
-        };
-
-        for entry in read_dir {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(_) => continue,
-            };
-            let path = entry.path();
-
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-
-            if let Some(kind) = DocumentKind::from_path(&path) {
-                files.push((path, kind));
-            }
-        }
-    }
-
-    files.sort_by(|(a, _), (b, _)| a.cmp(b));
-    files
-}
-
-/// Build a dependency graph from the realm's indexed documents.
-///
-/// Returns the graph as either JSON or DOT format.
-fn build_dependency_graph(realm: &RealmIndex, format: &str) -> Result<String, String> {
-    use serde_json::json;
-    use std::collections::{BTreeMap, BTreeSet};
-
-    // Collect document URIs and outgoing links.
-    let mut nodes: BTreeSet<String> = BTreeSet::new();
-    let mut edges: Vec<(String, String, String)> = Vec::new();
-
-    for (uri, index) in realm.iter_documents() {
-        let from = uri.as_str().to_string();
-        nodes.insert(from.clone());
-
-        for wl in index.wiki_links() {
-            // Wiki links target page names, not full URIs.
-            // Record the target as-is for the graph.
-            let to = format!("wiki:{}", wl.target);
-            nodes.insert(to.clone());
-            edges.push((from.clone(), to, "wiki_link".to_string()));
-        }
-
-        for ml in index.markdown_links() {
-            if ml.url.starts_with("http://") || ml.url.starts_with("https://") {
-                continue; // Skip external URLs.
-            }
-            let to = ml.url.to_string();
-            nodes.insert(to.clone());
-            edges.push((from.clone(), to, "markdown_link".to_string()));
-        }
-    }
-
-    match format {
-        "json" => {
-            let nodes_json: Vec<_> = nodes.iter().map(|n| json!({ "id": n })).collect();
-            let edges_json: Vec<_> = edges
-                .iter()
-                .map(|(from, to, kind)| json!({ "from": from, "to": to, "kind": kind }))
-                .collect();
-            let graph = json!({ "nodes": nodes_json, "edges": edges_json });
-            serde_json::to_string_pretty(&graph).map_err(|e| e.to_string())
-        }
-        "dot" => {
-            let mut out = String::from("digraph dependency_graph {\n");
-            // Assign short labels for readability.
-            let label_map: BTreeMap<&str, usize> = nodes
-                .iter()
-                .enumerate()
-                .map(|(i, n)| (n.as_str(), i))
-                .collect();
-            for (name, idx) in &label_map {
-                // Use the file stem or short name as label.
-                let label = name.rsplit('/').next().unwrap_or(name);
-                out.push_str(&format!("  n{idx} [label={label:?}];\n"));
-            }
-            for (from, to, kind) in &edges {
-                let from_idx = label_map[from.as_str()];
-                let to_idx = label_map[to.as_str()];
-                out.push_str(&format!("  n{from_idx} -> n{to_idx} [label={kind:?}];\n"));
-            }
-            out.push_str("}\n");
-            Ok(out)
-        }
-        other => Err(format!("unsupported dependency graph format: {other}")),
-    }
-}
+// Standalone helpers moved to engine/helpers.rs
 
 #[cfg(test)]
 mod tests {
@@ -1396,7 +1228,7 @@ mod tests {
         fs::write(dir.join("settings.yaml"), "key: val\n").unwrap();
         fs::write(dir.join("main.rs"), "fn main() {}").unwrap();
 
-        let docs = collect_documents(&dir);
+        let docs = helpers::collect_documents(&dir);
         let kinds: Vec<_> = docs.iter().map(|(_, k)| *k).collect();
 
         assert!(kinds.contains(&DocumentKind::Markdown));
@@ -1504,7 +1336,7 @@ mod tests {
         fs::write(dir.join("readme.md"), "# R\n").unwrap();
         fs::write(dir.join("guide.markdown"), "# G\n").unwrap();
 
-        let docs = collect_documents(&dir);
+        let docs = helpers::collect_documents(&dir);
         assert_eq!(docs.len(), 2);
         assert!(docs.iter().all(|(_, k)| *k == DocumentKind::Markdown));
 
@@ -1615,13 +1447,13 @@ mod tests {
             };
 
             // Warm up OS page cache for a fair comparison.
-            let _ = preview_for_range(&uri, range, "fallback");
+            let _ = helpers::preview_for_range(&uri, range, "fallback");
             let _ = streamed_preview(&path, target_line, 200);
 
             // Measure: current approach (full fs::read_to_string).
             let t0 = Instant::now();
             for _ in 0..ITERS {
-                let _ = preview_for_range(&uri, range, "fallback");
+                let _ = helpers::preview_for_range(&uri, range, "fallback");
             }
             let full_avg = t0.elapsed() / ITERS;
 
@@ -1692,7 +1524,7 @@ mod tests {
                         character: 0,
                     },
                 };
-                let _ = preview_for_range(uri, range, "fallback");
+                let _ = helpers::preview_for_range(uri, range, "fallback");
             }
 
             // Measure: full-read approach across all files.
@@ -1709,7 +1541,7 @@ mod tests {
                             character: 0,
                         },
                     };
-                    let _ = preview_for_range(uri, range, "fallback");
+                    let _ = helpers::preview_for_range(uri, range, "fallback");
                 }
             }
             let full_avg = t0.elapsed() / ITERS;
