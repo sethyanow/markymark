@@ -8,26 +8,26 @@ This report compares Tier 1 (Zig scan via `DocumentIndex::from_scan`) against Ti
 - Skipped files (read/parse failures): 0
 - Files with setext headings: 2
 - Files with frontmatter: 1
-- Files with fenced code blocks: 62
+- Files with fenced code blocks: 61
 
 ## Aggregate Counts
 
 | Metric | AST Total | Scan Total | False Positives | False Negatives |
 |---|---:|---:|---:|---:|
-| Headings | 1045 | 1117 | 72 | 0 |
+| Headings | 1055 | 1129 | 74 | 0 |
 | Wiki Links | 54 | 54 | 0 | 0 |
-| Markdown Links | 400 | 398 | 0 | 2 |
-| Tags | 100 | 57 | 0 | 43 |
+| Markdown Links | 393 | 391 | 0 | 2 |
+| Tags | 104 | 59 | 0 | 45 |
 | Block IDs | 0 | 0 | 0 | 0 |
 
 ## Rates
 
-- Raw false positive rate: 4.50%
-- Raw false negative rate: 2.81%
-- Adjusted false positive rate (excluding known setext/frontmatter gaps): 4.27%
-- Adjusted false negative rate (excluding known setext/frontmatter gaps): 2.53%
-- Code block false-positive doc rate: 32.26% (20 / 62)
-- Code block false-positive events: 72
+- Raw false positive rate: 4.61%
+- Raw false negative rate: 2.93%
+- Adjusted false positive rate (excluding known setext/frontmatter gaps): 4.38%
+- Adjusted false negative rate (excluding known setext/frontmatter gaps): 2.64%
+- Code block false-positive doc rate: 32.79% (20 / 61)
+- Code block false-positive events: 74
 
 ## Known Differences
 
@@ -40,9 +40,9 @@ This report compares Tier 1 (Zig scan via `DocumentIndex::from_scan`) against Ti
 | File | False Positives | False Negatives | Setext | Frontmatter |
 |---|---:|---:|:---:|:---:|
 | `docs/rust_agent_docs/tooling/cargo.md` | 12 | 0 | no | no |
+| `docs/plans/brza-markymark.md` | 8 | 1 | no | no |
 | `docs/rust_crates/testing.md` | 6 | 2 | yes | no |
 | `docs/tools/rename_symbol.md` | 6 | 2 | no | no |
-| `docs/plans/brza-markymark.md` | 6 | 1 | no | no |
 | `docs/rust_agent_docs/reference/cargo-ref.md` | 6 | 0 | no | no |
 | `docs/tools/get_document_outline.md` | 5 | 0 | no | no |
 | `docs/rust_agent_docs/patterns/anti-patterns.md` | 4 | 0 | no | no |

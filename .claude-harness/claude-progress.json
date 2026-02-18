@@ -1,37 +1,35 @@
 {
-  "lastUpdated": "2026-02-17T21:38:00Z",
+  "lastUpdated": "2026-02-17T23:33:38Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Merged dev into feature-mark-brza; dev session: triaged PR #28 review comments and verified MCP prompt/resource realm handling; brza session: triaged PR #29 comments and fixed 5 actionable review items",
+    "summary": "Implemented index_serde binary serialization + C ABI exports and fixed three review findings with TDD (overflow-safe size validation, null-pointer rejection for non-zero counts, zeroed padding).",
     "completedTasks": [
-      "Fetched and triaged all PR #28 review comments via GitHub API",
-      "Created beads issues: marky-r7j (prompts realm), marky-0g6 (resources realm), marky-16m (GHAS temp-dir + boundary-unwrap), marky-w85 (non-existent realm test)",
-      "marky-r7j: added optional realm PromptArgument to explain-link and suggest-references",
-      "marky-0g6: parse realm query param from resource URI in GetOutline and SearchSymbols",
-      "Updated prompt handlers to pass explicit default realm when realm argument is omitted",
-      "Updated shared resource query extraction to percent-decode values before forwarding",
-      "Extended MCP tests to assert realm propagation and decoded query handling",
-      "Pulled PR #29 review streams into pr29-comments.json and wrote pr29-triage.json",
-      "Created follow-up beads marky-8s3.10/.11/.12 for deferred investigations",
-      "Hardened fuzzy starts_with length guard in markymark-kernels",
-      "Fixed Zig link_graph addDocument pointer invalidation by reserving HashMap capacity",
-      "Bounded semantic fetch overfetch policy via compute_fetch_k helper",
-      "Aligned semantic preview truncation to <=200 bytes on UTF-8 boundary",
-      "Made realm token-count stats observable by omitting totals when docs are unreadable"
+      "Added Zig kernel module for index serialization/deserialization and C ABI export wiring",
+      "Added RED tests for overflow-safe init validation and padding zeroing in zig/src/kernels/index_serde.zig",
+      "Added RED Rust FFI regression test for null heading pointer + non-zero count",
+      "Implemented checked arithmetic in IndexView.init using std.math.add/mul with overflow rejection",
+      "Changed IndexData pointer fields to nullable C pointers and validated pointers for non-zero sections",
+      "Zeroed alignment padding explicitly before writing array sections",
+      "Verified GREEN with zig tests for kernels and exports plus cargo test -p markymark-kernels"
     ],
     "blockers": [],
     "nextSteps": [
-      "Complete dev branch merge conflict resolution",
-      "marky-16m (P2): Fix GHAS findings (tempfile::TempDir in tests, boundary unwrap expect messages)",
-      "marky-w85 (P3): Add non-existent realm error path test in runtime_engine_tests",
-      "marky-77x (P2): Implement true wiki_links selective merge and resolve overlap check gap in state.rs",
-      "marky-ktt (P1): Audit unsafe transmute in DocumentIndex from marky-5yt migration",
-      "Post checkpoint summary to PR #29 and resolve review threads",
-      "Execute follow-up beads marky-8s3.10/.11/.12",
-      "Run full workspace quality gates (fmt --check, clippy --workspace, test --workspace)"
+      "Post checkpoint update to PR branch",
+      "Continue follow-up review items on PR #29 if any remain",
+      "Run full workspace quality gates before merge"
     ]
   },
   "recentChanges": [
+    "index_serde: add binary format kernel and C ABI exports",
+    "index_serde: reject overflowed/truncated headers during init",
+    "index_serde: reject null pointers when counts/sizes are non-zero",
+    "index_serde: zero padding bytes for deterministic serialization",
+    "markymark-kernels: add Rust FFI regression test for null headings pointer",
+    "index_serde: add binary format kernel and C ABI exports",
+    "index_serde: reject overflowed/truncated headers during init",
+    "index_serde: reject null pointers when counts/sizes are non-zero",
+    "index_serde: zero padding bytes for deterministic serialization",
+    "markymark-kernels: add Rust FFI regression test for null headings pointer",
     "35c1c14: fix(mcp): thread realm through prompts and resources (marky-r7j, marky-0g6)",
     "c1441c6: fix(markymark-d7r): add optional realm param to per-document MCP operations",
     "markymark-mcp prompt handlers now default omitted realm to 'default' explicitly",
@@ -52,8 +50,8 @@
   ],
   "environmentState": {
     "devServerRunning": false,
-    "lastSuccessfulBuild": "2026-02-17T21:35:00Z",
-    "lastTypeCheck": "2026-02-17T21:35:00Z"
+    "lastSuccessfulBuild": "2026-02-17T23:33:38Z",
+    "lastTypeCheck": "2026-02-17T23:33:38Z"
   },
   "lastCompaction": "2026-02-15T21:59:06.000Z",
   "compactionCount": 4

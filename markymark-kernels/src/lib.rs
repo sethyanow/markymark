@@ -11,9 +11,11 @@
 //! - [`similarity`] — Jaccard similarity and related set operations
 //! - [`tokens`] — Token estimation and content hashing
 //! - [`hash`] — Entity hashing (FNV-1a based)
+//! - [`index_serde`] — Binary index serialization (mmap-friendly format)
 
 pub mod embed;
 pub mod hash;
+pub mod index_serde;
 pub mod scan;
 pub mod similarity;
 pub mod tokens;
