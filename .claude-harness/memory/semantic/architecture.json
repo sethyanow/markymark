@@ -56,7 +56,11 @@
       "markymark-parser/src/structured/ (multi-format parsers: json, yaml, toml, jsonl, flat)",
       "markymark-parser/src/types/ (elements, links, blocks, frontmatter, xml - arena-backed element types)",
       "zig/src/exports_serde.zig (C ABI exports for index serialization handle lifecycle and count queries)",
-      "zig/src/kernels/index_serde.zig (binary index serializer/deserializer with mmap-safe IndexView validation)"
+      "zig/src/kernels/index_serde.zig (binary index serializer/deserializer with mmap-safe IndexView validation)",
+      "zig/src/shared/similarity.zig (fuzzy_match_top_k heap-based deterministic top-k ranking)",
+      "zig/src/reference/fuzzy_match_ref.zig (scalar fuzzy ranking oracle for parity)",
+      "markymark-kernels/src/scan.rs (batched fuzzy FFI wrapper and benchmark harness)",
+      "markymark-mcp/src/runtime_engine.rs (SearchSymbols batch ranking integration with fallback)"
     ],
     "api": [
       "markymark-parser/src/lib.rs",
@@ -117,7 +121,9 @@
         "Use arena_ref() helper to avoid duplicated unsafe transmute logic",
         "When prompt arguments document defaults, enforce that default explicitly at handler boundary before dispatching CoreOperation",
         "convert/state/server module separation in markymark-lsp",
-        "extract_list_items returns Vec<&ListItem> (refs not clones) to avoid ArenaHashMap::clone SIGSEGV"
+        "extract_list_items returns Vec<&ListItem> (refs not clones) to avoid ArenaHashMap::clone SIGSEGV",
+        "Batch fuzzy ranking path should use deterministic score-desc/index-asc ordering and map ranked indexes back to owned metadata in transport layer",
+        "Env-gated benchmark tests can capture checkpoint performance evidence without slowing default package test runs"
       ],
       "bash": "set -euo pipefail, jq for JSON, case statements for file extension matching"
     },
@@ -130,10 +136,11 @@
       "Use compile_fail doctests on public methods to lock lifetime leakage invariants during migration work",
       "Use self_cell owner/dependent internals as a first stable migration step when replacing internal static-marked self-references",
       "For LSP incremental edits, pair out-of-range clamping with a deterministic warning so buggy clients are observable during diagnostics",
-      "Use pending InputEdit lifecycle tracking in ServerState as shared incremental infrastructure before extractor-specific merge logic"
+      "Use pending InputEdit lifecycle tracking in ServerState as shared incremental infrastructure before extractor-specific merge logic",
+      "Batched fuzzy-match API: Zig top-k ranking + Rust index remap for deterministic symbol ordering"
     ]
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-17T23:34:09Z",
+  "lastUpdated": "2026-02-18T03:56:18Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

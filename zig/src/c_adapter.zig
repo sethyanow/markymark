@@ -531,6 +531,49 @@ export fn marky_fuzzy_match(
     return similarity.fuzzy_match_score(q, query_len, c, candidate_len);
 }
 
+/// Batched fuzzy match top-k ranking.
+///
+/// Candidate ordering is deterministic:
+/// - score descending
+/// - candidate index ascending on ties
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointers)
+///  -2  — invalid capacity (`top_k > output_cap` or `output_cap == 0` while `top_k > 0`)
+export fn marky_fuzzy_match_batch(
+    query: ?[*]const u8,
+    query_len: u32,
+    candidate_ptrs: ?[*]const ?[*]const u8,
+    candidate_lens: ?[*]const u32,
+    candidate_count: u32,
+    scores_out: ?[*]i32,
+    indices_out: ?[*]u32,
+    output_cap: u32,
+    top_k: u32,
+    written: ?*u32,
+) i32 {
+    const q = query orelse return -1;
+    const ptrs = candidate_ptrs orelse return -1;
+    const lens = candidate_lens orelse return -1;
+    const scores = scores_out orelse return -1;
+    const indices = indices_out orelse return -1;
+    const w = written orelse return -1;
+
+    return similarity.fuzzy_match_top_k(
+        q,
+        query_len,
+        ptrs,
+        lens,
+        candidate_count,
+        scores,
+        indices,
+        output_cap,
+        top_k,
+        w,
+    );
+}
+
 /// SIMD-accelerated slug generation from heading text.
 ///
 /// Converts ASCII uppercase to lowercase, maps whitespace/punctuation to '-',
@@ -1031,6 +1074,138 @@ test "marky_fuzzy_match null input returns -1" {
     const score2 = marky_fuzzy_match("st".ptr, 2, null, 5);
     try std.testing.expectEqual(@as(i32, -1), score1);
     try std.testing.expectEqual(@as(i32, -1), score2);
+}
+
+test "marky_fuzzy_match_batch stable top-k ordering" {
+    const query = "ab";
+    const candidates = [_]?[*]const u8{
+        "acb".ptr,
+        "adb".ptr,
+        "aeb".ptr,
+    };
+    const lengths = [_]u32{ 3, 3, 3 };
+    var scores: [3]i32 = undefined;
+    var indices: [3]u32 = undefined;
+    var written: u32 = 0;
+
+    const rc = marky_fuzzy_match_batch(
+        query.ptr,
+        query.len,
+        &candidates,
+        &lengths,
+        candidates.len,
+        &scores,
+        &indices,
+        scores.len,
+        2,
+        &written,
+    );
+
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    try std.testing.expectEqual(@as(u32, 2), written);
+    try std.testing.expectEqual(@as(u32, 0), indices[0]);
+    try std.testing.expectEqual(@as(u32, 1), indices[1]);
+    try std.testing.expect(scores[0] >= scores[1]);
+}
+
+test "marky_fuzzy_match_batch returns no matches for impossible query" {
+    const query = "zzz";
+    const candidates = [_]?[*]const u8{
+        "stage".ptr,
+        "setup".ptr,
+    };
+    const lengths = [_]u32{ 5, 5 };
+    var scores: [2]i32 = undefined;
+    var indices: [2]u32 = undefined;
+    var written: u32 = 99;
+
+    const rc = marky_fuzzy_match_batch(
+        query.ptr,
+        query.len,
+        &candidates,
+        &lengths,
+        candidates.len,
+        &scores,
+        &indices,
+        scores.len,
+        2,
+        &written,
+    );
+
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    try std.testing.expectEqual(@as(u32, 0), written);
+}
+
+test "marky_fuzzy_match_batch capacity guard returns -2" {
+    const query = "st";
+    const candidates = [_]?[*]const u8{"stage".ptr};
+    const lengths = [_]u32{5};
+    var scores: [1]i32 = undefined;
+    var indices: [1]u32 = undefined;
+    var written: u32 = 0;
+
+    const rc = marky_fuzzy_match_batch(
+        query.ptr,
+        query.len,
+        &candidates,
+        &lengths,
+        candidates.len,
+        &scores,
+        &indices,
+        scores.len,
+        2,
+        &written,
+    );
+
+    try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqual(@as(u32, 0), written);
+}
+
+test "marky_fuzzy_match_batch matches scalar reference ranking" {
+    const fuzzy_ref = @import("reference/fuzzy_match_ref.zig");
+
+    const query = "st";
+    const candidate_text = [_][]const u8{
+        "setup",
+        "stage",
+        "toast",
+        "street",
+        "rust",
+    };
+    const candidates = [_]?[*]const u8{
+        candidate_text[0].ptr,
+        candidate_text[1].ptr,
+        candidate_text[2].ptr,
+        candidate_text[3].ptr,
+        candidate_text[4].ptr,
+    };
+    const lengths = [_]u32{ 5, 5, 5, 6, 4 };
+    var scores: [5]i32 = undefined;
+    var indices: [5]u32 = undefined;
+    var written: u32 = 0;
+
+    const rc = marky_fuzzy_match_batch(
+        query.ptr,
+        query.len,
+        &candidates,
+        &lengths,
+        candidates.len,
+        &scores,
+        &indices,
+        scores.len,
+        5,
+        &written,
+    );
+
+    try std.testing.expectEqual(@as(i32, 0), rc);
+    const expected = try fuzzy_ref.rank_candidates(std.testing.allocator, query, &candidate_text, 5);
+    defer std.testing.allocator.free(expected);
+
+    try std.testing.expectEqual(expected.len, @as(usize, @intCast(written)));
+    for (expected, 0..) |exp, i| {
+        try std.testing.expectEqual(exp.index, indices[i]);
+        try std.testing.expectEqual(exp.score, scores[i]);
+    }
 }
 
 test "marky_slugify basic heading" {
