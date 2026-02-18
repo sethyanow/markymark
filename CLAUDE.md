@@ -67,6 +67,9 @@ quality assessments, and lessons learned.
 - **Curate often:** If a section grows stale, outdated, or redundant with the codebase,
   trim or consolidate it. MEMORY.md should stay concise and high-signal. Remove entries
   that are now obvious from the code itself.
+- **Do NOT use claude-mem `save_memory`** for this project — the API is unreliable. Use
+  MEMORY.md as the sole persistent memory store. claude-mem search/timeline/get_observations
+  are fine for reading cross-project history.
 
 # Agent Instructions
 
