@@ -119,7 +119,8 @@ fn score_document(
             matched_fields.push("title".to_string());
         }
 
-        // Heading matches: score 0.8
+        // Heading matches: score 0.8 (fixed ceiling regardless of how many headings
+        // match, so we break after the first hit to avoid redundant iteration).
         for heading in doc.headings() {
             if heading.text.to_lowercase().contains(q.as_str()) {
                 score = score.max(0.8);
