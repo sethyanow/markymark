@@ -28,11 +28,12 @@ Known issue: XML tag false positives in code blocks (marky-8la).
 
 ## Lessons Learned
 
-### FFI serialization: validate math and pointers (2026-02-17)
+### FFI serialization: validate math, pointers, and alignment (2026-02-17/18)
 
 For mmap-friendly binary formats, treat header counts and C pointers as untrusted input.
 Checked arithmetic avoids overflow panics; null-pointer guards prevent SIGSEGV. Zero
-padding bytes explicitly for deterministic output.
+padding bytes explicitly for deterministic output. Any `init()` accepting arbitrary
+`[]const u8` must also validate alignment before `@alignCast` (marky-5rq).
 
 ### Agent docs need procedural knowledge, not just declarative (2026-02-15)
 
@@ -148,6 +149,8 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 - `exports_*.zig` + `comptime { _ = @import(...) }` for composable ABI
 - FFI functions must initialize all output parameters before error returns
 - `test { _ = @import(...); }` pulls sub-module tests into main test step
+- Output-buffer capacity guard must come BEFORE the write, not after the increment (marky-wpl)
+- Validate alignment before `@alignCast`: `if (@intFromPtr(p) % @alignOf(T) != 0) return null;` — panics in Debug/ReleaseSafe on misaligned arbitrary input (marky-5rq)
 
 ### Arena & Lifetimes
 - Avoid cloning ArenaHashMap with bumpalo — SIGSEGV. Return `Vec<&T>` instead
@@ -160,6 +163,7 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 - MCP realm threading: dto.rs, lib.rs, runtime_engine.rs, prompts.rs, resources.rs — all updated together
 - Optional PromptArgument in rmcp: `required: Some(false)`, extract with `.get(key).and_then(|v| v.as_str())`
 - Centralize UTF-16/line to byte-range normalization in one helper; warn on clamp
+- LSP character offsets from clients are untrusted — always bounds-check (`if offset > line.len()`) before byte-slicing (marky-xpk, marky-u46)
 
 ### Testing
 - Safe file splits: (1) module dir, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit
@@ -207,15 +211,9 @@ Expected: block 5.7ms + inline ~13us = **~2.8x** vs 15.8ms full.
 of changed region) from slow AST rebuild (tree-sitter). Defer parse until request needs AST.
 Requires marky-v8g (TreeSitterScanBackend). Potentially 10x+.
 
-### Byte Offsets for MarkdownLink/XmlTag (2026-02-18, IN PROGRESS)
+### Byte Offsets for MarkdownLink/XmlTag (2026-02-18)
 
-Added `start_byte`/`end_byte` to MarkdownLink and XmlTag across the full crate chain
-(parser types → extraction → index types → incremental logic). This enables the same
-`range_within_neighbor_window` (100-byte) heuristic used by wiki_links/blocks, making
-all four extractors consistent. See handoff prompt below for remaining work.
-
-**Key decision:** All four non-heading extractors now use the same three-check pattern:
-`range_intersects_edit` || `range_within_neighbor_window` || `any_edit_starts_at_or_after_last_*`.
+All four non-heading extractors now carry `start_byte`/`end_byte` and share the same three-check incremental pattern: `range_intersects_edit` || `range_within_neighbor_window` || `any_edit_starts_at_or_after_last_*`.
 
 ### Decision: 10x not achievable at parse level
 
