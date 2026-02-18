@@ -305,14 +305,31 @@ impl CoreEngine for RuntimeEngine {
                 let top_k = candidate_refs.len();
 
                 let matches = match fuzzy_match_batch(&query, &candidate_refs, top_k) {
-                    Ok(ranked) => ranked
-                        .into_iter()
-                        .filter_map(|m| {
-                            candidates
-                                .get(m.index as usize)
-                                .map(|(name, uri, range)| (name.clone(), uri.clone(), *range))
-                        })
-                        .collect(),
+                    Ok(ranked) => {
+                        let mut results: Vec<(i32, bool, String, DocumentUri, Range)> = ranked
+                            .into_iter()
+                            .filter_map(|m| {
+                                candidates.get(m.index as usize).map(|(name, uri, range)| {
+                                    (m.score, m.starts_with, name.clone(), uri.clone(), *range)
+                                })
+                            })
+                            .collect();
+                        results.sort_by(
+                            |(score_a, starts_a, name_a, uri_a, range_a),
+                             (score_b, starts_b, name_b, uri_b, range_b)| {
+                                score_b
+                                    .cmp(score_a)
+                                    .then_with(|| starts_b.cmp(starts_a))
+                                    .then_with(|| name_a.cmp(name_b))
+                                    .then_with(|| uri_a.as_str().cmp(uri_b.as_str()))
+                                    .then_with(|| compare_ranges(*range_a, *range_b))
+                            },
+                        );
+                        results
+                            .into_iter()
+                            .map(|(_, _, name, uri, range)| (name, uri, range))
+                            .collect()
+                    }
                     Err(_) => {
                         // Fallback path keeps previous per-candidate behavior.
                         let mut scored_matches: Vec<(i32, bool, String, DocumentUri, Range)> =
