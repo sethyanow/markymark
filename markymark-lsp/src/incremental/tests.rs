@@ -815,6 +815,80 @@ fn test_merge_incremental_wiki_links_adjusts_entry_at_insertion_point() {
     assert_eq!(merged[0].end_byte, 515, "end_byte should shift by +5");
 }
 
+// ─── Saturating arithmetic tests ──────────────────────────────────────────
+
+/// marky-oiv: adjust_range_after_edit must not underflow when delta is large negative.
+#[test]
+fn test_adjust_range_after_edit_saturates_on_large_negative_delta() {
+    // Entry at (2, 3)–(2, 10); edit deletes many lines: old_end=(10,50), new_end=(0,0)
+    // Line delta = 0 - 10 = -10. For entry on same line as old_end: col_delta = 0 - 50 = -50.
+    // Without saturation: (2 as i64 + -10) as u32 = -8 as u32 = underflow!
+    let mut range = Range::new(Position::new(2, 3), Position::new(2, 10));
+    let edit = InputEdit {
+        start_byte: 0,
+        old_end_byte: 200,
+        new_end_byte: 0,
+        start_position: Point { row: 0, column: 0 },
+        old_end_position: Point {
+            row: 10,
+            column: 50,
+        },
+        new_end_position: Point { row: 0, column: 0 },
+    };
+    adjust_range_after_edit(&mut range, &edit);
+    // Must clamp to 0, not wrap around to u32::MAX
+    assert_eq!(range.start.line, 0, "line must saturate at 0");
+    assert_eq!(range.end.line, 0, "end line must saturate at 0");
+}
+
+/// marky-oiv: adjust_range_after_edit column must saturate when on the same line as edit.
+#[test]
+fn test_adjust_range_after_edit_column_saturates_on_same_line() {
+    // Entry at line 5, col 3; edit on same line deletes columns: old_end=(5,50), new_end=(5,0)
+    // col_delta = 0 - 50 = -50. Without saturation: (3 + -50) as u32 = underflow!
+    let mut range = Range::new(Position::new(5, 3), Position::new(5, 10));
+    let edit = InputEdit {
+        start_byte: 50,
+        old_end_byte: 100,
+        new_end_byte: 50,
+        start_position: Point { row: 5, column: 0 },
+        old_end_position: Point { row: 5, column: 50 },
+        new_end_position: Point { row: 5, column: 0 },
+    };
+    adjust_range_after_edit(&mut range, &edit);
+    assert_eq!(
+        range.start.character, 0,
+        "character must saturate at 0, not underflow"
+    );
+    assert_eq!(
+        range.end.character, 0,
+        "end character must saturate at 0, not underflow"
+    );
+}
+
+/// marky-oiv: adjust_bytes_after_edit must not underflow on large deletion.
+#[test]
+fn test_adjust_bytes_after_edit_saturates_on_large_deletion() {
+    // Entry at bytes 10–20; edit removes 100 bytes before it: old_end=200, new_end=100
+    // byte_delta = 100 - 200 = -100. Without saturation: (10 + -100) as usize = underflow!
+    let mut start_byte: usize = 10;
+    let mut end_byte: usize = 20;
+    let edit = InputEdit {
+        start_byte: 0,
+        old_end_byte: 200,
+        new_end_byte: 100,
+        start_position: Point { row: 0, column: 0 },
+        old_end_position: Point { row: 10, column: 0 },
+        new_end_position: Point { row: 5, column: 0 },
+    };
+    adjust_bytes_after_edit(&mut start_byte, &mut end_byte, &edit);
+    assert_eq!(
+        start_byte, 0,
+        "start_byte must saturate at 0, not underflow"
+    );
+    assert_eq!(end_byte, 0, "end_byte must saturate at 0, not underflow");
+}
+
 // ─── Full parity test: incremental must match full rebuild INCLUDING positions ─
 
 #[test]

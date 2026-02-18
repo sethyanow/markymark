@@ -89,7 +89,7 @@ These rules were extracted from user corrections and direct experience. Each map
 | pat-dual-process-alignment | Normalize URIs to filenames, sort by uri+range, classify Match/Superset/Mismatch/ServerOnly | LSP alignment testing |
 | pat-arena-ref-helper | Single `arena_ref()` helper with clear SAFETY comment | Self-referential arena-backed AST |
 | pat-tiered-benchmark-reporting | MARKYMARK_BENCH_SAMPLES + MARKYMARK_BENCH_DOC_TIER + dedicated runner binary | Performance validation |
-| pat-release-workflow | Quality gates → version bump (Cargo + plugin.json) → exact = deps for prerelease → branch+PR → tag | Any alpha/prerelease |
+| pat-release-workflow | Quality gates → version bump (Cargo + plugin.json) → exact = deps for pre-release → branch+PR → tag | Any alpha/pre-release |
 | pat-readme-audit | Explore agent to verify features exist in source, cross-ref CLI --help and CI | Pre-release README accuracy |
 
 ---
@@ -111,7 +111,7 @@ These represent approaches that worked and should be reused.
 
 ### Release Engineering
 
-**suc-009 / suc-011:** Alpha release workflow — parallel quality gates, version bump across Cargo.toml + plugin.json, cliff.toml changelog, exact `=` pinning for prerelease cross-crate deps.
+**suc-009 / suc-011:** Alpha release workflow — parallel quality gates, version bump across Cargo.toml + plugin.json, cliff.toml changelog, exact `=` pinning for pre-release cross-crate deps.
 
 ### Zig FFI Integration
 
@@ -156,7 +156,7 @@ Additional one-time decisions recorded here for completeness:
 
 **dec-023:** `BlockId` extended with source `Range` from regex full match — enables go-to-definition to jump to actual position rather than file start.
 
-**dec-024:** Keep baseline worktree at `/tmp/markymark-baseline` for pre/post benchmark comparison; PID cleanup only when explicitly requested.
+**dec-024:** Keep baseline worktree at `/tmp/markymark-baseline` for pre/post-benchmark comparison; PID cleanup only when explicitly requested.
 
 **dec-025:** `MARKYMARK_BENCH_HEAVY=1` for 100-sample runs; default 10–20 to avoid RAM exhaustion on index_docs_dir (918 files, ~5.9MB per iteration).
 
@@ -177,6 +177,7 @@ Additional one-time decisions recorded here for completeness:
 ## Semantic Architecture Summary (architecture.json)
 
 ### Tech Stack
+
 | Component | Version |
 |-----------|---------|
 | Language | Rust |

@@ -14,5 +14,5 @@ pre-commit:
     06-gitleaks:
       run: "gitleaks protect --staged --redact"
     07-zig-build:
-      run: "zig build -Doptimize=Debug"
+      run: 'command -v zig >/dev/null || { echo "zig is required: https://ziglang.org/download/"; exit 1; }; zig build -Doptimize=Debug'
       root: "zig/"

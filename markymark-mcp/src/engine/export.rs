@@ -58,9 +58,11 @@ pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri) -> Core
                 .iter()
                 .map(|e| {
                     let value = match &e.value {
-                        PropertyValueEntry::String(s) => s.to_string(),
-                        PropertyValueEntry::PageRef(s) => s.to_string(),
-                        PropertyValueEntry::List(items) => items.join(", "),
+                        PropertyValueEntry::String(s) => vec![s.to_string()],
+                        PropertyValueEntry::PageRef(s) => vec![s.to_string()],
+                        PropertyValueEntry::List(items) => {
+                            items.iter().map(|s| s.to_string()).collect()
+                        }
                     };
                     (e.key.to_string(), value)
                 })

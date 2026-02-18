@@ -9,6 +9,21 @@ use markymark_kernels::{fuzzy_match, fuzzy_match_batch};
 
 use crate::rename_ops::compare_ranges;
 
+/// Sort symbol results by score (desc), starts_with (desc), name, uri, range.
+fn sort_symbol_results(results: &mut [(i32, bool, String, DocumentUri, Range)]) {
+    results.sort_by(
+        |(score_a, starts_a, name_a, uri_a, range_a),
+         (score_b, starts_b, name_b, uri_b, range_b)| {
+            score_b
+                .cmp(score_a)
+                .then_with(|| starts_b.cmp(starts_a))
+                .then_with(|| name_a.cmp(name_b))
+                .then_with(|| uri_a.as_str().cmp(uri_b.as_str()))
+                .then_with(|| compare_ranges(*range_a, *range_b))
+        },
+    );
+}
+
 pub(crate) fn handle_search_symbols(realm: &RealmIndex, query: String) -> CoreOperationResult {
     let query = query.trim().to_string();
     if query.is_empty() {
@@ -51,17 +66,7 @@ pub(crate) fn handle_search_symbols(realm: &RealmIndex, query: String) -> CoreOp
                     })
                 })
                 .collect();
-            results.sort_by(
-                |(score_a, starts_a, name_a, uri_a, range_a),
-                 (score_b, starts_b, name_b, uri_b, range_b)| {
-                    score_b
-                        .cmp(score_a)
-                        .then_with(|| starts_b.cmp(starts_a))
-                        .then_with(|| name_a.cmp(name_b))
-                        .then_with(|| uri_a.as_str().cmp(uri_b.as_str()))
-                        .then_with(|| compare_ranges(*range_a, *range_b))
-                },
-            );
+            sort_symbol_results(&mut results);
             results
                 .into_iter()
                 .map(|(_, _, name, uri, range)| (name, uri, range))
@@ -84,17 +89,7 @@ pub(crate) fn handle_search_symbols(realm: &RealmIndex, query: String) -> CoreOp
                 }
             }
 
-            scored_matches.sort_by(
-                |(score_a, starts_a, name_a, uri_a, range_a),
-                 (score_b, starts_b, name_b, uri_b, range_b)| {
-                    score_b
-                        .cmp(score_a)
-                        .then_with(|| starts_b.cmp(starts_a))
-                        .then_with(|| name_a.cmp(name_b))
-                        .then_with(|| uri_a.as_str().cmp(uri_b.as_str()))
-                        .then_with(|| compare_ranges(*range_a, *range_b))
-                },
-            );
+            sort_symbol_results(&mut scored_matches);
 
             scored_matches
                 .into_iter()

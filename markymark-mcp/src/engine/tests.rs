@@ -2,11 +2,8 @@ use super::*;
 use markymark_core::Position;
 use std::fs;
 
-fn make_temp_realm_dir(suffix: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("marky-realm-{}-{}", suffix, std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+fn make_temp_realm_dir(_suffix: &str) -> tempfile::TempDir {
+    tempfile::tempdir().expect("failed to create temp dir")
 }
 
 fn make_engine_with_custom_realm(realm_name: &str, dir: &Path) -> RuntimeEngine {
@@ -26,10 +23,10 @@ fn make_engine_with_custom_realm(realm_name: &str, dir: &Path) -> RuntimeEngine 
 #[test]
 fn get_outline_uses_named_realm() {
     let dir = make_temp_realm_dir("get-outline");
-    fs::write(dir.join("doc.md"), "# Hello World\n\n## Section\n").unwrap();
-    let engine = make_engine_with_custom_realm("my-realm", &dir);
+    fs::write(dir.path().join("doc.md"), "# Hello World\n\n## Section\n").unwrap();
+    let engine = make_engine_with_custom_realm("my-realm", dir.path());
 
-    let uri = DocumentUri::from_file_path(&dir.join("doc.md"));
+    let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
 
     // Should fail without realm (default realm has no such doc)
     let result = engine.execute(CoreOperation::GetOutline {
@@ -50,16 +47,15 @@ fn get_outline_uses_named_realm() {
         matches!(result, CoreOperationResult::Outline(_)),
         "expected Outline from named realm, got {result:?}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn export_index_uses_named_realm() {
     let dir = make_temp_realm_dir("export-index");
-    fs::write(dir.join("doc.md"), "# Title\n").unwrap();
-    let engine = make_engine_with_custom_realm("export-realm", &dir);
+    fs::write(dir.path().join("doc.md"), "# Title\n").unwrap();
+    let engine = make_engine_with_custom_realm("export-realm", dir.path());
 
-    let uri = DocumentUri::from_file_path(&dir.join("doc.md"));
+    let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
 
     let result = engine.execute(CoreOperation::ExportIndex {
         uri: uri.clone(),
@@ -75,14 +71,13 @@ fn export_index_uses_named_realm() {
         matches!(result_default, CoreOperationResult::Error(_)),
         "expected error from default realm, got {result_default:?}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn search_symbols_uses_named_realm() {
     let dir = make_temp_realm_dir("search-symbols");
-    fs::write(dir.join("doc.md"), "# UniqueHeadingXYZ\n").unwrap();
-    let engine = make_engine_with_custom_realm("search-realm", &dir);
+    fs::write(dir.path().join("doc.md"), "# UniqueHeadingXYZ\n").unwrap();
+    let engine = make_engine_with_custom_realm("search-realm", dir.path());
 
     // Default realm should return no matches for the unique heading
     let result = engine.execute(CoreOperation::SearchSymbols {
@@ -108,17 +103,20 @@ fn search_symbols_uses_named_realm() {
     } else {
         panic!("expected Symbols result");
     }
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn find_references_uses_named_realm() {
     let dir = make_temp_realm_dir("find-refs");
     // A heading with a wiki-link reference in the same file
-    fs::write(dir.join("doc.md"), "# My Heading\n\n[[My Heading]]\n").unwrap();
-    let engine = make_engine_with_custom_realm("refs-realm", &dir);
+    fs::write(
+        dir.path().join("doc.md"),
+        "# My Heading\n\n[[My Heading]]\n",
+    )
+    .unwrap();
+    let engine = make_engine_with_custom_realm("refs-realm", dir.path());
 
-    let uri = DocumentUri::from_file_path(&dir.join("doc.md"));
+    let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
 
     let position = markymark_core::Range {
         start: Position {
@@ -152,16 +150,15 @@ fn find_references_uses_named_realm() {
         !matches!(result, CoreOperationResult::Error(_)),
         "expected success from named realm, got {result:?}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn rename_uses_named_realm() {
     let dir = make_temp_realm_dir("rename");
-    fs::write(dir.join("doc.md"), "# Old Name\n").unwrap();
-    let engine = make_engine_with_custom_realm("rename-realm", &dir);
+    fs::write(dir.path().join("doc.md"), "# Old Name\n").unwrap();
+    let engine = make_engine_with_custom_realm("rename-realm", dir.path());
 
-    let uri = DocumentUri::from_file_path(&dir.join("doc.md"));
+    let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
 
     let position = markymark_core::Range {
         start: Position {
@@ -197,20 +194,17 @@ fn rename_uses_named_realm() {
         !matches!(result, CoreOperationResult::Error(_)),
         "expected success from named realm, got {result:?}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn collect_documents_includes_json_alongside_markdown() {
-    let dir = std::env::temp_dir().join(format!("marky-collect-mixed-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(dir.join("notes.md"), "# Hello\n").unwrap();
-    fs::write(dir.join("config.json"), "{}").unwrap();
-    fs::write(dir.join("settings.yaml"), "key: val\n").unwrap();
-    fs::write(dir.join("main.rs"), "fn main() {}").unwrap();
+    let dir = tempfile::tempdir().expect("failed to create temp dir");
+    fs::write(dir.path().join("notes.md"), "# Hello\n").unwrap();
+    fs::write(dir.path().join("config.json"), "{}").unwrap();
+    fs::write(dir.path().join("settings.yaml"), "key: val\n").unwrap();
+    fs::write(dir.path().join("main.rs"), "fn main() {}").unwrap();
 
-    let docs = helpers::collect_documents(&dir);
+    let docs = helpers::collect_documents(dir.path());
     let kinds: Vec<_> = docs.iter().map(|(_, k)| *k).collect();
 
     assert!(kinds.contains(&DocumentKind::Markdown));
@@ -218,8 +212,6 @@ fn collect_documents_includes_json_alongside_markdown() {
     assert!(kinds.contains(&DocumentKind::Yaml));
     // main.rs should NOT be collected
     assert_eq!(docs.len(), 3);
-
-    let _ = fs::remove_dir_all(&dir);
 }
 
 // ---------------------------------------------------------------------------
@@ -252,7 +244,7 @@ fn fnv1a32_is_stable_and_deterministic() {
         0x4f9f2cab,
         "FNV-1a 32-bit hash of 'hello' must be 0x4f9f2cab"
     );
-    // Empty string → offset basis unchanged
+    // Empty string -> offset basis unchanged
     assert_eq!(
         fnv1a32(b""),
         0x811c9dc5,
@@ -271,7 +263,7 @@ fn hash_embedding_output_is_normalized_and_correct_dims() {
     let norm_sq: f32 = emb.iter().map(|v| v * v).sum();
     assert!(
         (norm_sq - 1.0).abs() < 1e-5,
-        "embedding must be L2-normalised, got norm²={norm_sq}"
+        "embedding must be L2-normalised, got norm^2={norm_sq}"
     );
 }
 
@@ -312,17 +304,13 @@ fn hash_embedding_rejects_zero_dims() {
 
 #[test]
 fn collect_documents_markdown_unchanged() {
-    let dir = std::env::temp_dir().join(format!("marky-collect-md-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(dir.join("readme.md"), "# R\n").unwrap();
-    fs::write(dir.join("guide.markdown"), "# G\n").unwrap();
+    let dir = tempfile::tempdir().expect("failed to create temp dir");
+    fs::write(dir.path().join("readme.md"), "# R\n").unwrap();
+    fs::write(dir.path().join("guide.markdown"), "# G\n").unwrap();
 
-    let docs = helpers::collect_documents(&dir);
+    let docs = helpers::collect_documents(dir.path());
     assert_eq!(docs.len(), 2);
     assert!(docs.iter().all(|(_, k)| *k == DocumentKind::Markdown));
-
-    let _ = fs::remove_dir_all(&dir);
 }
 
 // -------------------------------------------------------------------------
@@ -338,7 +326,7 @@ fn collect_documents_markdown_unchanged() {
 // -------------------------------------------------------------------------
 
 /// Generate a synthetic markdown corpus of approximately `target_bytes`.
-/// Each section is ~130 bytes so 1 MB ≈ 7 600 sections ≈ 45 600 lines.
+/// Each section is ~130 bytes so 1 MB ~ 7 600 sections ~ 45 600 lines.
 #[cfg(feature = "semantic-search")]
 fn generate_preview_corpus(target_bytes: usize) -> String {
     let mut doc = String::with_capacity(target_bytes + 512);
@@ -353,7 +341,7 @@ fn generate_preview_corpus(target_bytes: usize) -> String {
     doc
 }
 
-/// Alternative preview extraction using `BufRead::lines()` — reads only
+/// Alternative preview extraction using `BufRead::lines()` -- reads only
 /// until the target line rather than the whole file.
 #[cfg(feature = "semantic-search")]
 fn streamed_preview(path: &std::path::Path, target_line: u32, max_bytes: usize) -> String {
@@ -389,7 +377,7 @@ fn streamed_preview(path: &std::path::Path, target_line: u32, max_bytes: usize) 
 /// meaningful only when files are large enough for I/O to dominate (~>500 KB).
 #[cfg(feature = "semantic-search")]
 #[test]
-#[ignore = "performance profiling — run manually: cargo test -p markymark-mcp --features semantic-search -- preview_io_cost_large_file --ignored --nocapture"]
+#[ignore = "performance profiling -- run manually: cargo test -p markymark-mcp --features semantic-search -- preview_io_cost_large_file --ignored --nocapture"]
 fn preview_io_cost_large_file() {
     use markymark_core::Position;
     use std::time::Instant;
@@ -406,7 +394,7 @@ fn preview_io_cost_large_file() {
     for &target_bytes in &[10_000usize, 100_000, 500_000, 1_000_000, 5_000_000] {
         let content = generate_preview_corpus(target_bytes);
         let line_count = content.lines().count() as u32;
-        let path = dir.join(format!("doc_{target_bytes}.md"));
+        let path = dir.path().join(format!("doc_{target_bytes}.md"));
         fs::write(&path, &content).unwrap();
 
         let uri = DocumentUri::from_file_path(&path);
@@ -448,18 +436,16 @@ fn preview_io_cost_large_file() {
             target_bytes, target_line, full_avg, stream_avg, speedup
         );
     }
-
-    let _ = fs::remove_dir_all(&dir);
 }
 
 /// Profiles the cumulative I/O cost of N `preview_for_range` calls across
-/// N distinct files — mirrors what semantic search does for top_k results.
+/// N distinct files -- mirrors what semantic search does for top_k results.
 ///
 /// This establishes whether batching/caching previews at the call site
 /// (in the SemanticSearch arm of `execute`) would yield meaningful savings.
 #[cfg(feature = "semantic-search")]
 #[test]
-#[ignore = "performance profiling — run manually: cargo test -p markymark-mcp --features semantic-search -- preview_io_cost_multi_file --ignored --nocapture"]
+#[ignore = "performance profiling -- run manually: cargo test -p markymark-mcp --features semantic-search -- preview_io_cost_multi_file --ignored --nocapture"]
 fn preview_io_cost_multi_file() {
     use markymark_core::Position;
     use std::time::Instant;
@@ -482,7 +468,7 @@ fn preview_io_cost_multi_file() {
         for i in 0..n_files {
             let content = generate_preview_corpus(FILE_BYTES);
             let line_count = content.lines().count() as u32;
-            let path = dir.join(format!("multi_{n_files}_file_{i}.md"));
+            let path = dir.path().join(format!("multi_{n_files}_file_{i}.md"));
             fs::write(&path, &content).unwrap();
             uris.push(DocumentUri::from_file_path(&path));
             target_lines.push(line_count * 3 / 4);
@@ -534,7 +520,7 @@ fn preview_io_cost_multi_file() {
 
         let savings_us = full_avg.as_micros().saturating_sub(stream_avg.as_micros());
         eprintln!(
-            "{:<8} {:<12} {:<16?} {:<16?} {:<}µs saved",
+            "{:<8} {:<12} {:<16?} {:<16?} {:<}us saved",
             n_files,
             n_files * FILE_BYTES,
             full_avg,
@@ -542,6 +528,4 @@ fn preview_io_cost_multi_file() {
             savings_us,
         );
     }
-
-    let _ = fs::remove_dir_all(&dir);
 }

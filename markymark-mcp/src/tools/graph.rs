@@ -25,9 +25,11 @@ pub(crate) fn handle_graph_analysis(
             broken_links,
             clusters,
         } => {
-            let orphan_count = orphans.len() as u32;
-            let broken_link_count = broken_links.len() as u32;
-            let cluster_count = clusters.as_ref().map(|c| c.len() as u32);
+            let orphan_count = orphans.len().try_into().unwrap_or(u32::MAX);
+            let broken_link_count = broken_links.len().try_into().unwrap_or(u32::MAX);
+            let cluster_count = clusters
+                .as_ref()
+                .map(|c| c.len().try_into().unwrap_or(u32::MAX));
             let stats = GraphStatsDto {
                 total_docs,
                 total_internal_links,

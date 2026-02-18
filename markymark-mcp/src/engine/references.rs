@@ -6,6 +6,16 @@ use markymark_index::RealmIndex;
 
 use crate::rename_ops::{compare_ranges, rename_heading, rename_xml_tag};
 
+/// Sort locations by URI then range for deterministic output.
+fn sort_locations(locations: &mut [(DocumentUri, Range)]) {
+    locations.sort_by(|(uri_a, range_a), (uri_b, range_b)| {
+        uri_a
+            .as_str()
+            .cmp(uri_b.as_str())
+            .then_with(|| compare_ranges(*range_a, *range_b))
+    });
+}
+
 pub(crate) fn handle_find_references(
     realm: &RealmIndex,
     uri: &DocumentUri,
@@ -40,12 +50,7 @@ pub(crate) fn handle_find_references(
             }
         }
 
-        locations.sort_by(|(uri_a, range_a), (uri_b, range_b)| {
-            uri_a
-                .as_str()
-                .cmp(uri_b.as_str())
-                .then_with(|| compare_ranges(*range_a, *range_b))
-        });
+        sort_locations(&mut locations);
 
         return CoreOperationResult::Locations(locations);
     }
@@ -62,12 +67,7 @@ pub(crate) fn handle_find_references(
             }
         }
 
-        locations.sort_by(|(uri_a, range_a), (uri_b, range_b)| {
-            uri_a
-                .as_str()
-                .cmp(uri_b.as_str())
-                .then_with(|| compare_ranges(*range_a, *range_b))
-        });
+        sort_locations(&mut locations);
 
         return CoreOperationResult::Locations(locations);
     }
@@ -85,12 +85,7 @@ pub(crate) fn handle_find_references(
             }
         }
 
-        locations.sort_by(|(uri_a, range_a), (uri_b, range_b)| {
-            uri_a
-                .as_str()
-                .cmp(uri_b.as_str())
-                .then_with(|| compare_ranges(*range_a, *range_b))
-        });
+        sort_locations(&mut locations);
 
         return CoreOperationResult::Locations(locations);
     }
@@ -115,12 +110,7 @@ pub(crate) fn handle_find_references(
             }
         }
 
-        locations.sort_by(|(uri_a, range_a), (uri_b, range_b)| {
-            uri_a
-                .as_str()
-                .cmp(uri_b.as_str())
-                .then_with(|| compare_ranges(*range_a, *range_b))
-        });
+        sort_locations(&mut locations);
 
         return CoreOperationResult::Locations(locations);
     }

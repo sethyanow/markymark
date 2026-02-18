@@ -66,7 +66,7 @@ pub fn lsp_position_to_byte_offset(text: &str, line: u32, character: u32) -> usi
 }
 
 /// Convert a UTF-16 character offset to a byte offset within a single line.
-fn utf16_offset_to_byte_offset(line: &str, utf16_offset: usize) -> usize {
+pub(crate) fn utf16_offset_to_byte_offset(line: &str, utf16_offset: usize) -> usize {
     let mut utf16_count = 0;
     for (byte_idx, ch) in line.char_indices() {
         if utf16_count >= utf16_offset {

@@ -257,7 +257,7 @@ fn safe_slice(source: &str, offset: u32, length: u32) -> &str {
 }
 
 fn starts_with_ascii_case_insensitive(query: &str, candidate: &str) -> bool {
-    if candidate.chars().count() < query.chars().count() {
+    if candidate.len() < query.len() {
         return false;
     }
 
@@ -286,9 +286,18 @@ unsafe fn call_scan_ffi<T: Copy>(
         let cap = buf.len() as u32;
         let mut written: u32 = 0;
 
-        // SAFETY: buf has capacity `cap`, text_ptr valid for text_len bytes,
-        // written is a valid mutable reference. FFI function writes at most
-        // `cap` elements to buf.
+        // SAFETY: Five preconditions hold for each FFI call:
+        // 1. `text_ptr` is derived from `text`, a valid `&[u8]`, and is valid for `text_len`
+        //    bytes. The slice is borrowed for the duration of `call_scan_ffi`, so the pointer
+        //    cannot be invalidated.
+        // 2. `buf.as_mut_ptr()` is valid for `cap` elements of type `T`. The Vec was allocated
+        //    with at least `cap` elements via `vec![zeroed(); cap]` or `buf.resize(new_cap, ...)`.
+        // 3. `&mut written` is a valid pointer to a stack-local u32; the FFI function stores
+        //    the number of elements actually written (always <= cap).
+        // 4. `ffi_fn` matches the declared C ABI signature `(ptr, len, out, cap, written) -> i32`
+        //    and does not retain any pointers after returning.
+        // 5. All `T` types are `#[repr(C)]` structs with no padding requirements beyond natural
+        //    alignment, and `Copy`, so `zeroed()` produces a valid bit pattern.
         // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
         let rc = unsafe { ffi_fn(text_ptr, text_len, buf.as_mut_ptr(), cap, &mut written) };
 
@@ -298,6 +307,10 @@ unsafe fn call_scan_ffi<T: Copy>(
             -2 => {
                 // Double capacity and retry
                 let new_cap = (buf.len() * 2).max(INITIAL_CAP);
+                // SAFETY: `T` is a `#[repr(C)]`, `Copy` struct (CHeadingScan, CLinkScan,
+                // CTagScan, or CBlockIdScan). All fields are integer types for which the
+                // all-zeros bit pattern is a valid value. No field has a niche or non-zero
+                // validity requirement.
                 // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
                 buf.resize(new_cap, unsafe { std::mem::zeroed() });
             }
@@ -321,9 +334,14 @@ pub fn scan_headings(text: &str) -> Result<Vec<HeadingScan>, KernelError> {
         return Ok(Vec::new());
     }
 
+    // SAFETY: CHeadingScan is #[repr(C)] with only integer fields (u32, u16, u8);
+    // all-zeros is a valid bit pattern.
     // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let mut buf: Vec<CHeadingScan> = vec![unsafe { std::mem::zeroed() }; INITIAL_CAP];
-    // SAFETY: marky_scan_headings matches the expected C ABI signature.
+    // SAFETY: `text` is a non-empty &str, so `text.as_bytes()` yields a valid, non-empty
+    // slice. `buf` is initialized with INITIAL_CAP zeroed elements. `marky_scan_headings`
+    // has the exact C ABI signature expected by `call_scan_ffi`. See `call_scan_ffi` for
+    // the full pointer-validity and buffer-capacity invariants.
     // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let written = unsafe { call_scan_ffi(text.as_bytes(), &mut buf, marky_scan_headings) }?;
 
@@ -348,9 +366,12 @@ pub fn scan_links(text: &str) -> Result<Vec<LinkScan>, KernelError> {
         return Ok(Vec::new());
     }
 
+    // SAFETY: CLinkScan is #[repr(C)] with only integer fields; all-zeros is valid.
     // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let mut buf: Vec<CLinkScan> = vec![unsafe { std::mem::zeroed() }; INITIAL_CAP];
-    // SAFETY: marky_scan_links matches the expected C ABI signature.
+    // SAFETY: `text` is a non-empty &str, so `text.as_bytes()` yields a valid slice.
+    // `buf` has INITIAL_CAP zeroed elements. `marky_scan_links` matches the C ABI
+    // signature expected by `call_scan_ffi`. See `call_scan_ffi` for full invariants.
     // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let written = unsafe { call_scan_ffi(text.as_bytes(), &mut buf, marky_scan_links) }?;
 
@@ -380,9 +401,12 @@ pub fn scan_tags(text: &str) -> Result<Vec<TagScan>, KernelError> {
         return Ok(Vec::new());
     }
 
+    // SAFETY: CTagScan is #[repr(C)] with only integer fields; all-zeros is valid.
     // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let mut buf: Vec<CTagScan> = vec![unsafe { std::mem::zeroed() }; INITIAL_CAP];
-    // SAFETY: marky_scan_tags matches the expected C ABI signature.
+    // SAFETY: `text` is a non-empty &str, so `text.as_bytes()` yields a valid slice.
+    // `buf` has INITIAL_CAP zeroed elements. `marky_scan_tags` matches the C ABI
+    // signature expected by `call_scan_ffi`. See `call_scan_ffi` for full invariants.
     // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let written = unsafe { call_scan_ffi(text.as_bytes(), &mut buf, marky_scan_tags) }?;
 
@@ -409,9 +433,12 @@ pub fn scan_block_ids(text: &str) -> Result<Vec<BlockIdScan>, KernelError> {
         return Ok(Vec::new());
     }
 
+    // SAFETY: CBlockIdScan is #[repr(C)] with only integer fields; all-zeros is valid.
     // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let mut buf: Vec<CBlockIdScan> = vec![unsafe { std::mem::zeroed() }; INITIAL_CAP];
-    // SAFETY: marky_scan_block_ids matches the expected C ABI signature.
+    // SAFETY: `text` is a non-empty &str, so `text.as_bytes()` yields a valid slice.
+    // `buf` has INITIAL_CAP zeroed elements. `marky_scan_block_ids` matches the C ABI
+    // signature expected by `call_scan_ffi`. See `call_scan_ffi` for full invariants.
     // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let written = unsafe { call_scan_ffi(text.as_bytes(), &mut buf, marky_scan_block_ids) }?;
 
@@ -441,8 +468,11 @@ pub fn fuzzy_match(query: &str, candidate: &str) -> Result<FuzzyMatch, KernelErr
         });
     }
 
-    // SAFETY: Pointers are valid for their respective byte lengths for this call.
-    // FFI function does not mutate input buffers.
+    // SAFETY: `query` and `candidate` are non-empty &str (checked above), so their
+    // `.as_ptr()` values are non-null and valid for `.len()` bytes respectively.
+    // Both borrows are live for the duration of this call. The Zig kernel reads the
+    // buffers but does not write to them or retain the pointers after returning.
+    // The u32 casts are safe because strings exceeding 4GB would fail allocation first.
     // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let score = unsafe {
         marky_fuzzy_match(
@@ -494,8 +524,16 @@ pub fn fuzzy_match_batch(
 
     let query_len_u32 = u32::try_from(query.len()).map_err(|_| KernelError::InvalidInput)?;
 
-    // SAFETY: all pointers are derived from live Rust slices/vectors for the duration
-    // of this call; output buffers are sized to `output_cap`.
+    // SAFETY: All pointer invariants hold for this FFI call:
+    // - `query.as_ptr()` is valid for `query_len_u32` bytes (non-empty &str, checked above).
+    // - `candidate_ptrs` and `candidate_lens` are Vec<T> with `candidates.len()` elements,
+    //   each derived from a live &str borrow. The Vecs and the borrowed &str slices all
+    //   outlive this call (no reallocation occurs between construction and use).
+    // - `scores` and `indices` are Vec<T> with `output_cap` elements, providing sufficient
+    //   write capacity. The kernel writes at most `output_cap` entries.
+    // - `&mut written` is a valid stack pointer; the kernel stores the actual result count.
+    // - The Zig kernel does not retain any pointers after returning.
+    // - All u32 casts were checked via `try_from` above (returning InvalidInput on overflow).
     // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
     let rc = unsafe {
         marky_fuzzy_match_batch(
