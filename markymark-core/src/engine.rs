@@ -277,8 +277,8 @@ pub enum CoreOperationResult {
         markdown_links: Vec<(String, String, Range)>,
         /// Frontmatter key-value pairs. String values are wrapped as single-element vecs.
         frontmatter: Vec<(String, Vec<String>)>,
-        /// Logseq inline properties as key-value string pairs.
-        properties: Vec<(String, String)>,
+        /// Logseq inline properties. String values are wrapped as single-element vecs.
+        properties: Vec<(String, Vec<String>)>,
     },
     /// A dependency graph in the requested format (json or dot).
     DependencyGraph {

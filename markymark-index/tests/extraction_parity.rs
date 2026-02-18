@@ -194,6 +194,11 @@ fn contains_setext_heading(text: &str) -> bool {
     let mut prev = "";
     for line in text.lines() {
         let trimmed = line.trim();
+        // Skip YAML frontmatter delimiters — "---" at document boundaries is not a setext underline.
+        if trimmed == "---" {
+            prev = line;
+            continue;
+        }
         if !prev.trim().is_empty()
             && trimmed.len() >= 3
             && (trimmed.chars().all(|c| c == '=') || trimmed.chars().all(|c| c == '-'))

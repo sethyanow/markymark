@@ -30,7 +30,7 @@ Added a `wasm-spike` build step to `zig/build.zig`:
 
 ### Findings
 
-```
+```text
 $ zig build wasm-spike
 $ file zig-out/wasm/heading_scan.wasm
 heading_scan.wasm: WebAssembly (wasm) binary module version 0x1 (MVP)

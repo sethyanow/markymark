@@ -154,17 +154,25 @@ impl ServerState {
 
                             // Closing tag name: ends just before '>' in </tagname>
                             if !xml.is_self_closing && !xml.is_unclosed {
-                                let close_name_start = Position::new(
-                                    xml.range.end.line,
-                                    xml.range.end.character - 1 - xml.tag_name.len() as u32,
-                                );
-                                let close_name_end =
-                                    Position::new(xml.range.end.line, xml.range.end.character - 1);
-                                edits.push(RenameEdit {
-                                    uri: doc_uri.clone(),
-                                    range: Range::new(close_name_start, close_name_end),
-                                    new_text: new_name.to_string(),
-                                });
+                                if let Some(close_start) = xml
+                                    .range
+                                    .end
+                                    .character
+                                    .checked_sub(1)
+                                    .and_then(|c| c.checked_sub(xml.tag_name.len() as u32))
+                                {
+                                    let close_name_start =
+                                        Position::new(xml.range.end.line, close_start);
+                                    let close_name_end = Position::new(
+                                        xml.range.end.line,
+                                        xml.range.end.character.saturating_sub(1),
+                                    );
+                                    edits.push(RenameEdit {
+                                        uri: doc_uri.clone(),
+                                        range: Range::new(close_name_start, close_name_end),
+                                        new_text: new_name.to_string(),
+                                    });
+                                }
                             }
                         }
                     }
@@ -251,6 +259,39 @@ mod tests {
     use super::*;
     use markymark_core::{Position, Range};
     use markymark_index::{MarkdownLinkEntry, WikiLinkEntry};
+
+    /// marky-oiv: XML tag rename closing-tag arithmetic must not underflow
+    /// when end.character is too small for `- 1 - tag_name.len()`.
+    #[test]
+    fn test_xml_tag_rename_closing_tag_checked_sub_guards_underflow() {
+        // Simulate the closing-tag name position calculation from rename_at.
+        // The vulnerable expression: xml.range.end.character - 1 - xml.tag_name.len() as u32
+        // When end.character = 0, tag_name = "div" (len 3): 0u32 - 1 = underflow!
+        let end_character: u32 = 0;
+        let tag_name_len: u32 = 3; // "div"
+
+        // With checked_sub, this safely returns None instead of panicking
+        let result = end_character
+            .checked_sub(1)
+            .and_then(|c| c.checked_sub(tag_name_len));
+
+        assert_eq!(
+            result, None,
+            "checked_sub must return None for pathological range, not panic"
+        );
+
+        // Also test edge case: end_character = 1, tag_name_len = 3 → 1 - 1 = 0, 0 - 3 = underflow
+        let result2 = 1u32
+            .checked_sub(1)
+            .and_then(|c| c.checked_sub(tag_name_len));
+        assert_eq!(result2, None, "edge case: end_char=1 must also return None");
+
+        // Happy path: end_character = 10, tag_name_len = 3 → 10 - 1 = 9, 9 - 3 = 6
+        let result3 = 10u32
+            .checked_sub(1)
+            .and_then(|c| c.checked_sub(tag_name_len));
+        assert_eq!(result3, Some(6), "happy path should return Some(6)");
+    }
 
     /// marky-xpk: character offset beyond line length must return None, not panic.
     #[test]

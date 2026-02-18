@@ -3,6 +3,7 @@
 use markymark_core::{DocumentUri, Position};
 
 use super::ServerState;
+use crate::convert::utf16_offset_to_byte_offset;
 
 /// Detected completion trigger context based on cursor position.
 #[derive(Debug, Clone, PartialEq)]
@@ -75,7 +76,7 @@ impl ServerState {
     ) -> Option<CompletionContext> {
         let text = self.get_document_text(uri)?;
         let line = text.lines().nth(pos.line as usize)?;
-        let col = pos.character as usize;
+        let col = utf16_offset_to_byte_offset(line, pos.character as usize);
         if col > line.len() {
             return None;
         }

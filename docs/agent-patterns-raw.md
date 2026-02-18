@@ -29,7 +29,7 @@ Curate into reusable agent guidance as patterns solidify.
 
 ## Tree-Sitter & Parsing
 
-- Tree-sitter cursor traversal for nested markdown lists.
+- Tree-sitter cursor traversal for nested Markdown lists.
 - Single-pass stack tokenizer for XML extraction (not multi-regex).
 - Range containment checks for nested XML document symbols.
 

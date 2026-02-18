@@ -11,10 +11,10 @@
 //! - **Tags always full-rebuild**: [`Tag`][markymark_parser] carries no source
 //!   range, so incremental optimisation is impossible. Always pass `None` for
 //!   tags in [`IncrementalOverrides`].
-//! - **MarkdownLink / XmlTag**: have [`Range`] but no byte offsets, so the
-//!   neighbour-window check used for wiki_links and blocks is skipped.
-//! - **wiki_links / blocks**: have both range and byte offsets, so all three
-//!   checks (intersect, after-start, neighbour-window) apply.
+//! - **All four non-heading extractors** (wiki_links, blocks, markdown_links,
+//!   xml_tags) carry both [`Range`] and byte offsets (`start_byte`/`end_byte`).
+//!   All four use the same three-check incremental pattern: `range_intersects_edit`
+//!   || `range_within_neighbor_window` || `any_edit_starts_at_or_after_last_*`.
 
 use markymark_core::Range;
 use markymark_index::{
@@ -142,27 +142,27 @@ pub fn adjust_range_after_edit(range: &mut Range, edit: &InputEdit) {
     // Adjust start position
     if range.start.line == old_end_row {
         let col_delta = edit.new_end_position.column as i64 - edit.old_end_position.column as i64;
-        range.start.line = (range.start.line as i64 + line_delta) as u32;
-        range.start.character = (range.start.character as i64 + col_delta) as u32;
+        range.start.line = (range.start.line as i64 + line_delta).max(0) as u32;
+        range.start.character = (range.start.character as i64 + col_delta).max(0) as u32;
     } else {
-        range.start.line = (range.start.line as i64 + line_delta) as u32;
+        range.start.line = (range.start.line as i64 + line_delta).max(0) as u32;
     }
 
     // Adjust end position
     if range.end.line == old_end_row {
         let col_delta = edit.new_end_position.column as i64 - edit.old_end_position.column as i64;
-        range.end.line = (range.end.line as i64 + line_delta) as u32;
-        range.end.character = (range.end.character as i64 + col_delta) as u32;
+        range.end.line = (range.end.line as i64 + line_delta).max(0) as u32;
+        range.end.character = (range.end.character as i64 + col_delta).max(0) as u32;
     } else {
-        range.end.line = (range.end.line as i64 + line_delta) as u32;
+        range.end.line = (range.end.line as i64 + line_delta).max(0) as u32;
     }
 }
 
 /// Adjust byte offsets for an entry that starts after the edit's old end.
 pub fn adjust_bytes_after_edit(start_byte: &mut usize, end_byte: &mut usize, edit: &InputEdit) {
     let byte_delta = edit.new_end_byte as isize - edit.old_end_byte as isize;
-    *start_byte = (*start_byte as isize + byte_delta) as usize;
-    *end_byte = (*end_byte as isize + byte_delta) as usize;
+    *start_byte = (*start_byte as isize + byte_delta).max(0) as usize;
+    *end_byte = (*end_byte as isize + byte_delta).max(0) as usize;
 }
 
 // ─── WikiLink incremental helpers ─────────────────────────────────────────────
@@ -355,9 +355,6 @@ pub fn merge_incremental_blocks(
 }
 
 // ─── MarkdownLink incremental helpers ─────────────────────────────────────────
-//
-// Note: MarkdownLink has Range but no byte offsets, so neighbour-window is
-// not applicable. Conservative range-based checks only.
 
 /// Returns true if this markdown link is affected by any of the pending edits.
 ///
@@ -458,9 +455,6 @@ pub fn merge_incremental_markdown_links(
 }
 
 // ─── XmlTag incremental helpers ────────────────────────────────────────────────
-//
-// Note: XmlTag has Range but no byte offsets, so neighbour-window is
-// not applicable. Conservative range-based checks only.
 
 /// Returns true if this XML tag is affected by any of the pending edits.
 ///

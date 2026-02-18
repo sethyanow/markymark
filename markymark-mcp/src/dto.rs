@@ -338,12 +338,12 @@ pub struct ExportedFrontmatterEntryDto {
 }
 
 /// A Logseq property entry in an exported document index.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct ExportedPropertyEntryDto {
     /// Key.
     pub key: String,
-    /// Value as a string (lists are joined with ", ").
-    pub value: String,
+    /// Value: single-element for string/page-ref values, multi-element for list values.
+    pub value: Vec<String>,
 }
 
 /// Response payload for `export-index`.

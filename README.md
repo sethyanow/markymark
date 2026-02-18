@@ -140,7 +140,6 @@ This project uses markymark LSP. ALWAYS prefer LSP over reading raw files:
 | `markymark-lsp` | LSP server (tower-lsp-server) |
 | `markymark-mcp` | MCP server (rmcp) |
 | `markymark-cli` | CLI entry point |
-| `markymark-vscode` | VSCode extension with LSP client |
 
 ## Development
 
