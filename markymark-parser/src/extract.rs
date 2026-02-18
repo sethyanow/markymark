@@ -172,7 +172,9 @@ pub fn extract_markdown_links<'a>(
                 Position::new(line, end_char),
             );
 
-            links.push(MarkdownLink::new(text, url, anchor, None, range));
+            links.push(MarkdownLink::new(
+                text, url, anchor, None, range, start, end,
+            ));
         }
     }
 
@@ -200,6 +202,8 @@ pub fn extract_markdown_links<'a>(
                 None,
                 Some(reference),
                 range,
+                start,
+                end,
             ));
         }
     }
@@ -733,6 +737,8 @@ pub fn extract_xml_tags<'a>(
                             false,
                             content,
                             range,
+                            frame.tag_start,
+                            tag_end,
                         ));
                         break;
                     }
@@ -768,7 +774,9 @@ pub fn extract_xml_tags<'a>(
 
         if is_self_closing || is_void {
             let range = compute_range(tag_start, tag_end);
-            tags.push(XmlTag::new(tag_name, attrs, true, None, range));
+            tags.push(XmlTag::new(
+                tag_name, attrs, true, None, range, tag_start, tag_end,
+            ));
         } else {
             // Regular opening tag — push onto stack
             stack.push(StackFrame {
@@ -785,7 +793,13 @@ pub fn extract_xml_tags<'a>(
     // Emit remaining unclosed tags from the stack
     for frame in stack {
         let range = compute_range(frame.tag_start, frame.content_start);
-        tags.push(XmlTag::unclosed(frame.tag_name, frame.attrs, range));
+        tags.push(XmlTag::unclosed(
+            frame.tag_name,
+            frame.attrs,
+            range,
+            frame.tag_start,
+            frame.content_start,
+        ));
     }
 
     // Sort by position in source for consistent ordering

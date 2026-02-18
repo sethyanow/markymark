@@ -79,6 +79,8 @@ pub struct MarkdownLink<'arena> {
     anchor: Option<&'arena str>,
     reference: Option<&'arena str>,
     range: Range,
+    start_byte: usize,
+    end_byte: usize,
 }
 
 impl<'arena> MarkdownLink<'arena> {
@@ -89,6 +91,8 @@ impl<'arena> MarkdownLink<'arena> {
         anchor: Option<&'arena str>,
         reference: Option<&'arena str>,
         range: Range,
+        start_byte: usize,
+        end_byte: usize,
     ) -> Self {
         Self {
             text,
@@ -96,6 +100,8 @@ impl<'arena> MarkdownLink<'arena> {
             anchor,
             reference,
             range,
+            start_byte,
+            end_byte,
         }
     }
 
@@ -122,6 +128,11 @@ impl<'arena> MarkdownLink<'arena> {
     /// Get range
     pub fn range(&self) -> Range {
         self.range
+    }
+
+    /// Get byte range as (start_byte, end_byte)
+    pub fn byte_range(&self) -> (usize, usize) {
+        (self.start_byte, self.end_byte)
     }
 }
 
