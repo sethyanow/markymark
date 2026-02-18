@@ -9,6 +9,7 @@ const fence_map = @import("kernels/fence_map.zig");
 const multi_scan = @import("kernels/multi_scan.zig");
 const slug_kernel = @import("kernels/slug.zig");
 const env_scan = @import("kernels/formats/env_scan.zig");
+const ini_scan = @import("kernels/formats/ini_scan.zig");
 const similarity = @import("shared/similarity.zig");
 const normalize = @import("shared/normalize.zig");
 const entities = @import("shared/entities.zig");
@@ -31,6 +32,7 @@ pub const BlockIdScan = block_scan.BlockIdScan;
 pub const FenceRange = fence_map.FenceRange;
 pub const ScanResult = multi_scan.ScanResult;
 pub const EnvEntry = env_scan.EnvEntry;
+pub const IniEntry = ini_scan.IniEntry;
 
 /// Version constant for markymark kernels
 /// Format: 0xMMmmpp (major, minor, patch)
@@ -648,6 +650,51 @@ export fn marky_scan_env(
     return 0;
 }
 
+/// SIMD-accelerated INI file key-value extractor.
+///
+/// Scans `text[0..len]` for `[section]` headers and `key=value` pairs.
+/// Each entry embeds the section it belongs to.  Keys before any section
+/// have section_len=0 (global section).
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointer)
+///  -2  — buffer too small (cap=0, or more entries than cap)
+export fn marky_scan_ini(
+    text: ?[*]const u8,
+    len: u32,
+    out: ?[*]IniEntry,
+    cap: u32,
+    written: ?*u32,
+) i32 {
+    const w = written orelse return -1;
+    const t = text orelse {
+        if (len == 0) {
+            w.* = 0;
+            return 0;
+        }
+        return -1;
+    };
+    const o = out orelse return -1;
+
+    if (len == 0) {
+        w.* = 0;
+        return 0;
+    }
+
+    if (cap == 0) {
+        w.* = 0;
+        return -2;
+    }
+
+    const count = ini_scan.scan_ini(t, len, o, cap);
+    w.* = count;
+
+    if (count >= cap) return -2;
+
+    return 0;
+}
+
 /// SIMD-accelerated entity hash extraction.
 ///
 /// Scans text for words, produces FNV-1a u32 hash for each.
@@ -778,6 +825,7 @@ test {
     _ = @import("exports_graph.zig");
     // Format extractors
     _ = @import("kernels/formats/env_scan.zig");
+    _ = @import("kernels/formats/ini_scan.zig");
 }
 
 test "marky_version returns expected version" {
