@@ -176,11 +176,14 @@ impl DocumentIndex {
                     continue;
                 }
 
+                let (start_byte, end_byte) = wl.byte_range();
                 wiki_links_owned.push(WikiLinkOwned {
                     target: wl.target_page().unwrap_or("").to_string(),
                     alias: wl.alias().map(str::to_string),
                     heading: wl.target_heading().map(str::to_string),
                     range: wl.range(),
+                    start_byte,
+                    end_byte,
                 });
             }
             wiki_links_owned
@@ -266,6 +269,8 @@ impl DocumentIndex {
                     alias: wl.alias.as_deref().map(|a| arena_alloc_str(arena_ref, a)),
                     heading: wl.heading.as_deref().map(|h| arena_alloc_str(arena_ref, h)),
                     range: wl.range,
+                    start_byte: wl.start_byte,
+                    end_byte: wl.end_byte,
                 });
             }
             let wiki_links = wiki_links_builder.into_bump_slice();
@@ -402,6 +407,8 @@ impl DocumentIndex {
                             alias,
                             heading: None,
                             range,
+                            start_byte: l.offset as usize,
+                            end_byte: end_offset as usize,
                         });
                     }
                     ScanLinkType::Markdown => {

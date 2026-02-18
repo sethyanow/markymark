@@ -58,6 +58,10 @@ pub struct WikiLinkEntry<'arena> {
     pub heading: Option<&'arena str>,
     /// Source range.
     pub range: Range,
+    /// Byte offset of the opening `[[`.
+    pub start_byte: usize,
+    /// Byte offset one past the closing `]]`.
+    pub end_byte: usize,
 }
 
 /// Owned wiki-link payload used by incremental merge paths before arena allocation.
@@ -71,6 +75,10 @@ pub struct WikiLinkOwned {
     pub heading: Option<String>,
     /// Source range.
     pub range: Range,
+    /// Byte offset of the opening `[[`.
+    pub start_byte: usize,
+    /// Byte offset one past the closing `]]`.
+    pub end_byte: usize,
 }
 
 /// A tag entry stored in the index.

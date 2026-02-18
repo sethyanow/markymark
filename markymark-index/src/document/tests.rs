@@ -72,6 +72,8 @@ fn wiki_link_entry_uses_arena_lifetime() {
         alias: Some(arena.alloc_str("Alias")),
         heading: Some(arena.alloc_str("Section")),
         range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+        start_byte: 0,
+        end_byte: 10,
     };
 
     assert_eq!(entry.target, "TargetPage");

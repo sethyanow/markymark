@@ -265,10 +265,6 @@ impl ServerState {
         self.build_markdown_index_with_old_tree(text, None, None, &[])
     }
 
-    fn pos_key(line: u32, character: u32) -> u64 {
-        ((line as u64) << 32) | character as u64
-    }
-
     fn range_intersects_edit(range: Range, edit: &InputEdit) -> bool {
         let range_start = (range.start.line, range.start.character);
         let range_end = (range.end.line, range.end.character);
@@ -285,35 +281,29 @@ impl ServerState {
     }
 
     fn range_is_after_edit_start(range: Range, edit: &InputEdit) -> bool {
-        let range_end = (range.end.line, range.end.character);
+        let range_start = (range.start.line, range.start.character);
         let edit_start = (
             edit.start_position.row as u32,
             edit.start_position.column as u32,
         );
-        range_end > edit_start
+        range_start >= edit_start
     }
 
-    fn range_within_neighbor_window(range: Range, edit: &InputEdit, window_chars: u32) -> bool {
-        let range_start_key = Self::pos_key(range.start.line, range.start.character);
-        let range_end_key = Self::pos_key(range.end.line, range.end.character);
-        let edit_start_key = Self::pos_key(
-            edit.start_position.row as u32,
-            edit.start_position.column as u32,
-        );
-        let edit_end_key = Self::pos_key(
-            edit.old_end_position.row as u32,
-            edit.old_end_position.column as u32,
-        );
-
-        range_start_key <= edit_end_key.saturating_add(window_chars as u64)
-            && range_end_key.saturating_add(window_chars as u64) >= edit_start_key
+    fn range_within_neighbor_window(
+        start_byte: usize,
+        end_byte: usize,
+        edit: &InputEdit,
+        window_bytes: usize,
+    ) -> bool {
+        start_byte <= edit.old_end_byte.saturating_add(window_bytes)
+            && end_byte.saturating_add(window_bytes) >= edit.start_byte
     }
 
-    fn wiki_link_affected_by_edits(range: Range, pending_edits: &[InputEdit]) -> bool {
+    fn wiki_link_affected_by_edits(wl: &WikiLinkOwned, pending_edits: &[InputEdit]) -> bool {
         pending_edits.iter().any(|edit| {
-            Self::range_intersects_edit(range, edit)
-                || Self::range_is_after_edit_start(range, edit)
-                || Self::range_within_neighbor_window(range, edit, 100)
+            Self::range_intersects_edit(wl.range, edit)
+                || Self::range_is_after_edit_start(wl.range, edit)
+                || Self::range_within_neighbor_window(wl.start_byte, wl.end_byte, edit, 100)
         })
     }
 
@@ -323,11 +313,11 @@ impl ServerState {
     ) -> bool {
         old_wiki_links
             .iter()
-            .any(|link| Self::wiki_link_affected_by_edits(link.range, pending_edits))
-            || Self::edits_start_at_or_after_last_wiki_link(old_wiki_links, pending_edits)
+            .any(|link| Self::wiki_link_affected_by_edits(link, pending_edits))
+            || Self::any_edit_starts_at_or_after_last_wiki_link(old_wiki_links, pending_edits)
     }
 
-    fn edits_start_at_or_after_last_wiki_link(
+    fn any_edit_starts_at_or_after_last_wiki_link(
         old_wiki_links: &[WikiLinkOwned],
         pending_edits: &[InputEdit],
     ) -> bool {
@@ -356,11 +346,16 @@ impl ServerState {
                     || wl.target_heading().is_some()
                     || wl.target_block_id().is_some()
             })
-            .map(|wl| WikiLinkOwned {
-                target: wl.target_page().unwrap_or("").to_string(),
-                alias: wl.alias().map(str::to_string),
-                heading: wl.target_heading().map(str::to_string),
-                range: wl.range(),
+            .map(|wl| {
+                let (start_byte, end_byte) = wl.byte_range();
+                WikiLinkOwned {
+                    target: wl.target_page().unwrap_or("").to_string(),
+                    alias: wl.alias().map(str::to_string),
+                    heading: wl.target_heading().map(str::to_string),
+                    range: wl.range(),
+                    start_byte,
+                    end_byte,
+                }
             })
             .collect()
     }
@@ -372,13 +367,13 @@ impl ServerState {
     ) -> Vec<WikiLinkOwned> {
         let mut merged = Vec::new();
         for old in old_wiki_links {
-            if !Self::wiki_link_affected_by_edits(old.range, pending_edits) {
+            if !Self::wiki_link_affected_by_edits(old, pending_edits) {
                 merged.push(old.clone());
             }
         }
 
         for new_link in new_wiki_links {
-            if Self::wiki_link_affected_by_edits(new_link.range, pending_edits) {
+            if Self::wiki_link_affected_by_edits(new_link, pending_edits) {
                 merged.push(new_link.clone());
             }
         }
@@ -517,6 +512,8 @@ impl ServerState {
                     alias: entry.alias.map(str::to_string),
                     heading: entry.heading.map(str::to_string),
                     range: entry.range,
+                    start_byte: entry.start_byte,
+                    end_byte: entry.end_byte,
                 })
                 .collect::<Vec<_>>()
         });
@@ -1285,12 +1282,89 @@ mod tests {
     }
 
     #[test]
+    fn test_range_is_after_edit_start_spanning_link_returns_false() {
+        // A link that STARTS before the edit but ENDS after it spans the edit.
+        // range_intersects_edit handles spanning links; range_is_after_edit_start should NOT
+        // additionally catch them — only links whose START is >= edit start are "after".
+        let range = Range::new(Position::new(0, 0), Position::new(5, 0));
+        let edit = InputEdit {
+            start_byte: 0,
+            old_end_byte: 10,
+            new_end_byte: 10,
+            start_position: markymark_parser::Point { row: 2, column: 0 },
+            old_end_position: markymark_parser::Point { row: 2, column: 10 },
+            new_end_position: markymark_parser::Point { row: 2, column: 10 },
+        };
+        assert!(
+            !ServerState::range_is_after_edit_start(range, &edit),
+            "a link starting before the edit should not be 'after edit start'"
+        );
+    }
+
+    #[test]
+    fn test_range_is_after_edit_start_link_after_edit_returns_true() {
+        // A link entirely after the edit should be "after edit start".
+        let range = Range::new(Position::new(5, 0), Position::new(7, 0));
+        let edit = InputEdit {
+            start_byte: 0,
+            old_end_byte: 5,
+            new_end_byte: 5,
+            start_position: markymark_parser::Point { row: 2, column: 0 },
+            old_end_position: markymark_parser::Point { row: 2, column: 5 },
+            new_end_position: markymark_parser::Point { row: 2, column: 5 },
+        };
+        assert!(
+            ServerState::range_is_after_edit_start(range, &edit),
+            "a link starting after the edit should be 'after edit start'"
+        );
+    }
+
+    #[test]
+    fn test_range_within_neighbor_window_adjacent_bytes_is_in_window() {
+        // A link starting 10 bytes after the edit end should be within a 100-byte window.
+        // Uses byte offsets directly — works correctly across line boundaries.
+        let edit = InputEdit {
+            start_byte: 50,
+            old_end_byte: 60,
+            new_end_byte: 60,
+            start_position: markymark_parser::Point { row: 5, column: 0 },
+            old_end_position: markymark_parser::Point { row: 5, column: 10 },
+            new_end_position: markymark_parser::Point { row: 5, column: 10 },
+        };
+        // Link at bytes 70–85, which is 10 bytes after the edit end (60).
+        assert!(
+            ServerState::range_within_neighbor_window(70, 85, &edit, 100),
+            "a link 10 bytes after the edit end should be within a 100-byte window"
+        );
+    }
+
+    #[test]
+    fn test_range_within_neighbor_window_far_link_not_in_window() {
+        // A link 200 bytes away should not be within a 100-byte window.
+        let edit = InputEdit {
+            start_byte: 50,
+            old_end_byte: 60,
+            new_end_byte: 60,
+            start_position: markymark_parser::Point { row: 5, column: 0 },
+            old_end_position: markymark_parser::Point { row: 5, column: 10 },
+            new_end_position: markymark_parser::Point { row: 5, column: 10 },
+        };
+        // Link at bytes 261–280, which is 201 bytes after the edit end (60).
+        assert!(
+            !ServerState::range_within_neighbor_window(261, 280, &edit, 100),
+            "a link 200 bytes from the edit should not be within a 100-byte window"
+        );
+    }
+
+    #[test]
     fn test_wiki_links_need_update_for_edit_after_last_existing_link() {
         let old_wiki_links = vec![WikiLinkOwned {
             target: "Page".to_string(),
             alias: None,
             heading: None,
             range: Range::new(Position::new(1, 2), Position::new(1, 10)),
+            start_byte: 10,
+            end_byte: 18,
         }];
         let pending_edits = vec![InputEdit {
             start_byte: 0,
