@@ -506,3 +506,80 @@ with a single-quoted delimiter (`'EOF'`) to bypass. Affects any file with that v
 - Always add tail-boundary check to the update predicate: `edit.start >= last_link.end_byte` forces recomputation even when no existing link range is intersected
 - `WikiLinkOwned` owned payload as the merge unit — allows injection into `from_ast` path without touching TOC/heading rebuild logic
 - Merge sequence: collect old → extract new → intersect ranges → preserve unaffected → replace affected neighborhood
+
+---
+
+## Incremental Indexing Performance Deep-Dive (2026-02-18, Opus 4.6 review session)
+
+### Benchmark Evidence (release mode, 57KB / 527-line synthetic doc, 20 iterations)
+
+| Phase | Full | Incremental | Ratio | % of total |
+|-------|------|-------------|-------|------------|
+| Block grammar only | 7.79ms | 5.70ms | 1.36x | ~50% |
+| Inline grammar (N≈500 FFI calls) | 7.95ms | 7.12ms | 1.12x | ~50% |
+| collect_elements | 46µs | 46µs | 1.0x | 0.3% |
+| Index build (5 extractors) | ~0ms | ~0ms | — | ~0% |
+| **Total** | **15.78ms** | **12.84ms** | **1.23x** | 100% |
+
+### Root Cause: tree-sitter-md Dual Grammar Architecture
+
+The `MarkdownParser::parse_with_options()` in `tree-sitter-md-0.5.2/bindings/rust/parser.rs` does:
+1. Parse block grammar (1 FFI call, with old-tree reuse → 1.36x)
+2. Walk ALL `inline`/`pipe_table_cell` nodes in block tree (~500 for 57KB)
+3. For each: `set_included_ranges()` + `parser.parse()` with old inline tree (line 356-358)
+
+**Key finding**: tree-sitter-md DOES pass old inline trees for reuse (parser.rs:358), but the
+per-node overhead of N FFI calls with `set_included_ranges` + `parse` is ~13µs each, totaling
+~7ms. This is not a "no reuse" problem — it's a "too many calls" problem.
+
+### Five Gaps Found in Previous Assessment (Sonnet model)
+
+1. **tree-sitter-md already does old-tree inline reuse** — handoff implied no reuse; the problem
+   is per-call FFI overhead across 500 nodes, not lack of reuse
+2. **`Tree::changed_ranges()` API exists** in tree-sitter 0.26.5 — returns exact byte ranges that
+   differ between old and new block trees. Enables precise identification of which inline nodes
+   need reparsing, without ad-hoc heuristics
+3. **No debouncing in LSP** — `server.rs:140-166` fires `apply_document_changes` + `publish_diagnostics`
+   on every `did_change`. No delay. Every keystroke = full reparse cycle
+4. **Old extractor data cloned on every keystroke** — `state/mod.rs:192-244` copies all wiki_links,
+   blocks, markdown_links, xml_tags into owned Vecs before incremental merge, O(total_elements) per
+   keystroke even when merge skips re-extraction
+5. **BRZA `ScanBackend` enables AST-free incremental path** — `DocumentIndex::from_scan()` builds
+   index without tree-sitter. For incremental updates, SIMD scan of changed region only + merge
+   could bypass tree-sitter entirely. Decouples "fast index update" from "slow AST rebuild"
+
+### Agreed Plan: F + D
+
+**F: Debounce `did_change`** — Low complexity, high UX impact. Add 50-100ms delay before
+reparsing. During fast typing, only the final pause triggers a parse. Eliminates hundreds of
+wasted reparse cycles. Implementation: async task with cancellation token in `Backend::did_change`.
+
+**D: Vendor tree-sitter-md, selective inline skip** — After block tree incremental parse, call
+`block_tree.changed_ranges(&old_block_tree)` to identify changed byte ranges. In the inline
+iteration loop, skip any `inline`/`pipe_table_cell` node whose range doesn't overlap a changed
+range — carry forward old inline tree directly without FFI call. Expected: eliminates ~499 of 500
+inline parses for single-char prose edit. Block stays at 5.7ms, inline drops to ~13µs. Total:
+~5.7ms vs 15.8ms = **~2.8x**.
+
+**Longer-term (E): Lazy AST + SIMD re-index** — On `did_change`, only update text + SIMD-scan
+changed region for index data. Defer full tree-sitter parse until next LSP request (hover, goto-def).
+Requires BRZA integration into LSP path. Potentially 10x+ for index-only operations.
+
+### Key Files for Implementation
+
+| File | Role |
+|------|------|
+| `tree-sitter-md-0.5.2/bindings/rust/parser.rs` | Inner loop to modify (lines 319-366) |
+| `markymark-lsp/src/server.rs:140-166` | `did_change` handler — add debounce here |
+| `markymark-lsp/src/state/mod.rs:185-373` | `apply_document_changes` — incremental orchestration |
+| `markymark-lsp/src/incremental/mod.rs` | Extractor-level incremental logic |
+| `markymark-parser/src/lib.rs` | `Parser` wrapper — would need to use vendored tree-sitter-md |
+| `markymark-parser/benches/incremental.rs` | Benchmark harness |
+| `markymark-lsp/tests/state_tests.rs:999-1086` | End-to-end prose benchmark (currently asserts ≥2x, fails) |
+
+### Decision: tree-sitter-md 10x is not achievable at parse level
+
+The 10x epic target (marky-77i) assumed extractors were 60% of cost. In release mode they're 3%.
+Tree-sitter parse is the wall. The realistic ceiling with D alone is ~2.8x per-parse. Combined
+with F (debounce), the effective UX improvement for typing is dramatic but the per-parse ratio
+won't hit 10x without architectural decoupling (Option E).
