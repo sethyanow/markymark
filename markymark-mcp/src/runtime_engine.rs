@@ -1,13 +1,23 @@
 use std::collections::HashMap;
 use std::fs;
+#[cfg(feature = "semantic-search")]
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+#[cfg(feature = "semantic-search")]
+use std::sync::Arc;
 use std::sync::RwLock;
 
 use anyhow::{anyhow, bail};
+#[cfg(feature = "semantic-search")]
+use markymark_core::engine::SemanticSearchMatch;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
+#[cfg(feature = "semantic-search")]
+use markymark_core::prelude::{EmbedError, EmbeddingProvider};
 use markymark_core::structured::DocumentKind;
-use markymark_core::{CoreError, DocumentUri};
+use markymark_core::{CoreError, DocumentUri, Range};
 use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
+use markymark_kernels::fuzzy_match;
+use markymark_kernels::tokens;
 use markymark_parser::structured::parse_structured;
 use markymark_parser::Parser;
 
@@ -25,9 +35,80 @@ struct RealmData {
 impl RealmData {
     fn new() -> Self {
         Self {
-            index: RealmIndex::new(),
+            index: build_realm_index(),
             roots: Vec::new(),
         }
+    }
+}
+
+fn build_realm_index() -> RealmIndex {
+    #[cfg(feature = "semantic-search")]
+    {
+        let provider: Arc<dyn EmbeddingProvider> = Arc::new(HashEmbeddingProvider::new(128));
+        RealmIndex::new_with_embeddings(provider).unwrap_or_else(|err| {
+            eprintln!("warning: failed to initialize semantic index; falling back to plain realm index: {err}");
+            RealmIndex::new()
+        })
+    }
+
+    #[cfg(not(feature = "semantic-search"))]
+    {
+        RealmIndex::new()
+    }
+}
+
+#[cfg(feature = "semantic-search")]
+#[derive(Debug, Clone)]
+struct HashEmbeddingProvider {
+    dims: u32,
+}
+
+#[cfg(feature = "semantic-search")]
+impl HashEmbeddingProvider {
+    fn new(dims: u32) -> Self {
+        Self { dims }
+    }
+}
+
+#[cfg(feature = "semantic-search")]
+impl EmbeddingProvider for HashEmbeddingProvider {
+    fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+        if self.dims == 0 {
+            return Err(EmbedError::InvalidInput(
+                "embedding dimensions must be > 0".to_string(),
+            ));
+        }
+
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return Err(EmbedError::InvalidInput(
+                "semantic query must not be empty".to_string(),
+            ));
+        }
+
+        let mut out = vec![0.0_f32; self.dims as usize];
+        for token in trimmed
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|token| !token.is_empty())
+        {
+            let norm = token.to_ascii_lowercase();
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            norm.hash(&mut hasher);
+            let idx = (hasher.finish() as usize) % out.len();
+            out[idx] += 1.0;
+        }
+
+        let norm = out.iter().map(|v| v * v).sum::<f32>().sqrt();
+        if norm > 0.0 {
+            for v in &mut out {
+                *v /= norm;
+            }
+        }
+        Ok(out)
+    }
+
+    fn dimensions(&self) -> u32 {
+        self.dims
     }
 }
 
@@ -129,10 +210,19 @@ fn unindex_root_from_realm(root: &Path, realm: &mut RealmData) {
 impl CoreEngine for RuntimeEngine {
     fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
         match operation {
-            // --- Document operations (read from default realm) ---
-            CoreOperation::GetOutline { uri } => {
+            // --- Document operations (read from specified realm, falling back to default) ---
+            CoreOperation::GetOutline {
+                uri,
+                realm: realm_name,
+            } => {
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
                 let state = self.state.read().expect("lock poisoned");
-                let realm = &state[DEFAULT_REALM].index;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                let realm = &realm_data.index;
                 match realm.get_any_document(&uri) {
                     Some(markymark_index::AnyDocumentIndex::Markdown(index)) => {
                         CoreOperationResult::Outline(
@@ -161,7 +251,10 @@ impl CoreEngine for RuntimeEngine {
                     ))),
                 }
             }
-            CoreOperation::SearchSymbols { query } => {
+            CoreOperation::SearchSymbols {
+                query,
+                realm: realm_name,
+            } => {
                 let query = query.trim().to_string();
                 if query.is_empty() {
                     return CoreOperationResult::Error(CoreError::Message(
@@ -169,37 +262,143 @@ impl CoreEngine for RuntimeEngine {
                     ));
                 }
 
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
                 let state = self.state.read().expect("lock poisoned");
-                let realm = &state[DEFAULT_REALM].index;
-                let mut matches = Vec::new();
-                let query_lower = query.to_lowercase();
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                let realm = &realm_data.index;
+                let mut scored_matches: Vec<(i32, bool, String, DocumentUri, Range)> = Vec::new();
 
-                // Search markdown headings
+                // Search markdown headings with fuzzy ranking.
                 for (uri, index) in realm.iter_documents() {
                     for heading in index.headings() {
-                        if heading.text.to_lowercase().contains(&query_lower) {
-                            matches.push((heading.text.to_string(), uri.clone(), heading.range));
+                        if let Ok(m) = fuzzy_match(&query, heading.text) {
+                            if m.score > 0 {
+                                scored_matches.push((
+                                    m.score,
+                                    m.starts_with,
+                                    heading.text.to_string(),
+                                    uri.clone(),
+                                    heading.range,
+                                ));
+                            }
                         }
                     }
                 }
 
-                // Search structured document key paths
+                // Search structured document key paths with fuzzy ranking.
                 for (uri, path, _key, _kind, range) in realm.search_key_paths(&query) {
-                    matches.push((path, uri, range));
+                    if let Ok(m) = fuzzy_match(&query, &path) {
+                        if m.score > 0 {
+                            scored_matches.push((m.score, m.starts_with, path, uri, range));
+                        }
+                    }
                 }
 
-                matches.sort_by(|(name_a, uri_a, range_a), (name_b, uri_b, range_b)| {
-                    name_a
-                        .cmp(name_b)
-                        .then_with(|| uri_a.as_str().cmp(uri_b.as_str()))
-                        .then_with(|| compare_ranges(*range_a, *range_b))
-                });
+                scored_matches.sort_by(
+                    |(score_a, starts_a, name_a, uri_a, range_a),
+                     (score_b, starts_b, name_b, uri_b, range_b)| {
+                        score_b
+                            .cmp(score_a)
+                            .then_with(|| starts_b.cmp(starts_a))
+                            .then_with(|| name_a.cmp(name_b))
+                            .then_with(|| uri_a.as_str().cmp(uri_b.as_str()))
+                            .then_with(|| compare_ranges(*range_a, *range_b))
+                    },
+                );
+
+                let matches = scored_matches
+                    .into_iter()
+                    .map(|(_, _, name, uri, range)| (name, uri, range))
+                    .collect();
 
                 CoreOperationResult::Symbols(matches)
             }
-            CoreOperation::FindReferences { uri, position } => {
+            CoreOperation::SemanticSearch {
+                query,
+                realm,
+                top_k,
+                min_score,
+            } => {
+                let query = query.trim().to_string();
+                if query.is_empty() {
+                    return CoreOperationResult::Error(CoreError::Message(
+                        "semantic query cannot be empty".to_string(),
+                    ));
+                }
+
+                let realm_name = realm.unwrap_or_else(|| DEFAULT_REALM.to_string());
                 let state = self.state.read().expect("lock poisoned");
-                let realm = &state[DEFAULT_REALM].index;
+                let realm_data = match state.get(&realm_name) {
+                    Some(data) => data,
+                    None => {
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "realm does not exist: {realm_name}"
+                        )));
+                    }
+                };
+
+                #[cfg(not(feature = "semantic-search"))]
+                {
+                    let _ = (realm_data, top_k, min_score);
+                    CoreOperationResult::Error(CoreError::NotImplemented(
+                        "semantic-search feature is not enabled for markymark-mcp".to_string(),
+                    ))
+                }
+
+                #[cfg(feature = "semantic-search")]
+                {
+                    let results = match realm_data.index.semantic_search(
+                        &query,
+                        top_k,
+                        min_score.clamp(0.0, 1.0),
+                    ) {
+                        Ok(results) => results,
+                        Err(err) => {
+                            return CoreOperationResult::Error(CoreError::Message(format!(
+                                "semantic search failed: {err}"
+                            )));
+                        }
+                    };
+
+                    CoreOperationResult::SemanticMatches(
+                        results
+                            .into_iter()
+                            .map(|result| {
+                                let section_preview = preview_for_range(
+                                    &result.doc_uri,
+                                    result.section_range,
+                                    &result.heading,
+                                );
+                                SemanticSearchMatch {
+                                    doc_uri: result.doc_uri,
+                                    heading: result.heading,
+                                    heading_level: result.heading_level,
+                                    score: result.score,
+                                    section_range: result.section_range,
+                                    section_preview,
+                                }
+                            })
+                            .collect(),
+                    )
+                }
+            }
+            CoreOperation::FindReferences {
+                uri,
+                position,
+                realm: realm_name,
+            } => {
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
+                let state = self.state.read().expect("lock poisoned");
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                let realm = &realm_data.index;
                 let index = match realm.get_document(&uri) {
                     Some(idx) => idx,
                     None => {
@@ -269,9 +468,16 @@ impl CoreEngine for RuntimeEngine {
                 uri,
                 position,
                 new_name,
+                realm: realm_name,
             } => {
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
                 let state = self.state.read().expect("lock poisoned");
-                let realm = &state[DEFAULT_REALM].index;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                let realm = &realm_data.index;
                 let index = match realm.get_document(&uri) {
                     Some(idx) => idx,
                     None => {
@@ -416,7 +622,11 @@ impl CoreEngine for RuntimeEngine {
             }
 
             // --- Query operations ---
-            CoreOperation::RealmStats { realm } => {
+            CoreOperation::RealmStats {
+                realm,
+                check_duplicates,
+                include_token_counts,
+            } => {
                 let state = self.state.read().expect("lock poisoned");
                 let realm_data = match state.get(&realm) {
                     Some(data) => data,
@@ -439,6 +649,33 @@ impl CoreEngine for RuntimeEngine {
                     markdown_link_count += index.markdown_links().len();
                 }
 
+                let duplicate_pairs = if check_duplicates {
+                    #[cfg(feature = "semantic-search")]
+                    {
+                        Some(realm_data.index.detect_semantic_duplicates(0.85).len())
+                    }
+                    #[cfg(not(feature = "semantic-search"))]
+                    {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let total_tokens = if include_token_counts {
+                    let (total, unreadable_docs) = total_tokens_for_realm(&realm_data.index);
+                    if unreadable_docs > 0 {
+                        eprintln!(
+                            "warning: token count omitted for realm '{realm}' due to {unreadable_docs} unreadable documents"
+                        );
+                        None
+                    } else {
+                        Some(total)
+                    }
+                } else {
+                    None
+                };
+
                 CoreOperationResult::RealmStats {
                     name: realm,
                     root_count: realm_data.roots.len(),
@@ -449,6 +686,8 @@ impl CoreEngine for RuntimeEngine {
                     markdown_link_count,
                     structured_doc_count: realm_data.index.structured_count(),
                     key_path_count: realm_data.index.key_path_count(),
+                    duplicate_pairs,
+                    total_tokens,
                 }
             }
             CoreOperation::DependencyGraph { realm, format } => {
@@ -472,9 +711,18 @@ impl CoreEngine for RuntimeEngine {
                     Err(msg) => CoreOperationResult::Error(CoreError::Message(msg)),
                 }
             }
-            CoreOperation::ExportIndex { uri } => {
+            CoreOperation::ExportIndex {
+                uri,
+                realm: realm_name,
+            } => {
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
                 let state = self.state.read().expect("lock poisoned");
-                let realm = &state[DEFAULT_REALM].index;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                let realm = &realm_data.index;
                 match realm.get_any_document(&uri) {
                     Some(markymark_index::AnyDocumentIndex::Markdown(index)) => {
                         let headings = index
@@ -542,6 +790,68 @@ impl CoreEngine for RuntimeEngine {
             }
         }
     }
+}
+
+fn total_tokens_for_realm(realm: &RealmIndex) -> (u64, usize) {
+    let mut total_tokens = 0_u64;
+    let mut unreadable_docs = 0_usize;
+    for (uri, _) in realm.iter_all_documents() {
+        let Some(path) = uri.to_file_path() else {
+            unreadable_docs += 1;
+            continue;
+        };
+        match fs::read_to_string(path) {
+            Ok(source) => {
+                total_tokens += u64::from(tokens::estimate_tokens(&source));
+            }
+            Err(_) => {
+                unreadable_docs += 1;
+            }
+        }
+    }
+    (total_tokens, unreadable_docs)
+}
+
+#[cfg(feature = "semantic-search")]
+fn preview_for_range(uri: &DocumentUri, range: Range, fallback: &str) -> String {
+    let Some(path) = uri.to_file_path() else {
+        return truncate_preview(fallback);
+    };
+    let Ok(source) = fs::read_to_string(path) else {
+        return truncate_preview(fallback);
+    };
+    let Some(start_idx) = byte_offset_for_line(&source, range.start.line) else {
+        return truncate_preview(fallback);
+    };
+    truncate_preview(&source[start_idx..])
+}
+
+#[cfg(feature = "semantic-search")]
+fn byte_offset_for_line(source: &str, line: u32) -> Option<usize> {
+    if line == 0 {
+        return Some(0);
+    }
+
+    let mut current_line = 0_u32;
+    for (idx, ch) in source.char_indices() {
+        if ch == '\n' {
+            current_line += 1;
+            if current_line == line {
+                return Some(idx + 1);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(feature = "semantic-search")]
+fn truncate_preview(text: &str) -> String {
+    const MAX_PREVIEW_BYTES: usize = 200;
+    let mut end = text.len().min(MAX_PREVIEW_BYTES);
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text[..end].split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn validate_workspace_root(root: &Path) -> anyhow::Result<()> {
@@ -657,7 +967,211 @@ fn build_dependency_graph(realm: &RealmIndex, format: &str) -> Result<String, St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use markymark_core::Position;
     use std::fs;
+
+    fn make_temp_realm_dir(suffix: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("marky-realm-{}-{}", suffix, std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn make_engine_with_custom_realm(realm_name: &str, dir: &Path) -> RuntimeEngine {
+        let engine = RuntimeEngine::default();
+        // create the realm
+        engine.execute(CoreOperation::CreateRealm {
+            name: realm_name.to_string(),
+        });
+        // index the directory into it
+        engine.execute(CoreOperation::AddRoot {
+            realm: realm_name.to_string(),
+            root: dir.to_path_buf(),
+        });
+        engine
+    }
+
+    #[test]
+    fn get_outline_uses_named_realm() {
+        let dir = make_temp_realm_dir("get-outline");
+        fs::write(dir.join("doc.md"), "# Hello World\n\n## Section\n").unwrap();
+        let engine = make_engine_with_custom_realm("my-realm", &dir);
+
+        let uri_str = format!("file://{}", dir.join("doc.md").display());
+        let uri = DocumentUri::new(&uri_str).unwrap();
+
+        // Should fail without realm (default realm has no such doc)
+        let result = engine.execute(CoreOperation::GetOutline {
+            uri: uri.clone(),
+            realm: None,
+        });
+        assert!(
+            matches!(result, CoreOperationResult::Error(_)),
+            "expected error when querying default realm, got {result:?}"
+        );
+
+        // Should succeed with the correct realm
+        let result = engine.execute(CoreOperation::GetOutline {
+            uri: uri.clone(),
+            realm: Some("my-realm".to_string()),
+        });
+        assert!(
+            matches!(result, CoreOperationResult::Outline(_)),
+            "expected Outline from named realm, got {result:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn export_index_uses_named_realm() {
+        let dir = make_temp_realm_dir("export-index");
+        fs::write(dir.join("doc.md"), "# Title\n").unwrap();
+        let engine = make_engine_with_custom_realm("export-realm", &dir);
+
+        let uri_str = format!("file://{}", dir.join("doc.md").display());
+        let uri = DocumentUri::new(&uri_str).unwrap();
+
+        let result = engine.execute(CoreOperation::ExportIndex {
+            uri: uri.clone(),
+            realm: Some("export-realm".to_string()),
+        });
+        assert!(
+            matches!(result, CoreOperationResult::DocumentExport { .. }),
+            "expected DocumentExport from named realm, got {result:?}"
+        );
+
+        let result_default = engine.execute(CoreOperation::ExportIndex { uri, realm: None });
+        assert!(
+            matches!(result_default, CoreOperationResult::Error(_)),
+            "expected error from default realm, got {result_default:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn search_symbols_uses_named_realm() {
+        let dir = make_temp_realm_dir("search-symbols");
+        fs::write(dir.join("doc.md"), "# UniqueHeadingXYZ\n").unwrap();
+        let engine = make_engine_with_custom_realm("search-realm", &dir);
+
+        // Default realm should return no matches for the unique heading
+        let result = engine.execute(CoreOperation::SearchSymbols {
+            query: "UniqueHeadingXYZ".to_string(),
+            realm: None,
+        });
+        if let CoreOperationResult::Symbols(matches) = result {
+            assert!(
+                matches.is_empty(),
+                "default realm should not have the heading"
+            );
+        } else {
+            panic!("expected Symbols result");
+        }
+
+        // Named realm should find it
+        let result = engine.execute(CoreOperation::SearchSymbols {
+            query: "UniqueHeadingXYZ".to_string(),
+            realm: Some("search-realm".to_string()),
+        });
+        if let CoreOperationResult::Symbols(matches) = result {
+            assert!(!matches.is_empty(), "named realm should have the heading");
+        } else {
+            panic!("expected Symbols result");
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn find_references_uses_named_realm() {
+        let dir = make_temp_realm_dir("find-refs");
+        // A heading with a wiki-link reference in the same file
+        fs::write(dir.join("doc.md"), "# My Heading\n\n[[My Heading]]\n").unwrap();
+        let engine = make_engine_with_custom_realm("refs-realm", &dir);
+
+        let uri_str = format!("file://{}", dir.join("doc.md").display());
+        let uri = DocumentUri::new(&uri_str).unwrap();
+
+        let position = markymark_core::Range {
+            start: Position {
+                line: 0,
+                character: 2,
+            },
+            end: Position {
+                line: 0,
+                character: 12,
+            },
+        };
+
+        // Default realm has no such doc
+        let result = engine.execute(CoreOperation::FindReferences {
+            uri: uri.clone(),
+            position,
+            realm: None,
+        });
+        assert!(
+            matches!(result, CoreOperationResult::Error(_)),
+            "expected error from default realm, got {result:?}"
+        );
+
+        // Named realm should find the references
+        let result = engine.execute(CoreOperation::FindReferences {
+            uri,
+            position,
+            realm: Some("refs-realm".to_string()),
+        });
+        assert!(
+            !matches!(result, CoreOperationResult::Error(_)),
+            "expected success from named realm, got {result:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rename_uses_named_realm() {
+        let dir = make_temp_realm_dir("rename");
+        fs::write(dir.join("doc.md"), "# Old Name\n").unwrap();
+        let engine = make_engine_with_custom_realm("rename-realm", &dir);
+
+        let uri_str = format!("file://{}", dir.join("doc.md").display());
+        let uri = DocumentUri::new(&uri_str).unwrap();
+
+        let position = markymark_core::Range {
+            start: Position {
+                line: 0,
+                character: 2,
+            },
+            end: Position {
+                line: 0,
+                character: 10,
+            },
+        };
+
+        // Default realm has no such doc
+        let result = engine.execute(CoreOperation::Rename {
+            uri: uri.clone(),
+            position,
+            new_name: "New Name".to_string(),
+            realm: None,
+        });
+        assert!(
+            matches!(result, CoreOperationResult::Error(_)),
+            "expected error from default realm, got {result:?}"
+        );
+
+        // Named realm should work
+        let result = engine.execute(CoreOperation::Rename {
+            uri,
+            position,
+            new_name: "New Name".to_string(),
+            realm: Some("rename-realm".to_string()),
+        });
+        assert!(
+            !matches!(result, CoreOperationResult::Error(_)),
+            "expected success from named realm, got {result:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn collect_documents_includes_json_alongside_markdown() {

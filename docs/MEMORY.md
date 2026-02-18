@@ -123,6 +123,20 @@ The arena conformance closeout (marky-luy) should monitor this.
 
 ## Lessons Learned
 
+### 2026-02-17: FFI serialization must validate both math and pointers
+
+For mmap-friendly binary formats, treat header counts and C pointers as untrusted input.
+In `zig/src/kernels/index_serde.zig`, using checked arithmetic in `IndexView.init` avoided
+overflow panics/acceptance bugs, and explicit null-pointer guards in `serialize_index`
+prevented SIGSEGV on malformed C callers. Also, padding bytes in caller-provided output
+buffers must be explicitly zeroed to guarantee deterministic output and avoid leaking
+stale memory.
+
+**Verification evidence:**
+- `zig test zig/src/kernels/index_serde.zig` → 8/8 passing
+- `zig test zig/src/exports_serde.zig` → 12/12 passing
+- `cargo test --package markymark-kernels` → 69 unit tests + docs passing
+
 ### 2026-02-15: Documentation for Agents != Documentation for Humans
 
 **Key insight:** Agent docs need PROCEDURAL knowledge (how to work through problems)
@@ -278,3 +292,109 @@ When auditing a doc corpus with markymark:
 - Verified with `cargo test -p markymark-lsp` and `cargo fmt --check`.
 - Posted PR response summary comment: https://github.com/sethyanow/markymark/pull/21#issuecomment-3910812072
 - Closed beads issue `marky-3l6` after code, tests, and PR response loop were complete.
+
+### 2026-02-17: MCP prompt/resource review fixes (inline findings verification)
+
+- Verified prompt realm-default behavior path and made prompt handlers pass `"default"` explicitly when `realm` argument is omitted in `markymark-mcp/src/prompts.rs`.
+- Fixed `extract_query_param` decoding in `markymark-mcp/src/resources.rs` so percent-encoded query values (including `%20` and `+`) are decoded before forwarding.
+- Strengthened tests:
+  - Added prompt handler assertions that missing `realm` defaults to `"default"` for both `explain-link` and `suggest-references`.
+  - Updated resource handler mock to capture `CoreOperation::GetOutline` realm and assert forwarding.
+  - Added regression test that `realm=custom%20realm` is decoded to `"custom realm"` before reaching the core operation.
+- Verification run:
+  - `cargo fmt --all`
+  - `cargo test -p markymark-mcp --test resource_handler_tests`
+  - `cargo test -p markymark-mcp --test prompt_handler_tests`
+
+---
+
+## Key Architectural Decisions (migrated from claude-harness 2026-02-18)
+
+Extracted from 64 episodic decisions accumulated Feb 15-17 2026. Only decisions with
+ongoing architectural relevance are preserved here. Implementation minutiae and completed
+one-off choices are omitted — they live in commit history.
+
+### Arena Allocation
+
+- **ArenaHashMap (!Send) restricted to parser types only; index types use std HashMap** (dec-arena-send-001). Bump:!Sync -> &Bump:!Send -> ArenaHashMap:!Send. tower-lsp requires Send+'static for async handlers. Index types flow into ServerState via RealmIndex.
+- **Adopted DocumentArena wrapper in Ast and DocumentIndex** (dec-docarena-adopt-001). Provides Debug, capacity hints, and clear semantic boundary vs raw Bump.
+- **Reorder Ast struct fields so root_elements before arena** (dec-031). Rust drops fields in declaration order. Arena must outlive elements containing ArenaHashMap.
+- **Arena reuse via reset is NOT worth implementing** (dec-041). Benchmark: arena lifecycle = 0.07% of full reparse cost. Tree-sitter parsing dominates by 100-150x.
+
+### Self-Referential Types
+
+- **self_cell owner/dependent storage for Ast internals on stable Rust** (dec-051). Removes internal Vec<Element<'static>> storage. Avoids nightly requirement.
+- **Parameterize SymbolAtPosition over lifetime instead of 'static payloads** (dec-049). LSP state symbol extraction clones index entries; forcing 'static caused borrow escape errors.
+- **Cow<str> optimization deferred until self-referential lifetime model is implemented** (dec-046). RealmIndex borrowing from DocumentIndex into sibling maps requires self-referential invariants not yet provided.
+
+### Incremental Indexing (Phase 3)
+
+- **LSP-layer orchestration, not index-layer diffing or parser-layer tracking** (dec-phase3-001). Leverages existing InputEdit data from LSP. Single orchestration point.
+- **Byte-range granularity using InputEdit ranges** (dec-phase3-002). Simpler than element-level tracking, more precise than section-level.
+- **All 5 independent extractors get incremental** (dec-phase3-003): wiki_links, blocks, tags, markdown_links, xml_tags. 60% of indexing cost.
+- **Headings/TOC/outline always full rebuild** (dec-phase3-004). O(headings) not O(doc), typically <10% of cost.
+- **Markdown incremental only, JSON/YAML/TOML always full rebuild** (dec-phase3-006).
+
+### Zig SIMD Kernels
+
+- **Copy and diverge Zig kernels from forge BRZA** (dec-brza-mm-001). Simplest start, avoids coordination overhead. Can sync later if patterns converge.
+- **Complement tree-sitter with Zig SIMD, promotion path based on benchmarks** (dec-brza-mm-002). Zig fast but context-unaware. Tree-sitter precise but slower. Two-tier model.
+- **markymark-kernels crate below markymark-core in dependency graph** (dec-brza-mm-003). Core defines traits, kernels implements via Zig FFI. Feature-gated.
+- **Split C ABI exports into separate exports_*.zig files** (dec-ncz-001). Keeps c_adapter.zig under 1000-line limit.
+- **comptime { _ = @import } at module level for export wiring** (dec-0u5-003). Test-block imports only affect tests, not library symbols.
+
+### Incremental Parsing
+
+- **tree-sitter-md incremental yields ~1.3x speedup, not 10x** (dec-zan-001). Dual block+inline grammar limits gain. 10x requires Phase 3 incremental indexing.
+- **MarkdownTree::edit() takes &InputEdit, not &[InputEdit]** (dec-zan-002). tree-sitter docs were wrong about array syntax.
+- **Full replacement invalidates old tree** (dec-zan-003). Only incremental edits preserve tree for reuse.
+
+### Build & CI
+
+- **build.rs invokes zig build lib via std::process::Command, zero build-dependencies** (dec-brza-een-001).
+- **rerun-if-changed enumerates individual .zig files via walkdir** (dec-brza-een-002). Directory-level watch only triggers on add/remove, not modifications.
+- **PIC required for Zig static libraries on Linux x86_64** (suc-021). `.pic = true` on Module in build.zig.
+
+---
+
+## Key Failure Patterns (migrated from claude-harness 2026-02-18)
+
+### tower-lsp-server v0.23 API mismatch (fail-tower-lsp-types)
+Pre-training knowledge has `lsp_types` and `#[async_trait]`. The community fork v0.23
+uses `ls_types` and native async traits. Always read `docs/rust_crates/tower-lsp.md`.
+
+### MCP stdio uses line-delimited JSON, not Content-Length (fail-mcp-framing)
+rmcp stdio transport uses `writeln!` + `read_line`, not HTTP-style `Content-Length` headers.
+
+### Security hook silently blocks Write on GitHub Actions YAML (fail-write-tool-gh-actions)
+The `security_reminder_hook.py` intercepts Write on `.github/workflows/*.yml`. File appears
+to write (no error) but content is unchanged. Use Bash heredoc instead.
+
+### Harness progress file caused rebase failure (fail-feature-001-rebase-20260214)
+`.claude-harness/claude-progress.json` diverged between branches, producing a non-trivial
+rebase conflict during autonomous preflight sync. This was the catalyst for removing harness.
+
+### Zig 0.15 API breaks from 0.14 (fail-zig-015-api)
+`addStaticLibrary` doesn't exist — use `addLibrary` with `.linkage = .static`.
+`root_source_file` is now `root_module` via `b.createModule()`.
+`callconv(.C)` doesn't exist — `export fn` gets C ABI by default.
+Always read `docs/modules/zig/03-tooling/build-system.md` before writing build.zig.
+
+---
+
+## Key Patterns (migrated from claude-harness 2026-02-18)
+
+### FFI Bridging Conventions
+- Generic `call_scan_ffi<T>` helper with buffer retry eliminates per-function boilerplate for scan wrappers
+- `repr(C)` mirror structs at FFI boundary, idiomatic Rust types in public API
+- `safe_slice()` rounds byte offsets to UTF-8 char boundaries for Zig raw byte positions
+- Buffer retry: start at 64, double on -2, max 3 retries
+- `PhantomData<*mut ()>` for !Send/!Sync on stable Rust (impl !Trait requires nightly)
+- Drop impl sets handle to null after destroy for idempotent double-free protection
+
+### Zig Kernel Conventions
+- SIMD for sparse pattern search: @Vector to find candidate positions, scalar for validation
+- Share parsing logic between SIMD and scalar modules via pub import from reference
+- `exports_*.zig` files + `comptime { _ = @import(...) }` in c_adapter.zig for composable ABI
+- EmbeddingIndex uses `page_allocator` for persistent FFI-owned memory
+- FFI functions must initialize all output parameters before error returns (Zig undefined = garbage)

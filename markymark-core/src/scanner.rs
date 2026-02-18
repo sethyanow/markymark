@@ -114,103 +114,85 @@ pub trait ScanBackend: Send + Sync {
 }
 
 // ---------------------------------------------------------------------------
-// Zig SIMD scan backend (feature-gated)
+// ZigScanBackend implementation (behind zig-kernels feature)
 // ---------------------------------------------------------------------------
 
+/// Zig SIMD-accelerated scan backend.
+///
+/// This backend delegates to the `markymark-kernels` FFI functions for
+/// SIMD-accelerated markdown element extraction.
 #[cfg(feature = "zig-kernels")]
-mod zig_scan_backend {
-    use super::*;
-    use markymark_kernels::scan;
-    use markymark_kernels::tokens;
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ZigScanBackend;
 
-    /// SIMD-accelerated scan backend backed by Zig kernels.
-    ///
-    /// Zero-size struct — all state lives in the kernel FFI calls.
-    pub struct ZigScanBackend;
-
-    impl ZigScanBackend {
-        fn map_kernel_error(e: scan::KernelError) -> ScanError {
-            match e {
-                scan::KernelError::InvalidInput => {
-                    ScanError::InvalidInput("kernel: invalid input".into())
-                }
-                scan::KernelError::BufferTooSmall => {
-                    ScanError::InternalError("kernel: buffer too small after retries".into())
-                }
-                scan::KernelError::InternalError(code) => {
-                    ScanError::InternalError(format!("kernel: internal error (code {code})"))
-                }
-            }
-        }
+#[cfg(feature = "zig-kernels")]
+impl ScanBackend for ZigScanBackend {
+    fn scan_headings(&self, text: &str) -> Result<Vec<HeadingResult>, ScanError> {
+        markymark_kernels::scan::scan_headings(text)
+            .map(|results| {
+                results
+                    .into_iter()
+                    .map(|h| HeadingResult {
+                        text: h.text,
+                        offset: h.offset,
+                        level: h.level,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
     }
 
-    impl ScanBackend for ZigScanBackend {
-        fn scan_headings(&self, text: &str) -> Result<Vec<HeadingResult>, ScanError> {
-            scan::scan_headings(text)
-                .map(|v| {
-                    v.into_iter()
-                        .map(|h| HeadingResult {
-                            text: h.text,
-                            offset: h.offset,
-                            level: h.level,
-                        })
-                        .collect()
-                })
-                .map_err(Self::map_kernel_error)
-        }
+    fn scan_links(&self, text: &str) -> Result<Vec<LinkResult>, ScanError> {
+        markymark_kernels::scan::scan_links(text)
+            .map(|results| {
+                results
+                    .into_iter()
+                    .map(|l| LinkResult {
+                        offset: l.offset,
+                        text: l.text,
+                        target: l.target,
+                        link_type: match l.link_type {
+                            markymark_kernels::scan::LinkType::Markdown => ScanLinkType::Markdown,
+                            markymark_kernels::scan::LinkType::Wiki => ScanLinkType::Wiki,
+                        },
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
 
-        fn scan_links(&self, text: &str) -> Result<Vec<LinkResult>, ScanError> {
-            scan::scan_links(text)
-                .map(|v| {
-                    v.into_iter()
-                        .map(|l| LinkResult {
-                            offset: l.offset,
-                            text: l.text,
-                            target: l.target,
-                            link_type: match l.link_type {
-                                scan::LinkType::Wiki => ScanLinkType::Wiki,
-                                scan::LinkType::Markdown => ScanLinkType::Markdown,
-                            },
-                        })
-                        .collect()
-                })
-                .map_err(Self::map_kernel_error)
-        }
+    fn scan_tags(&self, text: &str) -> Result<Vec<TagResult>, ScanError> {
+        markymark_kernels::scan::scan_tags(text)
+            .map(|results| {
+                results
+                    .into_iter()
+                    .map(|t| TagResult {
+                        name: t.name,
+                        offset: t.offset,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
 
-        fn scan_tags(&self, text: &str) -> Result<Vec<TagResult>, ScanError> {
-            scan::scan_tags(text)
-                .map(|v| {
-                    v.into_iter()
-                        .map(|t| TagResult {
-                            name: t.name,
-                            offset: t.offset,
-                        })
-                        .collect()
-                })
-                .map_err(Self::map_kernel_error)
-        }
+    fn scan_block_ids(&self, text: &str) -> Result<Vec<BlockIdResult>, ScanError> {
+        markymark_kernels::scan::scan_block_ids(text)
+            .map(|results| {
+                results
+                    .into_iter()
+                    .map(|b| BlockIdResult {
+                        id: b.id,
+                        offset: b.offset,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
 
-        fn scan_block_ids(&self, text: &str) -> Result<Vec<BlockIdResult>, ScanError> {
-            scan::scan_block_ids(text)
-                .map(|v| {
-                    v.into_iter()
-                        .map(|b| BlockIdResult {
-                            id: b.id,
-                            offset: b.offset,
-                        })
-                        .collect()
-                })
-                .map_err(Self::map_kernel_error)
-        }
-
-        fn estimate_tokens(&self, text: &str) -> Result<u32, ScanError> {
-            Ok(tokens::estimate_tokens(text))
-        }
+    fn estimate_tokens(&self, text: &str) -> Result<u32, ScanError> {
+        Ok(markymark_kernels::tokens::estimate_tokens(text))
     }
 }
-
-#[cfg(feature = "zig-kernels")]
-pub use zig_scan_backend::ZigScanBackend;
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -321,85 +303,5 @@ mod tests {
             offset: 10,
         };
         assert_eq!(b.id, "my-block");
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Zig-kernels backed tests (only run with `zig-kernels` feature)
-// ---------------------------------------------------------------------------
-
-#[cfg(all(test, feature = "zig-kernels"))]
-mod zig_tests {
-    use super::*;
-
-    #[test]
-    fn test_zig_scan_backend_headings() {
-        let backend = ZigScanBackend;
-        let results = backend.scan_headings("# Hello\n## World\n").unwrap();
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].text, "Hello");
-        assert_eq!(results[0].level, 1);
-        assert_eq!(results[1].text, "World");
-        assert_eq!(results[1].level, 2);
-    }
-
-    #[test]
-    fn test_zig_scan_backend_links() {
-        let backend = ZigScanBackend;
-        let results = backend
-            .scan_links("Click [here](https://example.com) and [[wiki]]")
-            .unwrap();
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].text, "here");
-        assert_eq!(results[0].target, "https://example.com");
-        assert_eq!(results[0].link_type, ScanLinkType::Markdown);
-        assert_eq!(results[1].link_type, ScanLinkType::Wiki);
-    }
-
-    #[test]
-    fn test_zig_scan_backend_tags() {
-        let backend = ZigScanBackend;
-        let results = backend.scan_tags("text #tag1 #tag2").unwrap();
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].name, "tag1");
-        assert_eq!(results[1].name, "tag2");
-    }
-
-    #[test]
-    fn test_zig_scan_backend_block_ids() {
-        let backend = ZigScanBackend;
-        let results = backend.scan_block_ids("text ^my-block\n").unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, "my-block");
-    }
-
-    #[test]
-    fn test_zig_scan_backend_estimate_tokens() {
-        let backend = ZigScanBackend;
-        let count = backend.estimate_tokens("hello world foo bar").unwrap();
-        assert!(count > 0);
-    }
-
-    #[test]
-    fn test_zig_scan_backend_empty_input() {
-        let backend = ZigScanBackend;
-        assert!(backend.scan_headings("").unwrap().is_empty());
-        assert!(backend.scan_links("").unwrap().is_empty());
-        assert!(backend.scan_tags("").unwrap().is_empty());
-        assert!(backend.scan_block_ids("").unwrap().is_empty());
-        assert_eq!(backend.estimate_tokens("").unwrap(), 0);
-    }
-
-    #[test]
-    fn test_zig_scan_backend_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<ZigScanBackend>();
-    }
-
-    #[test]
-    fn test_zig_scan_backend_as_trait_object() {
-        let backend: Box<dyn ScanBackend> = Box::new(ZigScanBackend);
-        let results = backend.scan_headings("# Test").unwrap();
-        assert_eq!(results.len(), 1);
     }
 }

@@ -16,10 +16,8 @@ Thumbs.db
 
 # Testing
 .insta/
-# Claude Harness - Ephemeral/Per-Session State
-.claude-harness/sessions/
-.claude-harness/memory/compaction-backups/
-.claude-harness/memory/working/
+# Claude Harness (removed — memory migrated to CLAUDE.md and docs/MEMORY.md)
+.claude-harness/
 # Claude Code - Local settings
 .claude/settings.local.json
 
@@ -31,3 +29,5 @@ Thumbs.db
 zig-out/
 
 .brain
+
+brza-spec.md

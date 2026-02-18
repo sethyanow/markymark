@@ -3,6 +3,23 @@
 use crate::structured::DocumentKind;
 use crate::{CoreError, DocumentUri, Range};
 
+/// Semantic search match payload shared across transports.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SemanticSearchMatch {
+    /// Matched document URI.
+    pub doc_uri: DocumentUri,
+    /// Matched heading text.
+    pub heading: String,
+    /// Matched heading level.
+    pub heading_level: u8,
+    /// Similarity score.
+    pub score: f32,
+    /// Heading/section source range.
+    pub section_range: Range,
+    /// Short preview snippet for the matched section.
+    pub section_preview: String,
+}
+
 /// An operation that can be executed by the core engine.
 #[derive(Debug)]
 pub enum CoreOperation {
@@ -10,6 +27,8 @@ pub enum CoreOperation {
     GetOutline {
         /// Target document.
         uri: DocumentUri,
+        /// Realm to query. Defaults to "default" when `None`.
+        realm: Option<String>,
     },
     /// Find all references to the symbol at a position.
     FindReferences {
@@ -17,6 +36,8 @@ pub enum CoreOperation {
         uri: DocumentUri,
         /// Position of the symbol.
         position: Range,
+        /// Realm to query. Defaults to "default" when `None`.
+        realm: Option<String>,
     },
     /// Rename the symbol at a position.
     Rename {
@@ -26,11 +47,26 @@ pub enum CoreOperation {
         position: Range,
         /// New name for the symbol.
         new_name: String,
+        /// Realm to query. Defaults to "default" when `None`.
+        realm: Option<String>,
     },
     /// Search for symbols matching a query.
     SearchSymbols {
         /// Search query string.
         query: String,
+        /// Realm to query. Defaults to "default" when `None`.
+        realm: Option<String>,
+    },
+    /// Run semantic search across indexed document sections.
+    SemanticSearch {
+        /// Search query string.
+        query: String,
+        /// Optional realm name. Defaults to "default" when omitted.
+        realm: Option<String>,
+        /// Max number of results to return.
+        top_k: u32,
+        /// Score floor in `[0.0, 1.0]`.
+        min_score: f32,
     },
     /// Create a new named realm.
     CreateRealm {
@@ -60,11 +96,17 @@ pub enum CoreOperation {
     RealmStats {
         /// Realm name (e.g. "default").
         realm: String,
+        /// Include semantic duplicate counts.
+        check_duplicates: bool,
+        /// Include aggregate token estimation.
+        include_token_counts: bool,
     },
     /// Export the full document index for a single document.
     ExportIndex {
         /// Target document.
         uri: DocumentUri,
+        /// Realm to query. Defaults to "default" when `None`.
+        realm: Option<String>,
     },
     /// Get a dependency graph showing inter-document links.
     DependencyGraph {
@@ -95,6 +137,8 @@ pub enum CoreOperationResult {
     WorkspaceEdit(Vec<(DocumentUri, Vec<(Range, String)>)>),
     /// A list of symbols (name, uri, range).
     Symbols(Vec<(String, DocumentUri, Range)>),
+    /// Semantic search results.
+    SemanticMatches(Vec<SemanticSearchMatch>),
     /// Realm info: name, root count, document count.
     RealmInfo {
         /// Realm name.
@@ -124,6 +168,10 @@ pub enum CoreOperationResult {
         structured_doc_count: usize,
         /// Total key paths across all structured documents.
         key_path_count: usize,
+        /// Optional count of near-duplicate document pairs.
+        duplicate_pairs: Option<usize>,
+        /// Optional aggregate token count across realm documents.
+        total_tokens: Option<u64>,
     },
     /// Exported document index: full structured data for a single document.
     DocumentExport {
