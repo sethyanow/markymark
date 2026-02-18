@@ -6,7 +6,6 @@ use serde_json::json;
 
 use super::{tool_error, tool_error_from_core, unexpected_result_error};
 use crate::dto::*;
-use crate::subscriptions::SubscriptionTracker;
 
 /// Result of a realm tool operation. Carries the `CallToolResult` plus whether
 /// subscriptions should be notified (true for mutating realm operations on success).
@@ -17,7 +16,6 @@ pub(crate) struct RealmToolResult {
 
 pub(crate) fn handle_create_realm(
     engine: &dyn CoreEngine,
-    _subs: &SubscriptionTracker,
     req: CreateRealmRequest,
 ) -> RealmToolResult {
     let name = req.name.trim().to_string();
@@ -57,7 +55,6 @@ pub(crate) fn handle_create_realm(
 
 pub(crate) fn handle_destroy_realm(
     engine: &dyn CoreEngine,
-    _subs: &SubscriptionTracker,
     req: DestroyRealmRequest,
 ) -> RealmToolResult {
     let name = req.name.trim().to_string();
@@ -89,11 +86,7 @@ pub(crate) fn handle_destroy_realm(
     }
 }
 
-pub(crate) fn handle_add_root(
-    engine: &dyn CoreEngine,
-    _subs: &SubscriptionTracker,
-    req: AddRootRequest,
-) -> RealmToolResult {
+pub(crate) fn handle_add_root(engine: &dyn CoreEngine, req: AddRootRequest) -> RealmToolResult {
     let realm = req.realm.trim().to_string();
     if realm.is_empty() {
         return RealmToolResult {
@@ -133,7 +126,6 @@ pub(crate) fn handle_add_root(
 
 pub(crate) fn handle_remove_root(
     engine: &dyn CoreEngine,
-    _subs: &SubscriptionTracker,
     req: RemoveRootRequest,
 ) -> RealmToolResult {
     let realm = req.realm.trim().to_string();

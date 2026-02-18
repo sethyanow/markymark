@@ -315,7 +315,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<CreateRealmRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let r = tools::realm::handle_create_realm(&*self.engine, &self.subscriptions, params.0);
+        let r = tools::realm::handle_create_realm(&*self.engine, params.0);
         if r.notify {
             self.subscriptions.notify_all().await;
         }
@@ -331,7 +331,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<DestroyRealmRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let r = tools::realm::handle_destroy_realm(&*self.engine, &self.subscriptions, params.0);
+        let r = tools::realm::handle_destroy_realm(&*self.engine, params.0);
         if r.notify {
             self.subscriptions.notify_all().await;
         }
@@ -347,7 +347,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<AddRootRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let r = tools::realm::handle_add_root(&*self.engine, &self.subscriptions, params.0);
+        let r = tools::realm::handle_add_root(&*self.engine, params.0);
         if r.notify {
             self.subscriptions.notify_all().await;
         }
@@ -363,7 +363,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<RemoveRootRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let r = tools::realm::handle_remove_root(&*self.engine, &self.subscriptions, params.0);
+        let r = tools::realm::handle_remove_root(&*self.engine, params.0);
         if r.notify {
             self.subscriptions.notify_all().await;
         }
