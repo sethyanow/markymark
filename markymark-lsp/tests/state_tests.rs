@@ -988,3 +988,338 @@ fn benchmark_incremental_wiki_link_edit_faster_than_full_rebuild() {
     assert!(incremental_total > Duration::ZERO);
     assert!(full_total > Duration::ZERO);
 }
+
+/// Benchmark: single-char edit in PROSE (not touching any wiki links).
+///
+/// This is the common case: user types in a paragraph between wiki links.
+/// With the position-adjustment optimization, all extractors should skip
+/// re-extraction and only adjust positions, giving ≥10x speedup.
+#[test]
+#[ignore = "performance signal only; run explicitly for local benchmark evidence"]
+fn benchmark_incremental_prose_edit_vs_full_rebuild() {
+    let uri = DocumentUri::new("file:///test/prose-bench.md").unwrap();
+    let mut text = String::new();
+    text.push_str("# Large Document\n\n");
+
+    // Build a ~50KB document with wiki links scattered every ~20 lines
+    // with prose paragraphs between them
+    for i in 0..500 {
+        if i % 20 == 0 {
+            text.push_str(&format!("See [[Page{}]] for details.\n\n", i / 20));
+        } else {
+            text.push_str(&format!(
+                "This is line {} of prose text with some content to fill space. \
+                 Lorem ipsum dolor sit amet consectetur adipiscing elit.\n",
+                i
+            ));
+        }
+    }
+
+    // Find a prose line in the middle (line 250) — NOT near any wiki link
+    let prose_target = "This is line 250 of prose text";
+    let target_offset = text.find(prose_target).expect("prose target must exist");
+    let prefix = &text[..target_offset];
+    let start_line = prefix.chars().filter(|c| *c == '\n').count() as u32;
+    let line_start = prefix.rfind('\n').map(|idx| idx + 1).unwrap_or(0);
+    let start_character = (target_offset - line_start) as u32;
+
+    // Insert a single character "X" at the beginning of the prose line
+    let changed = format!("{}X{}", &text[..target_offset], &text[target_offset..]);
+
+    let iterations = 20;
+    let warmup = 3;
+    let mut incremental_total = Duration::ZERO;
+    let mut full_total = Duration::ZERO;
+
+    // Warmup + measurement: incremental
+    for i in 0..(warmup + iterations) {
+        let mut state = ServerState::new();
+        state.open_document(uri.clone(), text.clone());
+        let start = Instant::now();
+        state.apply_document_changes(
+            &uri,
+            vec![DocumentChange::Incremental {
+                start_line,
+                start_character,
+                end_line: start_line,
+                end_character: start_character,
+                text: "X".to_string(),
+            }],
+        );
+        if i >= warmup {
+            incremental_total += start.elapsed();
+        }
+    }
+
+    // Warmup + measurement: full rebuild
+    for i in 0..(warmup + iterations) {
+        let mut state = ServerState::new();
+        state.open_document(uri.clone(), text.clone());
+        let start = Instant::now();
+        state.change_document(&uri, changed.clone());
+        if i >= warmup {
+            full_total += start.elapsed();
+        }
+    }
+
+    let inc_avg = incremental_total / iterations as u32;
+    let full_avg = full_total / iterations as u32;
+    let speedup = full_total.as_nanos() as f64 / incremental_total.as_nanos().max(1) as f64;
+
+    eprintln!(
+        "prose benchmark ({} iters): incremental_avg={:?}, full_avg={:?}, speedup={:.1}x",
+        iterations, inc_avg, full_avg, speedup
+    );
+    eprintln!(
+        "  doc size: {} bytes, {} lines",
+        text.len(),
+        text.lines().count()
+    );
+
+    assert!(incremental_total > Duration::ZERO);
+    assert!(full_total > Duration::ZERO);
+    // The key assertion: incremental should be significantly faster
+    assert!(
+        speedup >= 2.0,
+        "incremental prose edit should be ≥2x faster than full rebuild, got {speedup:.1}x"
+    );
+}
+
+/// Parse-phase breakdown benchmark.
+///
+/// Measures and prints three separate timings:
+///   1. Full parse (no old tree) — tree-sitter from scratch
+///   2. Incremental parse (with old tree) — tree-sitter reuse
+///   3. Full apply_document_changes end-to-end (parse + index)
+///
+/// This isolates how much of the 12.6ms incremental cost comes from
+/// the parse step vs. the index-build step.
+#[test]
+#[ignore = "diagnostic only; run explicitly with --ignored --nocapture"]
+fn benchmark_parse_breakdown() {
+    use markymark_parser::Parser;
+
+    let mut text = String::new();
+    text.push_str("# Large Document\n\n");
+    for i in 0..500 {
+        if i % 20 == 0 {
+            text.push_str(&format!("See [[Page{}]] for details.\n\n", i / 20));
+        } else {
+            text.push_str(&format!(
+                "This is line {} of prose text with some content to fill space. \
+                 Lorem ipsum dolor sit amet consectetur adipiscing elit.\n",
+                i
+            ));
+        }
+    }
+
+    // Find the prose edit position (same as prose benchmark)
+    let prose_target = "This is line 250 of prose text";
+    let target_offset = text.find(prose_target).expect("prose target must exist");
+    let prefix = &text[..target_offset];
+    let start_line = prefix.chars().filter(|c| *c == '\n').count() as u32;
+    let line_start = prefix.rfind('\n').map(|idx| idx + 1).unwrap_or(0);
+    let start_character = (target_offset - line_start) as u32;
+    let changed = format!("{}X{}", &text[..target_offset], &text[target_offset..]);
+
+    let iterations = 20;
+    let warmup = 3;
+
+    // --- Phase -1: Time just the BLOCK parse (no inline grammar) ---
+    let mut full_block_only_total = std::time::Duration::ZERO;
+    let mut inc_block_only_total = std::time::Duration::ZERO;
+    for i in 0..(warmup + iterations) {
+        let mut parser = Parser::new().expect("parser init");
+        let start = std::time::Instant::now();
+        let _ = parser.parse_block_tree_only(&text, None);
+        if i >= warmup {
+            full_block_only_total += start.elapsed();
+        }
+    }
+    for i in 0..(warmup + iterations) {
+        let mut parser = Parser::new().expect("parser init");
+        // Build old block tree first (full parse to get old tree)
+        let old_block_tree = parser
+            .parse_block_tree_only(&text, None)
+            .expect("initial block tree");
+        // Apply edit to old block tree
+        let mut old_block_tree_for_edit = old_block_tree;
+        old_block_tree_for_edit.edit(&markymark_parser::InputEdit {
+            start_byte: target_offset,
+            old_end_byte: target_offset,
+            new_end_byte: target_offset + 1,
+            start_position: markymark_parser::Point {
+                row: start_line as usize,
+                column: start_character as usize,
+            },
+            old_end_position: markymark_parser::Point {
+                row: start_line as usize,
+                column: start_character as usize,
+            },
+            new_end_position: markymark_parser::Point {
+                row: start_line as usize,
+                column: start_character as usize + 1,
+            },
+        });
+        let start = std::time::Instant::now();
+        let _ = parser.parse_block_tree_only(&changed, Some(&old_block_tree_for_edit));
+        if i >= warmup {
+            inc_block_only_total += start.elapsed();
+        }
+    }
+
+    // --- Phase 0: Time just the tree-sitter parse step, no collect_elements ---
+    let mut full_tree_only_total = std::time::Duration::ZERO;
+    let mut inc_tree_only_total = std::time::Duration::ZERO;
+    for i in 0..(warmup + iterations) {
+        // Full tree-only parse
+        let mut parser = Parser::new().expect("parser init");
+        let start = std::time::Instant::now();
+        let _ = parser.parse_tree_only(&text, None);
+        if i >= warmup {
+            full_tree_only_total += start.elapsed();
+        }
+    }
+    for i in 0..(warmup + iterations) {
+        // Incremental tree-only parse
+        let mut parser = Parser::new().expect("parser init");
+        let old_md_tree = parser.parse_tree_only(&text, None).expect("initial tree");
+        let mut old_md_tree_cloned = old_md_tree;
+        let start_pos_edit = markymark_parser::InputEdit {
+            start_byte: target_offset,
+            old_end_byte: target_offset,
+            new_end_byte: target_offset + 1,
+            start_position: markymark_parser::Point {
+                row: start_line as usize,
+                column: start_character as usize,
+            },
+            old_end_position: markymark_parser::Point {
+                row: start_line as usize,
+                column: start_character as usize,
+            },
+            new_end_position: markymark_parser::Point {
+                row: start_line as usize,
+                column: start_character as usize + 1,
+            },
+        };
+        old_md_tree_cloned.edit(&start_pos_edit);
+        let start = std::time::Instant::now();
+        let _ = parser.parse_tree_only(&changed, Some(&old_md_tree_cloned));
+        if i >= warmup {
+            inc_tree_only_total += start.elapsed();
+        }
+    }
+
+    // --- Phase 1: Time full parse_with_old_tree (tree-sitter + collect_elements) ---
+    let mut full_parse_total = std::time::Duration::ZERO;
+    for i in 0..(warmup + iterations) {
+        let mut parser = Parser::new().expect("parser init");
+        let start = std::time::Instant::now();
+        let _ = parser
+            .parse_with_old_tree(&text, None)
+            .expect("parse failed");
+        if i >= warmup {
+            full_parse_total += start.elapsed();
+        }
+    }
+
+    // --- Phase 2: Time just the incremental parse (with old tree) ---
+    let mut inc_parse_total = std::time::Duration::ZERO;
+    for i in 0..(warmup + iterations) {
+        let mut parser = Parser::new().expect("parser init");
+        let mut ast = parser
+            .parse_with_old_tree(&text, None)
+            .expect("initial parse");
+        let mut md_tree = ast.take_md_tree().expect("md_tree");
+        // Apply the edit to the old tree
+        let start_byte = target_offset;
+        let new_end_byte = start_byte + 1; // inserting "X"
+        let start_pos = markymark_parser::InputEdit {
+            start_byte,
+            old_end_byte: start_byte,
+            new_end_byte,
+            start_position: markymark_parser::Point {
+                row: start_line as usize,
+                column: start_character as usize,
+            },
+            old_end_position: markymark_parser::Point {
+                row: start_line as usize,
+                column: start_character as usize,
+            },
+            new_end_position: markymark_parser::Point {
+                row: start_line as usize,
+                column: start_character as usize + 1,
+            },
+        };
+        md_tree.edit(&start_pos);
+        let start = std::time::Instant::now();
+        let _ = parser
+            .parse_with_old_tree(&changed, Some(&md_tree))
+            .expect("incremental parse");
+        if i >= warmup {
+            inc_parse_total += start.elapsed();
+        }
+    }
+
+    // --- Phase 3: Time full apply_document_changes end-to-end ---
+    let uri = DocumentUri::new("file:///test/parse-breakdown-bench.md").unwrap();
+    let mut inc_e2e_total = std::time::Duration::ZERO;
+    for i in 0..(warmup + iterations) {
+        let mut state = ServerState::new();
+        state.open_document(uri.clone(), text.clone());
+        let start = std::time::Instant::now();
+        state.apply_document_changes(
+            &uri,
+            vec![markymark_lsp::state::DocumentChange::Incremental {
+                start_line,
+                start_character,
+                end_line: start_line,
+                end_character: start_character,
+                text: "X".to_string(),
+            }],
+        );
+        if i >= warmup {
+            inc_e2e_total += start.elapsed();
+        }
+    }
+
+    let full_block_avg = full_block_only_total / iterations as u32;
+    let inc_block_avg = inc_block_only_total / iterations as u32;
+    let full_tree_avg = full_tree_only_total / iterations as u32;
+    let inc_tree_avg = inc_tree_only_total / iterations as u32;
+    let full_parse_avg = full_parse_total / iterations as u32;
+    let inc_parse_avg = inc_parse_total / iterations as u32;
+    let inc_e2e_avg = inc_e2e_total / iterations as u32;
+
+    eprintln!("parse breakdown ({iterations} iters):");
+    eprintln!("  full_block_avg     = {full_block_avg:?}  (block grammar only, no inline parses)");
+    eprintln!("  inc_block_avg      = {inc_block_avg:?}  (block grammar incremental only)");
+    eprintln!(
+        "  inline_parse_cost  = {:?}  (full_tree - full_block, N=~500 inline parses)",
+        full_tree_avg.saturating_sub(full_block_avg)
+    );
+    eprintln!(
+        "  full_tree_avg      = {full_tree_avg:?}  (block+inline parse, no collect_elements)"
+    );
+    eprintln!(
+        "  inc_tree_avg       = {inc_tree_avg:?}  (block+inline incremental, no collect_elements)"
+    );
+    eprintln!(
+        "  collect_elements   = {:?}  (full_parse - full_tree)",
+        full_parse_avg.saturating_sub(full_tree_avg)
+    );
+    eprintln!("  full_parse_avg     = {full_parse_avg:?}  (tree-sitter + collect_elements)");
+    eprintln!(
+        "  inc_parse_avg      = {inc_parse_avg:?}  (tree-sitter incremental + collect_elements)"
+    );
+    eprintln!("  inc_e2e_avg        = {inc_e2e_avg:?}  (inc_parse + index build)");
+    eprintln!(
+        "  index_build_only   = {:?}  (inc_e2e - inc_parse)",
+        inc_e2e_avg.saturating_sub(inc_parse_avg)
+    );
+    eprintln!(
+        "  doc size: {} bytes, {} lines",
+        text.len(),
+        text.lines().count()
+    );
+}

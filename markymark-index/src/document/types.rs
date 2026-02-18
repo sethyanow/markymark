@@ -124,8 +124,12 @@ pub struct MarkdownLinkOwned {
     pub url: String,
     /// Optional anchor/fragment.
     pub anchor: Option<String>,
-    /// Source range (line/col). No byte offsets available from parser.
+    /// Source range (line/col).
     pub range: Range,
+    /// Start byte offset in the source document.
+    pub start_byte: usize,
+    /// End byte offset in the source document.
+    pub end_byte: usize,
 }
 
 /// Owned XML tag payload used by incremental merge paths before arena allocation.
@@ -142,8 +146,12 @@ pub struct XmlTagOwned {
     pub is_self_closing: bool,
     /// Whether this tag has no matching closing tag.
     pub is_unclosed: bool,
-    /// Source range (line/col). No byte offsets available from parser.
+    /// Source range (line/col).
     pub range: Range,
+    /// Start byte offset in the source document.
+    pub start_byte: usize,
+    /// End byte offset in the source document.
+    pub end_byte: usize,
 }
 
 /// Overrides for each independent extractor used by the incremental index path.
@@ -178,6 +186,10 @@ pub struct MarkdownLinkEntry<'arena> {
     pub anchor: Option<&'arena str>,
     /// Source range.
     pub range: Range,
+    /// Start byte offset in the source document.
+    pub start_byte: usize,
+    /// End byte offset in the source document.
+    pub end_byte: usize,
 }
 
 /// An XML tag entry stored in the index.
@@ -199,4 +211,8 @@ pub struct XmlTagEntry<'arena> {
     pub is_unclosed: bool,
     /// Source range of the entire tag.
     pub range: Range,
+    /// Start byte offset in the source document.
+    pub start_byte: usize,
+    /// End byte offset in the source document.
+    pub end_byte: usize,
 }

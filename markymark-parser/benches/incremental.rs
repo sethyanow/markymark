@@ -5,7 +5,8 @@
 //! 2. Full pipeline: parse + AST construction (current end-to-end cost)
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use markymark_parser::{byte_to_point, InputEdit, Parser};
+use markymark_parser::{byte_to_point, find_prose_edit_pos, InputEdit, Parser};
+use std::path::{Path, PathBuf};
 use tree_sitter_md::MarkdownParser;
 
 /// Generate a markdown document of approximately `target_bytes` with realistic structure.
@@ -179,10 +180,171 @@ fn print_speedup_summary(c: &mut Criterion) {
     eprintln!("for unchanged sections, providing the 10x+ end-to-end speedup.\n");
 }
 
+// ---------------------------------------------------------------------------
+// Corpus benchmark helpers
+// ---------------------------------------------------------------------------
+
+/// Path to the markdown corpus directory.
+///
+/// Checks `MARKYMARK_BENCH_CORPUS_DIR`, then falls back to `/Volumes/code/gigapowers`.
+fn docs_corpus_dir() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("MARKYMARK_BENCH_CORPUS_DIR") {
+        let p = PathBuf::from(dir);
+        if p.is_dir() {
+            return Some(p);
+        }
+    }
+    let default = PathBuf::from("/Volumes/code/gigapowers");
+    default.is_dir().then_some(default)
+}
+
+/// Collect one representative `.md` file per size bucket from `dir`.
+///
+/// Buckets: ~50KB, ~100KB, ~400KB. Files with no qualifying prose edit position are skipped.
+/// Returns `(label, content)` — label is size-based only, never the real file path.
+fn collect_corpus_samples(dir: &Path) -> Vec<(String, String)> {
+    const EXCLUDE_DIRS: &[&str] = &["node_modules", ".git"];
+    const BUCKETS: &[(&str, usize, usize, usize)] = &[
+        ("~50KB", 50_000, 30_000, 70_000),
+        ("~100KB", 100_000, 75_000, 150_000),
+        ("~400KB", 400_000, 300_000, 600_000),
+    ];
+
+    fn walk(dir: &Path, out: &mut Vec<(u64, PathBuf)>, excludes: &[&str]) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if !excludes.contains(&name) {
+                    walk(&path, out, excludes);
+                }
+            } else if path.extension().is_some_and(|e| e == "md") {
+                if let Ok(meta) = path.metadata() {
+                    out.push((meta.len(), path));
+                }
+            }
+        }
+    }
+
+    let mut all: Vec<(u64, PathBuf)> = Vec::new();
+    walk(dir, &mut all, EXCLUDE_DIRS);
+    all.sort_by_key(|(sz, _)| *sz);
+
+    let mut results = Vec::new();
+    for &(label, target, min, max) in BUCKETS {
+        let best = all
+            .iter()
+            .filter(|(sz, _)| *sz as usize >= min && *sz as usize <= max)
+            .min_by_key(|(sz, _)| (*sz as usize).abs_diff(target));
+
+        if let Some((sz, path)) = best {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                if find_prose_edit_pos(&content).is_some() {
+                    let size_kb = sz / 1024;
+                    results.push((format!("{label} ({size_kb}KB)"), content));
+                }
+            }
+        }
+    }
+
+    results
+}
+
+/// Real-corpus incremental parse speedup summary.
+///
+/// Picks one representative file per size bucket (~50KB, ~100KB, ~400KB) from the corpus
+/// directory, applies a single-character prose edit near the document midpoint, and
+/// measures tree-sitter full vs. incremental parse time.
+///
+/// Skips gracefully when no corpus is available.
+///
+/// Run with:
+/// ```
+/// cargo bench -p markymark-parser --bench incremental -- print_corpus_speedup_summary
+/// ```
+fn print_corpus_speedup_summary(c: &mut Criterion) {
+    let _ = c;
+
+    let Some(corpus_dir) = docs_corpus_dir() else {
+        eprintln!("\n=== CORPUS INCREMENTAL SPEEDUP (skipped: corpus not found) ===");
+        eprintln!("Set MARKYMARK_BENCH_CORPUS_DIR or place files at /Volumes/code/gigapowers.\n");
+        return;
+    };
+
+    let samples = collect_corpus_samples(&corpus_dir);
+    if samples.is_empty() {
+        eprintln!("\n=== CORPUS INCREMENTAL SPEEDUP (skipped: no qualifying files found) ===\n");
+        return;
+    }
+
+    let iterations = 100u32;
+    eprintln!("\n=== CORPUS INCREMENTAL SPEEDUP SUMMARY ===\n");
+    eprintln!(
+        "{:<18}  {:>12}  {:>12}  {:>8}",
+        "File", "Full (us)", "Incr (us)", "Speedup"
+    );
+    eprintln!("{:-<18}  {:->12}  {:->12}  {:->8}", "", "", "", "");
+
+    for (label, content) in &samples {
+        let edit_pos = match find_prose_edit_pos(content) {
+            Some(p) => p,
+            None => continue,
+        };
+
+        let mut raw_parser = MarkdownParser::default();
+        let md_tree = raw_parser.parse(content.as_bytes(), None).unwrap();
+
+        // Precompute the edited source once (string insert is O(n) and not part of parse timing)
+        let mut edited = content.clone();
+        edited.insert(edit_pos, 'x');
+        let start_position = byte_to_point(content, edit_pos);
+        let new_end_byte = edit_pos + 1;
+        let new_end_position = byte_to_point(&edited, new_end_byte);
+
+        let mut full_time = std::time::Duration::ZERO;
+        let mut inc_time = std::time::Duration::ZERO;
+
+        for _ in 0..iterations {
+            // Full reparse
+            let start = std::time::Instant::now();
+            let _ = raw_parser.parse(content.as_bytes(), None).unwrap();
+            full_time += start.elapsed();
+
+            // Incremental: clone + apply edit outside the timed window
+            let mut tree = md_tree.clone();
+            tree.edit(&InputEdit {
+                start_byte: edit_pos,
+                old_end_byte: edit_pos,
+                new_end_byte,
+                start_position,
+                old_end_position: start_position,
+                new_end_position,
+            });
+
+            let start = std::time::Instant::now();
+            let _ = raw_parser.parse(edited.as_bytes(), Some(&tree)).unwrap();
+            inc_time += start.elapsed();
+        }
+
+        let ratio = full_time.as_nanos() as f64 / inc_time.as_nanos().max(1) as f64;
+        let full_avg = full_time.as_nanos() as f64 / iterations as f64 / 1000.0;
+        let inc_avg = inc_time.as_nanos() as f64 / iterations as f64 / 1000.0;
+
+        eprintln!("{label:<18}  {full_avg:>12.1}  {inc_avg:>12.1}  {ratio:>7.1}x");
+    }
+
+    eprintln!("\nEdit: single-char insert at middle-document prose line (no wiki links).");
+    eprintln!("Level: tree-sitter parse only — does not include index rebuild.\n");
+}
+
 criterion_group!(
     benches,
     bench_scaling,
     bench_full_pipeline,
-    print_speedup_summary
+    print_speedup_summary,
+    print_corpus_speedup_summary
 );
 criterion_main!(benches);
