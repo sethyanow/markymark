@@ -160,6 +160,7 @@ has caused real bugs, wasted work, or merge conflicts.
 | 4 | **Bump plugin.json version alongside Cargo.toml** | `markymark-plugin/.claude-plugin/plugin.json` has its own version string not derived from Cargo.toml — must be updated manually. |
 | 5 | **Never squash merge** | Preserve full git history always. Squash merges destroy context, make bisect harder, and lose the narrative of how work evolved. |
 | 6 | **Exclude generated artifacts from metric input corpora** | If a test/benchmark writes a report file, exclude it from the input corpus used to compute the same metrics. Prevents self-referential drift. |
+| 7 | **NEVER merge PRs** | Agent must never run `gh pr merge` or equivalent. The human merges all PRs. Agent prepares PRs, pushes branches, but stops there. |
 
 ## Landing the Plane (Session Completion)
 
