@@ -120,6 +120,10 @@ and native async traits. Always read `docs/rust_crates/tower-lsp.md`.
 ### MCP stdio: line-delimited JSON, not Content-Length (fail-mcp-framing)
 rmcp stdio uses `writeln!` + `read_line`, not HTTP-style `Content-Length` headers.
 
+### Agent attempted PR merge without authorization (fail-pr-merge-autonomy)
+Agent ran `gh pr merge 36 --merge` during v0.4.0 release. User correction: agents NEVER
+merge PRs. Human merges all PRs. Agent prepares PRs and pushes branches only.
+
 ### Security hook blocks Write on GitHub Actions YAML (fail-write-tool-gh-actions)
 `security_reminder_hook.py` intercepts Write on `.github/workflows/*.yml`. Use Bash heredoc.
 
