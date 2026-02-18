@@ -130,6 +130,7 @@ fn process_line(
         while (sname_end > sname_start and (buf[sname_end - 1] == ' ' or buf[sname_end - 1] == '\t')) : (sname_end -= 1) {}
 
         const slen = sname_end - sname_start;
+        if (slen == 0) return false; // [] is ambiguous with global-section sentinel (offset=0, len=0) — skip
         if (slen > std.math.maxInt(u16)) return false; // section name too long — skip
 
         cur_section_offset.* = sname_start;
@@ -374,4 +375,17 @@ test "ini_section_whitespace: section name interior whitespace trimmed" {
     try std.testing.expectEqual(@as(u32, 1), w);
     // "my section" = 10 chars
     try std.testing.expectEqual(@as(u16, 10), out[0].section_len);
+}
+
+test "ini_empty_section_header_is_rejected: [] leaves section context unchanged" {
+    // [] sets slen=0, which is ambiguous with the global-section sentinel (offset=0, len=0).
+    // Fix: reject [] entirely — do not update cur_section_offset/cur_section_len.
+    // Keys after [] should remain in whatever section context was active (global = 0,0).
+    const text = "[]\nkey=value\n";
+    var out: [2]IniEntry = undefined;
+    const w = scan_ini(text.ptr, text.len, &out, 2);
+    try std.testing.expectEqual(@as(u32, 1), w);
+    // After fix: key is in global section (offset=0, len=0).
+    try std.testing.expectEqual(@as(u16, 0), out[0].section_len);
+    try std.testing.expectEqual(@as(u32, 0), out[0].section_offset);
 }

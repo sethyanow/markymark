@@ -334,16 +334,8 @@ fn bench_fuzzy_match_batch(c: &mut Criterion) {
 
         let fixture = OnceLock::new();
         group.bench_function(BenchmarkId::new("batch_topk", label), |b| {
-            let fixture = fixture.get_or_init(|| {
-                let symbols = generate_symbol_candidates(entries);
-                let refs = symbols
-                    .iter()
-                    .map(String::as_str)
-                    .map(str::to_owned)
-                    .collect::<Vec<_>>();
-                (symbols, refs)
-            });
-            let refs: Vec<&str> = fixture.1.iter().map(String::as_str).collect();
+            let symbols = fixture.get_or_init(|| generate_symbol_candidates(entries));
+            let refs: Vec<&str> = symbols.iter().map(String::as_str).collect();
 
             b.iter(|| {
                 let hits = scan::fuzzy_match_batch(black_box(QUERY), black_box(&refs), top_k)
@@ -355,16 +347,8 @@ fn bench_fuzzy_match_batch(c: &mut Criterion) {
 
         let fixture = OnceLock::new();
         group.bench_function(BenchmarkId::new("per_candidate_sort", label), |b| {
-            let fixture = fixture.get_or_init(|| {
-                let symbols = generate_symbol_candidates(entries);
-                let refs = symbols
-                    .iter()
-                    .map(String::as_str)
-                    .map(str::to_owned)
-                    .collect::<Vec<_>>();
-                (symbols, refs)
-            });
-            let refs: Vec<&str> = fixture.1.iter().map(String::as_str).collect();
+            let symbols = fixture.get_or_init(|| generate_symbol_candidates(entries));
+            let refs: Vec<&str> = symbols.iter().map(String::as_str).collect();
 
             b.iter(|| {
                 let mut scored = Vec::with_capacity(refs.len());

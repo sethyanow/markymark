@@ -302,12 +302,15 @@ impl CoreEngine for RuntimeEngine {
                     .iter()
                     .map(|(name, _, _)| name.as_str())
                     .collect();
-                let top_k = candidate_refs.len();
+                // Cap top_k to avoid O(n log n) heap degradation when all candidates are ranked.
+                const TOP_K_LIMIT: usize = 100;
+                let top_k = candidate_refs.len().min(TOP_K_LIMIT);
 
                 let matches = match fuzzy_match_batch(&query, &candidate_refs, top_k) {
                     Ok(ranked) => {
                         let mut results: Vec<(i32, bool, String, DocumentUri, Range)> = ranked
                             .into_iter()
+                            .filter(|m| m.score > 0)
                             .filter_map(|m| {
                                 candidates.get(m.index as usize).map(|(name, uri, range)| {
                                     (m.score, m.starts_with, name.clone(), uri.clone(), *range)
@@ -1270,6 +1273,12 @@ mod tests {
             fnv1a32(b"hello"),
             fnv1a32(b"world"),
             "distinct tokens must hash differently"
+        );
+        // Pin the exact value (verified against FNV-1a 32-bit reference implementation).
+        assert_eq!(
+            fnv1a32(b"hello"),
+            0x4f9f2cab,
+            "FNV-1a 32-bit hash of 'hello' must be 0x4f9f2cab"
         );
         // Empty string → offset basis unchanged
         assert_eq!(
