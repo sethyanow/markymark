@@ -138,6 +138,22 @@ pub enum CoreOperation {
         /// Output format: "json" or "dot".
         format: String,
     },
+    /// Search workspace files by regex pattern with optional glob file filter.
+    SearchForPattern {
+        /// Regex pattern to search for. Must not be empty or whitespace-only.
+        pattern: String,
+        /// Optional glob filter (e.g. `"*.md"`, `"**/*.rs"`). When the glob has no `/`,
+        /// it is matched against the filename only; otherwise against the full path.
+        include_glob: Option<String>,
+        /// Lines of context around each match. Clamped to `[0, 20]`.
+        context_lines: u32,
+        /// Maximum total matches to return. Clamped to `[1, 500]`.
+        limit: u32,
+        /// Case-insensitive regex matching.
+        case_insensitive: bool,
+        /// Realm to search. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+    },
     /// Search workspace documents by text, frontmatter, and property queries.
     SearchWorkspace {
         /// Free-text search query. Case-insensitive substring match against title, heading
@@ -157,6 +173,27 @@ pub enum CoreOperation {
         /// Max results to return. `0` returns empty (not an error). Clamped to 100 silently.
         limit: u32,
     },
+}
+
+/// A single match result from a regex pattern search.
+#[derive(Debug, Clone)]
+pub struct PatternMatch {
+    /// Document URI where the match was found.
+    pub uri: DocumentUri,
+    /// 0-based line number of the match.
+    pub line: u32,
+    /// 0-based character offset of the match start within the line.
+    pub column: u32,
+    /// The text that the regex matched.
+    pub match_text: String,
+    /// The full line containing the match (trailing `\r` stripped).
+    pub line_text: String,
+    /// Lines before the match line (empty if `context_lines` is 0 or match is at file start).
+    pub context_before: Vec<String>,
+    /// Lines after the match line (empty if `context_lines` is 0 or match is at file end).
+    pub context_after: Vec<String>,
+    /// 0-based line number of `context_before[0]`.
+    pub context_start_line: u32,
 }
 
 /// Transport-agnostic interface for executing core operations.
@@ -251,6 +288,21 @@ pub enum CoreOperationResult {
         query: Option<String>,
         /// Ranked search results.
         results: Vec<WorkspaceSearchResult>,
+    },
+    /// Results from a regex pattern search across workspace files.
+    PatternSearchResults {
+        /// Realm that was searched.
+        realm: String,
+        /// The original pattern.
+        pattern: String,
+        /// Number of files that were actually read and searched.
+        files_searched: u32,
+        /// Number of files skipped (read error, size limit, or missing path).
+        files_skipped: u32,
+        /// Matches found (up to `limit`).
+        matches: Vec<PatternMatch>,
+        /// `true` when the result was truncated at `limit`.
+        truncated: bool,
     },
     /// Success with no payload.
     Ok,

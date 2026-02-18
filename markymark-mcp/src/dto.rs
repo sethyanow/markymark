@@ -465,3 +465,75 @@ pub struct SearchWorkspaceResponse {
     /// Ranked search results.
     pub results: Vec<WorkspaceSearchResultDto>,
 }
+
+// --- search-for-pattern ---
+
+/// Request payload for `search-for-pattern`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchForPatternRequest {
+    /// Regex pattern to search for. Must not be empty or whitespace-only.
+    pub pattern: String,
+    /// Optional glob filter, e.g. `"*.md"` or `"**/*.rs"`.
+    /// Patterns without `/` are matched against the filename only;
+    /// patterns with `/` are matched against the full file path.
+    #[serde(default)]
+    pub include_glob: Option<String>,
+    /// Lines of context to include around each match (clamped to 0–20, default 2).
+    #[serde(default = "default_context_lines")]
+    pub context_lines: u32,
+    /// Maximum total matches to return (clamped to 1–500, default 100).
+    #[serde(default = "default_pattern_limit")]
+    pub limit: u32,
+    /// Case-insensitive regex matching (default `false`).
+    #[serde(default)]
+    pub case_insensitive: bool,
+    /// Realm to search. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+}
+
+fn default_context_lines() -> u32 {
+    2
+}
+
+fn default_pattern_limit() -> u32 {
+    100
+}
+
+/// A single match from `search-for-pattern`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PatternMatchDto {
+    /// Document URI where the match was found.
+    pub uri: String,
+    /// 0-based line number of the match.
+    pub line: u32,
+    /// 0-based character offset of the match start within the line.
+    pub column: u32,
+    /// The text matched by the regex.
+    pub match_text: String,
+    /// The full line containing the match (trailing `\r` stripped).
+    pub line_text: String,
+    /// Lines before the match (may be empty when `context_lines` is 0 or match is at file start).
+    pub context_before: Vec<String>,
+    /// Lines after the match (may be empty when `context_lines` is 0 or match is at file end).
+    pub context_after: Vec<String>,
+    /// 0-based line number of `context_before[0]`.
+    pub context_start_line: u32,
+}
+
+/// Response payload for `search-for-pattern`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchForPatternResponse {
+    /// The pattern that was searched for.
+    pub pattern: String,
+    /// Realm that was searched.
+    pub realm: String,
+    /// Number of files that were read and searched.
+    pub files_searched: u32,
+    /// Number of files skipped (unreadable, too large, or missing path).
+    pub files_skipped: u32,
+    /// Matches found (up to `limit`).
+    pub matches: Vec<PatternMatchDto>,
+    /// `true` when results were truncated at `limit`.
+    pub truncated: bool,
+}
