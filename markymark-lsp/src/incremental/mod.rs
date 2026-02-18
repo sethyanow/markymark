@@ -115,15 +115,20 @@ pub fn range_within_neighbor_window(
         && end_byte.saturating_add(window_bytes) >= edit.start_byte
 }
 
-/// Returns true if the range starts strictly after the edit's old end position.
+/// Returns true if the range starts at or after the edit's old end position.
 /// Used to identify entries that need position adjustment (but not re-extraction).
+///
+/// Uses `>=` (not strict `>`) so that entries starting exactly at the insertion
+/// point of a zero-width edit (where `start == old_end`) still receive position
+/// adjustment. With strict `>`, such entries would get neither intersection nor
+/// adjustment, leaving them with stale coordinates.
 pub fn range_is_after_edit_end(range: Range, edit: &InputEdit) -> bool {
     let range_start = (range.start.line, range.start.character);
     let edit_old_end = (
         edit.old_end_position.row as u32,
         edit.old_end_position.column as u32,
     );
-    range_start > edit_old_end
+    range_start >= edit_old_end
 }
 
 /// Adjust a Range's line/character positions for an entry that starts after the edit's old end.

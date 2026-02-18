@@ -131,9 +131,8 @@ fn test_xml_tag_affected_by_edits_detects_overlap() {
 #[test]
 fn test_merge_incremental_xml_tags_preserves_attributes() {
     // Old xml tag at line 5 with attributes; edit at line 0 does not affect it
-    // via intersection (line 5 vs edit at line 0).
-    // But range_is_after_edit_start: tag at line 5 >= edit start line 0 → affected.
-    // So the tag is affected. Use a new tag from re-extraction that preserves attributes.
+    // (no range intersection). The tag is retained from old with position adjustment.
+    // New extraction provides the same tag, verifying attributes are preserved either way.
     let old_xt = make_xt(5, 0, 5, 20, "goal");
     let new_xt = make_xt(5, 0, 5, 20, "goal"); // same after re-extraction
     let edit = make_edit(0, 0, 0, 3);
@@ -666,6 +665,72 @@ fn test_adjust_bytes_after_edit_deletion() {
     adjust_bytes_after_edit(&mut start_byte, &mut end_byte, &edit);
     assert_eq!(start_byte, 195);
     assert_eq!(end_byte, 205);
+}
+
+// ─── Regression: insertion at exact old_end must still adjust entries ──────
+
+#[test]
+fn test_range_is_after_edit_end_at_insertion_point() {
+    // Regression: with strict `>`, an entry starting exactly at the insertion
+    // point (where start == old_end) got no position adjustment, leaving stale
+    // coordinates. With `>=` it is correctly identified as needing adjustment.
+    let range = Range::new(Position::new(3, 10), Position::new(3, 20));
+    // Pure insertion at (3,10): start == old_end
+    let edit = InputEdit {
+        start_byte: 50,
+        old_end_byte: 50,
+        new_end_byte: 55,
+        start_position: Point { row: 3, column: 10 },
+        old_end_position: Point { row: 3, column: 10 },
+        new_end_position: Point { row: 3, column: 15 },
+    };
+    assert!(
+        range_is_after_edit_end(range, &edit),
+        "entry at exact insertion point (old_end) must be classified as after-edit for adjustment"
+    );
+}
+
+#[test]
+fn test_merge_incremental_wiki_links_adjusts_entry_at_insertion_point() {
+    // End-to-end regression: a wiki link starting exactly at the insertion point
+    // must have its position adjusted, not left stale.
+    // Pure insertion at (3,10) adding 5 bytes / 5 columns
+    let edit = InputEdit {
+        start_byte: 50,
+        old_end_byte: 50,
+        new_end_byte: 55,
+        start_position: Point { row: 3, column: 10 },
+        old_end_position: Point { row: 3, column: 10 },
+        new_end_position: Point { row: 3, column: 15 },
+    };
+    // The link at byte 50 IS within the neighbor window of the edit at byte 50,
+    // so place the link far enough away to avoid being flagged as affected.
+    let old_wl_far = WikiLinkOwned {
+        target: "Page".to_string(),
+        alias: None,
+        heading: None,
+        range: Range::new(Position::new(3, 10), Position::new(3, 20)),
+        start_byte: 500,
+        end_byte: 510,
+    };
+    // New extraction has the link at the adjusted position
+    let new_wl = WikiLinkOwned {
+        target: "Page".to_string(),
+        alias: None,
+        heading: None,
+        range: Range::new(Position::new(3, 15), Position::new(3, 25)),
+        start_byte: 505,
+        end_byte: 515,
+    };
+    let merged = merge_incremental_wiki_links(&[old_wl_far], &[new_wl], &[edit]);
+    assert_eq!(merged.len(), 1);
+    // The old entry should be adjusted: column +5 (same line as old_end), bytes +5
+    assert_eq!(
+        merged[0].range.start.character, 15,
+        "column should shift by +5 from insertion"
+    );
+    assert_eq!(merged[0].start_byte, 505, "start_byte should shift by +5");
+    assert_eq!(merged[0].end_byte, 515, "end_byte should shift by +5");
 }
 
 // ─── Full parity test: incremental must match full rebuild INCLUDING positions ─
