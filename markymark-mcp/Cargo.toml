@@ -19,10 +19,12 @@ markymark-parser = { version = "0.3.0", path = "../markymark-parser" }
 markymark-index = { version = "0.3.0", path = "../markymark-index" }
 markymark-kernels = { version = "0.3.0", path = "../markymark-kernels" }
 rmcp = { workspace = true }
+regex = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
+log = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 

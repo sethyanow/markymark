@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
-use markymark_core::{CoreError, DocumentUri, Position, Range};
+use markymark_core::{DocumentUri, Range};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
@@ -21,19 +21,22 @@ use rmcp::{
     service::RequestContext,
     tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler, ServiceExt,
 };
-use serde_json::json;
 
 pub mod dto;
+mod engine;
+mod graph;
+mod pattern;
 mod prompts;
 mod rename_ops;
 mod resources;
-mod runtime_engine;
+pub(crate) mod search;
 mod subscriptions;
+mod tools;
 
 pub use dto::*;
-pub use runtime_engine::RuntimeEngine;
+pub use engine::RuntimeEngine;
 
-const SEMANTIC_SEARCH_MAX_TOP_K: u32 = 100;
+pub(crate) const SEMANTIC_SEARCH_MAX_TOP_K: u32 = 100;
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for MarkymarkMcp {
@@ -241,6 +244,8 @@ impl MarkymarkMcp {
         Ok(())
     }
 
+    // ---- Tool handlers (bodies in tools/ submodule) ----
+
     /// Get heading outline entries from a markdown document.
     #[tool(
         name = "get-outline",
@@ -250,21 +255,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<OutlineRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let uri = match parse_file_uri(&params.0.uri) {
-            Ok(uri) => uri,
-            Err(err) => return Ok(tool_error(&err.code, err.message)),
-        };
-
-        match self.get_outline(uri, params.0.realm.clone()) {
-            CoreOperationResult::Outline(headings) => {
-                Ok(CallToolResult::structured(json!(OutlineResponse {
-                    uri: params.0.uri,
-                    headings,
-                })))
-            }
-            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
-            other => Ok(unexpected_result_error("get-outline", &other)),
-        }
+        tools::outline::handle_get_outline(&*self.engine, params.0)
     }
 
     /// Search symbols across indexed markdown documents.
@@ -276,35 +267,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<SearchSymbolsRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let query = params.0.query.trim().to_string();
-        if query.is_empty() {
-            return Ok(tool_error(
-                "invalid_query",
-                "query must not be empty for search-symbols",
-            ));
-        }
-
-        match self.search_symbols(query.clone(), params.0.realm.clone()) {
-            CoreOperationResult::Symbols(symbols) => {
-                let mut mapped: Vec<SymbolMatchDto> = symbols
-                    .into_iter()
-                    .map(|(name, uri, range)| SymbolMatchDto {
-                        name,
-                        uri: uri.as_str().to_string(),
-                        range: range_to_dto(range),
-                    })
-                    .collect();
-                // Keep output ordering deterministic for stable clients/tests.
-                mapped.sort();
-
-                Ok(CallToolResult::structured(json!(SearchSymbolsResponse {
-                    query,
-                    symbols: mapped,
-                })))
-            }
-            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
-            other => Ok(unexpected_result_error("search-symbols", &other)),
-        }
+        tools::search::handle_search_symbols(&*self.engine, params.0)
     }
 
     /// Search semantically similar sections across indexed documents.
@@ -316,45 +279,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<SemanticSearchRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let query = params.0.query.trim().to_string();
-        if query.is_empty() {
-            return Ok(tool_error(
-                "invalid_query",
-                "query must not be empty for semantic-search",
-            ));
-        }
-
-        let realm = params
-            .0
-            .realm
-            .clone()
-            .map(|name| name.trim().to_string())
-            .filter(|name| !name.is_empty());
-        let realm_name = realm.clone().unwrap_or_else(|| "default".to_string());
-        let top_k = params.0.top_k.unwrap_or(10).min(SEMANTIC_SEARCH_MAX_TOP_K);
-        let min_score = params.0.min_score.unwrap_or(0.5).clamp(0.0, 1.0);
-
-        match self.semantic_search(query.clone(), realm, top_k, min_score) {
-            CoreOperationResult::SemanticMatches(matches) => {
-                let results = matches
-                    .into_iter()
-                    .map(|m| SemanticSearchResultDto {
-                        doc_uri: m.doc_uri.as_str().to_string(),
-                        heading: m.heading,
-                        heading_level: m.heading_level,
-                        score: round_score(m.score),
-                        section_preview: m.section_preview,
-                    })
-                    .collect();
-                Ok(CallToolResult::structured(json!(SemanticSearchResponse {
-                    query,
-                    realm: realm_name,
-                    results,
-                })))
-            }
-            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
-            other => Ok(unexpected_result_error("semantic-search", &other)),
-        }
+        tools::search::handle_semantic_search(&*self.engine, params.0)
     }
 
     /// Find all references to a symbol at the given position.
@@ -366,35 +291,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<FindReferencesRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let uri = match parse_file_uri(&params.0.uri) {
-            Ok(uri) => uri,
-            Err(err) => return Ok(tool_error(&err.code, err.message)),
-        };
-
-        let position = Range::new(
-            Position::new(params.0.line, params.0.character),
-            Position::new(params.0.line, params.0.character),
-        );
-
-        match self.find_references(uri, position, params.0.realm.clone()) {
-            CoreOperationResult::Locations(locations) => {
-                let mut mapped: Vec<LocationDto> = locations
-                    .into_iter()
-                    .map(|(uri, range)| LocationDto {
-                        uri: uri.as_str().to_string(),
-                        range: range_to_dto(range),
-                    })
-                    .collect();
-                mapped.sort();
-
-                Ok(CallToolResult::structured(json!(FindReferencesResponse {
-                    uri: params.0.uri,
-                    locations: mapped,
-                })))
-            }
-            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
-            other => Ok(unexpected_result_error("find-references", &other)),
-        }
+        tools::refs::handle_find_references(&*self.engine, params.0)
     }
 
     /// Rename a heading or XML tag and all its references.
@@ -406,48 +303,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<RenameRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let uri = match parse_file_uri(&params.0.uri) {
-            Ok(uri) => uri,
-            Err(err) => return Ok(tool_error(&err.code, err.message)),
-        };
-
-        let new_name = params.0.new_name.trim().to_string();
-        if new_name.is_empty() {
-            return Ok(tool_error(
-                "invalid_name",
-                "new_name must not be empty for rename",
-            ));
-        }
-
-        let position = Range::new(
-            Position::new(params.0.line, params.0.character),
-            Position::new(params.0.line, params.0.character),
-        );
-
-        match self.rename(uri, position, new_name, params.0.realm.clone()) {
-            CoreOperationResult::WorkspaceEdit(edits) => {
-                let mut changes: Vec<DocumentEditDto> = edits
-                    .into_iter()
-                    .map(|(uri, text_edits)| DocumentEditDto {
-                        uri: uri.as_str().to_string(),
-                        edits: text_edits
-                            .into_iter()
-                            .map(|(range, new_text)| TextEditDto {
-                                range: range_to_dto(range),
-                                new_text,
-                            })
-                            .collect(),
-                    })
-                    .collect();
-                changes.sort();
-
-                Ok(CallToolResult::structured(json!(RenameResponse {
-                    changes
-                })))
-            }
-            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
-            other => Ok(unexpected_result_error("rename", &other)),
-        }
+        tools::refs::handle_rename(&*self.engine, params.0)
     }
 
     /// Create a new named realm.
@@ -459,30 +315,11 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<CreateRealmRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let name = params.0.name.trim().to_string();
-        if name.is_empty() {
-            return Ok(tool_error(
-                "invalid_name",
-                "realm name must not be empty for create-realm",
-            ));
+        let r = tools::realm::handle_create_realm(&*self.engine, params.0);
+        if r.notify {
+            self.subscriptions.notify_all().await;
         }
-
-        match self.engine.execute(CoreOperation::CreateRealm { name }) {
-            CoreOperationResult::RealmInfo {
-                name,
-                root_count,
-                document_count,
-            } => {
-                self.subscriptions.notify_all().await;
-                Ok(CallToolResult::structured(json!(RealmInfoResponse {
-                    name,
-                    root_count,
-                    document_count,
-                })))
-            }
-            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
-            other => Ok(unexpected_result_error("create-realm", &other)),
-        }
+        r.result
     }
 
     /// Destroy a named realm and all its indexed documents.
@@ -494,24 +331,11 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<DestroyRealmRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let name = params.0.name.trim().to_string();
-        if name.is_empty() {
-            return Ok(tool_error(
-                "invalid_name",
-                "realm name must not be empty for destroy-realm",
-            ));
+        let r = tools::realm::handle_destroy_realm(&*self.engine, params.0);
+        if r.notify {
+            self.subscriptions.notify_all().await;
         }
-
-        match self.engine.execute(CoreOperation::DestroyRealm { name }) {
-            CoreOperationResult::Ok => {
-                self.subscriptions.notify_all().await;
-                Ok(CallToolResult::structured(json!(DestroyRealmResponse {
-                    success: true
-                })))
-            }
-            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
-            other => Ok(unexpected_result_error("destroy-realm", &other)),
-        }
+        r.result
     }
 
     /// Add a workspace root to a realm and index its markdown files.
@@ -523,32 +347,11 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<AddRootRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let realm = params.0.realm.trim().to_string();
-        if realm.is_empty() {
-            return Ok(tool_error(
-                "invalid_name",
-                "realm name must not be empty for add-root",
-            ));
+        let r = tools::realm::handle_add_root(&*self.engine, params.0);
+        if r.notify {
+            self.subscriptions.notify_all().await;
         }
-
-        let root = std::path::PathBuf::from(&params.0.root);
-
-        match self.engine.execute(CoreOperation::AddRoot { realm, root }) {
-            CoreOperationResult::RealmInfo {
-                name,
-                root_count,
-                document_count,
-            } => {
-                self.subscriptions.notify_all().await;
-                Ok(CallToolResult::structured(json!(RealmInfoResponse {
-                    name,
-                    root_count,
-                    document_count,
-                })))
-            }
-            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
-            other => Ok(unexpected_result_error("add-root", &other)),
-        }
+        r.result
     }
 
     /// Remove a workspace root from a realm, unindexing its documents.
@@ -560,35 +363,11 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<RemoveRootRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let realm = params.0.realm.trim().to_string();
-        if realm.is_empty() {
-            return Ok(tool_error(
-                "invalid_name",
-                "realm name must not be empty for remove-root",
-            ));
+        let r = tools::realm::handle_remove_root(&*self.engine, params.0);
+        if r.notify {
+            self.subscriptions.notify_all().await;
         }
-
-        let root = std::path::PathBuf::from(&params.0.root);
-
-        match self
-            .engine
-            .execute(CoreOperation::RemoveRoot { realm, root })
-        {
-            CoreOperationResult::RealmInfo {
-                name,
-                root_count,
-                document_count,
-            } => {
-                self.subscriptions.notify_all().await;
-                Ok(CallToolResult::structured(json!(RealmInfoResponse {
-                    name,
-                    root_count,
-                    document_count,
-                })))
-            }
-            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
-            other => Ok(unexpected_result_error("remove-root", &other)),
-        }
+        r.result
     }
 
     /// Get aggregate statistics for a realm.
@@ -600,47 +379,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<RealmStatsRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let realm = params.0.realm.trim().to_string();
-        if realm.is_empty() {
-            return Ok(tool_error(
-                "invalid_name",
-                "realm name must not be empty for realm-stats",
-            ));
-        }
-
-        match self.engine.execute(CoreOperation::RealmStats {
-            realm,
-            check_duplicates: params.0.check_duplicates,
-            include_token_counts: params.0.include_token_counts,
-        }) {
-            CoreOperationResult::RealmStats {
-                name,
-                root_count,
-                document_count,
-                heading_count,
-                xml_tag_count,
-                wiki_link_count,
-                markdown_link_count,
-                structured_doc_count,
-                key_path_count,
-                duplicate_pairs,
-                total_tokens,
-            } => Ok(CallToolResult::structured(json!(RealmStatsResponse {
-                name,
-                root_count,
-                document_count,
-                heading_count,
-                xml_tag_count,
-                wiki_link_count,
-                markdown_link_count,
-                structured_doc_count,
-                key_path_count,
-                duplicate_pairs,
-                total_tokens,
-            }))),
-            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
-            other => Ok(unexpected_result_error("realm-stats", &other)),
-        }
+        tools::realm::handle_realm_stats(&*self.engine, params.0)
     }
 
     /// Export the full document index for a single document.
@@ -652,114 +391,47 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<ExportIndexRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let uri = match parse_file_uri(&params.0.uri) {
-            Ok(uri) => uri,
-            Err(err) => return Ok(tool_error(&err.code, err.message)),
-        };
+        tools::outline::handle_export_index(&*self.engine, params.0)
+    }
 
-        match self.engine.execute(CoreOperation::ExportIndex {
-            uri,
-            realm: params.0.realm.clone(),
-        }) {
-            CoreOperationResult::DocumentExport {
-                uri,
-                headings,
-                xml_tags,
-                wiki_links,
-                markdown_links,
-                ..
-            } => {
-                let headings: Vec<ExportedHeadingDto> = headings
-                    .into_iter()
-                    .map(|(text, level, range)| ExportedHeadingDto {
-                        text,
-                        level,
-                        range: range_to_dto(range),
-                    })
-                    .collect();
+    /// Search workspace documents by text, frontmatter, properties, or tags.
+    #[tool(
+        name = "search-workspace",
+        description = "Search workspace documents by free text, frontmatter, Logseq properties, or tags. Returns ranked results with metadata preview."
+    )]
+    pub async fn search_workspace_tool(
+        &self,
+        params: Parameters<SearchWorkspaceRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::search::handle_search_workspace(&*self.engine, params.0)
+    }
 
-                let xml_tags: Vec<ExportedXmlTagDto> = xml_tags
-                    .into_iter()
-                    .map(|(tag_name, range)| ExportedXmlTagDto {
-                        tag_name,
-                        range: range_to_dto(range),
-                    })
-                    .collect();
+    /// Search workspace files by regex pattern with optional glob file filtering.
+    #[tool(
+        name = "search-for-pattern",
+        description = "Search workspace files by regex pattern. Supports glob file filtering (e.g. '*.md', '**/*.rs'), case-insensitive matching, and context lines. Returns 0-based line/column numbers consistent with LSP conventions."
+    )]
+    pub async fn search_for_pattern_tool(
+        &self,
+        params: Parameters<SearchForPatternRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::search::handle_search_for_pattern(&*self.engine, params.0)
+    }
 
-                let wiki_links: Vec<ExportedWikiLinkDto> = wiki_links
-                    .into_iter()
-                    .map(|(target, heading, range)| ExportedWikiLinkDto {
-                        target,
-                        heading,
-                        range: range_to_dto(range),
-                    })
-                    .collect();
-
-                let markdown_links: Vec<ExportedMarkdownLinkDto> = markdown_links
-                    .into_iter()
-                    .map(|(text, url, range)| ExportedMarkdownLinkDto {
-                        text,
-                        url,
-                        range: range_to_dto(range),
-                    })
-                    .collect();
-
-                Ok(CallToolResult::structured(json!(ExportIndexResponse {
-                    uri: uri.as_str().to_string(),
-                    headings,
-                    xml_tags,
-                    wiki_links,
-                    markdown_links,
-                })))
-            }
-            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
-            other => Ok(unexpected_result_error("export-index", &other)),
-        }
+    /// Analyse the link graph: orphans, hubs, broken links, clusters, and summary stats.
+    #[tool(
+        name = "graph-analysis",
+        description = "Analyse the markdown link graph of a workspace realm. Returns orphan documents (no resolved links in or out), hub documents (most incoming links), broken links (unresolvable wiki or markdown links), and summary statistics. Optionally computes weakly-connected clusters."
+    )]
+    pub async fn graph_analysis_tool(
+        &self,
+        params: Parameters<GraphAnalysisRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::graph::handle_graph_analysis(&*self.engine, params.0)
     }
 }
 
 /// Run markymark MCP over stdio using the provided shared core engine.
 pub async fn run_stdio(engine: Arc<dyn CoreEngine>) -> anyhow::Result<()> {
     MarkymarkMcp::new(engine).serve_stdio().await
-}
-
-fn parse_file_uri(uri: &str) -> Result<DocumentUri, ToolErrorPayload> {
-    if !uri.starts_with("file://") {
-        return Err(ToolErrorPayload {
-            code: "non_file_uri".to_string(),
-            message: format!("only file:// URIs are supported, got: {uri}"),
-        });
-    }
-    DocumentUri::new(uri).map_err(|err| ToolErrorPayload {
-        code: "invalid_uri".to_string(),
-        message: err.to_string(),
-    })
-}
-
-fn round_score(score: f32) -> f32 {
-    (score * 10_000.0).round() / 10_000.0
-}
-
-fn tool_error(code: &str, message: impl Into<String>) -> CallToolResult {
-    CallToolResult::structured_error(json!(ToolErrorEnvelope {
-        error: ToolErrorPayload {
-            code: code.to_string(),
-            message: message.into(),
-        }
-    }))
-}
-
-fn tool_error_from_core(err: CoreError) -> CallToolResult {
-    match err {
-        CoreError::InvalidUri(message) => tool_error("invalid_uri", message),
-        CoreError::NotImplemented(message) => tool_error("not_implemented", message),
-        CoreError::Message(message) => tool_error("core_error", message),
-    }
-}
-
-fn unexpected_result_error(tool: &str, result: &CoreOperationResult) -> CallToolResult {
-    tool_error(
-        "unexpected_core_result",
-        format!("tool {tool} received unsupported core result variant: {result:?}"),
-    )
 }

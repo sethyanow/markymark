@@ -23,11 +23,19 @@ impl<'arena> Frontmatter<'arena> {
     pub fn get_list(&self, key: &str) -> Option<Vec<&'arena str>> {
         self.data.get(key).and_then(|v| v.as_list())
     }
+
+    /// Iterate over all key-value pairs.
+    pub fn iter(&self) -> impl Iterator<Item = (&'arena str, &FrontmatterValue<'arena>)> {
+        self.data.iter().map(|(k, v)| (*k, v))
+    }
 }
 
+/// A single frontmatter value.
 #[derive(Debug, Clone)]
-pub(crate) enum FrontmatterValue<'arena> {
+pub enum FrontmatterValue<'arena> {
+    /// A simple string value.
     String(&'arena str),
+    /// A list of string values.
     List(&'arena [&'arena str]),
 }
 
@@ -62,6 +70,11 @@ impl<'arena> Properties<'arena> {
     /// Get property
     pub fn get(&self, key: &str) -> Option<&PropertyValue<'arena>> {
         self.data.get(key)
+    }
+
+    /// Iterate over all key-value pairs.
+    pub fn iter(&self) -> impl Iterator<Item = (&'arena str, &PropertyValue<'arena>)> {
+        self.data.iter().map(|(k, v)| (*k, v))
     }
 }
 

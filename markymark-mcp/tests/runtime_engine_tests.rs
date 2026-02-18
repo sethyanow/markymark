@@ -1403,3 +1403,514 @@ fn export_index_returns_empty_lists_for_minimal_document() {
         other => panic!("expected DocumentExport result, got: {other:?}"),
     }
 }
+
+#[test]
+fn export_index_includes_frontmatter() {
+    let ws = TempWorkspace::new("export-index-frontmatter");
+    let doc = ws.root().join("with-frontmatter.md");
+    fs::write(
+        &doc,
+        "---\nstatus: active\ntags: [rust, mcp]\n---\n# My Doc\n",
+    )
+    .expect("doc should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let uri = DocumentUri::from_file_path(&doc);
+    let result = engine.execute(CoreOperation::ExportIndex {
+        uri: uri.clone(),
+        realm: None,
+    });
+
+    match result {
+        CoreOperationResult::DocumentExport {
+            frontmatter,
+            headings,
+            ..
+        } => {
+            // Verify the heading is present (sanity check)
+            assert_eq!(headings.len(), 1);
+            assert_eq!(headings[0].0, "My Doc");
+
+            // Verify frontmatter is populated
+            assert!(
+                !frontmatter.is_empty(),
+                "frontmatter should not be empty for a document with YAML frontmatter"
+            );
+
+            // Find the 'status' key — scalar value wrapped as single-element vec
+            let status_entry = frontmatter
+                .iter()
+                .find(|(k, _)| k == "status")
+                .expect("frontmatter should contain 'status' key");
+            assert_eq!(status_entry.1, vec!["active"]);
+
+            // Find the 'tags' key — list value preserved as multi-element vec
+            let tags_entry = frontmatter
+                .iter()
+                .find(|(k, _)| k == "tags")
+                .expect("frontmatter should contain 'tags' key");
+            assert_eq!(tags_entry.1, vec!["rust", "mcp"]);
+        }
+        other => panic!("expected DocumentExport result, got: {other:?}"),
+    }
+}
+
+// --- search-workspace integration tests ---
+
+fn engine_with_workspace_files(
+    name: &str,
+    files: &[(&str, &str)],
+) -> (TempWorkspace, RuntimeEngine) {
+    let ws = TempWorkspace::new(name);
+    for (filename, content) in files {
+        fs::write(ws.root().join(filename), content).expect("test file should be created");
+    }
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    (ws, engine)
+}
+
+fn search_workspace(
+    engine: &RuntimeEngine,
+    query: Option<&str>,
+    fm_filter: Option<(&str, &str)>,
+    prop_filter: Option<(&str, &str)>,
+    tag_filter: Option<&str>,
+    limit: u32,
+) -> Vec<markymark_core::engine::WorkspaceSearchResult> {
+    let result = engine.execute(markymark_core::engine::CoreOperation::SearchWorkspace {
+        query: query.map(str::to_string),
+        frontmatter_filter: fm_filter.map(|(k, v)| (k.to_string(), v.to_string())),
+        property_filter: prop_filter.map(|(k, v)| (k.to_string(), v.to_string())),
+        tag_filter: tag_filter.map(str::to_string),
+        realm: None,
+        limit,
+    });
+    match result {
+        CoreOperationResult::WorkspaceSearchResults { results, .. } => results,
+        other => panic!("expected WorkspaceSearchResults, got: {other:?}"),
+    }
+}
+
+#[test]
+fn search_workspace_returns_empty_for_no_matches() {
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-no-match",
+        &[
+            ("alpha.md", "# Alpha Document\n\nSome content.\n"),
+            ("beta.md", "# Beta Document\n\nOther content.\n"),
+        ],
+    );
+    let results = search_workspace(&engine, Some("nonexistent_xyz_abc"), None, None, None, 20);
+    assert!(
+        results.is_empty(),
+        "expected no results for unmatched query"
+    );
+}
+
+#[test]
+fn search_workspace_case_insensitive_query() {
+    // Bug caught: case-sensitive match silently drops results.
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-case",
+        &[("notes.md", "# Project Alpha\n\nSome content.\n")],
+    );
+    let results = search_workspace(&engine, Some("project alpha"), None, None, None, 20);
+    assert_eq!(
+        results.len(),
+        1,
+        "lowercase query should match title with mixed case"
+    );
+    assert!(
+        (results[0].score - 1.0).abs() < f32::EPSILON,
+        "title match should score 1.0"
+    );
+    assert!(results[0].matched_fields.contains(&"title".to_string()));
+}
+
+#[test]
+fn search_workspace_title_match_scores_higher_than_heading_match() {
+    // Bug caught: title and heading scoring swapped.
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-title-score",
+        &[
+            ("title-doc.md", "# Query Term\n\nContent.\n"),
+            (
+                "heading-doc.md",
+                "# Other Doc\n\n## Query Term\n\nContent.\n",
+            ),
+        ],
+    );
+    let results = search_workspace(&engine, Some("query term"), None, None, None, 20);
+    assert_eq!(results.len(), 2, "both docs should match");
+    // Title match must rank first (score 1.0 > 0.8).
+    assert_eq!(results[0].score, 1.0, "title match should score 1.0");
+    assert!(results[0].matched_fields.contains(&"title".to_string()));
+    assert!(
+        results[1].score <= 0.8 + f32::EPSILON,
+        "heading match should score at most 0.8"
+    );
+    assert!(results[1].matched_fields.contains(&"heading".to_string()));
+}
+
+#[test]
+fn search_workspace_frontmatter_filter_exact_key_match() {
+    // Bug caught: partial key match returning wrong docs ("statue" matching "status" filter).
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-fm-key",
+        &[
+            ("active.md", "---\nstatus: active\n---\n# Active Doc\n"),
+            ("draft.md", "---\nstatus: draft\n---\n# Draft Doc\n"),
+        ],
+    );
+    let results = search_workspace(&engine, None, Some(("status", "active")), None, None, 20);
+    assert_eq!(results.len(), 1, "only doc with status=active should match");
+    assert!(results[0].title.contains("Active"), "wrong doc returned");
+}
+
+#[test]
+fn search_workspace_frontmatter_filter_case_insensitive_value() {
+    // Bug caught: case-sensitive value comparison drops valid results.
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-fm-ci",
+        &[("doc.md", "---\nstatus: Active\n---\n# Doc\n")],
+    );
+    let results = search_workspace(&engine, None, Some(("status", "active")), None, None, 20);
+    assert_eq!(
+        results.len(),
+        1,
+        "lowercase filter value should match 'Active' frontmatter"
+    );
+}
+
+#[test]
+fn search_workspace_frontmatter_list_value_any_element_matches() {
+    // Bug caught: list values collapsed to string fails partial match.
+    // Parser handles inline YAML list format: [a, b, c]
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-fm-list",
+        &[(
+            "doc.md",
+            "---\naliases: [Project X, Proj X, PX]\n---\n# Document\n",
+        )],
+    );
+    let results = search_workspace(&engine, None, Some(("aliases", "proj x")), None, None, 20);
+    assert_eq!(
+        results.len(),
+        1,
+        "filter should match any element in frontmatter list"
+    );
+}
+
+#[test]
+fn search_workspace_property_filter() {
+    // Bug caught: property filter not applied.
+    // Logseq properties (key:: value) must appear BEFORE headings in source.
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-prop",
+        &[
+            ("daily.md", "type:: daily\n\n# Daily\n\nSome notes.\n"),
+            ("note.md", "type:: note\n\n# Note\n\nSome notes.\n"),
+        ],
+    );
+    let results = search_workspace(&engine, None, None, Some(("type", "daily")), None, 20);
+    assert_eq!(results.len(), 1, "only doc with type::daily should match");
+    assert!(results[0].title.contains("Daily"), "wrong doc returned");
+}
+
+#[test]
+fn search_workspace_tag_filter_case_insensitive() {
+    // Bug caught: case-sensitive tag matching drops valid results.
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-tag-ci",
+        &[
+            ("tagged.md", "# Doc\n\n#Project content here.\n"),
+            ("other.md", "# Other\n\n#daily content.\n"),
+        ],
+    );
+    let results = search_workspace(&engine, None, None, None, Some("project"), 20);
+    assert_eq!(
+        results.len(),
+        1,
+        "lowercase filter should match #Project tag"
+    );
+}
+
+#[test]
+fn search_workspace_multiple_filters_and_logic() {
+    // Bug caught: OR instead of AND logic for multiple filters.
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-and-logic",
+        &[
+            ("a.md", "---\nstatus: active\n---\n# Doc A\n\n#project\n"),
+            ("b.md", "---\nstatus: active\n---\n# Doc B\n\n#daily\n"),
+        ],
+    );
+    let results = search_workspace(
+        &engine,
+        None,
+        Some(("status", "active")),
+        None,
+        Some("project"),
+        20,
+    );
+    assert_eq!(
+        results.len(),
+        1,
+        "only doc matching BOTH status=active AND tag=project should return"
+    );
+    assert!(results[0].title.contains("Doc A"), "wrong doc returned");
+}
+
+#[test]
+fn search_workspace_respects_limit() {
+    // Bug caught: limit not applied or results sorted wrong direction.
+    // Search only covers title and headings, not body prose.
+    // Use a heading so all 10 docs match the query.
+    let files: Vec<(String, String)> = (0..10)
+        .map(|i| {
+            (
+                format!("doc{i:02}.md"),
+                format!("# Document {i}\n\n## Common Query Term\n\nsome content\n"),
+            )
+        })
+        .collect();
+    let file_refs: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(name, content)| (name.as_str(), content.as_str()))
+        .collect();
+
+    let (_ws, engine) = engine_with_workspace_files("sw-limit", &file_refs);
+    let results = search_workspace(&engine, Some("common query term"), None, None, None, 3);
+    assert_eq!(results.len(), 3, "limit=3 should return exactly 3 results");
+    // Verify descending score order.
+    for i in 1..results.len() {
+        assert!(
+            results[i - 1].score >= results[i].score,
+            "results should be sorted score DESC"
+        );
+    }
+}
+
+#[test]
+fn search_workspace_limit_zero_returns_empty() {
+    // Bug caught: limit=0 causes panic or returns all docs.
+    let (_ws, engine) =
+        engine_with_workspace_files("sw-limit-zero", &[("doc.md", "# Doc\n\nsome content\n")]);
+    let results = search_workspace(&engine, None, None, None, None, 0);
+    assert!(
+        results.is_empty(),
+        "limit=0 should return empty results, not error"
+    );
+}
+
+#[test]
+fn search_workspace_empty_realm_returns_empty() {
+    // Bug caught: iter_documents on empty realm panics.
+    let ws = TempWorkspace::new("sw-empty-realm");
+    // No files — empty directory.
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("empty workspace should index");
+    let results = search_workspace(&engine, Some("anything"), None, None, None, 20);
+    assert!(
+        results.is_empty(),
+        "empty realm should return empty results, not error"
+    );
+}
+
+#[test]
+fn search_workspace_no_query_no_filter_returns_all_up_to_limit() {
+    // Bug caught: no-filter path broken or no-query path errors.
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-no-filter",
+        &[
+            ("a.md", "# Alpha\n"),
+            ("b.md", "# Beta\n"),
+            ("c.md", "# Gamma\n"),
+        ],
+    );
+    let results = search_workspace(&engine, None, None, None, None, 10);
+    assert_eq!(results.len(), 3, "no filters should return all docs");
+    for r in &results {
+        assert!(
+            (r.score - 1.0).abs() < f32::EPSILON,
+            "all docs should score 1.0 with no query"
+        );
+    }
+}
+
+#[test]
+fn search_workspace_sort_descending_score_ties_by_uri_ascending() {
+    // Bug caught: unstable sort, non-deterministic output across runs.
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-sort",
+        &[
+            // All docs share the same query match (heading), so score=0.8.
+            // Tie-break should be URI ascending.
+            ("zzz-last.md", "# Other\n\n## Query Term\n"),
+            ("aaa-first.md", "# Other\n\n## Query Term\n"),
+            ("mmm-mid.md", "# Other\n\n## Query Term\n"),
+        ],
+    );
+    let results = search_workspace(&engine, Some("query term"), None, None, None, 20);
+    assert_eq!(results.len(), 3, "all three docs should match");
+    // All should have the same score (0.8 for heading match) since no title match.
+    for r in &results {
+        assert!(
+            (r.score - 0.8).abs() < f32::EPSILON,
+            "all should score 0.8 for heading match"
+        );
+    }
+    // URIs must be in ascending order (deterministic tie-break).
+    let uris: Vec<&str> = results.iter().map(|r| r.uri.as_str()).collect();
+    let mut sorted = uris.clone();
+    sorted.sort();
+    assert_eq!(
+        uris, sorted,
+        "results with equal score should be sorted by URI ascending"
+    );
+}
+
+// --- find-references: block_ref support (marky-jrw) ---
+
+const BLOCK_UUID_A: &str = "550e8400-e29b-41d4-a716-446655440000";
+const BLOCK_UUID_B: &str = "7f6c1b2a-3d4e-5f60-a7b8-c9d0e1f20304";
+
+#[test]
+fn find_references_for_block_ref_returns_all_referencing_docs() {
+    let ws = TempWorkspace::new("find-refs-blockref");
+    let a = ws.root().join("a.md");
+    let b = ws.root().join("b.md");
+    let c = ws.root().join("c.md");
+
+    // Doc A: contains the target block ref
+    fs::write(&a, format!("(({BLOCK_UUID_A})) is here\n")).expect("a.md should be created");
+    // Doc B: contains the same block ref plus another
+    fs::write(
+        &b,
+        format!("Some text\n\n(({BLOCK_UUID_A})) and (({BLOCK_UUID_B}))\n"),
+    )
+    .expect("b.md should be created");
+    // Doc C: no block refs
+    fs::write(&c, "# No refs\n").expect("c.md should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    // Position cursor inside ((uuid)) in Doc A — line 0, char 3 is inside the UUID text
+    let result = engine.execute(CoreOperation::FindReferences {
+        uri: DocumentUri::from_file_path(&a),
+        position: Range::new(Position::new(0, 3), Position::new(0, 3)),
+        realm: None,
+    });
+
+    match result {
+        CoreOperationResult::Locations(locations) => {
+            assert!(
+                locations.len() >= 2,
+                "expected at least 2 block ref locations (a.md and b.md), got {}",
+                locations.len()
+            );
+            let c_uri = DocumentUri::from_file_path(&c);
+            assert!(
+                !locations.iter().any(|(uri, _)| *uri == c_uri),
+                "Doc C (no block refs) should not appear in results"
+            );
+        }
+        other => panic!("expected Locations result, got: {other:?}"),
+    }
+}
+
+#[test]
+fn find_references_block_ref_results_sorted_by_uri_then_range() {
+    let ws = TempWorkspace::new("find-refs-blockref-sorted");
+
+    // Create files with names that sort alphabetically: a.md < b.md < c.md
+    fs::write(ws.root().join("c.md"), format!("(({BLOCK_UUID_A})) in c\n"))
+        .expect("c.md should be created");
+    fs::write(ws.root().join("a.md"), format!("(({BLOCK_UUID_A})) in a\n"))
+        .expect("a.md should be created");
+    fs::write(ws.root().join("b.md"), format!("(({BLOCK_UUID_A})) in b\n"))
+        .expect("b.md should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let result = engine.execute(CoreOperation::FindReferences {
+        uri: DocumentUri::from_file_path(&ws.root().join("a.md")),
+        position: Range::new(Position::new(0, 3), Position::new(0, 3)),
+        realm: None,
+    });
+
+    match result {
+        CoreOperationResult::Locations(locations) => {
+            assert_eq!(
+                locations.len(),
+                3,
+                "expected 3 block ref locations, got {}",
+                locations.len()
+            );
+            for window in locations.windows(2) {
+                let (uri_a, range_a) = &window[0];
+                let (uri_b, range_b) = &window[1];
+                let ord = uri_a
+                    .as_str()
+                    .cmp(uri_b.as_str())
+                    .then_with(|| compare_ranges(*range_a, *range_b));
+                assert!(
+                    ord != Ordering::Greater,
+                    "locations should be sorted by uri then range, but {uri_a:?} > {uri_b:?}"
+                );
+            }
+        }
+        other => panic!("expected Locations result, got: {other:?}"),
+    }
+}
+
+#[test]
+fn find_references_for_block_id_returns_block_ref_locations() {
+    let ws = TempWorkspace::new("find-refs-block-id-inverse");
+
+    // Doc A: defines a block with ^uuid
+    let a = ws.root().join("a.md");
+    fs::write(&a, format!("some content ^{BLOCK_UUID_A}\n")).expect("a.md should be created");
+    // Doc B: references that block with ((uuid))
+    let b = ws.root().join("b.md");
+    fs::write(&b, format!("(({BLOCK_UUID_A})) is referenced\n")).expect("b.md should be created");
+    // Doc C: no refs
+    let c = ws.root().join("c.md");
+    fs::write(&c, "# No refs\n").expect("c.md should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    // Cursor inside ^uuid in Doc A: "some content ^550e8400..."
+    // ^  is at position 13, UUID starts at 14; position 16 is inside the UUID
+    let result = engine.execute(CoreOperation::FindReferences {
+        uri: DocumentUri::from_file_path(&a),
+        position: Range::new(Position::new(0, 16), Position::new(0, 16)),
+        realm: None,
+    });
+
+    match result {
+        CoreOperationResult::Locations(locations) => {
+            assert!(
+                !locations.is_empty(),
+                "expected at least 1 location pointing to ((uuid)) in Doc B"
+            );
+            let b_uri = DocumentUri::from_file_path(&b);
+            assert!(
+                locations.iter().any(|(uri, _)| *uri == b_uri),
+                "Doc B should appear in results (contains ((uuid)))"
+            );
+            let c_uri = DocumentUri::from_file_path(&c);
+            assert!(
+                !locations.iter().any(|(uri, _)| *uri == c_uri),
+                "Doc C should not appear in results"
+            );
+        }
+        other => panic!("expected Locations result, got: {other:?}"),
+    }
+}
