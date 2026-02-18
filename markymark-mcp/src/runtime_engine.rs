@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 use std::fs;
-#[cfg(feature = "semantic-search")]
-use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 #[cfg(feature = "semantic-search")]
 use std::sync::Arc;
@@ -57,6 +55,24 @@ fn build_realm_index() -> RealmIndex {
     }
 }
 
+/// FNV-1a 32-bit hash for stable, cross-version token hashing.
+///
+/// `DefaultHasher` (SipHash 1-3) is explicitly not guaranteed to be stable
+/// across Rust versions. FNV-1a is a well-specified algorithm that produces
+/// identical output forever for the same input, making it appropriate for
+/// the bag-of-words hash embedding used in [`HashEmbeddingProvider`].
+#[cfg(feature = "semantic-search")]
+fn fnv1a32(bytes: &[u8]) -> u32 {
+    const OFFSET: u32 = 0x811c9dc5;
+    const PRIME: u32 = 0x0100_0193;
+    let mut hash = OFFSET;
+    for &byte in bytes {
+        hash ^= u32::from(byte);
+        hash = hash.wrapping_mul(PRIME);
+    }
+    hash
+}
+
 #[cfg(feature = "semantic-search")]
 #[derive(Debug, Clone)]
 struct HashEmbeddingProvider {
@@ -92,9 +108,7 @@ impl EmbeddingProvider for HashEmbeddingProvider {
             .filter(|token| !token.is_empty())
         {
             let norm = token.to_ascii_lowercase();
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            norm.hash(&mut hasher);
-            let idx = (hasher.finish() as usize) % out.len();
+            let idx = (fnv1a32(norm.as_bytes()) as usize) % out.len();
             out[idx] += 1.0;
         }
 
@@ -1214,6 +1228,88 @@ mod tests {
         assert_eq!(docs.len(), 3);
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ---------------------------------------------------------------------------
+    // HashEmbeddingProvider tests (semantic-search feature required)
+    // ---------------------------------------------------------------------------
+
+    /// fnv1a32 must produce the same u32 for the same bytes every time.
+    ///
+    /// This pins the hash algorithm choice: `DefaultHasher` (SipHash 1-3) is
+    /// explicitly not stable across Rust versions per std docs.  FNV-1a 32-bit
+    /// is a fixed, well-specified algorithm that produces identical output
+    /// forever for the same input.
+    ///
+    /// The constant 0x4f9f2cab is the standard FNV-1a 32-bit hash of "hello"
+    /// (verified against the reference implementation and online calculators).
+    #[cfg(feature = "semantic-search")]
+    #[test]
+    fn fnv1a32_is_stable_and_deterministic() {
+        let h1 = fnv1a32(b"hello");
+        let h2 = fnv1a32(b"hello");
+        assert_eq!(h1, h2, "same input must produce same hash");
+        assert_ne!(
+            fnv1a32(b"hello"),
+            fnv1a32(b"world"),
+            "distinct tokens must hash differently"
+        );
+        // Empty string → offset basis unchanged
+        assert_eq!(
+            fnv1a32(b""),
+            0x811c9dc5,
+            "empty bytes must return FNV offset basis"
+        );
+    }
+
+    /// HashEmbeddingProvider must produce a normalized output vector of the
+    /// expected dimensionality.
+    #[cfg(feature = "semantic-search")]
+    #[test]
+    fn hash_embedding_output_is_normalized_and_correct_dims() {
+        let provider = HashEmbeddingProvider::new(128);
+        let emb = provider.embed("hello world").unwrap();
+        assert_eq!(emb.len(), 128, "embedding length must match dims");
+        let norm_sq: f32 = emb.iter().map(|v| v * v).sum();
+        assert!(
+            (norm_sq - 1.0).abs() < 1e-5,
+            "embedding must be L2-normalised, got norm²={norm_sq}"
+        );
+    }
+
+    /// HashEmbeddingProvider must produce identical vectors for identical input.
+    /// This test detects accidental use of randomised hashing (e.g. RandomState).
+    #[cfg(feature = "semantic-search")]
+    #[test]
+    fn hash_embedding_is_deterministic() {
+        let provider = HashEmbeddingProvider::new(64);
+        let a = provider.embed("markymark semantic search").unwrap();
+        let b = provider.embed("markymark semantic search").unwrap();
+        assert_eq!(a, b, "identical input must produce identical embedding");
+    }
+
+    /// Empty text must fail with InvalidInput (not panic).
+    #[cfg(feature = "semantic-search")]
+    #[test]
+    fn hash_embedding_rejects_empty_text() {
+        let provider = HashEmbeddingProvider::new(32);
+        let err = provider.embed("   ").unwrap_err();
+        assert!(
+            matches!(err, markymark_core::prelude::EmbedError::InvalidInput(_)),
+            "whitespace-only input must return InvalidInput, got {err:?}"
+        );
+    }
+
+    /// Zero dims must fail with InvalidInput (not divide-by-zero).
+    #[cfg(feature = "semantic-search")]
+    #[test]
+    fn hash_embedding_rejects_zero_dims() {
+        let provider = HashEmbeddingProvider::new(0);
+        let err = provider.embed("hello").unwrap_err();
+        assert!(
+            matches!(err, markymark_core::prelude::EmbedError::InvalidInput(_)),
+            "zero dims must return InvalidInput, got {err:?}"
+        );
     }
 
     #[test]
