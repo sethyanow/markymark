@@ -14,7 +14,7 @@ This report compares Tier 1 (Zig scan via `DocumentIndex::from_scan`) against Ti
 
 | Metric | AST Total | Scan Total | False Positives | False Negatives |
 |---|---:|---:|---:|---:|
-| Headings | 1098 | 1172 | 74 | 0 |
+| Headings | 1103 | 1177 | 74 | 0 |
 | Wiki Links | 54 | 54 | 0 | 0 |
 | Markdown Links | 394 | 392 | 0 | 2 |
 | Tags | 106 | 61 | 0 | 45 |
@@ -22,10 +22,10 @@ This report compares Tier 1 (Zig scan via `DocumentIndex::from_scan`) against Ti
 
 ## Rates
 
-- Raw false positive rate: 4.48%
-- Raw false negative rate: 2.85%
-- Adjusted false positive rate (excluding known setext/frontmatter gaps): 4.39%
-- Adjusted false negative rate (excluding known setext/frontmatter gaps): 2.52%
+- Raw false positive rate: 4.47%
+- Raw false negative rate: 2.84%
+- Adjusted false positive rate (excluding known setext/frontmatter gaps): 4.24%
+- Adjusted false negative rate (excluding known setext/frontmatter gaps): 2.56%
 - Code block false-positive doc rate: 32.79% (20 / 61)
 - Code block false-positive events: 74
 
