@@ -19,6 +19,7 @@ const embeddings_mod = @import("shared/embeddings.zig");
 comptime {
     _ = @import("exports_embed.zig");
     _ = @import("exports_graph.zig");
+    _ = @import("exports_serde.zig");
 }
 
 /// Re-export types for C consumers
