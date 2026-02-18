@@ -115,13 +115,61 @@ pub fn range_within_neighbor_window(
         && end_byte.saturating_add(window_bytes) >= edit.start_byte
 }
 
+/// Returns true if the range starts strictly after the edit's old end position.
+/// Used to identify entries that need position adjustment (but not re-extraction).
+pub fn range_is_after_edit_end(range: Range, edit: &InputEdit) -> bool {
+    let range_start = (range.start.line, range.start.character);
+    let edit_old_end = (
+        edit.old_end_position.row as u32,
+        edit.old_end_position.column as u32,
+    );
+    range_start > edit_old_end
+}
+
+/// Adjust a Range's line/character positions for an entry that starts after the edit's old end.
+///
+/// When an edit changes the document length, entries after the edit shift. This function
+/// applies the line/column delta from the InputEdit to keep positions accurate.
+pub fn adjust_range_after_edit(range: &mut Range, edit: &InputEdit) {
+    let old_end_row = edit.old_end_position.row as u32;
+    let line_delta = edit.new_end_position.row as i64 - edit.old_end_position.row as i64;
+
+    // Adjust start position
+    if range.start.line == old_end_row {
+        let col_delta = edit.new_end_position.column as i64 - edit.old_end_position.column as i64;
+        range.start.line = (range.start.line as i64 + line_delta) as u32;
+        range.start.character = (range.start.character as i64 + col_delta) as u32;
+    } else {
+        range.start.line = (range.start.line as i64 + line_delta) as u32;
+    }
+
+    // Adjust end position
+    if range.end.line == old_end_row {
+        let col_delta = edit.new_end_position.column as i64 - edit.old_end_position.column as i64;
+        range.end.line = (range.end.line as i64 + line_delta) as u32;
+        range.end.character = (range.end.character as i64 + col_delta) as u32;
+    } else {
+        range.end.line = (range.end.line as i64 + line_delta) as u32;
+    }
+}
+
+/// Adjust byte offsets for an entry that starts after the edit's old end.
+pub fn adjust_bytes_after_edit(start_byte: &mut usize, end_byte: &mut usize, edit: &InputEdit) {
+    let byte_delta = edit.new_end_byte as isize - edit.old_end_byte as isize;
+    *start_byte = (*start_byte as isize + byte_delta) as usize;
+    *end_byte = (*end_byte as isize + byte_delta) as usize;
+}
+
 // ─── WikiLink incremental helpers ─────────────────────────────────────────────
 
 /// Returns true if this wiki-link is affected by any of the pending edits.
+///
+/// Only entries that directly intersect the edit or are within the byte-level
+/// neighbor window need re-extraction. Entries merely *after* the edit are
+/// retained with adjusted positions instead of being re-extracted.
 pub fn wiki_link_affected_by_edits(wl: &WikiLinkOwned, pending_edits: &[InputEdit]) -> bool {
     pending_edits.iter().any(|edit| {
         range_intersects_edit(wl.range, edit)
-            || range_is_after_edit_start(wl.range, edit)
             || range_within_neighbor_window(wl.start_byte, wl.end_byte, edit, 100)
     })
 }
@@ -185,7 +233,8 @@ pub fn extract_wiki_links_owned(ast: &markymark_parser::Ast) -> Vec<WikiLinkOwne
 
 /// Merge old and new wiki-links using selective purge-and-replace.
 ///
-/// Keeps old entries not affected by edits; takes new entries from affected regions.
+/// Keeps old entries not affected by edits (with position adjustment for entries
+/// after the edit); takes new entries from affected regions.
 pub fn merge_incremental_wiki_links(
     old_wiki_links: &[WikiLinkOwned],
     new_wiki_links: &[WikiLinkOwned],
@@ -194,7 +243,14 @@ pub fn merge_incremental_wiki_links(
     let mut merged = Vec::new();
     for old in old_wiki_links {
         if !wiki_link_affected_by_edits(old, pending_edits) {
-            merged.push(old.clone());
+            let mut adjusted = old.clone();
+            for edit in pending_edits {
+                if range_is_after_edit_end(adjusted.range, edit) {
+                    adjust_range_after_edit(&mut adjusted.range, edit);
+                    adjust_bytes_after_edit(&mut adjusted.start_byte, &mut adjusted.end_byte, edit);
+                }
+            }
+            merged.push(adjusted);
         }
     }
     for new_link in new_wiki_links {
@@ -209,10 +265,12 @@ pub fn merge_incremental_wiki_links(
 // ─── Block incremental helpers ─────────────────────────────────────────────────
 
 /// Returns true if this block ID is affected by any of the pending edits.
+///
+/// Only entries that directly intersect the edit or are within the byte-level
+/// neighbor window need re-extraction.
 pub fn block_affected_by_edits(block: &BlockOwned, pending_edits: &[InputEdit]) -> bool {
     pending_edits.iter().any(|edit| {
         range_intersects_edit(block.range, edit)
-            || range_is_after_edit_start(block.range, edit)
             || range_within_neighbor_window(block.start_byte, block.end_byte, edit, 100)
     })
 }
@@ -272,7 +330,14 @@ pub fn merge_incremental_blocks(
     let mut merged = Vec::new();
     for old in old_blocks {
         if !block_affected_by_edits(old, pending_edits) {
-            merged.push(old.clone());
+            let mut adjusted = old.clone();
+            for edit in pending_edits {
+                if range_is_after_edit_end(adjusted.range, edit) {
+                    adjust_range_after_edit(&mut adjusted.range, edit);
+                    adjust_bytes_after_edit(&mut adjusted.start_byte, &mut adjusted.end_byte, edit);
+                }
+            }
+            merged.push(adjusted);
         }
     }
     for new_block in new_blocks {
@@ -290,13 +355,16 @@ pub fn merge_incremental_blocks(
 // not applicable. Conservative range-based checks only.
 
 /// Returns true if this markdown link is affected by any of the pending edits.
+///
+/// Only entries that directly intersect the edit need re-extraction.
+/// MarkdownLink has no byte offsets, so neighbor-window is not applicable.
 pub fn markdown_link_affected_by_edits(
     ml: &MarkdownLinkOwned,
     pending_edits: &[InputEdit],
 ) -> bool {
-    pending_edits.iter().any(|edit| {
-        range_intersects_edit(ml.range, edit) || range_is_after_edit_start(ml.range, edit)
-    })
+    pending_edits
+        .iter()
+        .any(|edit| range_intersects_edit(ml.range, edit))
 }
 
 /// Returns true if any markdown link in the old index needs re-extraction.
@@ -357,7 +425,13 @@ pub fn merge_incremental_markdown_links(
     let mut merged = Vec::new();
     for old in old_mls {
         if !markdown_link_affected_by_edits(old, pending_edits) {
-            merged.push(old.clone());
+            let mut adjusted = old.clone();
+            for edit in pending_edits {
+                if range_is_after_edit_end(adjusted.range, edit) {
+                    adjust_range_after_edit(&mut adjusted.range, edit);
+                }
+            }
+            merged.push(adjusted);
         }
     }
     for new_ml in new_mls {
@@ -375,10 +449,13 @@ pub fn merge_incremental_markdown_links(
 // not applicable. Conservative range-based checks only.
 
 /// Returns true if this XML tag is affected by any of the pending edits.
+///
+/// Only entries that directly intersect the edit need re-extraction.
+/// XmlTag has no byte offsets, so neighbor-window is not applicable.
 pub fn xml_tag_affected_by_edits(xt: &XmlTagOwned, pending_edits: &[InputEdit]) -> bool {
-    pending_edits.iter().any(|edit| {
-        range_intersects_edit(xt.range, edit) || range_is_after_edit_start(xt.range, edit)
-    })
+    pending_edits
+        .iter()
+        .any(|edit| range_intersects_edit(xt.range, edit))
 }
 
 /// Returns true if any XML tag in the old index needs re-extraction.
@@ -445,7 +522,13 @@ pub fn merge_incremental_xml_tags(
     let mut merged = Vec::new();
     for old in old_xts {
         if !xml_tag_affected_by_edits(old, pending_edits) {
-            merged.push(old.clone());
+            let mut adjusted = old.clone();
+            for edit in pending_edits {
+                if range_is_after_edit_end(adjusted.range, edit) {
+                    adjust_range_after_edit(&mut adjusted.range, edit);
+                }
+            }
+            merged.push(adjusted);
         }
     }
     for new_xt in new_xts {
@@ -483,7 +566,19 @@ pub fn build_markdown_index_incremental(
         if old.is_empty() {
             extract_wiki_links_owned(&ast)
         } else if !wiki_links_need_update(old, pending_edits) {
-            old.to_vec()
+            // No entries affected — reuse old with position adjustment
+            old.iter()
+                .map(|link| {
+                    let mut adj = link.clone();
+                    for edit in pending_edits {
+                        if range_is_after_edit_end(adj.range, edit) {
+                            adjust_range_after_edit(&mut adj.range, edit);
+                            adjust_bytes_after_edit(&mut adj.start_byte, &mut adj.end_byte, edit);
+                        }
+                    }
+                    adj
+                })
+                .collect()
         } else {
             let new_wiki_links = extract_wiki_links_owned(&ast);
             merge_incremental_wiki_links(old, &new_wiki_links, pending_edits)
@@ -495,7 +590,18 @@ pub fn build_markdown_index_incremental(
         if old.is_empty() {
             extract_blocks_owned(&ast)
         } else if !blocks_need_update(old, pending_edits) {
-            old.to_vec()
+            old.iter()
+                .map(|block| {
+                    let mut adj = block.clone();
+                    for edit in pending_edits {
+                        if range_is_after_edit_end(adj.range, edit) {
+                            adjust_range_after_edit(&mut adj.range, edit);
+                            adjust_bytes_after_edit(&mut adj.start_byte, &mut adj.end_byte, edit);
+                        }
+                    }
+                    adj
+                })
+                .collect()
         } else {
             let new_blocks = extract_blocks_owned(&ast);
             merge_incremental_blocks(old, &new_blocks, pending_edits)
@@ -507,7 +613,17 @@ pub fn build_markdown_index_incremental(
         if old.is_empty() {
             extract_markdown_links_owned(&ast)
         } else if !markdown_links_need_update(old, pending_edits) {
-            old.to_vec()
+            old.iter()
+                .map(|ml| {
+                    let mut adj = ml.clone();
+                    for edit in pending_edits {
+                        if range_is_after_edit_end(adj.range, edit) {
+                            adjust_range_after_edit(&mut adj.range, edit);
+                        }
+                    }
+                    adj
+                })
+                .collect()
         } else {
             let new_mls = extract_markdown_links_owned(&ast);
             merge_incremental_markdown_links(old, &new_mls, pending_edits)
@@ -519,7 +635,17 @@ pub fn build_markdown_index_incremental(
         if old.is_empty() {
             extract_xml_tags_owned(&ast)
         } else if !xml_tags_need_update(old, pending_edits) {
-            old.to_vec()
+            old.iter()
+                .map(|xt| {
+                    let mut adj = xt.clone();
+                    for edit in pending_edits {
+                        if range_is_after_edit_end(adj.range, edit) {
+                            adjust_range_after_edit(&mut adj.range, edit);
+                        }
+                    }
+                    adj
+                })
+                .collect()
         } else {
             let new_xts = extract_xml_tags_owned(&ast);
             merge_incremental_xml_tags(old, &new_xts, pending_edits)
