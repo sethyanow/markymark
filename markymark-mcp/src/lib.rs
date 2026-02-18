@@ -667,6 +667,8 @@ impl MarkymarkMcp {
                 xml_tags,
                 wiki_links,
                 markdown_links,
+                frontmatter,
+                properties,
                 ..
             } => {
                 let headings: Vec<ExportedHeadingDto> = headings
@@ -704,12 +706,24 @@ impl MarkymarkMcp {
                     })
                     .collect();
 
+                let frontmatter: Vec<ExportedFrontmatterEntryDto> = frontmatter
+                    .into_iter()
+                    .map(|(key, value)| ExportedFrontmatterEntryDto { key, value })
+                    .collect();
+
+                let properties: Vec<ExportedPropertyEntryDto> = properties
+                    .into_iter()
+                    .map(|(key, value)| ExportedPropertyEntryDto { key, value })
+                    .collect();
+
                 Ok(CallToolResult::structured(json!(ExportIndexResponse {
                     uri: uri.as_str().to_string(),
                     headings,
                     xml_tags,
                     wiki_links,
                     markdown_links,
+                    frontmatter,
+                    properties,
                 })))
             }
             CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),

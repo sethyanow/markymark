@@ -44,6 +44,9 @@ struct DocumentDependent<'a> {
     tags: &'a [TagEntry<'a>],
     markdown_links: &'a [MarkdownLinkEntry<'a>],
     xml_tags: &'a [XmlTagEntry<'a>],
+    frontmatter: &'a [FrontmatterEntry<'a>],
+    aliases: &'a [&'a str],
+    properties: &'a [PropertyEntry<'a>],
 }
 
 self_cell!(
@@ -206,6 +209,81 @@ impl DocumentIndex {
             });
         }
 
+        // Extract frontmatter and properties as owned data BEFORE arena move.
+        #[derive(Debug)]
+        enum FrontmatterValueOwned {
+            String(String),
+            List(Vec<String>),
+        }
+        #[derive(Debug)]
+        struct FrontmatterOwned {
+            key: String,
+            value: FrontmatterValueOwned,
+        }
+        #[derive(Debug)]
+        enum PropertyValueOwned {
+            String(String),
+            List(Vec<String>),
+            PageRef(String),
+        }
+        #[derive(Debug)]
+        struct PropertyOwned {
+            key: String,
+            value: PropertyValueOwned,
+        }
+
+        let mut frontmatter_owned: Vec<FrontmatterOwned> = Vec::new();
+        let mut aliases_owned: Vec<String> = Vec::new();
+
+        if let Some(fm) = ast.frontmatter() {
+            use markymark_parser::FrontmatterValue;
+            for (key, value) in fm.iter() {
+                let key_str = (*key).to_string();
+                let value_owned = match value {
+                    FrontmatterValue::String(s) => FrontmatterValueOwned::String((*s).to_string()),
+                    FrontmatterValue::List(items) => {
+                        FrontmatterValueOwned::List(items.iter().map(|s| s.to_string()).collect())
+                    }
+                };
+                // Extract aliases separately for the dedicated accessor.
+                if key_str == "aliases" {
+                    match &value_owned {
+                        FrontmatterValueOwned::String(s) => {
+                            if !s.is_empty() {
+                                aliases_owned.push(s.clone());
+                            }
+                        }
+                        FrontmatterValueOwned::List(items) => {
+                            aliases_owned.extend(items.iter().cloned());
+                        }
+                    }
+                }
+                frontmatter_owned.push(FrontmatterOwned {
+                    key: key_str,
+                    value: value_owned,
+                });
+            }
+        }
+
+        let mut properties_owned: Vec<PropertyOwned> = Vec::new();
+        if let Some(props) = ast.page_properties() {
+            use markymark_parser::PropertyValue;
+            for (key, value) in props.iter() {
+                let key_str = (*key).to_string();
+                let value_owned = match value {
+                    PropertyValue::String(s) => PropertyValueOwned::String((*s).to_string()),
+                    PropertyValue::List(items) => {
+                        PropertyValueOwned::List(items.iter().map(|s| s.to_string()).collect())
+                    }
+                    PropertyValue::PageRef(s) => PropertyValueOwned::PageRef((*s).to_string()),
+                };
+                properties_owned.push(PropertyOwned {
+                    key: key_str,
+                    value: value_owned,
+                });
+            }
+        }
+
         let owner = DocumentOwner {
             arena: Mutex::new(ast.into_arena()),
         };
@@ -294,6 +372,56 @@ impl DocumentIndex {
             }
             let xml_tags = xml_tags_builder.into_bump_slice();
 
+            // Arena-allocate frontmatter entries.
+            let mut frontmatter_builder = BumpVec::new_in(arena_ref);
+            for fm in frontmatter_owned {
+                let key = arena_alloc_str(arena_ref, &fm.key);
+                let value = match fm.value {
+                    FrontmatterValueOwned::String(s) => {
+                        FrontmatterValueEntry::String(arena_alloc_str(arena_ref, &s))
+                    }
+                    FrontmatterValueOwned::List(items) => {
+                        let mut list = BumpVec::new_in(arena_ref);
+                        for item in items {
+                            list.push(arena_alloc_str(arena_ref, &item));
+                        }
+                        FrontmatterValueEntry::List(list.into_bump_slice())
+                    }
+                };
+                frontmatter_builder.push(FrontmatterEntry { key, value });
+            }
+            let frontmatter = frontmatter_builder.into_bump_slice();
+
+            // Arena-allocate aliases (from frontmatter "aliases" key).
+            let mut aliases_builder = BumpVec::new_in(arena_ref);
+            for alias in aliases_owned {
+                aliases_builder.push(arena_alloc_str(arena_ref, &alias));
+            }
+            let aliases = aliases_builder.into_bump_slice();
+
+            // Arena-allocate properties entries.
+            let mut properties_builder = BumpVec::new_in(arena_ref);
+            for prop in properties_owned {
+                let key = arena_alloc_str(arena_ref, &prop.key);
+                let value = match prop.value {
+                    PropertyValueOwned::String(s) => {
+                        PropertyValueEntry::String(arena_alloc_str(arena_ref, &s))
+                    }
+                    PropertyValueOwned::List(items) => {
+                        let mut list = BumpVec::new_in(arena_ref);
+                        for item in items {
+                            list.push(arena_alloc_str(arena_ref, &item));
+                        }
+                        PropertyValueEntry::List(list.into_bump_slice())
+                    }
+                    PropertyValueOwned::PageRef(s) => {
+                        PropertyValueEntry::PageRef(arena_alloc_str(arena_ref, &s))
+                    }
+                };
+                properties_builder.push(PropertyEntry { key, value });
+            }
+            let properties = properties_builder.into_bump_slice();
+
             DocumentDependent {
                 headings,
                 slug_to_heading,
@@ -304,6 +432,9 @@ impl DocumentIndex {
                 tags,
                 markdown_links,
                 xml_tags,
+                frontmatter,
+                aliases,
+                properties,
             }
         });
 
@@ -446,6 +577,11 @@ impl DocumentIndex {
             // XML tags: not supported by scan backend
             let xml_tags = BumpVec::<XmlTagEntry<'_>>::new_in(arena_ref).into_bump_slice();
 
+            // Frontmatter/properties: not available from scan backend
+            let frontmatter = BumpVec::<FrontmatterEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            let aliases = BumpVec::<&str>::new_in(arena_ref).into_bump_slice();
+            let properties = BumpVec::<PropertyEntry<'_>>::new_in(arena_ref).into_bump_slice();
+
             DocumentDependent {
                 headings,
                 slug_to_heading,
@@ -456,6 +592,9 @@ impl DocumentIndex {
                 tags,
                 markdown_links,
                 xml_tags,
+                frontmatter,
+                aliases,
+                properties,
             }
         });
 
@@ -524,6 +663,21 @@ impl DocumentIndex {
     pub fn block_ids(&self) -> impl Iterator<Item = &str> + '_ {
         self.cell.borrow_dependent().blocks.keys().copied()
     }
+
+    /// Get all frontmatter entries for this document.
+    pub fn frontmatter<'a>(&'a self) -> &'a [FrontmatterEntry<'a>] {
+        self.cell.borrow_dependent().frontmatter
+    }
+
+    /// Get Obsidian aliases from the frontmatter `aliases` field.
+    pub fn aliases(&self) -> &[&str] {
+        self.cell.borrow_dependent().aliases
+    }
+
+    /// Get all Logseq inline property entries for this document.
+    pub fn properties<'a>(&'a self) -> &'a [PropertyEntry<'a>] {
+        self.cell.borrow_dependent().properties
+    }
 }
 
 impl fmt::Debug for DocumentIndex {
@@ -538,6 +692,9 @@ impl fmt::Debug for DocumentIndex {
             .field("tags", &dep.tags.len())
             .field("markdown_links", &dep.markdown_links.len())
             .field("xml_tags", &dep.xml_tags.len())
+            .field("frontmatter", &dep.frontmatter.len())
+            .field("aliases", &dep.aliases.len())
+            .field("properties", &dep.properties.len())
             .finish()
     }
 }

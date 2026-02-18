@@ -328,6 +328,24 @@ pub struct ExportedMarkdownLinkDto {
     pub range: RangeDto,
 }
 
+/// A frontmatter entry in an exported document index.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ExportedFrontmatterEntryDto {
+    /// Key.
+    pub key: String,
+    /// Value: single-element for string values, multi-element for list values.
+    pub value: Vec<String>,
+}
+
+/// A Logseq property entry in an exported document index.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ExportedPropertyEntryDto {
+    /// Key.
+    pub key: String,
+    /// Value as a string (lists are joined with ", ").
+    pub value: String,
+}
+
 /// Response payload for `export-index`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct ExportIndexResponse {
@@ -341,6 +359,10 @@ pub struct ExportIndexResponse {
     pub wiki_links: Vec<ExportedWikiLinkDto>,
     /// Markdown links in document order.
     pub markdown_links: Vec<ExportedMarkdownLinkDto>,
+    /// YAML frontmatter entries.
+    pub frontmatter: Vec<ExportedFrontmatterEntryDto>,
+    /// Logseq inline property entries.
+    pub properties: Vec<ExportedPropertyEntryDto>,
 }
 
 /// Tool error envelope for consistent structured failures.

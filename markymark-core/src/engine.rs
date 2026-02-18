@@ -187,6 +187,10 @@ pub enum CoreOperationResult {
         wiki_links: Vec<(String, Option<String>, Range)>,
         /// Markdown link URLs with ranges.
         markdown_links: Vec<(String, String, Range)>,
+        /// Frontmatter key-value pairs. String values are wrapped as single-element vecs.
+        frontmatter: Vec<(String, Vec<String>)>,
+        /// Logseq inline properties as key-value string pairs.
+        properties: Vec<(String, String)>,
     },
     /// A dependency graph in the requested format (json or dot).
     DependencyGraph {

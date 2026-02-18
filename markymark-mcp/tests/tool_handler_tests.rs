@@ -179,6 +179,8 @@ impl CoreEngine for MockEngine {
                     "https://example.com".to_string(),
                     Range::new(Position::new(8, 0), Position::new(8, 35)),
                 )],
+                frontmatter: vec![],
+                properties: vec![],
             },
         }
     }
