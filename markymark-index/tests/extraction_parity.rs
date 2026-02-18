@@ -219,7 +219,10 @@ fn collect_markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
 
     for entry in entries {
         let path = entry.path();
-        if entry.file_type().map(|ft| ft.is_symlink()).unwrap_or(false) {
+        if fs::symlink_metadata(&path)
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false)
+        {
             continue;
         }
         if path.is_dir() {
@@ -488,9 +491,13 @@ fn test_extraction_parity_docs_corpus_and_report() {
     }
     report.push('\n');
 
-    fs::create_dir_all(report_path.parent().expect("report parent dir"))
-        .expect("create report dir");
-    fs::write(&report_path, report).expect("write parity report");
+    // Only write the report to the repo when explicitly requested via env var,
+    // to avoid mutating the working tree in CI or normal test runs.
+    if std::env::var("WRITE_PARITY_REPORT").is_ok() {
+        fs::create_dir_all(report_path.parent().expect("report parent dir"))
+            .expect("create report dir");
+        fs::write(&report_path, report).expect("write parity report");
+    }
 
     assert!(
         adjusted_fp_rate < 0.05,

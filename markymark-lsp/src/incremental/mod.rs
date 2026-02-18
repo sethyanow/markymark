@@ -104,7 +104,7 @@ pub fn range_is_after_edit_start(range: Range, edit: &InputEdit) -> bool {
 }
 
 /// Returns true if the byte range is within `window_bytes` of the edit region.
-/// Used only for extractors that have byte offsets (wiki_links, blocks).
+/// Used for extractors that have byte offsets (e.g., wiki_links, markdown links, XML tags, blocks).
 pub fn range_within_neighbor_window(
     start_byte: usize,
     end_byte: usize,
