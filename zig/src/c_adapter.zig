@@ -11,6 +11,7 @@ const slug_kernel = @import("kernels/slug.zig");
 const env_scan = @import("kernels/formats/env_scan.zig");
 const ini_scan = @import("kernels/formats/ini_scan.zig");
 const toml_scan = @import("kernels/formats/toml_scan.zig");
+const yaml_scan = @import("kernels/formats/yaml_scan.zig");
 const similarity = @import("shared/similarity.zig");
 const normalize = @import("shared/normalize.zig");
 const entities = @import("shared/entities.zig");
@@ -36,6 +37,7 @@ pub const EnvEntry = env_scan.EnvEntry;
 pub const IniEntry = ini_scan.IniEntry;
 pub const TomlEntry = toml_scan.TomlEntry;
 pub const TomlKind = toml_scan.TomlKind;
+pub const YamlEntry = yaml_scan.YamlEntry;
 
 /// Version constant for markymark kernels
 /// Format: 0xMMmmpp (major, minor, patch)
@@ -747,6 +749,52 @@ export fn marky_scan_toml(
     return 0;
 }
 
+/// SIMD-accelerated YAML key extractor.
+///
+/// Scans `text[0..len]` for YAML mapping keys at all indentation levels.
+/// Each entry records the key name's byte offset, length, and indentation
+/// depth (in spaces; tabs normalised to 1 space each).  Callers reconstruct
+/// key-path hierarchy by tracking indent level transitions.
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointer)
+///  -2  — buffer too small (cap=0, or more entries than cap)
+export fn marky_scan_yaml_keys(
+    text: ?[*]const u8,
+    len: u32,
+    out: ?[*]YamlEntry,
+    cap: u32,
+    written: ?*u32,
+) i32 {
+    const w = written orelse return -1;
+    const t = text orelse {
+        if (len == 0) {
+            w.* = 0;
+            return 0;
+        }
+        return -1;
+    };
+    const o = out orelse return -1;
+
+    if (len == 0) {
+        w.* = 0;
+        return 0;
+    }
+
+    if (cap == 0) {
+        w.* = 0;
+        return -2;
+    }
+
+    const count = yaml_scan.scan_yaml_keys(t, len, o, cap);
+    w.* = count;
+
+    if (count >= cap) return -2;
+
+    return 0;
+}
+
 /// SIMD-accelerated entity hash extraction.
 ///
 /// Scans text for words, produces FNV-1a u32 hash for each.
@@ -879,6 +927,7 @@ test {
     _ = @import("kernels/formats/env_scan.zig");
     _ = @import("kernels/formats/ini_scan.zig");
     _ = @import("kernels/formats/toml_scan.zig");
+    _ = @import("kernels/formats/yaml_scan.zig");
 }
 
 test "marky_version returns expected version" {
