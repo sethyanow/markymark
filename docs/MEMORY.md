@@ -305,3 +305,18 @@ When auditing a doc corpus with markymark:
   - `cargo fmt --all`
   - `cargo test -p markymark-mcp --test resource_handler_tests`
   - `cargo test -p markymark-mcp --test prompt_handler_tests`
+
+### 2026-02-18: marky-8xt batched fuzzy ranking closeout
+
+- Completed BRZA follow-up `marky-8xt` with a new batched fuzzy ranking path:
+  - Zig kernel/API: `fuzzy_match_top_k` + C export `marky_fuzzy_match_batch`
+  - Rust wrapper/API: `fuzzy_match_batch` + `FuzzyBatchMatch`
+  - Runtime integration: `RuntimeEngine::SearchSymbols` now uses batch ranking with per-candidate fallback
+- Added scalar oracle parity coverage via `zig/src/reference/fuzzy_match_ref.zig` and runtime order regression tests.
+- Added benchmark hooks:
+  - Criterion group in `markymark-kernels/benches/brza_kernels.rs`
+  - Env-gated 100K benchmark test for checkpoint evidence (`MARKYMARK_RUN_100K_BENCH=1`)
+- Measured 100K-candidate benchmark during checkpoint:
+  - `cargo test -p markymark-kernels benchmark_fuzzy_match_batch_100k_candidates -- --nocapture`
+  - Runtime: `17.543833ms` on this machine/session.
+- Operational note: `coderabbit review --prompt-only` entered long-running/hanging state during this session and returned no findings before manual termination.
