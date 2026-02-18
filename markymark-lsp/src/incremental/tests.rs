@@ -70,38 +70,38 @@ fn test_markdown_links_need_update_true_when_link_intersects_edit() {
 }
 
 #[test]
-fn test_markdown_link_after_edit_start_triggers_update() {
-    // Link starts at line 5; edit starts at line 3 — link is after edit start
+fn test_markdown_link_after_edit_not_affected_when_no_intersection() {
+    // Link starts at line 5; edit at line 3 — link does NOT intersect.
+    // With narrowed affected check, link is not affected (only needs position adjustment).
     let ml = make_ml(5, 0, 5, 20);
     let edit = make_edit(3, 0, 3, 5);
-    // range_is_after_edit_start returns true: link start (5,0) >= edit start (3,0)
-    assert!(markdown_link_affected_by_edits(&ml, &[edit]));
-    assert!(markdown_links_need_update(&[ml], &[edit]));
+    assert!(
+        !markdown_link_affected_by_edits(&ml, &[edit]),
+        "link after edit with no intersection should NOT be affected"
+    );
+    // needs_update still returns false: no entry intersects the edit
+    assert!(
+        !markdown_links_need_update(&[ml], &[edit]),
+        "no links intersect the edit, needs_update should be false"
+    );
 }
 
 #[test]
-fn test_merge_incremental_markdown_links_keeps_unaffected() {
+fn test_merge_incremental_markdown_links_keeps_unaffected_with_position_adjustment() {
     // Two links: ml1 at line 0, ml2 at line 10
-    // Edit only near line 0 (affects ml1 via range_intersects_edit)
+    // Edit only at line 0, cols 5-8 (intersects ml1, NOT ml2)
     let ml1 = make_ml(0, 0, 0, 20);
     let ml2 = make_ml(10, 0, 10, 20);
-    // Edit at line 0 intersects ml1 but not ml2 (ml2 starts at line 10)
-    // Actually, range_is_after_edit_start will catch ml2 (starts after edit).
-    // So we need old ml2 to survive: use old ml2 directly, as it's not in
-    // the "new" extraction for affected region.
-    // Since merge: old entries NOT affected stay; new entries FROM affected regions come in.
-    // ml2 is after edit start so it's "affected" — both old and new ml2 will be considered.
-    // Let's test the simpler case: edit before both links.
-    let edit = make_edit(0, 5, 0, 8); // overlaps ml1
-    let merged = merge_incremental_markdown_links(
-        &[ml1.clone(), ml2.clone()],
-        std::slice::from_ref(&ml2),
-        &[edit],
-    );
-    // ml1 is affected -> dropped from old; ml2 comes from "new" only if it's affected too.
-    // ml2 is after edit start (line 10 >= line 0), so affected -> dropped from old, added from new.
-    assert_eq!(merged.len(), 1);
-    assert_eq!(merged[0].range.start.line, 10);
+    // New extraction provides updated ml1
+    let new_ml1 = make_ml(0, 0, 0, 20);
+    let edit = make_edit(0, 5, 0, 8); // overlaps ml1, not ml2
+    let merged = merge_incremental_markdown_links(&[ml1.clone(), ml2.clone()], &[new_ml1], &[edit]);
+    // ml1 intersects the edit → dropped from old, added from new
+    // ml2 does NOT intersect → retained from old with position adjustment
+    // (edit is same line start/end, no line delta → ml2 position unchanged)
+    assert_eq!(merged.len(), 2, "both links should be in merged result");
+    assert_eq!(merged[0].range.start.line, 0, "ml1 from new extraction");
+    assert_eq!(merged[1].range.start.line, 10, "ml2 retained from old");
 }
 
 #[test]
@@ -373,11 +373,11 @@ fn test_blocks_need_update_returns_false_for_pre_block_edit_no_neighbor() {
         new_end_position: Point { row: 0, column: 1 },
     };
     // range_intersects_edit: false (no overlap)
-    // range_is_after_edit_start: true (block at row 10 >= edit start row 0)
-    // → affected because position shifted; blocks_need_update should return true
+    // range_within_neighbor_window: false (500 >> 100 + 1)
+    // Block is NOT affected — will get position adjustment instead of re-extraction
     assert!(
-        blocks_need_update(&old_blocks, &[edit]),
-        "edit before block shifts block position, requiring update"
+        !blocks_need_update(&old_blocks, &[edit]),
+        "block far from edit is not affected; position adjustment handles shifting"
     );
 }
 
@@ -419,34 +419,40 @@ fn test_merge_incremental_blocks_reuses_unaffected_old_blocks() {
 }
 
 #[test]
-fn test_merge_incremental_blocks_deduplicates_when_both_contribute() {
-    // Old has two blocks; edit is between them.
-    // Block-A at row 0 (before edit) → unaffected → from old
-    // Block-B at row 5 (after edit) → affected → from new
+fn test_merge_incremental_blocks_adjusts_positions_for_entry_after_edit() {
+    // Old has two blocks; edit is between them (no intersection with either).
+    // Block-A at row 0 (before edit) → unaffected, no position change
+    // Block-B at row 5 (after edit, far from neighbor window) → unaffected, position-adjusted
     let old_blocks = vec![
         make_block_owned("block-a", 0, 10, 18, 10, 18),
-        make_block_owned("block-b", 5, 10, 18, 200, 208),
+        make_block_owned("block-b", 5, 10, 18, 500, 508), // 400 bytes from edit → outside 100-byte window
     ];
     let new_blocks = vec![
-        // block-a unchanged
         make_block_owned("block-a", 0, 10, 18, 10, 18),
-        // block-b has updated position after edit
-        make_block_owned("block-b", 5, 10, 18, 201, 209),
+        make_block_owned("block-b", 5, 10, 18, 501, 509),
     ];
-    // Edit at row 3 (between the two blocks)
+    // Edit at row 3 (between the two blocks), 1 byte insert
     let edit = InputEdit {
         start_byte: 100,
         old_end_byte: 100,
-        new_end_byte: 101, // insert 1 byte
+        new_end_byte: 101,
         start_position: Point { row: 3, column: 0 },
         old_end_position: Point { row: 3, column: 0 },
         new_end_position: Point { row: 3, column: 1 },
     };
     let merged = merge_incremental_blocks(&old_blocks, &new_blocks, &[edit]);
-    // Both blocks should appear exactly once
     assert_eq!(merged.len(), 2, "merged should contain exactly two blocks");
-    assert!(merged.iter().any(|b| b.id == "block-a"));
-    assert!(merged.iter().any(|b| b.id == "block-b"));
+    // Block-A: before edit, no change
+    let block_a = merged.iter().find(|b| b.id == "block-a").unwrap();
+    assert_eq!(block_a.start_byte, 10, "block-a bytes unchanged");
+    assert_eq!(block_a.end_byte, 18);
+    // Block-B: after edit, position adjusted by +1 byte
+    let block_b = merged.iter().find(|b| b.id == "block-b").unwrap();
+    assert_eq!(
+        block_b.start_byte, 501,
+        "block-b start_byte should shift +1 after edit"
+    );
+    assert_eq!(block_b.end_byte, 509, "block-b end_byte should shift +1");
 }
 
 #[test]
@@ -516,4 +522,297 @@ fn test_build_markdown_index_incremental_blocks_parity() {
     );
 
     let _ = (edit_text, old_block_ids);
+}
+
+// ─── Position adjustment tests ────────────────────────────────────────────
+
+#[test]
+fn test_range_is_after_edit_end_true_for_entry_on_later_line() {
+    let range = Range::new(Position::new(5, 0), Position::new(5, 20));
+    let edit = InputEdit {
+        start_byte: 10,
+        old_end_byte: 15,
+        new_end_byte: 16,
+        start_position: Point { row: 2, column: 5 },
+        old_end_position: Point { row: 2, column: 10 },
+        new_end_position: Point { row: 2, column: 11 },
+    };
+    assert!(range_is_after_edit_end(range, &edit));
+}
+
+#[test]
+fn test_range_is_after_edit_end_false_for_entry_before_edit() {
+    let range = Range::new(Position::new(1, 0), Position::new(1, 20));
+    let edit = InputEdit {
+        start_byte: 100,
+        old_end_byte: 105,
+        new_end_byte: 106,
+        start_position: Point { row: 5, column: 0 },
+        old_end_position: Point { row: 5, column: 5 },
+        new_end_position: Point { row: 5, column: 6 },
+    };
+    assert!(!range_is_after_edit_end(range, &edit));
+}
+
+#[test]
+fn test_range_is_after_edit_end_same_line_after_column() {
+    // Entry on same line as edit end but after the edit's old_end column
+    let range = Range::new(Position::new(5, 20), Position::new(5, 30));
+    let edit = InputEdit {
+        start_byte: 50,
+        old_end_byte: 55,
+        new_end_byte: 56,
+        start_position: Point { row: 5, column: 10 },
+        old_end_position: Point { row: 5, column: 15 },
+        new_end_position: Point { row: 5, column: 16 },
+    };
+    assert!(
+        range_is_after_edit_end(range, &edit),
+        "entry at (5,20) is after edit end at (5,15)"
+    );
+}
+
+#[test]
+fn test_adjust_range_after_edit_single_char_insert_different_line() {
+    // Edit inserts 1 char on line 3; entry on line 10 should only shift bytes
+    let mut range = Range::new(Position::new(10, 5), Position::new(10, 15));
+    let edit = InputEdit {
+        start_byte: 50,
+        old_end_byte: 50,
+        new_end_byte: 51,
+        start_position: Point { row: 3, column: 10 },
+        old_end_position: Point { row: 3, column: 10 },
+        new_end_position: Point { row: 3, column: 11 },
+    };
+    adjust_range_after_edit(&mut range, &edit);
+    // Line delta = 0, so lines unchanged
+    assert_eq!(range.start.line, 10);
+    assert_eq!(range.end.line, 10);
+    // Characters unchanged (different line from edit)
+    assert_eq!(range.start.character, 5);
+    assert_eq!(range.end.character, 15);
+}
+
+#[test]
+fn test_adjust_range_after_edit_single_char_insert_same_line() {
+    // Edit inserts 1 char on line 5 col 10; entry starts at line 5 col 20
+    let mut range = Range::new(Position::new(5, 20), Position::new(5, 30));
+    let edit = InputEdit {
+        start_byte: 50,
+        old_end_byte: 50,
+        new_end_byte: 51,
+        start_position: Point { row: 5, column: 10 },
+        old_end_position: Point { row: 5, column: 10 },
+        new_end_position: Point { row: 5, column: 11 },
+    };
+    adjust_range_after_edit(&mut range, &edit);
+    // Same line as edit end → column shifts by +1
+    assert_eq!(range.start.line, 5);
+    assert_eq!(range.start.character, 21);
+    assert_eq!(range.end.line, 5);
+    assert_eq!(range.end.character, 31);
+}
+
+#[test]
+fn test_adjust_range_after_edit_newline_insert() {
+    // Edit inserts a newline at line 3 col 10: old_end=(3,10), new_end=(4,0)
+    let mut range = Range::new(Position::new(5, 5), Position::new(5, 15));
+    let edit = InputEdit {
+        start_byte: 50,
+        old_end_byte: 50,
+        new_end_byte: 51,
+        start_position: Point { row: 3, column: 10 },
+        old_end_position: Point { row: 3, column: 10 },
+        new_end_position: Point { row: 4, column: 0 },
+    };
+    adjust_range_after_edit(&mut range, &edit);
+    // Line delta = +1, entry was on different line (5 > 3)
+    assert_eq!(range.start.line, 6);
+    assert_eq!(range.end.line, 6);
+    // Characters unchanged (different line from edit)
+    assert_eq!(range.start.character, 5);
+    assert_eq!(range.end.character, 15);
+}
+
+#[test]
+fn test_adjust_bytes_after_edit_insertion() {
+    let mut start_byte: usize = 200;
+    let mut end_byte: usize = 210;
+    let edit = InputEdit {
+        start_byte: 50,
+        old_end_byte: 50,
+        new_end_byte: 55, // 5 bytes inserted
+        start_position: Point { row: 3, column: 0 },
+        old_end_position: Point { row: 3, column: 0 },
+        new_end_position: Point { row: 3, column: 5 },
+    };
+    adjust_bytes_after_edit(&mut start_byte, &mut end_byte, &edit);
+    assert_eq!(start_byte, 205);
+    assert_eq!(end_byte, 215);
+}
+
+#[test]
+fn test_adjust_bytes_after_edit_deletion() {
+    let mut start_byte: usize = 200;
+    let mut end_byte: usize = 210;
+    let edit = InputEdit {
+        start_byte: 50,
+        old_end_byte: 55, // 5 bytes deleted
+        new_end_byte: 50,
+        start_position: Point { row: 3, column: 0 },
+        old_end_position: Point { row: 3, column: 5 },
+        new_end_position: Point { row: 3, column: 0 },
+    };
+    adjust_bytes_after_edit(&mut start_byte, &mut end_byte, &edit);
+    assert_eq!(start_byte, 195);
+    assert_eq!(end_byte, 205);
+}
+
+// ─── Full parity test: incremental must match full rebuild INCLUDING positions ─
+
+#[test]
+fn test_incremental_wiki_links_parity_with_positions() {
+    // Build a document with wiki links, apply a single-char edit in prose
+    // between links, verify incremental produces identical wiki link positions
+    // to a full rebuild.
+    use markymark_parser::Parser;
+
+    let original = "# Title\n\nSee [[PageA]] for details.\n\nSome prose text here.\n\nAlso check [[PageB]] and [[PageC]].\n";
+    let mut parser = Parser::new().unwrap();
+
+    // Initial parse
+    let ast0 = parser.parse(original).unwrap();
+    let index0 = DocumentIndex::from_ast(ast0);
+
+    // Extract old wiki links
+    let old_wiki_links: Vec<WikiLinkOwned> = index0
+        .wiki_links()
+        .iter()
+        .map(|wl| WikiLinkOwned {
+            target: wl.target.to_string(),
+            alias: wl.alias.map(str::to_string),
+            heading: wl.heading.map(str::to_string),
+            range: wl.range,
+            start_byte: wl.start_byte,
+            end_byte: wl.end_byte,
+        })
+        .collect();
+
+    // Single-char insertion in prose (line 4, col 5: "Some Xprose text here.")
+    let insert_byte = original.find("prose").unwrap();
+    let modified = format!("{}X{}", &original[..insert_byte], &original[insert_byte..]);
+
+    let edit = InputEdit {
+        start_byte: insert_byte,
+        old_end_byte: insert_byte,
+        new_end_byte: insert_byte + 1,
+        start_position: Point { row: 4, column: 5 },
+        old_end_position: Point { row: 4, column: 5 },
+        new_end_position: Point { row: 4, column: 6 },
+    };
+
+    // Full rebuild from modified text
+    let ast_full = parser.parse(&modified).unwrap();
+    let full_index = DocumentIndex::from_ast(ast_full);
+    let full_wiki_links: Vec<_> = full_index
+        .wiki_links()
+        .iter()
+        .map(|wl| (wl.target.to_string(), wl.range, wl.start_byte, wl.end_byte))
+        .collect();
+
+    // Incremental rebuild
+    let ast_inc = parser.parse(&modified).unwrap();
+    let inc_index =
+        build_markdown_index_incremental(ast_inc, &[edit], Some(&old_wiki_links), None, None, None);
+    let inc_wiki_links: Vec<_> = inc_index
+        .wiki_links()
+        .iter()
+        .map(|wl| (wl.target.to_string(), wl.range, wl.start_byte, wl.end_byte))
+        .collect();
+
+    assert_eq!(
+        full_wiki_links.len(),
+        inc_wiki_links.len(),
+        "same number of wiki links: full={} inc={}",
+        full_wiki_links.len(),
+        inc_wiki_links.len()
+    );
+
+    for (i, (full, inc)) in full_wiki_links
+        .iter()
+        .zip(inc_wiki_links.iter())
+        .enumerate()
+    {
+        assert_eq!(
+            full, inc,
+            "wiki link {i} mismatch:\n  full: {full:?}\n  inc:  {inc:?}"
+        );
+    }
+}
+
+#[test]
+fn test_incremental_blocks_parity_with_positions() {
+    // Build a document with block IDs, apply an edit, verify positions match
+    use markymark_parser::Parser;
+
+    let original = "# Title\n\nBlock A ^block-a\n\nSome text here.\n\nBlock B ^block-b\n";
+    let mut parser = Parser::new().unwrap();
+
+    let ast0 = parser.parse(original).unwrap();
+    let index0 = DocumentIndex::from_ast(ast0);
+
+    let old_blocks: Vec<BlockOwned> = index0
+        .block_ids()
+        .filter_map(|id| index0.block_by_id(id))
+        .map(|entry| BlockOwned {
+            id: entry.id.to_string(),
+            range: entry.range,
+            start_byte: entry.start_byte,
+            end_byte: entry.end_byte,
+        })
+        .collect();
+
+    // Insert "X" in "Some text here." (line 4, col 5)
+    let insert_byte = original.find("text here").unwrap();
+    let modified = format!("{}X{}", &original[..insert_byte], &original[insert_byte..]);
+
+    let edit = InputEdit {
+        start_byte: insert_byte,
+        old_end_byte: insert_byte,
+        new_end_byte: insert_byte + 1,
+        start_position: Point { row: 4, column: 5 },
+        old_end_position: Point { row: 4, column: 5 },
+        new_end_position: Point { row: 4, column: 6 },
+    };
+
+    // Full rebuild
+    let ast_full = parser.parse(&modified).unwrap();
+    let full_index = DocumentIndex::from_ast(ast_full);
+
+    // Incremental
+    let ast_inc = parser.parse(&modified).unwrap();
+    let inc_index =
+        build_markdown_index_incremental(ast_inc, &[edit], None, Some(&old_blocks), None, None);
+
+    // Compare block IDs and positions (sort by ID for stable ordering)
+    let mut full_blocks: Vec<_> = full_index
+        .block_ids()
+        .filter_map(|id| full_index.block_by_id(id))
+        .map(|e| (e.id.to_string(), e.range, e.start_byte, e.end_byte))
+        .collect();
+    let mut inc_blocks: Vec<_> = inc_index
+        .block_ids()
+        .filter_map(|id| inc_index.block_by_id(id))
+        .map(|e| (e.id.to_string(), e.range, e.start_byte, e.end_byte))
+        .collect();
+    full_blocks.sort_by(|a, b| a.0.cmp(&b.0));
+    inc_blocks.sort_by(|a, b| a.0.cmp(&b.0));
+
+    assert_eq!(full_blocks.len(), inc_blocks.len());
+    for (full, inc) in full_blocks.iter().zip(inc_blocks.iter()) {
+        assert_eq!(
+            full, inc,
+            "block mismatch:\n  full: {full:?}\n  inc:  {inc:?}"
+        );
+    }
 }
