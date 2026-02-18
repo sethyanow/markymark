@@ -47,6 +47,7 @@ struct DocumentDependent<'a> {
     frontmatter: &'a [FrontmatterEntry<'a>],
     aliases: &'a [&'a str],
     properties: &'a [PropertyEntry<'a>],
+    block_refs: &'a [BlockRefEntry<'a>],
 }
 
 self_cell!(
@@ -284,6 +285,20 @@ impl DocumentIndex {
             }
         }
 
+        // Extract block refs as owned data BEFORE arena move.
+        struct BlockRefOwned {
+            uuid: String,
+            range: markymark_core::Range,
+        }
+        let block_refs_owned: Vec<BlockRefOwned> = ast
+            .extract_block_refs()
+            .into_iter()
+            .map(|r| BlockRefOwned {
+                uuid: r.uuid().to_string(),
+                range: r.range(),
+            })
+            .collect();
+
         let owner = DocumentOwner {
             arena: Mutex::new(ast.into_arena()),
         };
@@ -422,6 +437,16 @@ impl DocumentIndex {
             }
             let properties = properties_builder.into_bump_slice();
 
+            // Arena-allocate block ref entries.
+            let mut block_refs_builder = BumpVec::new_in(arena_ref);
+            for br in block_refs_owned {
+                block_refs_builder.push(BlockRefEntry {
+                    uuid: arena_alloc_str(arena_ref, &br.uuid),
+                    range: br.range,
+                });
+            }
+            let block_refs = block_refs_builder.into_bump_slice();
+
             DocumentDependent {
                 headings,
                 slug_to_heading,
@@ -435,6 +460,7 @@ impl DocumentIndex {
                 frontmatter,
                 aliases,
                 properties,
+                block_refs,
             }
         });
 
@@ -577,10 +603,11 @@ impl DocumentIndex {
             // XML tags: not supported by scan backend
             let xml_tags = BumpVec::<XmlTagEntry<'_>>::new_in(arena_ref).into_bump_slice();
 
-            // Frontmatter/properties: not available from scan backend
+            // Frontmatter/properties/block-refs: not available from scan backend
             let frontmatter = BumpVec::<FrontmatterEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let aliases = BumpVec::<&str>::new_in(arena_ref).into_bump_slice();
             let properties = BumpVec::<PropertyEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            let block_refs = BumpVec::<BlockRefEntry<'_>>::new_in(arena_ref).into_bump_slice();
 
             DocumentDependent {
                 headings,
@@ -595,6 +622,7 @@ impl DocumentIndex {
                 frontmatter,
                 aliases,
                 properties,
+                block_refs,
             }
         });
 
@@ -678,6 +706,11 @@ impl DocumentIndex {
     pub fn properties<'a>(&'a self) -> &'a [PropertyEntry<'a>] {
         self.cell.borrow_dependent().properties
     }
+
+    /// Get all Logseq block references (`((uuid))`) in this document.
+    pub fn block_refs<'a>(&'a self) -> &'a [BlockRefEntry<'a>] {
+        self.cell.borrow_dependent().block_refs
+    }
 }
 
 impl fmt::Debug for DocumentIndex {
@@ -695,6 +728,7 @@ impl fmt::Debug for DocumentIndex {
             .field("frontmatter", &dep.frontmatter.len())
             .field("aliases", &dep.aliases.len())
             .field("properties", &dep.properties.len())
+            .field("block_refs", &dep.block_refs.len())
             .finish()
     }
 }

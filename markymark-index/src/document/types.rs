@@ -118,6 +118,15 @@ pub struct PropertyEntry<'arena> {
     pub value: PropertyValueEntry<'arena>,
 }
 
+/// A Logseq block reference entry — an outgoing `((uuid))` link.
+#[derive(Debug, Clone, Copy)]
+pub struct BlockRefEntry<'arena> {
+    /// The UUID referenced by `((uuid))`.
+    pub uuid: &'arena str,
+    /// Source range of the full `((uuid))` pattern.
+    pub range: Range,
+}
+
 /// An XML tag entry stored in the index.
 ///
 /// Uses standard `HashMap` (not `ArenaHashMap`) for attributes because

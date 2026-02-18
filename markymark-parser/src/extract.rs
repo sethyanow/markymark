@@ -266,8 +266,21 @@ pub fn extract_block_refs<'a>(
     let mut refs = Vec::new();
 
     for captures in BLOCK_REF_RE.captures_iter(source) {
-        if let Some(uuid_match) = captures.get(1) {
-            refs.push(BlockRef::new(arena_alloc_str(arena, uuid_match.as_str())));
+        if let (Some(full_match), Some(uuid_match)) = (captures.get(0), captures.get(1)) {
+            let start = full_match.start();
+            let end = full_match.end();
+            let line = source[..start].matches('\n').count() as u32;
+            let line_start = source[..start].rfind('\n').map(|p| p + 1).unwrap_or(0);
+            let start_char = (start - line_start) as u32;
+            let end_char = start_char + (end - start) as u32;
+            let range = Range::new(
+                Position::new(line, start_char),
+                Position::new(line, end_char),
+            );
+            refs.push(BlockRef::new(
+                arena_alloc_str(arena, uuid_match.as_str()),
+                range,
+            ));
         }
     }
 
