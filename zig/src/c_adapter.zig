@@ -8,6 +8,7 @@ const content_hash_mod = @import("kernels/content_hash.zig");
 const fence_map = @import("kernels/fence_map.zig");
 const multi_scan = @import("kernels/multi_scan.zig");
 const slug_kernel = @import("kernels/slug.zig");
+const env_scan = @import("kernels/formats/env_scan.zig");
 const similarity = @import("shared/similarity.zig");
 const normalize = @import("shared/normalize.zig");
 const entities = @import("shared/entities.zig");
@@ -29,6 +30,7 @@ pub const TagScan = tag_scan.TagScan;
 pub const BlockIdScan = block_scan.BlockIdScan;
 pub const FenceRange = fence_map.FenceRange;
 pub const ScanResult = multi_scan.ScanResult;
+pub const EnvEntry = env_scan.EnvEntry;
 
 /// Version constant for markymark kernels
 /// Format: 0xMMmmpp (major, minor, patch)
@@ -602,6 +604,50 @@ export fn marky_slugify(
     return slug_kernel.slugify(t, len, out, output_cap);
 }
 
+/// SIMD-accelerated .env file key-value extractor.
+///
+/// Scans `text[0..len]` for KEY=value pairs. Writes results into `out[0..cap]`,
+/// sets `*written` to the number of entries found.
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointer)
+///  -2  — buffer too small (cap=0, or more entries than cap)
+export fn marky_scan_env(
+    text: ?[*]const u8,
+    len: u32,
+    out: ?[*]EnvEntry,
+    cap: u32,
+    written: ?*u32,
+) i32 {
+    const w = written orelse return -1;
+    const t = text orelse {
+        if (len == 0) {
+            w.* = 0;
+            return 0;
+        }
+        return -1;
+    };
+    const o = out orelse return -1;
+
+    if (len == 0) {
+        w.* = 0;
+        return 0;
+    }
+
+    if (cap == 0) {
+        w.* = 0;
+        return -2;
+    }
+
+    const count = env_scan.scan_env(t, len, o, cap);
+    w.* = count;
+
+    if (count >= cap) return -2;
+
+    return 0;
+}
+
 /// SIMD-accelerated entity hash extraction.
 ///
 /// Scans text for words, produces FNV-1a u32 hash for each.
@@ -730,6 +776,8 @@ test {
     _ = @import("kernels/link_graph.zig");
     // Link graph C ABI exports + tests
     _ = @import("exports_graph.zig");
+    // Format extractors
+    _ = @import("kernels/formats/env_scan.zig");
 }
 
 test "marky_version returns expected version" {
