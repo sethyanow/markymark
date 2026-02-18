@@ -33,6 +33,8 @@ fn block_entry_uses_arena_lifetime() {
     let entry = BlockEntry {
         id: arena.alloc_str("block-1"),
         range: Range::new(Position::new(0, 0), Position::new(0, 7)),
+        start_byte: 0,
+        end_byte: 7,
     };
 
     assert_eq!(entry.id, "block-1");
@@ -72,6 +74,8 @@ fn wiki_link_entry_uses_arena_lifetime() {
         alias: Some(arena.alloc_str("Alias")),
         heading: Some(arena.alloc_str("Section")),
         range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+        start_byte: 0,
+        end_byte: 10,
     };
 
     assert_eq!(entry.target, "TargetPage");
@@ -584,4 +588,128 @@ fn test_block_ref_uuid_v4_format_preserved_exactly() {
         refs[0].uuid, UUID_A,
         "UUID must be preserved exactly including dashes"
     );
+}
+
+// --- Task 4 (marky-gb1): IncrementalOverrides tests ---
+
+/// Tags have no range info, so the override path always passes None for tags.
+/// Verify that when IncrementalOverrides.tags is None, tags are still extracted correctly.
+#[test]
+fn test_tag_no_incremental_opt_always_full_rebuild() {
+    let source = "# Doc\n\n#mytag #another\n";
+    let mut parser = Parser::new().unwrap();
+    let ast = parser.parse(source).unwrap();
+    let overrides = IncrementalOverrides {
+        wiki_links: None,
+        blocks: None,
+        tags: None,
+        markdown_links: None,
+        xml_tags: None,
+    };
+    let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
+    let tags = index.tags();
+    assert_eq!(tags.len(), 2);
+    let names: Vec<_> = tags.iter().map(|t| t.name).collect();
+    assert!(names.contains(&"mytag"));
+    assert!(names.contains(&"another"));
+}
+
+/// Passing a MarkdownLinkOwned override skips re-extraction and returns the override data.
+#[test]
+fn test_markdown_link_override_reuses_when_provided() {
+    let source = "Some [orig](https://orig.com) text\n";
+    let mut parser = Parser::new().unwrap();
+    let ast = parser.parse(source).unwrap();
+    let override_link = MarkdownLinkOwned {
+        text: "injected".to_string(),
+        url: "https://injected.com".to_string(),
+        anchor: None,
+        range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+    };
+    let overrides = IncrementalOverrides {
+        wiki_links: None,
+        blocks: None,
+        tags: None,
+        markdown_links: Some(vec![override_link]),
+        xml_tags: None,
+    };
+    let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
+    let mls = index.markdown_links();
+    assert_eq!(mls.len(), 1);
+    assert_eq!(mls[0].text, "injected");
+    assert_eq!(mls[0].url, "https://injected.com");
+}
+
+/// Passing a XmlTagOwned override skips re-extraction and returns the override data.
+#[test]
+fn test_xml_tag_override_reuses_when_provided() {
+    let source = "<agent id=\"a\">content</agent>\n";
+    let mut parser = Parser::new().unwrap();
+    let ast = parser.parse(source).unwrap();
+    let override_tag = XmlTagOwned {
+        tag_name: "injected-tag".to_string(),
+        attributes: vec![("k".to_string(), "v".to_string())],
+        is_self_closing: false,
+        is_unclosed: false,
+        range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+    };
+    let overrides = IncrementalOverrides {
+        wiki_links: None,
+        blocks: None,
+        tags: None,
+        markdown_links: None,
+        xml_tags: Some(vec![override_tag]),
+    };
+    let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
+    let xts = index.xml_tags();
+    assert_eq!(xts.len(), 1);
+    assert_eq!(xts[0].tag_name, "injected-tag");
+}
+
+/// All five overrides provided — verify each extractor uses the override, not re-extraction.
+#[test]
+fn test_incremental_overrides_all_five() {
+    let source = "[[orig]] #tag [orig](https://orig.com) ^block-id <div/>\n";
+    let mut parser = Parser::new().unwrap();
+    let ast = parser.parse(source).unwrap();
+    let overrides = IncrementalOverrides {
+        wiki_links: Some(vec![WikiLinkOwned {
+            target: "injected-page".to_string(),
+            alias: None,
+            heading: None,
+            range: Range::new(Position::new(0, 0), Position::new(0, 5)),
+            start_byte: 0,
+            end_byte: 5,
+        }]),
+        blocks: Some(vec![BlockOwned {
+            id: "injected-block".to_string(),
+            range: Range::new(Position::new(0, 0), Position::new(0, 5)),
+            start_byte: 0,
+            end_byte: 5,
+        }]),
+        tags: None,
+        markdown_links: Some(vec![MarkdownLinkOwned {
+            text: "injected-link".to_string(),
+            url: "https://injected.com".to_string(),
+            anchor: None,
+            range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+        }]),
+        xml_tags: Some(vec![XmlTagOwned {
+            tag_name: "injected-xml".to_string(),
+            attributes: vec![],
+            is_self_closing: true,
+            is_unclosed: false,
+            range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+        }]),
+    };
+    let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
+    assert_eq!(index.wiki_links().len(), 1);
+    assert_eq!(index.wiki_links()[0].target, "injected-page");
+    assert!(index.block_by_id("injected-block").is_some());
+    assert_eq!(index.markdown_links().len(), 1);
+    assert_eq!(index.markdown_links()[0].text, "injected-link");
+    assert_eq!(index.xml_tags().len(), 1);
+    assert_eq!(index.xml_tags()[0].tag_name, "injected-xml");
+    // Tags: always from AST (override is None), expect #tag from source
+    assert!(index.tags().iter().any(|t| t.name == "tag"));
 }

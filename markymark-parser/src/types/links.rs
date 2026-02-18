@@ -10,6 +10,8 @@ pub struct WikiLink<'arena> {
     heading: Option<&'arena str>,
     block_id: Option<&'arena str>,
     range: Range,
+    start_byte: usize,
+    end_byte: usize,
 }
 
 impl<'arena> WikiLink<'arena> {
@@ -20,6 +22,8 @@ impl<'arena> WikiLink<'arena> {
         heading: Option<&'arena str>,
         block_id: Option<&'arena str>,
         range: Range,
+        start_byte: usize,
+        end_byte: usize,
     ) -> Self {
         Self {
             target,
@@ -27,6 +31,8 @@ impl<'arena> WikiLink<'arena> {
             heading,
             block_id,
             range,
+            start_byte,
+            end_byte,
         }
     }
 
@@ -57,6 +63,11 @@ impl<'arena> WikiLink<'arena> {
     /// Get range
     pub fn range(&self) -> Range {
         self.range
+    }
+
+    /// Get byte range as (start_byte, end_byte)
+    pub fn byte_range(&self) -> (usize, usize) {
+        (self.start_byte, self.end_byte)
     }
 }
 

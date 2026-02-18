@@ -85,6 +85,8 @@ mod arena_allocation_tests {
             Some(arena.alloc_str("section")),
             None,
             Range::new(Position::new(0, 0), Position::new(0, 12)),
+            0,
+            12,
         );
 
         assert_eq!(link.target_page(), Some("target-page"));
@@ -129,7 +131,7 @@ mod arena_allocation_tests {
     fn block_id_uses_arena_lifetime() {
         let arena = Bump::new();
         let range = Range::new(Position::new(0, 0), Position::new(0, 7));
-        let id = BlockId::new(arena.alloc_str("abc123"), range);
+        let id = BlockId::new(arena.alloc_str("abc123"), range, 0, 6);
 
         assert_eq!(id.id(), "abc123");
         assert_eq!(id.range().start.line, 0);
