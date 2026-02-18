@@ -189,6 +189,16 @@ impl CoreEngine for MockEngine {
                     results: vec![],
                 }
             }
+            (_, CoreOperation::SearchForPattern { pattern, realm, .. }) => {
+                CoreOperationResult::PatternSearchResults {
+                    realm: realm.unwrap_or_else(|| "default".to_string()),
+                    pattern,
+                    files_searched: 0,
+                    files_skipped: 0,
+                    matches: vec![],
+                    truncated: false,
+                }
+            }
         }
     }
 }
@@ -236,6 +246,8 @@ fn registers_expected_rmcp_tools() {
     assert!(names.contains(&"search-symbols"));
     assert!(names.contains(&"find-references"));
     assert!(names.contains(&"rename"));
+    assert!(names.contains(&"search-workspace"));
+    assert!(names.contains(&"search-for-pattern"));
 }
 
 #[tokio::test]

@@ -847,6 +847,31 @@ impl CoreEngine for RuntimeEngine {
                     limit,
                 )
             }
+            CoreOperation::SearchForPattern {
+                pattern,
+                include_glob,
+                context_lines,
+                limit,
+                case_insensitive,
+                realm: realm_name,
+            } => {
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
+                let state = self.state.read().expect("lock poisoned");
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
+                        format!("realm does not exist: {realm_key}"),
+                    ));
+                };
+                crate::pattern::execute_search_for_pattern(
+                    realm_key,
+                    &realm_data.index,
+                    &pattern,
+                    include_glob.as_deref(),
+                    context_lines,
+                    limit,
+                    case_insensitive,
+                )
+            }
         }
     }
 }

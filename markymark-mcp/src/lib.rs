@@ -24,6 +24,7 @@ use rmcp::{
 use serde_json::json;
 
 pub mod dto;
+mod pattern;
 mod prompts;
 mod rename_ops;
 mod resources;
@@ -811,6 +812,62 @@ impl MarkymarkMcp {
             }
             CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
             other => Ok(unexpected_result_error("search-workspace", &other)),
+        }
+    }
+
+    /// Search workspace files by regex pattern with optional glob file filtering.
+    #[tool(
+        name = "search-for-pattern",
+        description = "Search workspace files by regex pattern. Supports glob file filtering (e.g. '*.md', '**/*.rs'), case-insensitive matching, and context lines. Returns 0-based line/column numbers consistent with LSP conventions."
+    )]
+    pub async fn search_for_pattern_tool(
+        &self,
+        params: Parameters<SearchForPatternRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let req = &params.0;
+
+        match self.engine.execute(CoreOperation::SearchForPattern {
+            pattern: req.pattern.clone(),
+            include_glob: req.include_glob.clone(),
+            context_lines: req.context_lines,
+            limit: req.limit,
+            case_insensitive: req.case_insensitive,
+            realm: req.realm.clone(),
+        }) {
+            CoreOperationResult::PatternSearchResults {
+                realm,
+                pattern,
+                files_searched,
+                files_skipped,
+                matches,
+                truncated,
+            } => {
+                let dtos: Vec<PatternMatchDto> = matches
+                    .into_iter()
+                    .map(|m| PatternMatchDto {
+                        uri: m.uri.as_str().to_string(),
+                        line: m.line,
+                        column: m.column,
+                        match_text: m.match_text,
+                        line_text: m.line_text,
+                        context_before: m.context_before,
+                        context_after: m.context_after,
+                        context_start_line: m.context_start_line,
+                    })
+                    .collect();
+                Ok(CallToolResult::structured(json!(
+                    SearchForPatternResponse {
+                        pattern,
+                        realm,
+                        files_searched,
+                        files_skipped,
+                        matches: dtos,
+                        truncated,
+                    }
+                )))
+            }
+            CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
+            other => Ok(unexpected_result_error("search-for-pattern", &other)),
         }
     }
 }
