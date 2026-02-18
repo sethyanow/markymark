@@ -478,3 +478,52 @@ test "test_jaccard_simd_scalar_parity" {
     const scalar_result = ref.jaccard_similarity(&s1, 5, &s2, 4);
     try testing.expectEqual(scalar_result, simd_result);
 }
+
+// ============================================================================
+// PR29 Copilot triage: prefix bonus false-positive investigation (marky-8s3.10)
+//
+// Copilot claimed the prefix bonus could be applied incorrectly because it
+// "happens AFTER the main matching loop" and "the matches might not be
+// consecutive from position 0".
+//
+// Finding: FALSE POSITIVE. The prefix check is an intentional, independent
+// text comparison (candidate[0..N] == query). The greedy left-to-right
+// subsequence scan guarantees that when a candidate starts with the query
+// text, the matches ARE found at positions 0..N-1. The two checks are
+// deliberately decoupled: one scores the match, the other awards a relevance
+// bonus for text-prefix candidates.
+// ============================================================================
+
+test "test_fuzzy_prefix_bonus_applied_when_candidate_starts_with_query" {
+    // "stage" starts with "st": s(0) t(1) consecutive, prefix bonus applied.
+    // Expected: 10 (s) + 10 (t) + 5 (consecutive) + 200 (prefix) = 225
+    const score = fuzzy_match_score("st".ptr, 2, "stage".ptr, 5);
+    try testing.expectEqual(@as(i32, 225), score);
+}
+
+test "test_fuzzy_prefix_bonus_not_applied_for_non_prefix_subsequence" {
+    // "restart" contains "st" as consecutive subsequence at positions 2,3,
+    // but "restart" does NOT start with "st". No prefix bonus.
+    // Expected: 10 (s) + 10 (t) + 5 (consecutive) = 25
+    const score = fuzzy_match_score("st".ptr, 2, "restart".ptr, 7);
+    try testing.expectEqual(@as(i32, 25), score);
+}
+
+test "test_fuzzy_prefix_bonus_greedy_guarantees_prefix_positions" {
+    // Copilot concern: subsequence matches might not be at prefix positions
+    // even when candidate starts with query.  Counter-evidence: greedy
+    // left-to-right scan always takes the earliest match, so for "acid"
+    // and query "ac", positions 0 and 1 are taken (consecutive = +5) and
+    // the prefix check sees "ac" == "ac" → correct.
+    // Expected: 10 + 10 + 5 + 200 = 225
+    const score = fuzzy_match_score("ac".ptr, 2, "acid".ptr, 4);
+    try testing.expectEqual(@as(i32, 225), score);
+}
+
+test "test_fuzzy_prefix_bonus_not_applied_for_non_prefix_gap_match" {
+    // "abcd": query "ac" matches a(0) c(2) with gap=1.
+    // "abcd" does NOT start with "ac" (starts with "ab"). No prefix bonus.
+    // Expected: 10 (a) + 10 (c) - 1 (gap of 1) = 19
+    const score = fuzzy_match_score("ac".ptr, 2, "abcd".ptr, 4);
+    try testing.expectEqual(@as(i32, 19), score);
+}
