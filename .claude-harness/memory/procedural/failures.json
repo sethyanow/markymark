@@ -107,6 +107,20 @@
       "rootCause": "Assumed all raw offsets represent last pattern byte. In current automaton output semantics, several scan types are emitted at the semantic marker byte (e.g., heading/tag at '#', block_id at '^', link_open at '['), while wiki_link needs first '[' via raw.offset-1.",
       "files": ["zig/src/c_adapter.zig"],
       "resolution": "Switched to type-specific candidate offsets: heading/tag/block_id/link_open at raw.offset, wiki_link at raw.offset-1. Re-ran full c_adapter test suite (304 passing)."
+    },
+    {
+      "id": "fail-014",
+      "timestamp": "2026-02-17T15:18:33Z",
+      "feature": "marky-8s3.5",
+      "type": "testing",
+      "approach": "Assumed unicode slug output length by character count instead of UTF-8 byte count",
+      "errors": [
+        "Expected marky_slugify length 12 for café-au-lait in tests",
+        "Actual return was 13 because é is encoded as two UTF-8 bytes"
+      ],
+      "rootCause": "Mixed character-count expectation with byte-oriented C ABI contract (i32 bytes written).",
+      "files": ["zig/src/c_adapter.zig", "zig/src/kernels/slug.zig"],
+      "resolution": "Updated assertions to expect byte length 13 while keeping exact expected slug string unchanged."
     }
   ]
 }

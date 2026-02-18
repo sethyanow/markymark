@@ -2,31 +2,59 @@
   "lastUpdated": "2026-02-17T23:34:38Z",
   "currentProject": "markymark",
   "lastSession": {
-    "summary": "Fixed P1 incremental indexing bug where tail appends after the last wiki-link could skip recomputation and leave stale completion/reference data.",
+    "summary": "Merge resolution: incremental-indexing tail-append fix (HEAD) + dev/brza MCP realm handling and PR #29 review fixes.",
     "completedTasks": [
       "Added RED unit test for wiki_links_need_update with edit start after last existing link",
       "Updated wiki_links_need_update to include tail-start detection and removed redundant fallback branch",
-      "Verified GREEN with markymark-lsp unit + state integration tests and fmt check"
+      "Verified GREEN with markymark-lsp unit + state integration tests and fmt check",
+      "Fetched and triaged all PR #28 review comments via GitHub API",
+      "Created beads issues: marky-r7j (prompts realm), marky-0g6 (resources realm), marky-16m (GHAS temp-dir + boundary-unwrap), marky-w85 (non-existent realm test)",
+      "marky-r7j: added optional realm PromptArgument to explain-link and suggest-references",
+      "marky-0g6: parse realm query param from resource URI in GetOutline and SearchSymbols",
+      "Updated prompt handlers to pass explicit default realm when realm argument is omitted",
+      "Updated shared resource query extraction to percent-decode values before forwarding",
+      "Extended MCP tests to assert realm propagation and decoded query handling",
+      "Pulled PR #29 review streams into pr29-comments.json and wrote pr29-triage.json",
+      "Created follow-up beads marky-8s3.10/.11/.12 for deferred investigations",
+      "Hardened fuzzy starts_with length guard in markymark-kernels",
+      "Fixed Zig link_graph addDocument pointer invalidation by reserving HashMap capacity",
+      "Bounded semantic fetch overfetch policy via compute_fetch_k helper",
+      "Aligned semantic preview truncation to <=200 bytes on UTF-8 boundary",
+      "Made realm token-count stats observable by omitting totals when docs are unreadable"
     ],
-    "blockers": [
-      "None"
-    ],
+    "blockers": [],
     "nextSteps": [
       "Push checkpoint commit and update the branch PR",
       "Continue incremental index extractor rollout tasks under feature/incremental-indexing",
-      "Run /clear after checkpoint to reset context"
+      "marky-16m (P2): Fix GHAS findings (tempfile::TempDir in tests, boundary unwrap expect messages)",
+      "marky-w85 (P3): Add non-existent realm error path test in runtime_engine_tests",
+      "marky-77x (P2): Implement true wiki_links selective merge and resolve overlap check gap in state.rs",
+      "marky-ktt (P1): Audit unsafe transmute in DocumentIndex from marky-5yt migration",
+      "Post checkpoint summary to PR #29 and resolve review threads",
+      "Execute follow-up beads marky-8s3.10/.11/.12",
+      "Run full workspace quality gates (fmt --check, clippy --workspace, test --workspace)"
     ]
   },
   "recentChanges": [
     "markymark-lsp/state: recompute wiki-links when edits start at/after last old link",
     "markymark-lsp/state tests: added tail-append recomputation regression",
-    "docs/MEMORY: recorded P1 tail-append recomputation fix"
+    "docs/MEMORY: recorded P1 tail-append recomputation fix",
+    "35c1c14: fix(mcp): thread realm through prompts and resources (marky-r7j, marky-0g6)",
+    "c1441c6: fix(markymark-d7r): add optional realm param to per-document MCP operations",
+    "markymark-mcp prompt handlers now default omitted realm to 'default' explicitly",
+    "markymark-mcp extract_query_param now percent-decodes returned values",
+    "resource_handler_tests assert realm propagation and decoding",
+    "prompt_handler_tests assert default realm forwarding when realm arg is omitted",
+    "PR29 triage artifacts added (comments + dispositions)",
+    "5 actionable review items implemented with regression tests"
   ],
   "knownIssues": [
     "marky-16m (P2): GHAS Semgrep findings (temp_dir usage in tests, boundary-unwrap in tests)",
     "marky-ktt (P1): Unsafe transmute audit from marky-5yt migration",
     "marky-4aa: mem::forget in DocumentIndex::from_ast leaks AST heap allocations per file open/change",
-    "marky-8la: XML tag false positives in fenced code blocks"
+    "marky-8la: XML tag false positives in fenced code blocks",
+    "marky-a5w (P3): c_adapter.zig modular refactor follow-up",
+    "from_scan known gaps: no XML tags, no setext headings, no frontmatter"
   ],
   "environmentState": {
     "devServerRunning": false,

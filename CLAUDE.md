@@ -74,15 +74,19 @@ markymark is a Rust workspace producing a Markdown LSP + MCP server. Six crates:
 | `markymark-mcp` | MCP server (rmcp) |
 | `markymark-cli` | CLI entry point |
 
+
 ## Quick Reference
+
+> **Note:** Always prefer using the `cargo-mcp` tools for building, testing, and running this project, as they provide the canonical workflows. Only use the raw `cargo` commands below if you specifically need to bypass `cargo-mcp` or for troubleshooting purposes.
+
 
 ```bash
 # Build
 cargo build --release
 
 # Test
-cargo test
-cargo test -p markymark-core    # specific crate
+cargo nextest
+cargo nextest -p markymark-core    # specific crate
 
 # Lint
 cargo clippy --workspace --all-targets

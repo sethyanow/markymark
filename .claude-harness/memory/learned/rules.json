@@ -1,11 +1,11 @@
 {
   "version": 3,
-  "lastUpdated": "2026-02-17T20:46:06Z",
+  "lastUpdated": "2026-02-17T23:35:00Z",
   "metadata": {
-    "totalRules": 9,
-    "projectSpecific": 3,
+    "totalRules": 10,
+    "projectSpecific": 4,
     "general": 2,
-    "lastReflection": "2026-02-17T20:46:06Z"
+    "lastReflection": "2026-02-17T23:35:00Z"
   },
   "rules": [
     {
@@ -146,6 +146,27 @@
         ]
       },
       "learnedAt": "2026-02-17T20:46:06Z",
+      "source": "user-correction"
+    },
+    {
+      "id": "rule-010",
+      "title": "Exclude generated artifacts from metric input corpora",
+      "description": "If a test/benchmark writes a report file, exclude that file from the input corpus used to compute the same metrics. This prevents self-referential drift and unstable thresholds.",
+      "scope": "project",
+      "confidence": 1.0,
+      "active": true,
+      "applicability": {
+        "always": false,
+        "features": [
+          "marky-8s3",
+          "marky-0aw"
+        ],
+        "filePatterns": [
+          "**/extraction_parity.rs",
+          "**/benchmarks/*.md"
+        ]
+      },
+      "learnedAt": "2026-02-17T17:50:55Z",
       "source": "user-correction"
     }
   ]

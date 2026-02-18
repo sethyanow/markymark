@@ -7,6 +7,7 @@ const token_estimate = @import("kernels/token_estimate.zig");
 const content_hash_mod = @import("kernels/content_hash.zig");
 const fence_map = @import("kernels/fence_map.zig");
 const multi_scan = @import("kernels/multi_scan.zig");
+const slug_kernel = @import("kernels/slug.zig");
 const similarity = @import("shared/similarity.zig");
 const normalize = @import("shared/normalize.zig");
 const entities = @import("shared/entities.zig");
@@ -447,6 +448,13 @@ export fn marky_multi_scan(
     const raw_cap: u32 = @intCast(raw_buf.len);
     const raw_count = multi_scan.scan_multi(t, len, &raw_buf, raw_cap);
 
+    // If raw candidates exceed internal buffer, results may be truncated.
+    // Return -2 to signal partial results rather than silently dropping.
+    if (raw_count >= raw_cap) {
+        w.* = 0;
+        return -2;
+    }
+
     const text_slice = t[0..len];
     var out_written: u32 = 0;
 
@@ -520,6 +528,34 @@ export fn marky_fuzzy_match(
     const q = query orelse return -1;
     const c = candidate orelse return -1;
     return similarity.fuzzy_match_score(q, query_len, c, candidate_len);
+}
+
+/// SIMD-accelerated slug generation from heading text.
+///
+/// Converts ASCII uppercase to lowercase, maps whitespace/punctuation to '-',
+/// strips unsupported punctuation, collapses repeated hyphens, and trims leading/
+/// trailing hyphens. Non-ASCII UTF-8 bytes are passed through unchanged.
+///
+/// Returns:
+///  >=0 — bytes written
+///  -1  — invalid input (null pointers)
+///  -2  — output buffer too small (including output_cap == 0)
+export fn marky_slugify(
+    text: ?[*]const u8,
+    len: u32,
+    output: ?[*]u8,
+    output_cap: u32,
+) i32 {
+    const t = text orelse {
+        if (len == 0) return 0;
+        return -1;
+    };
+    const out = output orelse return -1;
+
+    if (len == 0) return 0;
+    if (output_cap == 0) return -2;
+
+    return slug_kernel.slugify(t, len, out, output_cap);
 }
 
 /// SIMD-accelerated entity hash extraction.
@@ -632,6 +668,7 @@ test {
     // Multi-scan automaton (Aho-Corasick)
     _ = @import("reference/multi_scan_ref.zig");
     _ = @import("kernels/multi_scan.zig");
+    _ = @import("kernels/slug.zig");
     // Shared kernels (forked from forge BRZA)
     _ = @import("shared/similarity.zig");
     _ = @import("reference/similarity_ref.zig");
@@ -993,6 +1030,70 @@ test "marky_fuzzy_match null input returns -1" {
     const score2 = marky_fuzzy_match("st".ptr, 2, null, 5);
     try std.testing.expectEqual(@as(i32, -1), score1);
     try std.testing.expectEqual(@as(i32, -1), score2);
+}
+
+test "marky_slugify basic heading" {
+    const text = "Hello World";
+    var out: [32]u8 = undefined;
+    const rc = marky_slugify(text.ptr, text.len, &out, out.len);
+    try std.testing.expectEqual(@as(i32, 11), rc);
+    try std.testing.expectEqualStrings("hello-world", out[0..@as(usize, @intCast(rc))]);
+}
+
+test "marky_slugify strips punctuation and collapses hyphens" {
+    const text = "Using `fmt`!!!";
+    var out: [32]u8 = undefined;
+    const rc = marky_slugify(text.ptr, text.len, &out, out.len);
+    try std.testing.expectEqual(@as(i32, 9), rc);
+    try std.testing.expectEqualStrings("using-fmt", out[0..@as(usize, @intCast(rc))]);
+}
+
+test "marky_slugify all punctuation returns empty" {
+    const text = "!!!...---";
+    var out: [32]u8 = undefined;
+    const rc = marky_slugify(text.ptr, text.len, &out, out.len);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+}
+
+test "marky_slugify preserves non ascii bytes" {
+    const text = "Café au lait";
+    var out: [32]u8 = undefined;
+    const rc = marky_slugify(text.ptr, text.len, &out, out.len);
+    try std.testing.expectEqual(@as(i32, 13), rc);
+    try std.testing.expectEqualStrings("café-au-lait", out[0..@as(usize, @intCast(rc))]);
+}
+
+test "marky_slugify null text with zero len" {
+    var out: [8]u8 = undefined;
+    const rc = marky_slugify(null, 0, &out, out.len);
+    try std.testing.expectEqual(@as(i32, 0), rc);
+}
+
+test "marky_slugify null text with nonzero len returns -1" {
+    var out: [8]u8 = undefined;
+    const rc = marky_slugify(null, 1, &out, out.len);
+    try std.testing.expectEqual(@as(i32, -1), rc);
+}
+
+test "marky_slugify null output returns -1" {
+    const text = "hello";
+    const rc = marky_slugify(text.ptr, text.len, null, 8);
+    try std.testing.expectEqual(@as(i32, -1), rc);
+}
+
+test "marky_slugify zero output cap returns -2" {
+    const text = "hello";
+    var out: [8]u8 = undefined;
+    const rc = marky_slugify(text.ptr, text.len, &out, 0);
+    try std.testing.expectEqual(@as(i32, -2), rc);
+}
+
+test "marky_slugify truncation returns -2" {
+    const text = "hello-world";
+    var out: [5]u8 = undefined;
+    const rc = marky_slugify(text.ptr, text.len, &out, out.len);
+    try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqualStrings("hello", out[0..]);
 }
 
 // -- zig_extract_entity_hashes tests --
@@ -1406,6 +1507,30 @@ test "marky_multi_scan fence_count exceeds internal buffer returns -2" {
     var written: u32 = 0;
 
     const rc = marky_multi_scan(text.ptr, text.len, &dummy_fences, 257, &out, 1, &written);
+    try std.testing.expectEqual(@as(i32, -2), rc);
+    try std.testing.expectEqual(@as(u32, 0), written);
+}
+
+test "marky_multi_scan internal raw_buf overflow returns -2" {
+    // The internal raw_buf is 2048 elements. Generating >= 2048 raw scan
+    // candidates should return -2 rather than silently truncating results.
+    // Each "#x " pattern (4 bytes) produces one tag candidate.
+    // 2100 patterns = 8400 bytes, should exceed 2048 raw candidate limit.
+    const pattern_count = 2100;
+    var text_buf: [pattern_count * 4]u8 = undefined;
+    for (0..pattern_count) |i| {
+        const base = i * 4;
+        text_buf[base] = '#';
+        text_buf[base + 1] = 'a' + @as(u8, @intCast(i % 26));
+        text_buf[base + 2] = ' ';
+        text_buf[base + 3] = '\n';
+    }
+
+    var out: [4096]ScanResult = undefined;
+    var written: u32 = 0;
+
+    const rc = marky_multi_scan(&text_buf, text_buf.len, null, 0, &out, 4096, &written);
+    // Should return -2 because internal raw_buf (2048) was exceeded.
     try std.testing.expectEqual(@as(i32, -2), rc);
     try std.testing.expectEqual(@as(u32, 0), written);
 }
