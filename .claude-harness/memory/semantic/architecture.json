@@ -46,6 +46,7 @@
       "markymark-index/src/resolution.rs (ResolvedTarget::KeyPath for structured doc cross-references)",
       "markymark-index/src/resolution.rs (wiki link / markdown link resolution)",
       "markymark-index/src/structured_document.rs (StructuredDocumentIndex: key-path lookup, outline)",
+      "markymark-kernels/src/index_serde.rs (Rust FFI bridge types/tests for serde kernel)",
       "markymark-lsp/src/convert.rs (LSP type conversions)",
       "markymark-lsp/src/server.rs (tower-lsp LanguageServer impl, capability negotiation)",
       "markymark-lsp/src/state.rs (ServerState: document management, diagnostics, rename, refs)",
@@ -66,7 +67,9 @@
       "markymark-parser/src/ast.rs (tree-sitter AST construction, arena ownership)",
       "markymark-parser/src/extract.rs (regex-based extraction updated for arena-backed outputs)",
       "markymark-parser/src/structured/ (multi-format parsers: json, yaml, toml, jsonl, flat)",
-      "markymark-parser/src/types/ (elements, links, blocks, frontmatter, xml - arena-backed element types)"
+      "markymark-parser/src/types/ (elements, links, blocks, frontmatter, xml - arena-backed element types)",
+      "zig/src/exports_serde.zig (C ABI exports for index serialization handle lifecycle and count queries)",
+      "zig/src/kernels/index_serde.zig (binary index serializer/deserializer with mmap-safe IndexView validation)"
     ],
     "api": [
       "markymark-parser/src/lib.rs",
@@ -127,7 +130,8 @@
         "Incremental LSP edit handling should centralize byte-range clamping and surface clamp events via warning telemetry",
         "Incremental wiki-link work should start with parity/edge tests before selective merge optimizations",
         "When prompt arguments document defaults, enforce that default explicitly at handler boundary before dispatching CoreOperation",
-        "Incremental wiki-link fast path must detect edits beyond last old link range and force recomputation to avoid stale append-tail indexing"
+        "Incremental wiki-link fast path must detect edits beyond last old link range and force recomputation to avoid stale append-tail indexing",
+        "For mmap-backed binary formats, validate header-derived byte math with checked add/mul and reject overflow before pointer arithmetic"
       ],
       "bash": "set -euo pipefail, jq for JSON, case statements for file extension matching"
     },
@@ -149,6 +153,6 @@
     ]
   },
   "discoveredAt": "2026-02-05T11:11:43Z",
-  "lastUpdated": "2026-02-17T23:35:13Z",
+  "lastUpdated": "2026-02-18T03:28:00Z",
   "ported_from": "markdown-mcp architecture.json (paths updated, enriched)"
 }

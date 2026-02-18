@@ -697,7 +697,11 @@
         "Keep old &static pattern in from_scan only (inconsistent, unsafe)",
         "Defer from_scan restoration until document.rs refactor (blocks BRZA work)"
       ],
+<<<<<<< HEAD
       "impact": "markymark-index/src/document.rs — from_scan, byte_offset helpers, 16 scan_tests; markymark-lsp/tests/state_tests.rs"
+=======
+      "impact": "markymark-index/src/document.rs — from_scan, byte_offset helpers, 16 scan_tests"
+>>>>>>> origin/dev
     },
     {
       "id": "dec-054",
@@ -903,7 +907,43 @@
         "Skip helper test and validate manually"
       ],
       "impact": "markymark-lsp/src/state.rs #[cfg(test)] module"
+    },
+    {
+      "id": "dec-brza-serde-001",
+      "timestamp": "2026-02-17T23:34:03Z",
+      "feature": "mark-brza",
+      "decision": "Use checked usize arithmetic for serialized length validation",
+      "rationale": "Untrusted header counts can overflow u32 math and bypass bounds checks; checked add/mul with early rejection closes this class of bug.",
+      "alternatives": [
+        "Keep u32 arithmetic and rely on debug overflow panics",
+        "Validate only final total without intermediate overflow checks"
+      ],
+      "impact": "zig/src/kernels/index_serde.zig IndexView.init"
+    },
+    {
+      "id": "dec-brza-serde-002",
+      "timestamp": "2026-02-17T23:34:03Z",
+      "feature": "mark-brza",
+      "decision": "Make C ABI data pointers nullable and reject null with non-zero counts",
+      "rationale": "FFI callers can pass NULL pointers; serializer must fail with -1 instead of dereferencing invalid memory.",
+      "alternatives": [
+        "Assume well-formed callers and skip pointer validation",
+        "Crash fast on null pointers"
+      ],
+      "impact": "zig/src/kernels/index_serde.zig serialize_index, markymark-kernels/src/index_serde.rs tests"
+    },
+    {
+      "id": "dec-brza-serde-003",
+      "timestamp": "2026-02-17T23:34:03Z",
+      "feature": "mark-brza",
+      "decision": "Explicitly zero padding bytes in serialized output",
+      "rationale": "Caller-provided output buffers may contain stale bytes; explicit memset ensures deterministic format and avoids leaking prior contents.",
+      "alternatives": [
+        "Require caller to zero output buffer before serialization",
+        "Leave padding unspecified"
+      ],
+      "impact": "zig/src/kernels/index_serde.zig serialize_index"
     }
   ],
-  "lastUpdated": "2026-02-17T23:35:13Z"
+  "lastUpdated": "2026-02-18T03:28:00Z"
 }

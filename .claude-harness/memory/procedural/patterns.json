@@ -15,6 +15,7 @@
       "DocumentIndex::from_ast borrows from parser arena: use arena_ptr + ptr::read + mem::forget when borrow checker blocks into_arena()",
       "Drop read lock before async publish_diagnostics (deadlock prevention)",
       "FULL text document sync (not INCREMENTAL) for v1 LSP",
+      "For C ABI serializers, gate each non-zero section count/size with a null-pointer check before memcpy to return explicit error codes instead of crashing",
       "For LSP incremental text edits, centralize UTF-16/line to byte-range normalization in one helper and emit warning telemetry when clamping invalid ranges",
       "For MCP URI query params, decode values once in a shared helper before dispatch so realm/query strings are canonical across handlers and tests",
       "For RealmIndex cross-doc maps, treat Cow<str> as a deferred optimization unless self-referential ownership is explicitly implemented (e.g., self_cell/ouroboros); validate with alloc_count_index_100 baseline before revisiting",
@@ -48,6 +49,7 @@
       "Use slugify(heading.text) for duplicate detection, not heading.slug",
       "When cargo-deny config fails, validate against installed tool version schema before assuming policy error",
       "When extraction has dual paths (e.g. extract_list_items vs collect_top_level_list_items), remove dead extract_* if Ast uses the arena-driven path; plan invalidation is allowed",
+      "When format includes alignment padding, memset the padding bytes explicitly so serialized output is deterministic regardless of caller buffer contents",
       "When hardening lifetime safety incrementally, add compile_fail doctests first, then narrow public signatures to &self-bound lifetimes, and only then adapt downstream call sites",
       "When harness active/archive state drifts from beads reality, reconcile by restoring in-progress feature to active.json and clearing premature archive entry before continuing implementation",
       "When migrating wrapper types (e.g. Bump->DocumentArena), trace all ptr::read/mem::forget usage - pointer type must match the owning type, not inner type.",
@@ -162,6 +164,6 @@
         "application": "Use MARKYMARK_BENCH_SAMPLES and MARKYMARK_BENCH_DOC_TIER for workload selection, then run a dedicated binary to execute benches and emit a markdown summary table"
       }
     ]
-  },
-  "lastUpdated": "2026-02-17T23:35:13Z"
+  ],
+  "lastUpdated": "2026-02-18T03:28:00Z"
 }
