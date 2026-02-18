@@ -143,9 +143,11 @@ mod arena_allocation_tests {
     #[test]
     fn block_ref_uses_arena_lifetime() {
         let arena = Bump::new();
-        let block_ref = BlockRef::new(arena.alloc_str("uuid-1234-5678"));
+        let range = Range::new(Position::new(0, 0), Position::new(0, 42));
+        let block_ref = BlockRef::new(arena.alloc_str("uuid-1234-5678"), range);
 
         assert_eq!(block_ref.uuid(), "uuid-1234-5678");
+        assert_eq!(block_ref.range(), range);
     }
 
     /// Tag uses arena-allocated name

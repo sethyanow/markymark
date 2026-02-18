@@ -328,6 +328,24 @@ pub struct ExportedMarkdownLinkDto {
     pub range: RangeDto,
 }
 
+/// A frontmatter entry in an exported document index.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ExportedFrontmatterEntryDto {
+    /// Key.
+    pub key: String,
+    /// Value: single-element for string values, multi-element for list values.
+    pub value: Vec<String>,
+}
+
+/// A Logseq property entry in an exported document index.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ExportedPropertyEntryDto {
+    /// Key.
+    pub key: String,
+    /// Value as a string (lists are joined with ", ").
+    pub value: String,
+}
+
 /// Response payload for `export-index`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct ExportIndexResponse {
@@ -341,6 +359,10 @@ pub struct ExportIndexResponse {
     pub wiki_links: Vec<ExportedWikiLinkDto>,
     /// Markdown links in document order.
     pub markdown_links: Vec<ExportedMarkdownLinkDto>,
+    /// YAML frontmatter entries.
+    pub frontmatter: Vec<ExportedFrontmatterEntryDto>,
+    /// Logseq inline property entries.
+    pub properties: Vec<ExportedPropertyEntryDto>,
 }
 
 /// Tool error envelope for consistent structured failures.
@@ -373,4 +395,232 @@ pub fn position_to_dto(position: Position) -> PositionDto {
         line: position.line,
         character: position.character,
     }
+}
+
+// --- search-workspace ---
+
+/// Request payload for `search-workspace`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchWorkspaceRequest {
+    /// Free-text query (case-insensitive substring). Omit to match all documents.
+    #[serde(default)]
+    pub query: Option<String>,
+    /// Frontmatter filter key. Must be paired with `frontmatter_filter_value`.
+    #[serde(default)]
+    pub frontmatter_filter_key: Option<String>,
+    /// Frontmatter filter value (case-insensitive substring match).
+    #[serde(default)]
+    pub frontmatter_filter_value: Option<String>,
+    /// Logseq property filter key. Must be paired with `property_filter_value`.
+    #[serde(default)]
+    pub property_filter_key: Option<String>,
+    /// Logseq property filter value (case-insensitive substring match).
+    #[serde(default)]
+    pub property_filter_value: Option<String>,
+    /// Tag filter: only include documents that have this tag (case-insensitive, without `#`).
+    #[serde(default)]
+    pub tag_filter: Option<String>,
+    /// Realm to search. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+    /// Max results to return (0–100, default 20). Values above 100 are clamped silently.
+    #[serde(default = "default_search_workspace_limit")]
+    pub limit: u32,
+}
+
+fn default_search_workspace_limit() -> u32 {
+    20
+}
+
+/// A single search-workspace result.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct WorkspaceSearchResultDto {
+    /// Document URI.
+    pub uri: String,
+    /// Document title (first H1 heading, or filename without extension).
+    pub title: String,
+    /// Relevance score (0.0–1.0).
+    pub score: f32,
+    /// Fields that matched the query (e.g. `["title", "frontmatter:status"]`).
+    pub matched_fields: Vec<String>,
+    /// First 3 frontmatter key-value pairs.
+    pub frontmatter_preview: Vec<(String, String)>,
+    /// First 3 Logseq property key-value pairs.
+    pub property_preview: Vec<(String, String)>,
+    /// All tag names on this document (without `#` prefix).
+    pub tags: Vec<String>,
+    /// Whether this document is a Logseq journal page.
+    pub is_journal: bool,
+    /// Journal date `[year, month, day]` if detected.
+    pub journal_date: Option<[u16; 3]>,
+}
+
+/// Response payload for `search-workspace`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchWorkspaceResponse {
+    /// Realm that was searched.
+    pub realm: String,
+    /// Original query, if provided.
+    pub query: Option<String>,
+    /// Ranked search results.
+    pub results: Vec<WorkspaceSearchResultDto>,
+}
+
+// --- search-for-pattern ---
+
+/// Request payload for `search-for-pattern`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchForPatternRequest {
+    /// Regex pattern to search for. Must not be empty or whitespace-only.
+    pub pattern: String,
+    /// Optional glob filter, e.g. `"*.md"` or `"**/*.rs"`.
+    /// Patterns without `/` are matched against the filename only;
+    /// patterns with `/` are matched against the full file path.
+    #[serde(default)]
+    pub include_glob: Option<String>,
+    /// Lines of context to include around each match (clamped to 0–20, default 2).
+    #[serde(default = "default_context_lines")]
+    pub context_lines: u32,
+    /// Maximum total matches to return (clamped to 1–500, default 100).
+    #[serde(default = "default_pattern_limit")]
+    pub limit: u32,
+    /// Case-insensitive regex matching (default `false`).
+    #[serde(default)]
+    pub case_insensitive: bool,
+    /// Realm to search. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+}
+
+fn default_context_lines() -> u32 {
+    2
+}
+
+fn default_pattern_limit() -> u32 {
+    100
+}
+
+/// A single match from `search-for-pattern`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PatternMatchDto {
+    /// Document URI where the match was found.
+    pub uri: String,
+    /// 0-based line number of the match.
+    pub line: u32,
+    /// 0-based character offset of the match start within the line.
+    pub column: u32,
+    /// The text matched by the regex.
+    pub match_text: String,
+    /// The full line containing the match (trailing `\r` stripped).
+    pub line_text: String,
+    /// Lines before the match (may be empty when `context_lines` is 0 or match is at file start).
+    pub context_before: Vec<String>,
+    /// Lines after the match (may be empty when `context_lines` is 0 or match is at file end).
+    pub context_after: Vec<String>,
+    /// 0-based line number of `context_before[0]`.
+    pub context_start_line: u32,
+}
+
+/// Response payload for `search-for-pattern`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchForPatternResponse {
+    /// The pattern that was searched for.
+    pub pattern: String,
+    /// Realm that was searched.
+    pub realm: String,
+    /// Number of files that were read and searched.
+    pub files_searched: u32,
+    /// Number of files skipped (unreadable, too large, or missing path).
+    pub files_skipped: u32,
+    /// Matches found (up to `limit`).
+    pub matches: Vec<PatternMatchDto>,
+    /// `true` when results were truncated at `limit`.
+    pub truncated: bool,
+}
+
+/// Request to analyse the link graph of a realm.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GraphAnalysisRequest {
+    /// Realm to analyse. Defaults to `"default"`.
+    pub realm: Option<String>,
+    /// Number of top hub documents to return (sorted by incoming link count).
+    #[serde(default = "default_top_n_hubs")]
+    pub top_n_hubs: u32,
+    /// Whether to compute weakly-connected clusters. Can be expensive on large workspaces.
+    #[serde(default)]
+    pub include_clusters: bool,
+}
+
+fn default_top_n_hubs() -> u32 {
+    10
+}
+
+/// A document with no incoming and no outgoing resolved internal links.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct OrphanDto {
+    /// Document URI.
+    pub uri: String,
+}
+
+/// A hub document with the most incoming links.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct HubDto {
+    /// Document URI.
+    pub uri: String,
+    /// Number of other documents that link to this one.
+    pub incoming_count: u32,
+}
+
+/// A link that could not be resolved to any indexed document.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BrokenLinkDto {
+    /// URI of the document that contains the link.
+    pub source_uri: String,
+    /// The unresolved link target string.
+    pub target: String,
+    /// Link kind: `"wiki"` for `[[…]]`, `"markdown"` for `[…](…)`.
+    pub kind: String,
+}
+
+/// Summary statistics for a realm's link graph.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GraphStatsDto {
+    /// Total number of indexed markdown documents.
+    pub total_docs: u32,
+    /// Total resolved internal links (wiki + local markdown).
+    pub total_internal_links: u32,
+    /// Number of orphan documents.
+    pub orphan_count: u32,
+    /// Number of broken links.
+    pub broken_link_count: u32,
+    /// Number of clusters, when `include_clusters` was `true`.
+    pub cluster_count: Option<u32>,
+}
+
+/// A weakly-connected cluster of documents.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ClusterDto {
+    /// Sequential cluster identifier (0-based, largest cluster first).
+    pub id: usize,
+    /// URIs of member documents.
+    pub members: Vec<String>,
+    /// Number of members.
+    pub size: usize,
+}
+
+/// Response from the graph-analysis tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GraphAnalysisResponse {
+    /// Realm that was analysed.
+    pub realm: String,
+    /// Summary statistics.
+    pub stats: GraphStatsDto,
+    /// Documents with zero resolved incoming and outgoing links.
+    pub orphans: Vec<OrphanDto>,
+    /// Top documents by incoming link count, sorted descending.
+    pub hubs: Vec<HubDto>,
+    /// Links that could not be resolved to any indexed document.
+    pub broken_links: Vec<BrokenLinkDto>,
+    /// Weakly-connected clusters. `null` when `include_clusters` was `false`.
+    pub clusters: Option<Vec<ClusterDto>>,
 }

@@ -87,6 +87,8 @@ impl CoreEngine for MockEngine {
                         "https://example.com".to_string(),
                         Range::new(Position::new(3, 0), Position::new(3, 30)),
                     )],
+                    frontmatter: vec![],
+                    properties: vec![],
                 }
             }
             _ => CoreOperationResult::Error(CoreError::NotImplemented(
