@@ -1,0 +1,10 @@
+src/
+test/
+node_modules/
+*.ts
+!dist/
+tsconfig.json
+vitest.config.ts
+bun.lockb
+bun.lock
+.gitignore
