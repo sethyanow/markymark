@@ -54,8 +54,19 @@
 
 ## Agent Memory
 
-**Read [docs/MEMORY.md](docs/MEMORY.md) at session start** for cross-session assessments,
-quality grades, and lessons learned. Append new entries as you work — never delete.
+**Read [docs/MEMORY.md](docs/MEMORY.md) at session start.** This is the single source of truth
+for cross-session knowledge: architectural decisions, failure patterns, reusable conventions,
+quality assessments, and lessons learned.
+
+**Session discipline:**
+- **Start:** Read MEMORY.md before doing any work. Check the Key Architectural Decisions
+  and Key Failure Patterns sections — they prevent re-debating closed questions and repeating
+  known mistakes.
+- **During:** When you make a significant decision, discover a failure pattern, or learn
+  something reusable, append it to MEMORY.md immediately (not at session end).
+- **Curate often:** If a section grows stale, outdated, or redundant with the codebase,
+  trim or consolidate it. MEMORY.md should stay concise and high-signal. Remove entries
+  that are now obvious from the code itself.
 
 # Agent Instructions
 
@@ -132,6 +143,20 @@ bd update <id> --status in_progress  # Claim work
 bd close <id>         # Complete work
 bd sync               # Sync with git
 ```
+
+## Project Rules (Learned Constraints)
+
+These rules were extracted from past session failures and user corrections. Violating them
+has caused real bugs, wasted work, or merge conflicts.
+
+| # | Rule | Context |
+|---|------|---------|
+| 1 | **Use built-in LSP tool for Rust, not Serena** | Serena MCP has no Rust language server. Its symbolic tools return garbage for `.rs` files. Always use rust-analyzer via the LSP tool. |
+| 2 | **1000-line HARD STOP** | If any file exceeds 1000 lines, immediately stop feature work, cut a P0 beads refactor issue, and escalate. The 500-line threshold is a suggestion; 1000 is a block. |
+| 3 | **Create doc blockers before complex implementations** | Before implementing with unfamiliar crates, create a blocking issue for documentation setup. Stale tower-lsp.md docs caused implementation failure during feature-006. |
+| 4 | **Bump plugin.json version alongside Cargo.toml** | `markymark-plugin/.claude-plugin/plugin.json` has its own version string not derived from Cargo.toml — must be updated manually. |
+| 5 | **Never squash merge** | Preserve full git history always. Squash merges destroy context, make bisect harder, and lose the narrative of how work evolved. |
+| 6 | **Exclude generated artifacts from metric input corpora** | If a test/benchmark writes a report file, exclude it from the input corpus used to compute the same metrics. Prevents self-referential drift. |
 
 ## Landing the Plane (Session Completion)
 
