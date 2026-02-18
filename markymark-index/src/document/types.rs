@@ -80,6 +80,44 @@ pub struct MarkdownLinkEntry<'arena> {
     pub range: Range,
 }
 
+/// A frontmatter value stored in the index.
+#[derive(Debug, Clone)]
+pub enum FrontmatterValueEntry<'arena> {
+    /// A simple string value.
+    String(&'arena str),
+    /// A list of string values.
+    List(&'arena [&'arena str]),
+}
+
+/// A frontmatter key-value entry stored in the index.
+#[derive(Debug, Clone)]
+pub struct FrontmatterEntry<'arena> {
+    /// The key.
+    pub key: &'arena str,
+    /// The value.
+    pub value: FrontmatterValueEntry<'arena>,
+}
+
+/// A Logseq property value stored in the index.
+#[derive(Debug, Clone)]
+pub enum PropertyValueEntry<'arena> {
+    /// A simple string value.
+    String(&'arena str),
+    /// A list of string values.
+    List(&'arena [&'arena str]),
+    /// A Logseq page reference.
+    PageRef(&'arena str),
+}
+
+/// A Logseq property key-value entry stored in the index.
+#[derive(Debug, Clone)]
+pub struct PropertyEntry<'arena> {
+    /// The key.
+    pub key: &'arena str,
+    /// The value.
+    pub value: PropertyValueEntry<'arena>,
+}
+
 /// An XML tag entry stored in the index.
 ///
 /// Uses standard `HashMap` (not `ArenaHashMap`) for attributes because

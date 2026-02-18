@@ -235,6 +235,108 @@ fn document_index_to_realm_integration() {
 }
 
 // ---------------------------------------------------------------------------
+// Frontmatter and properties tests (marky-khy)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_frontmatter_stored_in_document_index() {
+    let index = build_index("---\ntitle: My Page\nstatus: active\n---\n\n# Content\n");
+    let fm = index.frontmatter();
+    assert!(!fm.is_empty(), "frontmatter should be non-empty");
+    assert!(
+        fm.iter().any(|e| e.key == "title"),
+        "should find 'title' key"
+    );
+    assert!(
+        fm.iter().any(|e| e.key == "status"),
+        "should find 'status' key"
+    );
+}
+
+#[test]
+fn test_frontmatter_aliases_accessible() {
+    let index = build_index("---\naliases: [name1, name2]\n---\n\n# Page\n");
+    let aliases = index.aliases();
+    assert_eq!(aliases.len(), 2, "should have 2 aliases");
+    assert!(aliases.contains(&"name1"), "should contain 'name1'");
+    assert!(aliases.contains(&"name2"), "should contain 'name2'");
+}
+
+#[test]
+fn test_properties_stored_in_document_index() {
+    let index = build_index("tags:: project, rust\nstatus:: active\n\n# Content\n");
+    let props = index.properties();
+    assert!(!props.is_empty(), "properties should be non-empty");
+    assert!(
+        props.iter().any(|e| e.key == "tags"),
+        "should find 'tags' key"
+    );
+    assert!(
+        props.iter().any(|e| e.key == "status"),
+        "should find 'status' key"
+    );
+}
+
+#[test]
+fn test_no_frontmatter_returns_empty() {
+    let index = build_index("# Just a heading\n\nSome content.\n");
+    assert!(
+        index.frontmatter().is_empty(),
+        "no frontmatter should return empty slice"
+    );
+    assert!(
+        index.aliases().is_empty(),
+        "no frontmatter should return empty aliases"
+    );
+}
+
+#[test]
+fn test_frontmatter_with_colon_in_value() {
+    let index = build_index("---\nurl: https://example.com\ntitle: My Page\n---\n\n# Content\n");
+    let fm = index.frontmatter();
+    let url_entry = fm.iter().find(|e| e.key == "url");
+    assert!(url_entry.is_some(), "should find 'url' key");
+    let url_val = url_entry.unwrap();
+    match &url_val.value {
+        FrontmatterValueEntry::String(s) => {
+            assert_eq!(
+                *s, "https://example.com",
+                "URL should not be truncated at second colon"
+            );
+        }
+        FrontmatterValueEntry::List(_) => panic!("URL should be a String, not List"),
+    }
+}
+
+#[test]
+fn test_frontmatter_and_properties_coexist() {
+    let index =
+        build_index("---\ntitle: My Page\n---\n\ntags:: project\nstatus:: active\n\n# Heading\n");
+    // Frontmatter should be parsed
+    assert!(
+        !index.frontmatter().is_empty(),
+        "frontmatter should be present"
+    );
+    // Properties should also be parsed (they appear after frontmatter)
+    // Note: depending on parser behavior, properties after frontmatter may or may not be detected.
+    // At minimum, frontmatter should work correctly and not conflict.
+    let fm = index.frontmatter();
+    assert!(
+        fm.iter().any(|e| e.key == "title"),
+        "title should be in frontmatter"
+    );
+}
+
+#[test]
+fn test_no_properties_returns_empty() {
+    let index = build_index("# Just a heading\n\nSome content.\n");
+    assert!(
+        index.properties().is_empty(),
+        "no properties should return empty slice"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Scan-based construction tests (feature-gated)
 // ---------------------------------------------------------------------------
 

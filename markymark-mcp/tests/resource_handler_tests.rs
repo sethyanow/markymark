@@ -48,6 +48,8 @@ impl CoreEngine for MockEngine {
                 xml_tags: vec![],
                 wiki_links: vec![],
                 markdown_links: vec![],
+                frontmatter: vec![],
+                properties: vec![],
             },
             CoreOperation::DependencyGraph { realm, format } => {
                 let content = if format == "dot" {

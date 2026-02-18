@@ -798,9 +798,15 @@ fn parse_simple_yaml<'a>(content: &str, arena: &'a bumpalo::Bump) -> Frontmatter
     let mut data = new_arena_hashmap(arena);
 
     for line in content.lines() {
-        if let Some(colon_pos) = line.find(':') {
-            let key = arena_alloc_str(arena, line[..colon_pos].trim());
-            let value_str = line[colon_pos + 1..].trim();
+        // Use splitn(2, ':') so values containing colons (e.g. URLs) are preserved.
+        let mut parts = line.splitn(2, ':');
+        if let (Some(raw_key), Some(raw_value)) = (parts.next(), parts.next()) {
+            let key_str = raw_key.trim();
+            if key_str.is_empty() {
+                continue;
+            }
+            let key = arena_alloc_str(arena, key_str);
+            let value_str = raw_value.trim();
 
             let value = if value_str.starts_with('[') && value_str.ends_with(']') {
                 let inner = &value_str[1..value_str.len() - 1];

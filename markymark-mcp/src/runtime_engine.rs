@@ -755,6 +755,36 @@ impl CoreEngine for RuntimeEngine {
                             .map(|ml| (ml.text.to_string(), ml.url.to_string(), ml.range))
                             .collect();
 
+                        use markymark_index::document::{
+                            FrontmatterValueEntry, PropertyValueEntry,
+                        };
+                        let frontmatter = index
+                            .frontmatter()
+                            .iter()
+                            .map(|e| {
+                                let values = match &e.value {
+                                    FrontmatterValueEntry::String(s) => vec![s.to_string()],
+                                    FrontmatterValueEntry::List(items) => {
+                                        items.iter().map(|s| s.to_string()).collect()
+                                    }
+                                };
+                                (e.key.to_string(), values)
+                            })
+                            .collect();
+
+                        let properties = index
+                            .properties()
+                            .iter()
+                            .map(|e| {
+                                let value = match &e.value {
+                                    PropertyValueEntry::String(s) => s.to_string(),
+                                    PropertyValueEntry::PageRef(s) => s.to_string(),
+                                    PropertyValueEntry::List(items) => items.join(", "),
+                                };
+                                (e.key.to_string(), value)
+                            })
+                            .collect();
+
                         CoreOperationResult::DocumentExport {
                             uri,
                             document_kind: Some(DocumentKind::Markdown),
@@ -762,6 +792,8 @@ impl CoreEngine for RuntimeEngine {
                             xml_tags,
                             wiki_links,
                             markdown_links,
+                            frontmatter,
+                            properties,
                         }
                     }
                     Some(markymark_index::AnyDocumentIndex::Structured(index)) => {
@@ -780,6 +812,8 @@ impl CoreEngine for RuntimeEngine {
                             xml_tags: Vec::new(),
                             wiki_links: Vec::new(),
                             markdown_links: Vec::new(),
+                            frontmatter: Vec::new(),
+                            properties: Vec::new(),
                         }
                     }
                     None => CoreOperationResult::Error(CoreError::Message(format!(
