@@ -160,7 +160,15 @@ pub fn find_prose_edit_pos(content: &str) -> Option<usize> {
                 best = Some(line_mid);
             }
         }
-        offset += line.len() + 1; // +1 for the stripped '\n'
+        // Advance by the line length plus the line terminator width.
+        // `str::lines()` strips both '\n' and '\r\n', so we check the original
+        // byte after the line content to pick the correct terminator width.
+        let terminator_len = if content.as_bytes().get(offset + line.len()) == Some(&b'\r') {
+            2 // \r\n
+        } else {
+            1 // \n (or end-of-file)
+        };
+        offset += line.len() + terminator_len;
     }
 
     best
@@ -222,6 +230,31 @@ mod bench_helpers_tests {
     fn skips_short_lines() {
         let doc = "# Head\n\nShort line.\n\nAnother short one.\n";
         assert_eq!(find_prose_edit_pos(doc), None);
+    }
+
+    #[test]
+    fn crlf_line_endings_produce_correct_offset() {
+        // Regression: find_prose_edit_pos used to advance by line.len()+1,
+        // undercounting by 1 byte per CRLF-terminated line.
+        let line1 = "# Title\r\n";
+        let line2 = "\r\n";
+        let prose = "This is a prose paragraph with plenty of text to be found here.\r\n";
+        let doc = format!("{line1}{line2}{prose}");
+
+        let pos = find_prose_edit_pos(&doc).expect("should find prose in CRLF doc");
+        // The prose line starts at offset = len(line1) + len(line2) = 9 + 2 = 11
+        let prose_start = line1.len() + line2.len();
+        let prose_end = prose_start + prose.len();
+        assert!(
+            pos >= prose_start && pos < prose_end,
+            "offset {pos} should be within prose range [{prose_start}..{prose_end})"
+        );
+        // Verify the byte at this position is actual prose content
+        assert!(
+            doc.as_bytes()[pos].is_ascii_alphabetic(),
+            "byte at offset {pos} should be alphabetic, got {:?}",
+            doc.as_bytes()[pos] as char,
+        );
     }
 
     #[test]
