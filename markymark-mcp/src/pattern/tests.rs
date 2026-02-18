@@ -684,3 +684,30 @@ fn glob_to_regex_question_mark_matches_single_char() {
     assert!(re.is_match("a.md"));
     assert!(!re.is_match("ab.md"), "? matches exactly one char");
 }
+
+// ---- T2-2: invalid glob returns error instead of silent fallback ----
+#[test]
+fn valid_glob_filter_works() {
+    let dir = temp_dir("t22");
+    fs::write(dir.join("a.md"), "needle\n").unwrap();
+    fs::write(dir.join("b.json"), "needle\n").unwrap();
+    let engine = make_engine_with_realm("t22", &dir);
+
+    let result = engine.execute(CoreOperation::SearchForPattern {
+        pattern: "needle".to_string(),
+        include_glob: Some("*.md".to_string()),
+        context_lines: 0,
+        limit: 100,
+        case_insensitive: false,
+        realm: Some("t22".to_string()),
+    });
+
+    if let CoreOperationResult::PatternSearchResults { matches, .. } = result {
+        assert_eq!(matches.len(), 1);
+        assert!(matches[0].uri.as_str().ends_with(".md"));
+    } else {
+        panic!("expected PatternSearchResults");
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}
