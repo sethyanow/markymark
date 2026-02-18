@@ -12,6 +12,7 @@ const env_scan = @import("kernels/formats/env_scan.zig");
 const ini_scan = @import("kernels/formats/ini_scan.zig");
 const toml_scan = @import("kernels/formats/toml_scan.zig");
 const yaml_scan = @import("kernels/formats/yaml_scan.zig");
+const json_keys = @import("kernels/formats/json_keys.zig");
 const similarity = @import("shared/similarity.zig");
 const normalize = @import("shared/normalize.zig");
 const entities = @import("shared/entities.zig");
@@ -38,6 +39,7 @@ pub const IniEntry = ini_scan.IniEntry;
 pub const TomlEntry = toml_scan.TomlEntry;
 pub const TomlKind = toml_scan.TomlKind;
 pub const YamlEntry = yaml_scan.YamlEntry;
+pub const JsonKeyEntry = json_keys.JsonKeyEntry;
 
 /// Version constant for markymark kernels
 /// Format: 0xMMmmpp (major, minor, patch)
@@ -795,6 +797,55 @@ export fn marky_scan_yaml_keys(
     return 0;
 }
 
+/// SIMD-accelerated JSON key extractor.
+///
+/// Scans `text[0..len]` for JSON object keys at all nesting levels.
+/// Each entry records the key's byte offset (content only, excluding quotes),
+/// byte length, and 0-indexed nesting depth.  Callers reconstruct dot-
+/// separated key paths by tracking depth transitions.
+///
+/// Returns:
+///   0  — success
+///  -1  — invalid input (null pointer)
+///  -2  — buffer too small (cap=0, or more entries than cap), or nesting
+///         depth exceeded MAX_DEPTH (100)
+export fn marky_scan_json_keys(
+    text: ?[*]const u8,
+    len: u32,
+    out: ?[*]JsonKeyEntry,
+    cap: u32,
+    written: ?*u32,
+) i32 {
+    const w = written orelse return -1;
+    const t = text orelse {
+        if (len == 0) {
+            w.* = 0;
+            return 0;
+        }
+        return -1;
+    };
+    const o = out orelse return -1;
+
+    if (len == 0) {
+        w.* = 0;
+        return 0;
+    }
+
+    if (cap == 0) {
+        w.* = 0;
+        return -2;
+    }
+
+    var depth_exceeded: bool = false;
+    const count = json_keys.scan_json_keys(t, len, o, cap, &depth_exceeded);
+    w.* = count;
+
+    if (depth_exceeded) return -2;
+    if (count >= cap) return -2;
+
+    return 0;
+}
+
 /// SIMD-accelerated entity hash extraction.
 ///
 /// Scans text for words, produces FNV-1a u32 hash for each.
@@ -928,6 +979,7 @@ test {
     _ = @import("kernels/formats/ini_scan.zig");
     _ = @import("kernels/formats/toml_scan.zig");
     _ = @import("kernels/formats/yaml_scan.zig");
+    _ = @import("kernels/formats/json_keys.zig");
 }
 
 test "marky_version returns expected version" {
