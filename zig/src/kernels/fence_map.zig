@@ -130,6 +130,11 @@ fn process_line_start(
         // Potential closing fence
         if (ref.is_only_whitespace_after(buf, scan, len)) {
             const line_end = ref.skip_to_next_line(buf, line_start, len);
+            // Guard BEFORE write: if buffer is already full, return immediately
+            // without writing out[count.*] which would be out-of-bounds.
+            if (count.* >= cap) {
+                return .{ .next_pos = line_end, .done = true };
+            }
             out[count.*] = FenceRange{
                 .start = fence_start.*,
                 .end = line_end,
@@ -256,6 +261,20 @@ test "test_buffer_overflow" {
     var out: [1]FenceRange = undefined;
     const n = build_fence_map(text.ptr, text.len, &out, 1);
     try testing.expectEqual(@as(u32, 1), n);
+}
+
+test "test_buffer_full_before_closing_fence_write" {
+    // Regression test for marky-wpl: cap check must occur BEFORE writing out[count].
+    // With cap=1, after the first fence pair fills slot 0, count==cap.
+    // The second fence pair's closing fence must not write out[1] (OOB).
+    // The fix moves the cap guard before the write in process_line_start.
+    const text = "```\na\n```\n```\nb\n```\n";
+    var out: [1]FenceRange = undefined;
+    @memset(std.mem.asBytes(&out), 0xAA); // poison sentinel
+    const n = build_fence_map(text.ptr, text.len, &out, 1);
+    // Only the first fence pair should be recorded
+    try testing.expectEqual(@as(u32, 1), n);
+    try testing.expectEqual(@as(u32, 0), out[0].start);
 }
 
 test "test_simd_scalar_parity" {
