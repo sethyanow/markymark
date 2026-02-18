@@ -12,15 +12,17 @@ use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 #[cfg(feature = "semantic-search")]
 use markymark_core::prelude::{EmbedError, EmbeddingProvider};
 use markymark_core::structured::DocumentKind;
-use markymark_core::{CoreError, DocumentUri, Range};
+use markymark_core::{CoreError, DocumentUri};
 use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
-use markymark_kernels::{fuzzy_match, fuzzy_match_batch};
 use markymark_parser::structured::parse_structured;
 use markymark_parser::Parser;
 
-use crate::rename_ops::{compare_ranges, rename_heading, rename_xml_tag};
-
+mod export;
 mod helpers;
+mod outline;
+mod realm_ops;
+mod references;
+mod search;
 
 /// The name of the default realm created at startup.
 pub(crate) const DEFAULT_REALM: &str = "default";
@@ -237,46 +239,12 @@ impl CoreEngine for RuntimeEngine {
                         "realm does not exist: {realm_key}"
                     )));
                 };
-                let realm = &realm_data.index;
-                match realm.get_any_document(&uri) {
-                    Some(markymark_index::AnyDocumentIndex::Markdown(index)) => {
-                        CoreOperationResult::Outline(
-                            index
-                                .headings()
-                                .iter()
-                                .map(|heading| heading.text.to_string())
-                                .collect(),
-                        )
-                    }
-                    Some(markymark_index::AnyDocumentIndex::Structured(index)) => {
-                        CoreOperationResult::Outline(
-                            index
-                                .keys()
-                                .iter()
-                                .map(|k| {
-                                    let indent = "  ".repeat(k.depth);
-                                    format!("{indent}{}: {:?}", k.path, k.value_kind)
-                                })
-                                .collect(),
-                        )
-                    }
-                    None => CoreOperationResult::Error(CoreError::Message(format!(
-                        "document is not indexed: {}",
-                        uri.as_str()
-                    ))),
-                }
+                outline::handle_get_outline(&realm_data.index, &uri)
             }
             CoreOperation::SearchSymbols {
                 query,
                 realm: realm_name,
             } => {
-                let query = query.trim().to_string();
-                if query.is_empty() {
-                    return CoreOperationResult::Error(CoreError::Message(
-                        "search query cannot be empty".to_string(),
-                    ));
-                }
-
                 let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
                 let state = self.state.read().expect("lock poisoned");
                 let Some(realm_data) = state.get(realm_key) else {
@@ -284,94 +252,7 @@ impl CoreEngine for RuntimeEngine {
                         "realm does not exist: {realm_key}"
                     )));
                 };
-                let realm = &realm_data.index;
-                let mut candidates: Vec<(String, DocumentUri, Range)> = Vec::new();
-
-                // Collect markdown heading candidates.
-                for (uri, index) in realm.iter_documents() {
-                    for heading in index.headings() {
-                        candidates.push((heading.text.to_string(), uri.clone(), heading.range));
-                    }
-                }
-
-                // Collect structured key-path candidates.
-                for (uri, path, _key, _kind, range) in realm.search_key_paths(&query) {
-                    candidates.push((path, uri, range));
-                }
-
-                let candidate_refs: Vec<&str> = candidates
-                    .iter()
-                    .map(|(name, _, _)| name.as_str())
-                    .collect();
-                // Cap top_k to avoid O(n log n) heap degradation when all candidates are ranked.
-                const TOP_K_LIMIT: usize = 100;
-                let top_k = candidate_refs.len().min(TOP_K_LIMIT);
-
-                let matches = match fuzzy_match_batch(&query, &candidate_refs, top_k) {
-                    Ok(ranked) => {
-                        let mut results: Vec<(i32, bool, String, DocumentUri, Range)> = ranked
-                            .into_iter()
-                            .filter(|m| m.score > 0)
-                            .filter_map(|m| {
-                                candidates.get(m.index as usize).map(|(name, uri, range)| {
-                                    (m.score, m.starts_with, name.clone(), uri.clone(), *range)
-                                })
-                            })
-                            .collect();
-                        results.sort_by(
-                            |(score_a, starts_a, name_a, uri_a, range_a),
-                             (score_b, starts_b, name_b, uri_b, range_b)| {
-                                score_b
-                                    .cmp(score_a)
-                                    .then_with(|| starts_b.cmp(starts_a))
-                                    .then_with(|| name_a.cmp(name_b))
-                                    .then_with(|| uri_a.as_str().cmp(uri_b.as_str()))
-                                    .then_with(|| compare_ranges(*range_a, *range_b))
-                            },
-                        );
-                        results
-                            .into_iter()
-                            .map(|(_, _, name, uri, range)| (name, uri, range))
-                            .collect()
-                    }
-                    Err(_) => {
-                        // Fallback path keeps previous per-candidate behavior.
-                        let mut scored_matches: Vec<(i32, bool, String, DocumentUri, Range)> =
-                            Vec::new();
-                        for (name, uri, range) in &candidates {
-                            if let Ok(m) = fuzzy_match(&query, name) {
-                                if m.score > 0 {
-                                    scored_matches.push((
-                                        m.score,
-                                        m.starts_with,
-                                        name.clone(),
-                                        uri.clone(),
-                                        *range,
-                                    ));
-                                }
-                            }
-                        }
-
-                        scored_matches.sort_by(
-                            |(score_a, starts_a, name_a, uri_a, range_a),
-                             (score_b, starts_b, name_b, uri_b, range_b)| {
-                                score_b
-                                    .cmp(score_a)
-                                    .then_with(|| starts_b.cmp(starts_a))
-                                    .then_with(|| name_a.cmp(name_b))
-                                    .then_with(|| uri_a.as_str().cmp(uri_b.as_str()))
-                                    .then_with(|| compare_ranges(*range_a, *range_b))
-                            },
-                        );
-
-                        scored_matches
-                            .into_iter()
-                            .map(|(_, _, name, uri, range)| (name, uri, range))
-                            .collect()
-                    }
-                };
-
-                CoreOperationResult::Symbols(matches)
+                search::handle_search_symbols(&realm_data.index, query)
             }
             CoreOperation::SemanticSearch {
                 query,
@@ -379,13 +260,6 @@ impl CoreEngine for RuntimeEngine {
                 top_k,
                 min_score,
             } => {
-                let query = query.trim().to_string();
-                if query.is_empty() {
-                    return CoreOperationResult::Error(CoreError::Message(
-                        "semantic query cannot be empty".to_string(),
-                    ));
-                }
-
                 let realm_name = realm.unwrap_or_else(|| DEFAULT_REALM.to_string());
                 let state = self.state.read().expect("lock poisoned");
                 let realm_data = match state.get(&realm_name) {
@@ -399,48 +273,14 @@ impl CoreEngine for RuntimeEngine {
 
                 #[cfg(not(feature = "semantic-search"))]
                 {
-                    let _ = (realm_data, top_k, min_score);
+                    let _ = (realm_data, query, top_k, min_score);
                     CoreOperationResult::Error(CoreError::NotImplemented(
                         "semantic-search feature is not enabled for markymark-mcp".to_string(),
                     ))
                 }
 
                 #[cfg(feature = "semantic-search")]
-                {
-                    let results = match realm_data.index.semantic_search(
-                        &query,
-                        top_k,
-                        min_score.clamp(0.0, 1.0),
-                    ) {
-                        Ok(results) => results,
-                        Err(err) => {
-                            return CoreOperationResult::Error(CoreError::Message(format!(
-                                "semantic search failed: {err}"
-                            )));
-                        }
-                    };
-
-                    CoreOperationResult::SemanticMatches(
-                        results
-                            .into_iter()
-                            .map(|result| {
-                                let section_preview = helpers::preview_for_range(
-                                    &result.doc_uri,
-                                    result.section_range,
-                                    &result.heading,
-                                );
-                                SemanticSearchMatch {
-                                    doc_uri: result.doc_uri,
-                                    heading: result.heading,
-                                    heading_level: result.heading_level,
-                                    score: result.score,
-                                    section_range: result.section_range,
-                                    section_preview,
-                                }
-                            })
-                            .collect(),
-                    )
-                }
+                search::handle_semantic_search(&realm_data.index, query, top_k, min_score)
             }
             CoreOperation::FindReferences {
                 uri,
@@ -454,126 +294,7 @@ impl CoreEngine for RuntimeEngine {
                         "realm does not exist: {realm_key}"
                     )));
                 };
-                let realm = &realm_data.index;
-                let index = match realm.get_document(&uri) {
-                    Some(idx) => idx,
-                    None => {
-                        return CoreOperationResult::Error(CoreError::Message(format!(
-                            "document is not indexed: {}",
-                            uri.as_str()
-                        )));
-                    }
-                };
-
-                let cursor = position.start;
-
-                if let Some(heading) = index.headings().iter().find(|h| h.range.contains(cursor)) {
-                    let slug = &heading.slug;
-                    let mut locations = Vec::new();
-
-                    for (doc_uri, doc_index) in realm.iter_documents() {
-                        for wl in doc_index.wiki_links() {
-                            if wl.heading == Some(slug) {
-                                locations.push((doc_uri.clone(), wl.range));
-                            }
-                        }
-                        for ml in doc_index.markdown_links() {
-                            if ml.anchor == Some(slug) {
-                                locations.push((doc_uri.clone(), ml.range));
-                            }
-                        }
-                    }
-
-                    locations.sort_by(|(uri_a, range_a), (uri_b, range_b)| {
-                        uri_a
-                            .as_str()
-                            .cmp(uri_b.as_str())
-                            .then_with(|| compare_ranges(*range_a, *range_b))
-                    });
-
-                    return CoreOperationResult::Locations(locations);
-                }
-
-                if let Some(xml_tag) = index.xml_tags().iter().find(|x| x.range.contains(cursor)) {
-                    let tag_name = &xml_tag.tag_name;
-                    let mut locations = Vec::new();
-
-                    for (doc_uri, doc_index) in realm.iter_documents() {
-                        for xt in doc_index.xml_tags() {
-                            if xt.tag_name == *tag_name {
-                                locations.push((doc_uri.clone(), xt.range));
-                            }
-                        }
-                    }
-
-                    locations.sort_by(|(uri_a, range_a), (uri_b, range_b)| {
-                        uri_a
-                            .as_str()
-                            .cmp(uri_b.as_str())
-                            .then_with(|| compare_ranges(*range_a, *range_b))
-                    });
-
-                    return CoreOperationResult::Locations(locations);
-                }
-
-                // Block ref forward: cursor on ((uuid)) → find all docs with same uuid
-                if let Some(block_ref) =
-                    index.block_refs().iter().find(|r| r.range.contains(cursor))
-                {
-                    let target_uuid = block_ref.uuid;
-                    let mut locations = Vec::new();
-
-                    for (doc_uri, doc_index) in realm.iter_documents() {
-                        for br in doc_index.block_refs() {
-                            if br.uuid == target_uuid {
-                                locations.push((doc_uri.clone(), br.range));
-                            }
-                        }
-                    }
-
-                    locations.sort_by(|(uri_a, range_a), (uri_b, range_b)| {
-                        uri_a
-                            .as_str()
-                            .cmp(uri_b.as_str())
-                            .then_with(|| compare_ranges(*range_a, *range_b))
-                    });
-
-                    return CoreOperationResult::Locations(locations);
-                }
-
-                // Block-id inverse: cursor on ^block-id → find all ((uuid)) refs to it
-                let block_hit = index.block_ids().find_map(|id| {
-                    let entry = index.block_by_id(id)?;
-                    if entry.range.contains(cursor) {
-                        Some(id.to_string())
-                    } else {
-                        None
-                    }
-                });
-                if let Some(target_id) = block_hit {
-                    let mut locations = Vec::new();
-
-                    for (doc_uri, doc_index) in realm.iter_documents() {
-                        for br in doc_index.block_refs() {
-                            if br.uuid == target_id {
-                                locations.push((doc_uri.clone(), br.range));
-                            }
-                        }
-                    }
-
-                    locations.sort_by(|(uri_a, range_a), (uri_b, range_b)| {
-                        uri_a
-                            .as_str()
-                            .cmp(uri_b.as_str())
-                            .then_with(|| compare_ranges(*range_a, *range_b))
-                    });
-
-                    return CoreOperationResult::Locations(locations);
-                }
-
-                CoreOperationResult::Error(CoreError::Message(
-                    "no referenceable symbol at position".to_string(),
-                ))
+                references::handle_find_references(&realm_data.index, &uri, position)
             }
             CoreOperation::Rename {
                 uri,
@@ -588,148 +309,25 @@ impl CoreEngine for RuntimeEngine {
                         "realm does not exist: {realm_key}"
                     )));
                 };
-                let realm = &realm_data.index;
-                let index = match realm.get_document(&uri) {
-                    Some(idx) => idx,
-                    None => {
-                        return CoreOperationResult::Error(CoreError::Message(format!(
-                            "document is not indexed: {}",
-                            uri.as_str()
-                        )));
-                    }
-                };
-
-                let cursor = position.start;
-
-                if let Some(heading) = index.headings().iter().find(|h| h.range.contains(cursor)) {
-                    return rename_heading(realm, &uri, heading.clone(), &new_name);
-                }
-
-                if let Some(xml_tag) = index.xml_tags().iter().find(|x| x.range.contains(cursor)) {
-                    return rename_xml_tag(realm, xml_tag.tag_name, &new_name);
-                }
-
-                CoreOperationResult::Error(CoreError::Message(
-                    "no renameable symbol at position".to_string(),
-                ))
+                references::handle_rename(&realm_data.index, &uri, position, &new_name)
             }
 
             // --- Realm management operations ---
             CoreOperation::CreateRealm { name } => {
-                if name.is_empty() {
-                    return CoreOperationResult::Error(CoreError::Message(
-                        "realm name must not be empty".to_string(),
-                    ));
-                }
-
                 let mut state = self.state.write().expect("lock poisoned");
-                if state.contains_key(&name) {
-                    return CoreOperationResult::Error(CoreError::Message(format!(
-                        "realm already exists: {name}"
-                    )));
-                }
-
-                state.insert(name.clone(), RealmData::new());
-                CoreOperationResult::RealmInfo {
-                    name,
-                    root_count: 0,
-                    document_count: 0,
-                }
+                realm_ops::handle_create_realm(&mut state, name)
             }
             CoreOperation::DestroyRealm { name } => {
-                if name == DEFAULT_REALM {
-                    return CoreOperationResult::Error(CoreError::Message(
-                        "cannot destroy the default realm".to_string(),
-                    ));
-                }
-
                 let mut state = self.state.write().expect("lock poisoned");
-                if state.remove(&name).is_none() {
-                    return CoreOperationResult::Error(CoreError::Message(format!(
-                        "realm does not exist: {name}"
-                    )));
-                }
-
-                CoreOperationResult::Ok
+                realm_ops::handle_destroy_realm(&mut state, name)
             }
             CoreOperation::AddRoot { realm, root } => {
-                if let Err(msg) = helpers::validate_workspace_root(&root) {
-                    return CoreOperationResult::Error(CoreError::Message(msg.to_string()));
-                }
-
                 let mut state = self.state.write().expect("lock poisoned");
-                let realm_data = match state.get_mut(&realm) {
-                    Some(data) => data,
-                    None => {
-                        return CoreOperationResult::Error(CoreError::Message(format!(
-                            "realm does not exist: {realm}"
-                        )));
-                    }
-                };
-
-                // Check for duplicate root (canonicalize for comparison).
-                let canonical = root.canonicalize().unwrap_or_else(|_| root.clone());
-                for existing in &realm_data.roots {
-                    let existing_canonical =
-                        existing.canonicalize().unwrap_or_else(|_| existing.clone());
-                    if canonical == existing_canonical {
-                        return CoreOperationResult::Error(CoreError::Message(format!(
-                            "root already added to realm: {}",
-                            root.display()
-                        )));
-                    }
-                }
-
-                let mut parser = match Parser::new() {
-                    Ok(p) => p,
-                    Err(err) => {
-                        return CoreOperationResult::Error(CoreError::Message(format!(
-                            "failed to create parser: {err}"
-                        )));
-                    }
-                };
-
-                index_root_into_realm(&mut parser, &root, realm_data);
-                realm_data.roots.push(root);
-
-                CoreOperationResult::RealmInfo {
-                    name: realm.clone(),
-                    root_count: realm_data.roots.len(),
-                    document_count: realm_data.index.document_count(),
-                }
+                realm_ops::handle_add_root(&mut state, realm, root)
             }
             CoreOperation::RemoveRoot { realm, root } => {
                 let mut state = self.state.write().expect("lock poisoned");
-                let realm_data = match state.get_mut(&realm) {
-                    Some(data) => data,
-                    None => {
-                        return CoreOperationResult::Error(CoreError::Message(format!(
-                            "realm does not exist: {realm}"
-                        )));
-                    }
-                };
-
-                let canonical = root.canonicalize().unwrap_or_else(|_| root.clone());
-                let pos = realm_data.roots.iter().position(|existing| {
-                    existing.canonicalize().unwrap_or_else(|_| existing.clone()) == canonical
-                });
-
-                match pos {
-                    Some(idx) => {
-                        let removed = realm_data.roots.remove(idx);
-                        unindex_root_from_realm(&removed, realm_data);
-
-                        CoreOperationResult::RealmInfo {
-                            name: realm.clone(),
-                            root_count: realm_data.roots.len(),
-                            document_count: realm_data.index.document_count(),
-                        }
-                    }
-                    None => CoreOperationResult::Error(CoreError::Message(format!(
-                        "root is not tracked in realm: {}",
-                        root.display()
-                    ))),
-                }
+                realm_ops::handle_remove_root(&mut state, realm, root)
             }
 
             // --- Query operations ---
@@ -747,60 +345,12 @@ impl CoreEngine for RuntimeEngine {
                         )));
                     }
                 };
-
-                let mut heading_count = 0;
-                let mut xml_tag_count = 0;
-                let mut wiki_link_count = 0;
-                let mut markdown_link_count = 0;
-
-                for (_uri, index) in realm_data.index.iter_documents() {
-                    heading_count += index.headings().len();
-                    xml_tag_count += index.xml_tags().len();
-                    wiki_link_count += index.wiki_links().len();
-                    markdown_link_count += index.markdown_links().len();
-                }
-
-                let duplicate_pairs = if check_duplicates {
-                    #[cfg(feature = "semantic-search")]
-                    {
-                        Some(realm_data.index.detect_semantic_duplicates(0.85).len())
-                    }
-                    #[cfg(not(feature = "semantic-search"))]
-                    {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                let total_tokens = if include_token_counts {
-                    let (total, unreadable_docs) =
-                        helpers::total_tokens_for_realm(&realm_data.index);
-                    if unreadable_docs > 0 {
-                        eprintln!(
-                            "warning: token count omitted for realm '{realm}' due to {unreadable_docs} unreadable documents"
-                        );
-                        None
-                    } else {
-                        Some(total)
-                    }
-                } else {
-                    None
-                };
-
-                CoreOperationResult::RealmStats {
-                    name: realm,
-                    root_count: realm_data.roots.len(),
-                    document_count: realm_data.index.document_count(),
-                    heading_count,
-                    xml_tag_count,
-                    wiki_link_count,
-                    markdown_link_count,
-                    structured_doc_count: realm_data.index.structured_count(),
-                    key_path_count: realm_data.index.key_path_count(),
-                    duplicate_pairs,
-                    total_tokens,
-                }
+                realm_ops::handle_realm_stats(
+                    realm_data,
+                    realm,
+                    check_duplicates,
+                    include_token_counts,
+                )
             }
             CoreOperation::DependencyGraph { realm, format } => {
                 let state = self.state.read().expect("lock poisoned");
@@ -834,105 +384,7 @@ impl CoreEngine for RuntimeEngine {
                         "realm does not exist: {realm_key}"
                     )));
                 };
-                let realm = &realm_data.index;
-                match realm.get_any_document(&uri) {
-                    Some(markymark_index::AnyDocumentIndex::Markdown(index)) => {
-                        let headings = index
-                            .headings()
-                            .iter()
-                            .map(|h| (h.text.to_string(), h.level, h.range))
-                            .collect();
-
-                        let xml_tags = index
-                            .xml_tags()
-                            .iter()
-                            .map(|x| (x.tag_name.to_string(), x.range))
-                            .collect();
-
-                        let wiki_links = index
-                            .wiki_links()
-                            .iter()
-                            .map(|wl| {
-                                (
-                                    wl.target.to_string(),
-                                    wl.heading.map(|h| h.to_string()),
-                                    wl.range,
-                                )
-                            })
-                            .collect();
-
-                        let markdown_links = index
-                            .markdown_links()
-                            .iter()
-                            .map(|ml| (ml.text.to_string(), ml.url.to_string(), ml.range))
-                            .collect();
-
-                        use markymark_index::document::{
-                            FrontmatterValueEntry, PropertyValueEntry,
-                        };
-                        let frontmatter = index
-                            .frontmatter()
-                            .iter()
-                            .map(|e| {
-                                let values = match &e.value {
-                                    FrontmatterValueEntry::String(s) => vec![s.to_string()],
-                                    FrontmatterValueEntry::List(items) => {
-                                        items.iter().map(|s| s.to_string()).collect()
-                                    }
-                                };
-                                (e.key.to_string(), values)
-                            })
-                            .collect();
-
-                        let properties = index
-                            .properties()
-                            .iter()
-                            .map(|e| {
-                                let value = match &e.value {
-                                    PropertyValueEntry::String(s) => s.to_string(),
-                                    PropertyValueEntry::PageRef(s) => s.to_string(),
-                                    PropertyValueEntry::List(items) => items.join(", "),
-                                };
-                                (e.key.to_string(), value)
-                            })
-                            .collect();
-
-                        CoreOperationResult::DocumentExport {
-                            uri,
-                            document_kind: Some(DocumentKind::Markdown),
-                            headings,
-                            xml_tags,
-                            wiki_links,
-                            markdown_links,
-                            frontmatter,
-                            properties,
-                        }
-                    }
-                    Some(markymark_index::AnyDocumentIndex::Structured(index)) => {
-                        // For structured docs, export key paths as "headings"
-                        // with depth as level and key range as position.
-                        let headings = index
-                            .keys()
-                            .iter()
-                            .map(|k| (k.path.clone(), (k.depth as u8) + 1, k.key_range))
-                            .collect();
-
-                        CoreOperationResult::DocumentExport {
-                            uri,
-                            document_kind: Some(index.kind()),
-                            headings,
-                            xml_tags: Vec::new(),
-                            wiki_links: Vec::new(),
-                            markdown_links: Vec::new(),
-                            frontmatter: Vec::new(),
-                            properties: Vec::new(),
-                        }
-                    }
-                    None => CoreOperationResult::Error(CoreError::Message(format!(
-                        "document is not indexed: {}",
-                        uri.as_str()
-                    ))),
-                }
+                export::handle_export_index(&realm_data.index, &uri)
             }
             CoreOperation::SearchWorkspace {
                 query,
