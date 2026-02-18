@@ -114,6 +114,87 @@ pub trait ScanBackend: Send + Sync {
 }
 
 // ---------------------------------------------------------------------------
+// ZigScanBackend implementation (behind zig-kernels feature)
+// ---------------------------------------------------------------------------
+
+/// Zig SIMD-accelerated scan backend.
+///
+/// This backend delegates to the `markymark-kernels` FFI functions for
+/// SIMD-accelerated markdown element extraction.
+#[cfg(feature = "zig-kernels")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ZigScanBackend;
+
+#[cfg(feature = "zig-kernels")]
+impl ScanBackend for ZigScanBackend {
+    fn scan_headings(&self, text: &str) -> Result<Vec<HeadingResult>, ScanError> {
+        markymark_kernels::scan::scan_headings(text)
+            .map(|results| {
+                results
+                    .into_iter()
+                    .map(|h| HeadingResult {
+                        text: h.text,
+                        offset: h.offset,
+                        level: h.level,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
+    fn scan_links(&self, text: &str) -> Result<Vec<LinkResult>, ScanError> {
+        markymark_kernels::scan::scan_links(text)
+            .map(|results| {
+                results
+                    .into_iter()
+                    .map(|l| LinkResult {
+                        offset: l.offset,
+                        text: l.text,
+                        target: l.target,
+                        link_type: match l.link_type {
+                            markymark_kernels::scan::LinkType::Markdown => ScanLinkType::Markdown,
+                            markymark_kernels::scan::LinkType::Wiki => ScanLinkType::Wiki,
+                        },
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
+    fn scan_tags(&self, text: &str) -> Result<Vec<TagResult>, ScanError> {
+        markymark_kernels::scan::scan_tags(text)
+            .map(|results| {
+                results
+                    .into_iter()
+                    .map(|t| TagResult {
+                        name: t.name,
+                        offset: t.offset,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
+    fn scan_block_ids(&self, text: &str) -> Result<Vec<BlockIdResult>, ScanError> {
+        markymark_kernels::scan::scan_block_ids(text)
+            .map(|results| {
+                results
+                    .into_iter()
+                    .map(|b| BlockIdResult {
+                        id: b.id,
+                        offset: b.offset,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
+    fn estimate_tokens(&self, text: &str) -> Result<u32, ScanError> {
+        Ok(markymark_kernels::tokens::estimate_tokens(text))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

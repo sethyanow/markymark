@@ -20,6 +20,8 @@ enum MockMode {
     Happy,
     CoreError,
     UnsortedSymbols,
+    #[cfg(feature = "semantic-search")]
+    RejectLargeTopK,
 }
 
 impl CoreEngine for MockEngine {
@@ -81,7 +83,14 @@ impl CoreEngine for MockEngine {
                 root_count: 0,
                 document_count: 0,
             },
-            (_, CoreOperation::RealmStats { realm }) => CoreOperationResult::RealmStats {
+            (
+                _,
+                CoreOperation::RealmStats {
+                    realm,
+                    check_duplicates,
+                    include_token_counts,
+                },
+            ) => CoreOperationResult::RealmStats {
                 name: realm,
                 root_count: 2,
                 document_count: 5,
@@ -91,7 +100,52 @@ impl CoreEngine for MockEngine {
                 markdown_link_count: 4,
                 structured_doc_count: 0,
                 key_path_count: 0,
+                duplicate_pairs: if check_duplicates { Some(2) } else { None },
+                total_tokens: if include_token_counts {
+                    Some(321)
+                } else {
+                    None
+                },
             },
+            #[cfg(feature = "semantic-search")]
+            (MockMode::RejectLargeTopK, CoreOperation::SemanticSearch { top_k, .. }) => {
+                if top_k > 100 {
+                    return CoreOperationResult::Error(CoreError::Message(
+                        "top_k exceeds test limit".to_string(),
+                    ));
+                }
+                CoreOperationResult::SemanticMatches(vec![
+                    markymark_core::engine::SemanticSearchMatch {
+                        doc_uri: DocumentUri::from_file_path(Path::new("/vault/notes.md")),
+                        heading: "Intro".to_string(),
+                        heading_level: 1,
+                        score: 0.81234,
+                        section_range: Range::new(Position::new(0, 0), Position::new(0, 5)),
+                        section_preview: "Intro section preview".to_string(),
+                    },
+                ])
+            }
+            (_, CoreOperation::SemanticSearch { .. }) => {
+                #[cfg(feature = "semantic-search")]
+                {
+                    CoreOperationResult::SemanticMatches(vec![
+                        markymark_core::engine::SemanticSearchMatch {
+                            doc_uri: DocumentUri::from_file_path(Path::new("/vault/notes.md")),
+                            heading: "Intro".to_string(),
+                            heading_level: 1,
+                            score: 0.81234,
+                            section_range: Range::new(Position::new(0, 0), Position::new(0, 5)),
+                            section_preview: "Intro section preview".to_string(),
+                        },
+                    ])
+                }
+                #[cfg(not(feature = "semantic-search"))]
+                {
+                    CoreOperationResult::Error(CoreError::NotImplemented(
+                        "semantic-search feature disabled in test build".to_string(),
+                    ))
+                }
+            }
             (_, CoreOperation::DependencyGraph { realm, format }) => {
                 CoreOperationResult::DependencyGraph {
                     realm,
@@ -635,6 +689,8 @@ async fn realm_stats_tool_returns_structured_stats() {
     let result = mcp
         .realm_stats_tool(Parameters(RealmStatsRequest {
             realm: "default".to_string(),
+            check_duplicates: true,
+            include_token_counts: true,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -648,6 +704,8 @@ async fn realm_stats_tool_returns_structured_stats() {
     assert_eq!(payload.xml_tag_count, 3);
     assert_eq!(payload.wiki_link_count, 8);
     assert_eq!(payload.markdown_link_count, 4);
+    assert_eq!(payload.duplicate_pairs, Some(2));
+    assert_eq!(payload.total_tokens, Some(321));
 }
 
 #[tokio::test]
@@ -658,6 +716,8 @@ async fn realm_stats_tool_rejects_empty_realm() {
     let result = mcp
         .realm_stats_tool(Parameters(RealmStatsRequest {
             realm: "   ".to_string(),
+            check_duplicates: false,
+            include_token_counts: false,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -675,6 +735,8 @@ async fn realm_stats_tool_maps_core_error() {
     let result = mcp
         .realm_stats_tool(Parameters(RealmStatsRequest {
             realm: "default".to_string(),
+            check_duplicates: false,
+            include_token_counts: false,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -682,6 +744,79 @@ async fn realm_stats_tool_maps_core_error() {
     assert_eq!(result.is_error, Some(true));
     let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
     assert_eq!(payload.error.code, "core_error");
+}
+
+#[cfg(feature = "semantic-search")]
+#[test]
+fn registers_semantic_search_tool() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let tools = mcp.list_tools();
+    let names: Vec<_> = tools.iter().map(|t| t.name.as_ref()).collect();
+    assert!(
+        names.contains(&"semantic-search"),
+        "missing semantic-search tool"
+    );
+}
+
+#[cfg(not(feature = "semantic-search"))]
+#[test]
+fn does_not_register_semantic_search_tool_without_feature() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let tools = mcp.list_tools();
+    let names: Vec<_> = tools.iter().map(|t| t.name.as_ref()).collect();
+    assert!(
+        !names.contains(&"semantic-search"),
+        "semantic-search tool should be hidden when feature is disabled"
+    );
+}
+
+#[cfg(feature = "semantic-search")]
+#[tokio::test]
+async fn semantic_search_tool_returns_structured_results() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .semantic_search_tool(Parameters(SemanticSearchRequest {
+            query: "intro".to_string(),
+            realm: Some("default".to_string()),
+            top_k: Some(3),
+            min_score: Some(0.5),
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: SemanticSearchResponse = result.into_typed().expect("typed response");
+    assert_eq!(payload.query, "intro");
+    assert_eq!(payload.results.len(), 1);
+    assert!(payload.results[0].score > 0.0);
+    assert!(payload.results[0].section_preview.len() <= 200);
+}
+
+#[cfg(feature = "semantic-search")]
+#[tokio::test]
+async fn semantic_search_tool_clamps_top_k() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::RejectLargeTopK,
+    }));
+    let result = mcp
+        .semantic_search_tool(Parameters(SemanticSearchRequest {
+            query: "intro".to_string(),
+            realm: Some("default".to_string()),
+            top_k: Some(50_000),
+            min_score: Some(0.5),
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: SemanticSearchResponse = result.into_typed().expect("typed response");
+    assert_eq!(payload.results.len(), 1);
 }
 
 // --- export-index tool tests ---

@@ -689,15 +689,15 @@
     },
     {
       "id": "dec-053",
-      "timestamp": "2026-02-16T22:48:25Z",
-      "feature": "marky-3l6",
-      "decision": "Add CRLF incremental edit parity regression test in markymark-lsp state tests",
-      "rationale": "Review triage identified CRLF coverage as a valid gap. A parity test that compares incremental parsing output against full parse output prevents regressions in CRLF line-ending handling.",
+      "timestamp": "2026-02-17T04:44:00Z",
+      "feature": "marky-b6v",
+      "decision": "Restore from_scan() on self_cell architecture using identical DocumentOwner/DocumentIndexCell pattern as from_ast",
+      "rationale": "PR #21 merge replaced old &static lifetime hacks with self_cell. from_scan was lost. Restoring it with the same self_cell closure pattern ensures both construction paths share the same safe ownership model. from_scan creates DocumentArena::new() (vs from_ast which takes ast.into_arena()).",
       "alternatives": [
-        "Rely on existing LF-only incremental tests",
-        "Defer CRLF coverage to a future parser stress-test task"
+        "Keep old &static pattern in from_scan only (inconsistent, unsafe)",
+        "Defer from_scan restoration until document.rs refactor (blocks BRZA work)"
       ],
-      "impact": "markymark-lsp/tests/state_tests.rs"
+      "impact": "markymark-index/src/document.rs — from_scan, byte_offset helpers, 16 scan_tests; markymark-lsp/tests/state_tests.rs"
     },
     {
       "id": "dec-054",
@@ -905,5 +905,5 @@
       "impact": "markymark-lsp/src/state.rs #[cfg(test)] module"
     }
   ],
-  "lastUpdated": "2026-02-17T20:46:06Z"
+  "lastUpdated": "2026-02-17T23:35:13Z"
 }
