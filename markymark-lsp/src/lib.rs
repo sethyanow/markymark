@@ -12,6 +12,8 @@
 #![warn(clippy::all)]
 
 pub mod convert;
+pub mod diagnostics;
+pub mod incremental;
 pub mod server;
 pub mod state;
 mod symbols;
