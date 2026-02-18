@@ -99,7 +99,7 @@ impl DocumentIndex {
     /// Extracts owned intermediate records, moves the parser arena into this
     /// index, and allocates the final index entries in one arena-backed pass.
     pub fn from_ast(ast: Ast) -> Self {
-        Self::from_ast_with_overrides_opt(ast, None, None)
+        Self::from_ast_with_overrides_opt(ast, IncrementalOverrides::default())
     }
 
     /// Build a document index from a parsed AST while overriding wiki-links.
@@ -107,7 +107,13 @@ impl DocumentIndex {
     /// This is used by incremental reindexing paths that already computed
     /// a selective wiki-link merge and want to avoid full re-extraction.
     pub fn from_ast_with_wiki_links(ast: Ast, wiki_links: Vec<WikiLinkOwned>) -> Self {
-        Self::from_ast_with_overrides_opt(ast, Some(wiki_links), None)
+        Self::from_ast_with_overrides_opt(
+            ast,
+            IncrementalOverrides {
+                wiki_links: Some(wiki_links),
+                ..Default::default()
+            },
+        )
     }
 
     /// Build a document index from a parsed AST while overriding blocks.
@@ -115,7 +121,13 @@ impl DocumentIndex {
     /// This is used by incremental reindexing paths that already computed
     /// a selective block merge and want to avoid full re-extraction.
     pub fn from_ast_with_blocks(ast: Ast, blocks: Vec<BlockOwned>) -> Self {
-        Self::from_ast_with_overrides_opt(ast, None, Some(blocks))
+        Self::from_ast_with_overrides_opt(
+            ast,
+            IncrementalOverrides {
+                blocks: Some(blocks),
+                ..Default::default()
+            },
+        )
     }
 
     /// Build a document index from a parsed AST while overriding both wiki-links and blocks.
@@ -126,37 +138,27 @@ impl DocumentIndex {
         wiki_links: Vec<WikiLinkOwned>,
         blocks: Vec<BlockOwned>,
     ) -> Self {
-        Self::from_ast_with_overrides_opt(ast, Some(wiki_links), Some(blocks))
+        Self::from_ast_with_overrides_opt(
+            ast,
+            IncrementalOverrides {
+                wiki_links: Some(wiki_links),
+                blocks: Some(blocks),
+                ..Default::default()
+            },
+        )
     }
 
-    fn from_ast_with_overrides_opt(
-        ast: Ast,
-        wiki_links_override: Option<Vec<WikiLinkOwned>>,
-        blocks_override: Option<Vec<BlockOwned>>,
-    ) -> Self {
+    /// Build a document index from a parsed AST with selective extractor overrides.
+    ///
+    /// This is the primary construction path used by incremental reindexing. For each
+    /// extractor, a `Some` override skips re-extraction and uses the provided data;
+    /// `None` extracts fresh from the AST. Always use [`IncrementalOverrides`] rather
+    /// than calling the convenience functions when multiple extractors need overrides.
+    pub fn from_ast_with_overrides_opt(ast: Ast, overrides: IncrementalOverrides) -> Self {
         #[derive(Debug)]
         struct HeadingOwned {
             text: String,
             level: u8,
-            range: Range,
-        }
-        #[derive(Debug)]
-        struct TagOwned {
-            name: String,
-        }
-        #[derive(Debug)]
-        struct MarkdownLinkOwned {
-            text: String,
-            url: String,
-            anchor: Option<String>,
-            range: Range,
-        }
-        #[derive(Debug)]
-        struct XmlTagOwned {
-            tag_name: String,
-            attributes: Vec<(String, String)>,
-            is_self_closing: bool,
-            is_unclosed: bool,
             range: Range,
         }
 
@@ -171,7 +173,7 @@ impl DocumentIndex {
             }
         }
 
-        let blocks_owned = if let Some(blocks_override) = blocks_override {
+        let blocks_owned = if let Some(blocks_override) = overrides.blocks {
             blocks_override
         } else {
             let mut blocks_owned = Vec::new();
@@ -186,7 +188,7 @@ impl DocumentIndex {
             blocks_owned
         };
 
-        let wiki_links_owned = if let Some(wiki_links_override) = wiki_links_override {
+        let wiki_links_owned = if let Some(wiki_links_override) = overrides.wiki_links {
             wiki_links_override
         } else {
             let mut wiki_links_owned = Vec::new();
@@ -211,38 +213,52 @@ impl DocumentIndex {
             wiki_links_owned
         };
 
-        let mut tags_owned = Vec::new();
-        for tag in ast.extract_tags() {
-            tags_owned.push(TagOwned {
+        // Tags have no source range in the parser — always re-extract.
+        // The `overrides.tags` field is present for API completeness but is always `None`.
+        let tags_owned: Vec<TagOwned> = ast
+            .extract_tags()
+            .into_iter()
+            .map(|tag| TagOwned {
                 name: tag.name().to_string(),
-            });
-        }
+            })
+            .collect();
 
-        let mut markdown_links_owned = Vec::new();
-        for ml in ast.extract_markdown_links() {
-            markdown_links_owned.push(MarkdownLinkOwned {
-                text: ml.text().to_string(),
-                url: ml.url().to_string(),
-                anchor: ml.anchor().map(str::to_string),
-                range: ml.range(),
-            });
-        }
+        let markdown_links_owned = if let Some(ml_override) = overrides.markdown_links {
+            ml_override
+        } else {
+            ast.extract_markdown_links()
+                .into_iter()
+                .map(|ml| MarkdownLinkOwned {
+                    text: ml.text().to_string(),
+                    url: ml.url().to_string(),
+                    anchor: ml.anchor().map(str::to_string),
+                    range: ml.range(),
+                })
+                .collect()
+        };
 
-        let mut xml_tags_owned = Vec::new();
-        for xt in ast.extract_xml_tags() {
-            let attributes = xt
-                .attributes()
-                .iter()
-                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
-                .collect::<Vec<_>>();
-            xml_tags_owned.push(XmlTagOwned {
-                tag_name: xt.tag_name().to_string(),
-                attributes,
-                is_self_closing: xt.is_self_closing(),
-                is_unclosed: xt.is_unclosed(),
-                range: xt.range(),
-            });
-        }
+        let xml_tags_owned = if let Some(xt_override) = overrides.xml_tags {
+            xt_override
+        } else {
+            ast.extract_xml_tags()
+                .into_iter()
+                .map(|xt| {
+                    let mut attributes: Vec<(String, String)> = xt
+                        .attributes()
+                        .iter()
+                        .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+                        .collect();
+                    attributes.sort_by(|a, b| a.0.cmp(&b.0));
+                    XmlTagOwned {
+                        tag_name: xt.tag_name().to_string(),
+                        attributes,
+                        is_self_closing: xt.is_self_closing(),
+                        is_unclosed: xt.is_unclosed(),
+                        range: xt.range(),
+                    }
+                })
+                .collect()
+        };
 
         let owner = DocumentOwner {
             arena: Mutex::new(ast.into_arena()),

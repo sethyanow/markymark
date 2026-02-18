@@ -105,6 +105,68 @@ pub struct TagEntry<'arena> {
     pub name: &'arena str,
 }
 
+/// Owned tag payload used by incremental merge paths before arena allocation.
+///
+/// Note: `Tag` in the parser has no source range, so tags cannot be incrementally
+/// merged. Always pass `None` for `IncrementalOverrides::tags`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TagOwned {
+    /// Tag name (without leading `#`).
+    pub name: String,
+}
+
+/// Owned markdown link payload used by incremental merge paths before arena allocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MarkdownLinkOwned {
+    /// Link display text.
+    pub text: String,
+    /// Link URL.
+    pub url: String,
+    /// Optional anchor/fragment.
+    pub anchor: Option<String>,
+    /// Source range (line/col). No byte offsets available from parser.
+    pub range: Range,
+}
+
+/// Owned XML tag payload used by incremental merge paths before arena allocation.
+///
+/// Attributes are stored sorted by key for deterministic ordering, preventing
+/// false positives in equality comparisons regardless of extraction order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct XmlTagOwned {
+    /// Tag name.
+    pub tag_name: String,
+    /// Attributes as key-value pairs, sorted by key.
+    pub attributes: Vec<(String, String)>,
+    /// Whether this is a self-closing tag.
+    pub is_self_closing: bool,
+    /// Whether this tag has no matching closing tag.
+    pub is_unclosed: bool,
+    /// Source range (line/col). No byte offsets available from parser.
+    pub range: Range,
+}
+
+/// Overrides for each independent extractor used by the incremental index path.
+///
+/// `None` means: extract fresh from the AST (no reuse).
+/// `Some(vec)` means: use the provided owned data instead of re-extracting.
+///
+/// `tags` is always `None` because [`Tag`][markymark_parser] has no source range
+/// and cannot be incrementally merged. It is included for API completeness only.
+#[derive(Debug, Default)]
+pub struct IncrementalOverrides {
+    /// Merged wiki-links from the incremental path, or `None` to re-extract.
+    pub wiki_links: Option<Vec<WikiLinkOwned>>,
+    /// Merged block IDs from the incremental path, or `None` to re-extract.
+    pub blocks: Option<Vec<BlockOwned>>,
+    /// Always `None` — tags have no range, cannot be incrementally merged.
+    pub tags: Option<Vec<TagOwned>>,
+    /// Merged markdown links from the incremental path, or `None` to re-extract.
+    pub markdown_links: Option<Vec<MarkdownLinkOwned>>,
+    /// Merged XML tags from the incremental path, or `None` to re-extract.
+    pub xml_tags: Option<Vec<XmlTagOwned>>,
+}
+
 /// A markdown link entry stored in the index.
 #[derive(Debug, Clone)]
 pub struct MarkdownLinkEntry<'arena> {
