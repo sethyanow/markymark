@@ -1596,3 +1596,145 @@ fn search_workspace_sort_descending_score_ties_by_uri_ascending() {
         "results with equal score should be sorted by URI ascending"
     );
 }
+
+// --- find-references: block_ref support (marky-jrw) ---
+
+const BLOCK_UUID_A: &str = "550e8400-e29b-41d4-a716-446655440000";
+const BLOCK_UUID_B: &str = "7f6c1b2a-3d4e-5f60-a7b8-c9d0e1f20304";
+
+#[test]
+fn find_references_for_block_ref_returns_all_referencing_docs() {
+    let ws = TempWorkspace::new("find-refs-blockref");
+    let a = ws.root().join("a.md");
+    let b = ws.root().join("b.md");
+    let c = ws.root().join("c.md");
+
+    // Doc A: contains the target block ref
+    fs::write(&a, format!("(({BLOCK_UUID_A})) is here\n")).expect("a.md should be created");
+    // Doc B: contains the same block ref plus another
+    fs::write(
+        &b,
+        format!("Some text\n\n(({BLOCK_UUID_A})) and (({BLOCK_UUID_B}))\n"),
+    )
+    .expect("b.md should be created");
+    // Doc C: no block refs
+    fs::write(&c, "# No refs\n").expect("c.md should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    // Position cursor inside ((uuid)) in Doc A — line 0, char 3 is inside the UUID text
+    let result = engine.execute(CoreOperation::FindReferences {
+        uri: DocumentUri::from_file_path(&a),
+        position: Range::new(Position::new(0, 3), Position::new(0, 3)),
+        realm: None,
+    });
+
+    match result {
+        CoreOperationResult::Locations(locations) => {
+            assert!(
+                locations.len() >= 2,
+                "expected at least 2 block ref locations (a.md and b.md), got {}",
+                locations.len()
+            );
+            let c_uri = DocumentUri::from_file_path(&c);
+            assert!(
+                !locations.iter().any(|(uri, _)| *uri == c_uri),
+                "Doc C (no block refs) should not appear in results"
+            );
+        }
+        other => panic!("expected Locations result, got: {other:?}"),
+    }
+}
+
+#[test]
+fn find_references_block_ref_results_sorted_by_uri_then_range() {
+    let ws = TempWorkspace::new("find-refs-blockref-sorted");
+
+    // Create files with names that sort alphabetically: a.md < b.md < c.md
+    fs::write(ws.root().join("c.md"), format!("(({BLOCK_UUID_A})) in c\n"))
+        .expect("c.md should be created");
+    fs::write(ws.root().join("a.md"), format!("(({BLOCK_UUID_A})) in a\n"))
+        .expect("a.md should be created");
+    fs::write(ws.root().join("b.md"), format!("(({BLOCK_UUID_A})) in b\n"))
+        .expect("b.md should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let result = engine.execute(CoreOperation::FindReferences {
+        uri: DocumentUri::from_file_path(&ws.root().join("a.md")),
+        position: Range::new(Position::new(0, 3), Position::new(0, 3)),
+        realm: None,
+    });
+
+    match result {
+        CoreOperationResult::Locations(locations) => {
+            assert_eq!(
+                locations.len(),
+                3,
+                "expected 3 block ref locations, got {}",
+                locations.len()
+            );
+            for window in locations.windows(2) {
+                let (uri_a, range_a) = &window[0];
+                let (uri_b, range_b) = &window[1];
+                let ord = uri_a
+                    .as_str()
+                    .cmp(uri_b.as_str())
+                    .then_with(|| compare_ranges(*range_a, *range_b));
+                assert!(
+                    ord != Ordering::Greater,
+                    "locations should be sorted by uri then range, but {uri_a:?} > {uri_b:?}"
+                );
+            }
+        }
+        other => panic!("expected Locations result, got: {other:?}"),
+    }
+}
+
+#[test]
+fn find_references_for_block_id_returns_block_ref_locations() {
+    let ws = TempWorkspace::new("find-refs-block-id-inverse");
+
+    // Doc A: defines a block with ^uuid
+    let a = ws.root().join("a.md");
+    fs::write(&a, format!("some content ^{BLOCK_UUID_A}\n")).expect("a.md should be created");
+    // Doc B: references that block with ((uuid))
+    let b = ws.root().join("b.md");
+    fs::write(&b, format!("(({BLOCK_UUID_A})) is referenced\n")).expect("b.md should be created");
+    // Doc C: no refs
+    let c = ws.root().join("c.md");
+    fs::write(&c, "# No refs\n").expect("c.md should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    // Cursor inside ^uuid in Doc A: "some content ^550e8400..."
+    // ^  is at position 13, UUID starts at 14; position 16 is inside the UUID
+    let result = engine.execute(CoreOperation::FindReferences {
+        uri: DocumentUri::from_file_path(&a),
+        position: Range::new(Position::new(0, 16), Position::new(0, 16)),
+        realm: None,
+    });
+
+    match result {
+        CoreOperationResult::Locations(locations) => {
+            assert!(
+                !locations.is_empty(),
+                "expected at least 1 location pointing to ((uuid)) in Doc B"
+            );
+            let b_uri = DocumentUri::from_file_path(&b);
+            assert!(
+                locations.iter().any(|(uri, _)| *uri == b_uri),
+                "Doc B should appear in results (contains ((uuid)))"
+            );
+            let c_uri = DocumentUri::from_file_path(&c);
+            assert!(
+                !locations.iter().any(|(uri, _)| *uri == c_uri),
+                "Doc C should not appear in results"
+            );
+        }
+        other => panic!("expected Locations result, got: {other:?}"),
+    }
+}
