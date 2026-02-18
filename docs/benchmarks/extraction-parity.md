@@ -22,6 +22,8 @@ This report compares Tier 1 (Zig scan via `DocumentIndex::from_scan`) against Ti
 
 ## Rates
 
+> Rates use AST totals as denominator.
+
 - Raw false positive rate: 4.41%
 - Raw false negative rate: 2.81%
 - Adjusted false positive rate (excluding known setext/frontmatter gaps): 4.20%

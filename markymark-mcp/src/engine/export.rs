@@ -83,7 +83,13 @@ pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri) -> Core
             let headings = index
                 .keys()
                 .iter()
-                .map(|k| (k.path.clone(), (k.depth as u8) + 1, k.key_range))
+                .map(|k| {
+                    (
+                        k.path.clone(),
+                        (k.depth as u8).saturating_add(1),
+                        k.key_range,
+                    )
+                })
                 .collect();
 
             CoreOperationResult::DocumentExport {

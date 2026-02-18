@@ -26,7 +26,8 @@ pub(crate) fn handle_search_symbols(realm: &RealmIndex, query: String) -> CoreOp
         }
     }
 
-    // Collect structured key-path candidates.
+    // Collect structured key-path candidates (pre-filtered by search_key_paths,
+    // unlike headings which are collected exhaustively then ranked by fuzzy score).
     for (uri, path, _key, _kind, range) in realm.search_key_paths(&query) {
         candidates.push((path, uri, range));
     }

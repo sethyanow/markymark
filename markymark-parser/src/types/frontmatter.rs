@@ -25,8 +25,8 @@ impl<'arena> Frontmatter<'arena> {
     }
 
     /// Iterate over all key-value pairs.
-    pub fn iter(&self) -> impl Iterator<Item = (&&'arena str, &FrontmatterValue<'arena>)> {
-        self.data.iter()
+    pub fn iter(&self) -> impl Iterator<Item = (&'arena str, &FrontmatterValue<'arena>)> {
+        self.data.iter().map(|(k, v)| (*k, v))
     }
 }
 
@@ -73,8 +73,8 @@ impl<'arena> Properties<'arena> {
     }
 
     /// Iterate over all key-value pairs.
-    pub fn iter(&self) -> impl Iterator<Item = (&&'arena str, &PropertyValue<'arena>)> {
-        self.data.iter()
+    pub fn iter(&self) -> impl Iterator<Item = (&'arena str, &PropertyValue<'arena>)> {
+        self.data.iter().map(|(k, v)| (*k, v))
     }
 }
 
