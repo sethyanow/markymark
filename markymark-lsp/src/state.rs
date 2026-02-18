@@ -5,8 +5,9 @@ use std::collections::HashMap;
 use markymark_core::structured::{DocumentKind, KeyEntry, ValueKind};
 use markymark_core::{DocumentUri, Position, Range};
 use markymark_index::{
-    AnyDocumentIndex, BlockOwned, DocumentIndex, HeadingEntry, MarkdownLinkEntry, MarkdownLinkOwned,
-    RealmIndex, StructuredDocumentIndex, WikiLinkEntry, WikiLinkOwned, XmlTagEntry, XmlTagOwned,
+    slugify, AnyDocumentIndex, BlockOwned, DocumentIndex, HeadingEntry, MarkdownLinkEntry,
+    MarkdownLinkOwned, RealmIndex, StructuredDocumentIndex, WikiLinkEntry, WikiLinkOwned,
+    XmlTagEntry, XmlTagOwned,
 };
 use markymark_parser::structured::parse_structured;
 use markymark_parser::{byte_to_point, InputEdit, MarkdownTree, Parser};
@@ -92,7 +93,6 @@ pub struct RenameEdit {
     pub new_text: String,
 }
 
-
 /// Describes what symbol (if any) the cursor is sitting on.
 #[derive(Debug, Clone)]
 pub enum SymbolAtPosition<'a> {
@@ -158,7 +158,6 @@ pub enum DocumentChange {
     },
 }
 
-
 /// The internal state of the LSP server.
 ///
 /// Manages document text storage, parsed ASTs, and the realm index.
@@ -207,6 +206,7 @@ impl ServerState {
     ///
     /// Delegates to [`incremental::build_markdown_index_with_old_tree`] which handles
     /// all 5 independent extractors (wiki_links, blocks, tags, markdown_links, xml_tags).
+    #[allow(clippy::too_many_arguments)]
     fn build_markdown_index_with_old_tree(
         &mut self,
         text: &str,
@@ -302,32 +302,61 @@ impl ServerState {
 
         // Take the old tree out (if any) for incremental parsing
         let mut old_tree = self.md_trees.remove(uri.as_str());
-        let old_wiki_links = self.realm.get_document(uri).map(|index| {
-            index
-                .wiki_links()
-                .iter()
-                .map(|entry| WikiLinkOwned {
-                    target: entry.target.to_string(),
-                    alias: entry.alias.map(str::to_string),
-                    heading: entry.heading.map(str::to_string),
-                    range: entry.range,
-                    start_byte: entry.start_byte,
-                    end_byte: entry.end_byte,
-                })
-                .collect::<Vec<_>>()
-        });
-        let old_blocks = self.realm.get_document(uri).map(|index| {
-            index
-                .block_ids()
-                .filter_map(|id| index.block_by_id(id))
-                .map(|entry| BlockOwned {
-                    id: entry.id.to_string(),
-                    range: entry.range,
-                    start_byte: entry.start_byte,
-                    end_byte: entry.end_byte,
-                })
-                .collect::<Vec<_>>()
-        });
+        // Capture all old extractor data in a single get_document() call
+        // before realm.remove_document() invalidates the arena.
+        let (old_wiki_links, old_blocks, old_markdown_links, old_xml_tags) =
+            if let Some(index) = self.realm.get_document(uri) {
+                let wl = index
+                    .wiki_links()
+                    .iter()
+                    .map(|entry| WikiLinkOwned {
+                        target: entry.target.to_string(),
+                        alias: entry.alias.map(str::to_string),
+                        heading: entry.heading.map(str::to_string),
+                        range: entry.range,
+                        start_byte: entry.start_byte,
+                        end_byte: entry.end_byte,
+                    })
+                    .collect::<Vec<_>>();
+                let bl = index
+                    .block_ids()
+                    .filter_map(|id| index.block_by_id(id))
+                    .map(|entry| BlockOwned {
+                        id: entry.id.to_string(),
+                        range: entry.range,
+                        start_byte: entry.start_byte,
+                        end_byte: entry.end_byte,
+                    })
+                    .collect::<Vec<_>>();
+                let ml = index
+                    .markdown_links()
+                    .iter()
+                    .map(|entry| MarkdownLinkOwned {
+                        text: entry.text.to_string(),
+                        url: entry.url.to_string(),
+                        anchor: entry.anchor.map(str::to_string),
+                        range: entry.range,
+                    })
+                    .collect::<Vec<_>>();
+                let xt = index
+                    .xml_tags()
+                    .iter()
+                    .map(|entry| XmlTagOwned {
+                        tag_name: entry.tag_name.to_string(),
+                        attributes: entry
+                            .attributes
+                            .iter()
+                            .map(|(k, v)| (k.to_string(), v.to_string()))
+                            .collect(),
+                        is_self_closing: entry.is_self_closing,
+                        is_unclosed: entry.is_unclosed,
+                        range: entry.range,
+                    })
+                    .collect::<Vec<_>>();
+                (Some(wl), Some(bl), Some(ml), Some(xt))
+            } else {
+                (None, None, None, None)
+            };
 
         if changes.is_empty() {
             if let Some(tree) = old_tree {
@@ -431,9 +460,11 @@ impl ServerState {
                 let (index, md_tree) = self.build_markdown_index_with_old_tree(
                     &final_text,
                     old_tree.as_ref(),
+                    &pending_edits,
                     old_wiki_links.as_deref(),
                     old_blocks.as_deref(),
-                    &pending_edits,
+                    old_markdown_links.as_deref(),
+                    old_xml_tags.as_deref(),
                 );
                 let uri_str = uri.as_str().to_string();
                 if let Some(tree) = md_tree {
@@ -718,82 +749,7 @@ impl ServerState {
             Some(idx) => idx,
             None => return Vec::new(),
         };
-
-        let mut diagnostics = Vec::new();
-
-        // 1. Check wiki links for broken references
-        for wl in index.wiki_links() {
-            let resolved = resolve_wiki_link(&self.realm, uri, wl.target, wl.heading);
-            if resolved.is_none() {
-                let target_desc = match &wl.heading {
-                    Some(h) => format!("{}#{}", wl.target, h),
-                    None => wl.target.to_string(),
-                };
-                diagnostics.push(MarkyDiagnostic {
-                    range: wl.range,
-                    severity: DiagnosticSeverity::Error,
-                    message: format!("Broken wiki link: [[{}]]", target_desc),
-                });
-            }
-        }
-
-        // 2. Check markdown link anchors for broken references
-        for ml in index.markdown_links() {
-            if let Some(anchor) = &ml.anchor {
-                // Same-page anchor links: check if slug exists in current doc
-                let raw_url = ml
-                    .url
-                    .strip_suffix(&format!("#{}", anchor))
-                    .unwrap_or(ml.url);
-                let resolved = resolve_markdown_link(&self.realm, uri, raw_url, Some(*anchor));
-                if resolved.is_none() {
-                    diagnostics.push(MarkyDiagnostic {
-                        range: ml.range,
-                        severity: DiagnosticSeverity::Error,
-                        message: format!("Broken link: heading '{}' not found", anchor),
-                    });
-                }
-            }
-        }
-
-        // 3. Check for duplicate heading slugs
-        //
-        // Use the *base* slug (from slugify) rather than the stored (deduped)
-        // slug so that headings whose text produces the same slug are detected
-        // (the indexer already appends `-1`, `-2`, etc. to avoid collisions).
-        let mut slug_counts: HashMap<String, Vec<Range>> = HashMap::new();
-        for h in index.headings() {
-            let base_slug = slugify(h.text);
-            slug_counts.entry(base_slug).or_default().push(h.range);
-        }
-        for (slug, ranges) in &slug_counts {
-            if ranges.len() > 1 {
-                for range in ranges {
-                    diagnostics.push(MarkyDiagnostic {
-                        range: *range,
-                        severity: DiagnosticSeverity::Warning,
-                        message: format!(
-                            "Duplicate heading slug '{}' ({} occurrences)",
-                            slug,
-                            ranges.len()
-                        ),
-                    });
-                }
-            }
-        }
-
-        // 4. Check for unclosed XML tags
-        for xt in index.xml_tags() {
-            if xt.is_unclosed {
-                diagnostics.push(MarkyDiagnostic {
-                    range: xt.range,
-                    severity: DiagnosticSeverity::Warning,
-                    message: format!("Unclosed XML tag: <{}>", xt.tag_name),
-                });
-            }
-        }
-
-        diagnostics
+        crate::diagnostics::compute_diagnostics(index, &self.realm, uri)
     }
 
     /// Check whether the symbol at the given position can be renamed.
@@ -1108,7 +1064,7 @@ mod tests {
             new_end_position: markymark_parser::Point { row: 2, column: 10 },
         };
         assert!(
-            !ServerState::range_is_after_edit_start(range, &edit),
+            !incremental::range_is_after_edit_start(range, &edit),
             "a link starting before the edit should not be 'after edit start'"
         );
     }
@@ -1126,7 +1082,7 @@ mod tests {
             new_end_position: markymark_parser::Point { row: 2, column: 5 },
         };
         assert!(
-            ServerState::range_is_after_edit_start(range, &edit),
+            incremental::range_is_after_edit_start(range, &edit),
             "a link starting after the edit should be 'after edit start'"
         );
     }
@@ -1145,7 +1101,7 @@ mod tests {
         };
         // Link at bytes 70–85, which is 10 bytes after the edit end (60).
         assert!(
-            ServerState::range_within_neighbor_window(70, 85, &edit, 100),
+            incremental::range_within_neighbor_window(70, 85, &edit, 100),
             "a link 10 bytes after the edit end should be within a 100-byte window"
         );
     }
@@ -1163,7 +1119,7 @@ mod tests {
         };
         // Link at bytes 261–280, which is 201 bytes after the edit end (60).
         assert!(
-            !ServerState::range_within_neighbor_window(261, 280, &edit, 100),
+            !incremental::range_within_neighbor_window(261, 280, &edit, 100),
             "a link 200 bytes from the edit should not be within a 100-byte window"
         );
     }
@@ -1188,7 +1144,7 @@ mod tests {
         }];
 
         assert!(
-            ServerState::wiki_links_need_update(&old_wiki_links, &pending_edits),
+            incremental::wiki_links_need_update(&old_wiki_links, &pending_edits),
             "append edits after the last link should force wiki-link recomputation"
         );
     }
@@ -1218,7 +1174,7 @@ mod tests {
     fn test_blocks_need_update_returns_false_when_no_pending_edits() {
         let old_blocks = vec![make_block_owned("block-1", 2, 10, 18, 30, 38)];
         assert!(
-            !ServerState::blocks_need_update(&old_blocks, &[]),
+            !incremental::blocks_need_update(&old_blocks, &[]),
             "empty pending_edits should not require block update"
         );
     }
@@ -1236,7 +1192,7 @@ mod tests {
             new_end_position: markymark_parser::Point { row: 2, column: 15 },
         };
         assert!(
-            ServerState::blocks_need_update(&old_blocks, &[edit]),
+            incremental::blocks_need_update(&old_blocks, &[edit]),
             "edit overlapping block range should require update"
         );
     }
@@ -1257,7 +1213,7 @@ mod tests {
         // range_is_after_edit_start: true (block at row 10 >= edit start row 0)
         // → affected because position shifted; blocks_need_update should return true
         assert!(
-            ServerState::blocks_need_update(&old_blocks, &[edit]),
+            incremental::blocks_need_update(&old_blocks, &[edit]),
             "edit before block shifts block position, requiring update"
         );
     }
@@ -1275,7 +1231,7 @@ mod tests {
             new_end_position: markymark_parser::Point { row: 3, column: 7 },
         };
         assert!(
-            ServerState::blocks_need_update(&old_blocks, &[edit]),
+            incremental::blocks_need_update(&old_blocks, &[edit]),
             "append edits after last block should force block recomputation"
         );
     }
@@ -1297,7 +1253,7 @@ mod tests {
             old_end_position: markymark_parser::Point { row: 5, column: 51 },
             new_end_position: markymark_parser::Point { row: 5, column: 51 },
         };
-        let merged = ServerState::merge_incremental_blocks(&old_blocks, &new_blocks, &[edit]);
+        let merged = incremental::merge_incremental_blocks(&old_blocks, &new_blocks, &[edit]);
         assert_eq!(merged.len(), 1, "merged should contain exactly one block");
         assert_eq!(merged[0].id, "early-block");
     }
@@ -1326,7 +1282,7 @@ mod tests {
             old_end_position: markymark_parser::Point { row: 3, column: 0 },
             new_end_position: markymark_parser::Point { row: 3, column: 1 },
         };
-        let merged = ServerState::merge_incremental_blocks(&old_blocks, &new_blocks, &[edit]);
+        let merged = incremental::merge_incremental_blocks(&old_blocks, &new_blocks, &[edit]);
         // Both blocks should appear exactly once
         assert_eq!(merged.len(), 2, "merged should contain exactly two blocks");
         assert!(merged.iter().any(|b| b.id == "block-a"));
@@ -1379,11 +1335,13 @@ mod tests {
 
         // Incremental rebuild
         let ast_inc = parser.parse(&modified).unwrap();
-        let inc_index = ServerState::build_markdown_index_incremental(
-            None,
-            Some(&old_blocks_owned),
+        let inc_index = incremental::build_markdown_index_incremental(
             ast_inc,
             &[edit],
+            None,
+            Some(&old_blocks_owned),
+            None,
+            None,
         );
         let inc_block_ids: Vec<String> = inc_index.block_ids().map(str::to_string).collect();
 

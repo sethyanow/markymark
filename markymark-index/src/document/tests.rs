@@ -521,7 +521,7 @@ fn test_incremental_overrides_all_five() {
     let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
     assert_eq!(index.wiki_links().len(), 1);
     assert_eq!(index.wiki_links()[0].target, "injected-page");
-    assert_eq!(index.block_by_id("injected-block").is_some(), true);
+    assert!(index.block_by_id("injected-block").is_some());
     assert_eq!(index.markdown_links().len(), 1);
     assert_eq!(index.markdown_links()[0].text, "injected-link");
     assert_eq!(index.xml_tags().len(), 1);
