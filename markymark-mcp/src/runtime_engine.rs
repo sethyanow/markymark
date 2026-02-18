@@ -515,6 +515,61 @@ impl CoreEngine for RuntimeEngine {
                     return CoreOperationResult::Locations(locations);
                 }
 
+                // Block ref forward: cursor on ((uuid)) → find all docs with same uuid
+                if let Some(block_ref) =
+                    index.block_refs().iter().find(|r| r.range.contains(cursor))
+                {
+                    let target_uuid = block_ref.uuid;
+                    let mut locations = Vec::new();
+
+                    for (doc_uri, doc_index) in realm.iter_documents() {
+                        for br in doc_index.block_refs() {
+                            if br.uuid == target_uuid {
+                                locations.push((doc_uri.clone(), br.range));
+                            }
+                        }
+                    }
+
+                    locations.sort_by(|(uri_a, range_a), (uri_b, range_b)| {
+                        uri_a
+                            .as_str()
+                            .cmp(uri_b.as_str())
+                            .then_with(|| compare_ranges(*range_a, *range_b))
+                    });
+
+                    return CoreOperationResult::Locations(locations);
+                }
+
+                // Block-id inverse: cursor on ^block-id → find all ((uuid)) refs to it
+                let block_hit = index.block_ids().find_map(|id| {
+                    let entry = index.block_by_id(id)?;
+                    if entry.range.contains(cursor) {
+                        Some(id.to_string())
+                    } else {
+                        None
+                    }
+                });
+                if let Some(target_id) = block_hit {
+                    let mut locations = Vec::new();
+
+                    for (doc_uri, doc_index) in realm.iter_documents() {
+                        for br in doc_index.block_refs() {
+                            if br.uuid == target_id {
+                                locations.push((doc_uri.clone(), br.range));
+                            }
+                        }
+                    }
+
+                    locations.sort_by(|(uri_a, range_a), (uri_b, range_b)| {
+                        uri_a
+                            .as_str()
+                            .cmp(uri_b.as_str())
+                            .then_with(|| compare_ranges(*range_a, *range_b))
+                    });
+
+                    return CoreOperationResult::Locations(locations);
+                }
+
                 CoreOperationResult::Error(CoreError::Message(
                     "no referenceable symbol at position".to_string(),
                 ))
