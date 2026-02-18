@@ -169,16 +169,63 @@ pub(crate) fn build_dependency_graph(realm: &RealmIndex, format: &str) -> Result
             for (name, idx) in &label_map {
                 // Use the file stem or short name as label.
                 let label = name.rsplit('/').next().unwrap_or(name);
-                out.push_str(&format!("  n{idx} [label={label:?}];\n"));
+                let escaped = escape_dot_label(label);
+                out.push_str(&format!("  n{idx} [label=\"{escaped}\"];\n"));
             }
             for (from, to, kind) in &edges {
                 let from_idx = label_map[from.as_str()];
                 let to_idx = label_map[to.as_str()];
-                out.push_str(&format!("  n{from_idx} -> n{to_idx} [label={kind:?}];\n"));
+                let kind_escaped = escape_dot_label(kind);
+                out.push_str(&format!(
+                    "  n{from_idx} -> n{to_idx} [label=\"{kind_escaped}\"];\n"
+                ));
             }
             out.push_str("}\n");
             Ok(out)
         }
         other => Err(format!("unsupported dependency graph format: {other}")),
+    }
+}
+
+/// Escape a string for use as a DOT (Graphviz) label value.
+///
+/// DOT requires backslashes, double-quotes, and newlines to be escaped
+/// inside quoted label strings.
+fn escape_dot_label(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escape_dot_label_plain_text() {
+        assert_eq!(escape_dot_label("hello.md"), "hello.md");
+    }
+
+    #[test]
+    fn escape_dot_label_with_quotes() {
+        assert_eq!(escape_dot_label(r#"say "hi""#), r#"say \"hi\""#);
+    }
+
+    #[test]
+    fn escape_dot_label_with_backslash() {
+        assert_eq!(escape_dot_label(r"path\to\file"), r"path\\to\\file");
+    }
+
+    #[test]
+    fn escape_dot_label_with_newline() {
+        assert_eq!(escape_dot_label("line1\nline2"), "line1\\nline2");
     }
 }
