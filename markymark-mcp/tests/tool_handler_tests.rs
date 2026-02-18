@@ -199,6 +199,15 @@ impl CoreEngine for MockEngine {
                     truncated: false,
                 }
             }
+            (_, CoreOperation::GraphAnalysis { realm, .. }) => CoreOperationResult::GraphAnalysis {
+                realm: realm.unwrap_or_else(|| "default".to_string()),
+                total_docs: 3,
+                total_internal_links: 2,
+                orphans: vec![],
+                hubs: vec![],
+                broken_links: vec![],
+                clusters: None,
+            },
         }
     }
 }
@@ -248,6 +257,7 @@ fn registers_expected_rmcp_tools() {
     assert!(names.contains(&"rename"));
     assert!(names.contains(&"search-workspace"));
     assert!(names.contains(&"search-for-pattern"));
+    assert!(names.contains(&"graph-analysis"));
 }
 
 #[tokio::test]
@@ -898,6 +908,48 @@ async fn export_index_tool_maps_core_error() {
         .export_index_tool(Parameters(ExportIndexRequest {
             uri: "file:///vault/notes.md".to_string(),
             realm: None,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "core_error");
+}
+
+#[tokio::test]
+async fn graph_analysis_tool_returns_structured_success() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .graph_analysis_tool(Parameters(GraphAnalysisRequest {
+            realm: None,
+            top_n_hubs: 5,
+            include_clusters: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: GraphAnalysisResponse =
+        result.into_typed().expect("typed graph analysis response");
+    assert_eq!(payload.realm, "default");
+    assert_eq!(payload.stats.total_docs, 3);
+    assert_eq!(payload.stats.total_internal_links, 2);
+    assert!(payload.clusters.is_none());
+}
+
+#[tokio::test]
+async fn graph_analysis_tool_propagates_core_error() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::CoreError,
+    }));
+    let result = mcp
+        .graph_analysis_tool(Parameters(GraphAnalysisRequest {
+            realm: None,
+            top_n_hubs: 10,
+            include_clusters: false,
         }))
         .await
         .expect("tool call should not return protocol error");

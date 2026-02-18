@@ -537,3 +537,90 @@ pub struct SearchForPatternResponse {
     /// `true` when results were truncated at `limit`.
     pub truncated: bool,
 }
+
+/// Request to analyse the link graph of a realm.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GraphAnalysisRequest {
+    /// Realm to analyse. Defaults to `"default"`.
+    pub realm: Option<String>,
+    /// Number of top hub documents to return (sorted by incoming link count).
+    #[serde(default = "default_top_n_hubs")]
+    pub top_n_hubs: u32,
+    /// Whether to compute weakly-connected clusters. Can be expensive on large workspaces.
+    #[serde(default)]
+    pub include_clusters: bool,
+}
+
+fn default_top_n_hubs() -> u32 {
+    10
+}
+
+/// A document with no incoming and no outgoing resolved internal links.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct OrphanDto {
+    /// Document URI.
+    pub uri: String,
+}
+
+/// A hub document with the most incoming links.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct HubDto {
+    /// Document URI.
+    pub uri: String,
+    /// Number of other documents that link to this one.
+    pub incoming_count: u32,
+}
+
+/// A link that could not be resolved to any indexed document.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BrokenLinkDto {
+    /// URI of the document that contains the link.
+    pub source_uri: String,
+    /// The unresolved link target string.
+    pub target: String,
+    /// Link kind: `"wiki"` for `[[…]]`, `"markdown"` for `[…](…)`.
+    pub kind: String,
+}
+
+/// Summary statistics for a realm's link graph.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GraphStatsDto {
+    /// Total number of indexed markdown documents.
+    pub total_docs: u32,
+    /// Total resolved internal links (wiki + local markdown).
+    pub total_internal_links: u32,
+    /// Number of orphan documents.
+    pub orphan_count: u32,
+    /// Number of broken links.
+    pub broken_link_count: u32,
+    /// Number of clusters, when `include_clusters` was `true`.
+    pub cluster_count: Option<u32>,
+}
+
+/// A weakly-connected cluster of documents.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ClusterDto {
+    /// Sequential cluster identifier (0-based, largest cluster first).
+    pub id: usize,
+    /// URIs of member documents.
+    pub members: Vec<String>,
+    /// Number of members.
+    pub size: usize,
+}
+
+/// Response from the graph-analysis tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GraphAnalysisResponse {
+    /// Realm that was analysed.
+    pub realm: String,
+    /// Summary statistics.
+    pub stats: GraphStatsDto,
+    /// Documents with zero resolved incoming and outgoing links.
+    pub orphans: Vec<OrphanDto>,
+    /// Top documents by incoming link count, sorted descending.
+    pub hubs: Vec<HubDto>,
+    /// Links that could not be resolved to any indexed document.
+    pub broken_links: Vec<BrokenLinkDto>,
+    /// Weakly-connected clusters. `null` when `include_clusters` was `false`.
+    pub clusters: Option<Vec<ClusterDto>>,
+}
