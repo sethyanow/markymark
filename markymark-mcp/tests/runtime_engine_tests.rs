@@ -1281,6 +1281,59 @@ fn export_index_returns_empty_lists_for_minimal_document() {
     }
 }
 
+#[test]
+fn export_index_includes_frontmatter() {
+    let ws = TempWorkspace::new("export-index-frontmatter");
+    let doc = ws.root().join("with-frontmatter.md");
+    fs::write(
+        &doc,
+        "---\nstatus: active\ntags: [rust, mcp]\n---\n# My Doc\n",
+    )
+    .expect("doc should be created");
+
+    let engine =
+        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+
+    let uri = DocumentUri::from_file_path(&doc);
+    let result = engine.execute(CoreOperation::ExportIndex {
+        uri: uri.clone(),
+        realm: None,
+    });
+
+    match result {
+        CoreOperationResult::DocumentExport {
+            frontmatter,
+            headings,
+            ..
+        } => {
+            // Verify the heading is present (sanity check)
+            assert_eq!(headings.len(), 1);
+            assert_eq!(headings[0].0, "My Doc");
+
+            // Verify frontmatter is populated
+            assert!(
+                !frontmatter.is_empty(),
+                "frontmatter should not be empty for a document with YAML frontmatter"
+            );
+
+            // Find the 'status' key — scalar value wrapped as single-element vec
+            let status_entry = frontmatter
+                .iter()
+                .find(|(k, _)| k == "status")
+                .expect("frontmatter should contain 'status' key");
+            assert_eq!(status_entry.1, vec!["active"]);
+
+            // Find the 'tags' key — list value preserved as multi-element vec
+            let tags_entry = frontmatter
+                .iter()
+                .find(|(k, _)| k == "tags")
+                .expect("frontmatter should contain 'tags' key");
+            assert_eq!(tags_entry.1, vec!["rust", "mcp"]);
+        }
+        other => panic!("expected DocumentExport result, got: {other:?}"),
+    }
+}
+
 // --- search-workspace integration tests ---
 
 fn engine_with_workspace_files(
