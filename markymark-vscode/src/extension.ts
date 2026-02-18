@@ -43,7 +43,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     try {
       fs.accessSync(binaryPath, fs.constants.X_OK);
     } catch {
-      fs.chmodSync(binaryPath, 0o755);
+      try {
+        fs.chmodSync(binaryPath, 0o755);
+      } catch (chmodErr) {
+        vscode.window.showErrorMessage(
+          `Markymark: failed to set executable permission on ${binaryPath}: ${chmodErr}`,
+        );
+        return;
+      }
     }
   }
 
