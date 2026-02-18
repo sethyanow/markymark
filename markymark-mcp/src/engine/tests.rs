@@ -29,8 +29,7 @@ fn get_outline_uses_named_realm() {
     fs::write(dir.join("doc.md"), "# Hello World\n\n## Section\n").unwrap();
     let engine = make_engine_with_custom_realm("my-realm", &dir);
 
-    let uri_str = format!("file://{}", dir.join("doc.md").display());
-    let uri = DocumentUri::new(&uri_str).unwrap();
+    let uri = DocumentUri::from_file_path(&dir.join("doc.md"));
 
     // Should fail without realm (default realm has no such doc)
     let result = engine.execute(CoreOperation::GetOutline {
@@ -60,8 +59,7 @@ fn export_index_uses_named_realm() {
     fs::write(dir.join("doc.md"), "# Title\n").unwrap();
     let engine = make_engine_with_custom_realm("export-realm", &dir);
 
-    let uri_str = format!("file://{}", dir.join("doc.md").display());
-    let uri = DocumentUri::new(&uri_str).unwrap();
+    let uri = DocumentUri::from_file_path(&dir.join("doc.md"));
 
     let result = engine.execute(CoreOperation::ExportIndex {
         uri: uri.clone(),
@@ -120,8 +118,7 @@ fn find_references_uses_named_realm() {
     fs::write(dir.join("doc.md"), "# My Heading\n\n[[My Heading]]\n").unwrap();
     let engine = make_engine_with_custom_realm("refs-realm", &dir);
 
-    let uri_str = format!("file://{}", dir.join("doc.md").display());
-    let uri = DocumentUri::new(&uri_str).unwrap();
+    let uri = DocumentUri::from_file_path(&dir.join("doc.md"));
 
     let position = markymark_core::Range {
         start: Position {
@@ -164,8 +161,7 @@ fn rename_uses_named_realm() {
     fs::write(dir.join("doc.md"), "# Old Name\n").unwrap();
     let engine = make_engine_with_custom_realm("rename-realm", &dir);
 
-    let uri_str = format!("file://{}", dir.join("doc.md").display());
-    let uri = DocumentUri::new(&uri_str).unwrap();
+    let uri = DocumentUri::from_file_path(&dir.join("doc.md"));
 
     let position = markymark_core::Range {
         start: Position {
@@ -413,8 +409,7 @@ fn preview_io_cost_large_file() {
         let path = dir.join(format!("doc_{target_bytes}.md"));
         fs::write(&path, &content).unwrap();
 
-        let uri_str = format!("file://{}", path.display());
-        let uri = DocumentUri::new(&uri_str).unwrap();
+        let uri = DocumentUri::from_file_path(&path);
 
         // Target a section 75% into the file (worst-case for streaming too).
         let target_line = line_count * 3 / 4;
@@ -489,8 +484,7 @@ fn preview_io_cost_multi_file() {
             let line_count = content.lines().count() as u32;
             let path = dir.join(format!("multi_{n_files}_file_{i}.md"));
             fs::write(&path, &content).unwrap();
-            let uri_str = format!("file://{}", path.display());
-            uris.push(DocumentUri::new(&uri_str).unwrap());
+            uris.push(DocumentUri::from_file_path(&path));
             target_lines.push(line_count * 3 / 4);
             paths.push(path);
         }
