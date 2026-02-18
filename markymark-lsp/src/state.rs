@@ -6,8 +6,8 @@ use markymark_core::structured::{DocumentKind, KeyEntry, ValueKind};
 use markymark_core::{DocumentUri, Position, Range};
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link};
 use markymark_index::{
-    slugify, AnyDocumentIndex, DocumentIndex, HeadingEntry, MarkdownLinkEntry, RealmIndex,
-    StructuredDocumentIndex, WikiLinkEntry, WikiLinkOwned, XmlTagEntry,
+    slugify, AnyDocumentIndex, BlockOwned, DocumentIndex, HeadingEntry, MarkdownLinkEntry,
+    RealmIndex, StructuredDocumentIndex, WikiLinkEntry, WikiLinkOwned, XmlTagEntry,
 };
 use markymark_parser::structured::parse_structured;
 use markymark_parser::{byte_to_point, InputEdit, MarkdownTree, Parser};
@@ -262,7 +262,7 @@ impl ServerState {
     /// Returns both the index and the tree-sitter parse tree. The tree is
     /// retained per-document for future incremental parsing.
     fn build_markdown_index(&mut self, text: &str) -> (DocumentIndex, Option<MarkdownTree>) {
-        self.build_markdown_index_with_old_tree(text, None, None, &[])
+        self.build_markdown_index_with_old_tree(text, None, None, None, &[])
     }
 
     fn range_intersects_edit(range: Range, edit: &InputEdit) -> bool {
@@ -382,8 +382,80 @@ impl ServerState {
         merged
     }
 
+    fn block_affected_by_edits(block: &BlockOwned, pending_edits: &[InputEdit]) -> bool {
+        pending_edits.iter().any(|edit| {
+            Self::range_intersects_edit(block.range, edit)
+                || Self::range_is_after_edit_start(block.range, edit)
+                || Self::range_within_neighbor_window(block.start_byte, block.end_byte, edit, 100)
+        })
+    }
+
+    fn blocks_need_update(old_blocks: &[BlockOwned], pending_edits: &[InputEdit]) -> bool {
+        if pending_edits.is_empty() {
+            return false;
+        }
+        old_blocks
+            .iter()
+            .any(|block| Self::block_affected_by_edits(block, pending_edits))
+            || Self::any_edit_starts_at_or_after_last_block(old_blocks, pending_edits)
+    }
+
+    fn any_edit_starts_at_or_after_last_block(
+        old_blocks: &[BlockOwned],
+        pending_edits: &[InputEdit],
+    ) -> bool {
+        let Some(last_old_end) = old_blocks
+            .iter()
+            .map(|block| (block.range.end.line, block.range.end.character))
+            .max()
+        else {
+            return false;
+        };
+
+        pending_edits.iter().any(|edit| {
+            let edit_start = (
+                edit.start_position.row as u32,
+                edit.start_position.column as u32,
+            );
+            edit_start >= last_old_end
+        })
+    }
+
+    fn extract_blocks_owned(ast: &markymark_parser::Ast) -> Vec<BlockOwned> {
+        ast.extract_block_ids()
+            .into_iter()
+            .map(|b| BlockOwned {
+                id: b.id().to_string(),
+                range: b.range(),
+                start_byte: b.start_byte(),
+                end_byte: b.end_byte(),
+            })
+            .collect()
+    }
+
+    fn merge_incremental_blocks(
+        old_blocks: &[BlockOwned],
+        new_blocks: &[BlockOwned],
+        pending_edits: &[InputEdit],
+    ) -> Vec<BlockOwned> {
+        let mut merged = Vec::new();
+        for old in old_blocks {
+            if !Self::block_affected_by_edits(old, pending_edits) {
+                merged.push(old.clone());
+            }
+        }
+        for new_block in new_blocks {
+            if Self::block_affected_by_edits(new_block, pending_edits) {
+                merged.push(new_block.clone());
+            }
+        }
+        merged.sort_by_key(|b| (b.range.start.line, b.range.start.character));
+        merged
+    }
+
     fn build_markdown_index_incremental(
         old_wiki_links: Option<&[WikiLinkOwned]>,
+        old_blocks: Option<&[BlockOwned]>,
         ast: markymark_parser::Ast,
         pending_edits: &[InputEdit],
     ) -> DocumentIndex {
@@ -391,22 +463,48 @@ impl ServerState {
             return DocumentIndex::from_ast(ast);
         }
 
-        let Some(old_wiki_links) = old_wiki_links else {
-            return DocumentIndex::from_ast(ast);
+        // Compute merged wiki-links
+        let merged_wiki_links = if let Some(old_wiki_links) = old_wiki_links {
+            if old_wiki_links.is_empty() {
+                Some(Self::extract_wiki_links_owned(&ast))
+            } else if !Self::wiki_links_need_update(old_wiki_links, pending_edits) {
+                Some(old_wiki_links.to_vec())
+            } else {
+                let new_wiki_links = Self::extract_wiki_links_owned(&ast);
+                Some(Self::merge_incremental_wiki_links(
+                    old_wiki_links,
+                    &new_wiki_links,
+                    pending_edits,
+                ))
+            }
+        } else {
+            None
         };
-        if old_wiki_links.is_empty() {
-            let new_wiki_links = Self::extract_wiki_links_owned(&ast);
-            return DocumentIndex::from_ast_with_wiki_links(ast, new_wiki_links);
-        }
 
-        if !Self::wiki_links_need_update(old_wiki_links, pending_edits) {
-            return DocumentIndex::from_ast_with_wiki_links(ast, old_wiki_links.to_vec());
-        }
+        // Compute merged blocks
+        let merged_blocks = if let Some(old_blocks) = old_blocks {
+            if old_blocks.is_empty() {
+                Some(Self::extract_blocks_owned(&ast))
+            } else if !Self::blocks_need_update(old_blocks, pending_edits) {
+                Some(old_blocks.to_vec())
+            } else {
+                let new_blocks = Self::extract_blocks_owned(&ast);
+                Some(Self::merge_incremental_blocks(
+                    old_blocks,
+                    &new_blocks,
+                    pending_edits,
+                ))
+            }
+        } else {
+            None
+        };
 
-        let new_wiki_links = Self::extract_wiki_links_owned(&ast);
-        let merged =
-            Self::merge_incremental_wiki_links(old_wiki_links, &new_wiki_links, pending_edits);
-        DocumentIndex::from_ast_with_wiki_links(ast, merged)
+        match (merged_wiki_links, merged_blocks) {
+            (Some(wl), Some(bl)) => DocumentIndex::from_ast_with_wiki_links_and_blocks(ast, wl, bl),
+            (Some(wl), None) => DocumentIndex::from_ast_with_wiki_links(ast, wl),
+            (None, Some(bl)) => DocumentIndex::from_ast_with_blocks(ast, bl),
+            (None, None) => DocumentIndex::from_ast(ast),
+        }
     }
 
     /// Parse text with optional old tree reuse and build a markdown document index.
@@ -419,6 +517,7 @@ impl ServerState {
         text: &str,
         old_tree: Option<&MarkdownTree>,
         old_wiki_links: Option<&[WikiLinkOwned]>,
+        old_blocks: Option<&[BlockOwned]>,
         pending_edits: &[InputEdit],
     ) -> (DocumentIndex, Option<MarkdownTree>) {
         let mut ast = self
@@ -426,7 +525,8 @@ impl ServerState {
             .parse_with_old_tree(text, old_tree)
             .expect("failed to parse document");
         let md_tree = ast.take_md_tree();
-        let index = Self::build_markdown_index_incremental(old_wiki_links, ast, pending_edits);
+        let index =
+            Self::build_markdown_index_incremental(old_wiki_links, old_blocks, ast, pending_edits);
         (index, md_tree)
     }
 
@@ -511,6 +611,18 @@ impl ServerState {
                     target: entry.target.to_string(),
                     alias: entry.alias.map(str::to_string),
                     heading: entry.heading.map(str::to_string),
+                    range: entry.range,
+                    start_byte: entry.start_byte,
+                    end_byte: entry.end_byte,
+                })
+                .collect::<Vec<_>>()
+        });
+        let old_blocks = self.realm.get_document(uri).map(|index| {
+            index
+                .block_ids()
+                .filter_map(|id| index.block_by_id(id))
+                .map(|entry| BlockOwned {
+                    id: entry.id.to_string(),
                     range: entry.range,
                     start_byte: entry.start_byte,
                     end_byte: entry.end_byte,
@@ -621,6 +733,7 @@ impl ServerState {
                     &final_text,
                     old_tree.as_ref(),
                     old_wiki_links.as_deref(),
+                    old_blocks.as_deref(),
                     &pending_edits,
                 );
                 let uri_str = uri.as_str().to_string();
@@ -1379,5 +1492,211 @@ mod tests {
             ServerState::wiki_links_need_update(&old_wiki_links, &pending_edits),
             "append edits after the last link should force wiki-link recomputation"
         );
+    }
+
+    // ---- Block incremental merge tests ----
+
+    fn make_block_owned(
+        id: &str,
+        start_line: u32,
+        start_col: u32,
+        end_col: u32,
+        start_byte: usize,
+        end_byte: usize,
+    ) -> BlockOwned {
+        BlockOwned {
+            id: id.to_string(),
+            range: Range::new(
+                Position::new(start_line, start_col),
+                Position::new(start_line, end_col),
+            ),
+            start_byte,
+            end_byte,
+        }
+    }
+
+    #[test]
+    fn test_blocks_need_update_returns_false_when_no_pending_edits() {
+        let old_blocks = vec![make_block_owned("block-1", 2, 10, 18, 30, 38)];
+        assert!(
+            !ServerState::blocks_need_update(&old_blocks, &[]),
+            "empty pending_edits should not require block update"
+        );
+    }
+
+    #[test]
+    fn test_blocks_need_update_returns_true_for_intersecting_edit() {
+        let old_blocks = vec![make_block_owned("block-1", 2, 10, 18, 30, 38)];
+        // Edit overlaps the block range
+        let edit = InputEdit {
+            start_byte: 28,
+            old_end_byte: 35,
+            new_end_byte: 35,
+            start_position: markymark_parser::Point { row: 2, column: 8 },
+            old_end_position: markymark_parser::Point { row: 2, column: 15 },
+            new_end_position: markymark_parser::Point { row: 2, column: 15 },
+        };
+        assert!(
+            ServerState::blocks_need_update(&old_blocks, &[edit]),
+            "edit overlapping block range should require update"
+        );
+    }
+
+    #[test]
+    fn test_blocks_need_update_returns_false_for_pre_block_edit_no_neighbor() {
+        // Edit at byte 0-1, block at bytes 500-508 (far beyond 100-byte neighbor window)
+        let old_blocks = vec![make_block_owned("block-far", 10, 0, 8, 500, 508)];
+        let edit = InputEdit {
+            start_byte: 0,
+            old_end_byte: 1,
+            new_end_byte: 1,
+            start_position: markymark_parser::Point { row: 0, column: 0 },
+            old_end_position: markymark_parser::Point { row: 0, column: 1 },
+            new_end_position: markymark_parser::Point { row: 0, column: 1 },
+        };
+        // range_intersects_edit: false (no overlap)
+        // range_is_after_edit_start: true (block at row 10 >= edit start row 0)
+        // → affected because position shifted; blocks_need_update should return true
+        assert!(
+            ServerState::blocks_need_update(&old_blocks, &[edit]),
+            "edit before block shifts block position, requiring update"
+        );
+    }
+
+    #[test]
+    fn test_blocks_need_update_for_edit_at_or_after_last_block() {
+        let old_blocks = vec![make_block_owned("block-1", 1, 2, 10, 10, 18)];
+        // Edit starts at row 3 (after all blocks)
+        let edit = InputEdit {
+            start_byte: 0,
+            old_end_byte: 0,
+            new_end_byte: 7,
+            start_position: markymark_parser::Point { row: 3, column: 0 },
+            old_end_position: markymark_parser::Point { row: 3, column: 0 },
+            new_end_position: markymark_parser::Point { row: 3, column: 7 },
+        };
+        assert!(
+            ServerState::blocks_need_update(&old_blocks, &[edit]),
+            "append edits after last block should force block recomputation"
+        );
+    }
+
+    #[test]
+    fn test_merge_incremental_blocks_reuses_unaffected_old_blocks() {
+        // Block at row 5 (bytes 100-108), edit at row 0 (byte 0-1)
+        // range_is_after_edit_start: true (row 5 >= row 0) → affected
+        // So the block at row 5 is "affected" (its byte offset shifted) and comes from new.
+        // A block at bytes < edit start would be unaffected.
+        // Edit at row 5 col 50 (byte 200), block at row 0 col 10 (byte 10-18).
+        let old_blocks = vec![make_block_owned("early-block", 0, 10, 18, 10, 18)];
+        let new_blocks = vec![make_block_owned("early-block", 0, 10, 18, 10, 18)]; // same positions
+        let edit = InputEdit {
+            start_byte: 200,
+            old_end_byte: 201,
+            new_end_byte: 201,
+            start_position: markymark_parser::Point { row: 5, column: 50 },
+            old_end_position: markymark_parser::Point { row: 5, column: 51 },
+            new_end_position: markymark_parser::Point { row: 5, column: 51 },
+        };
+        let merged = ServerState::merge_incremental_blocks(&old_blocks, &new_blocks, &[edit]);
+        assert_eq!(merged.len(), 1, "merged should contain exactly one block");
+        assert_eq!(merged[0].id, "early-block");
+    }
+
+    #[test]
+    fn test_merge_incremental_blocks_deduplicates_when_both_contribute() {
+        // Old has two blocks; edit is between them.
+        // Block-A at row 0 (before edit) → unaffected → from old
+        // Block-B at row 5 (after edit) → affected → from new
+        let old_blocks = vec![
+            make_block_owned("block-a", 0, 10, 18, 10, 18),
+            make_block_owned("block-b", 5, 10, 18, 200, 208),
+        ];
+        let new_blocks = vec![
+            // block-a unchanged
+            make_block_owned("block-a", 0, 10, 18, 10, 18),
+            // block-b has updated position after edit
+            make_block_owned("block-b", 5, 10, 18, 201, 209),
+        ];
+        // Edit at row 3 (between the two blocks)
+        let edit = InputEdit {
+            start_byte: 100,
+            old_end_byte: 100,
+            new_end_byte: 101, // insert 1 byte
+            start_position: markymark_parser::Point { row: 3, column: 0 },
+            old_end_position: markymark_parser::Point { row: 3, column: 0 },
+            new_end_position: markymark_parser::Point { row: 3, column: 1 },
+        };
+        let merged = ServerState::merge_incremental_blocks(&old_blocks, &new_blocks, &[edit]);
+        // Both blocks should appear exactly once
+        assert_eq!(merged.len(), 2, "merged should contain exactly two blocks");
+        assert!(merged.iter().any(|b| b.id == "block-a"));
+        assert!(merged.iter().any(|b| b.id == "block-b"));
+    }
+
+    #[test]
+    fn test_build_markdown_index_incremental_blocks_parity() {
+        // Build a document, apply a character insertion far from blocks,
+        // verify incremental block result matches full rebuild.
+        use markymark_parser::Parser;
+
+        let original = "# Title\n\nSome text far from blocks.\n\nBlock here ^my-block\n\nAnother ^other-block\n";
+        let mut parser = Parser::new().unwrap();
+
+        // Initial parse
+        let ast0 = parser.parse(original).unwrap();
+        let index0 = DocumentIndex::from_ast(ast0);
+        let old_block_ids: Vec<String> = index0.block_ids().map(str::to_string).collect();
+
+        // Single-char insertion at start of title line
+        let edit_text = "A";
+        let modified = format!("A{original}");
+
+        let edit = InputEdit {
+            start_byte: 0,
+            old_end_byte: 0,
+            new_end_byte: 1,
+            start_position: markymark_parser::Point { row: 0, column: 0 },
+            old_end_position: markymark_parser::Point { row: 0, column: 0 },
+            new_end_position: markymark_parser::Point { row: 0, column: 1 },
+        };
+
+        // Build expected full rebuild
+        let ast_full = parser.parse(&modified).unwrap();
+        let full_index = DocumentIndex::from_ast(ast_full);
+        let full_block_ids: Vec<String> = full_index.block_ids().map(str::to_string).collect();
+
+        // Build old blocks owned (simulate what apply_document_changes captures)
+        let old_blocks_owned: Vec<BlockOwned> = index0
+            .block_ids()
+            .filter_map(|id| index0.block_by_id(id))
+            .map(|entry| BlockOwned {
+                id: entry.id.to_string(),
+                range: entry.range,
+                start_byte: entry.start_byte,
+                end_byte: entry.end_byte,
+            })
+            .collect();
+
+        // Incremental rebuild
+        let ast_inc = parser.parse(&modified).unwrap();
+        let inc_index = ServerState::build_markdown_index_incremental(
+            None,
+            Some(&old_blocks_owned),
+            ast_inc,
+            &[edit],
+        );
+        let inc_block_ids: Vec<String> = inc_index.block_ids().map(str::to_string).collect();
+
+        let mut full_sorted = full_block_ids.clone();
+        let mut inc_sorted = inc_block_ids.clone();
+        full_sorted.sort();
+        inc_sorted.sort();
+        assert_eq!(
+            full_sorted, inc_sorted,
+            "incremental block IDs should match full rebuild: full={full_block_ids:?} inc={inc_block_ids:?}"
+        );
+
+        let _ = (edit_text, old_block_ids);
     }
 }

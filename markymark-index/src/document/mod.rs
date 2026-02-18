@@ -99,7 +99,7 @@ impl DocumentIndex {
     /// Extracts owned intermediate records, moves the parser arena into this
     /// index, and allocates the final index entries in one arena-backed pass.
     pub fn from_ast(ast: Ast) -> Self {
-        Self::from_ast_with_wiki_links_opt(ast, None)
+        Self::from_ast_with_overrides_opt(ast, None, None)
     }
 
     /// Build a document index from a parsed AST while overriding wiki-links.
@@ -107,22 +107,37 @@ impl DocumentIndex {
     /// This is used by incremental reindexing paths that already computed
     /// a selective wiki-link merge and want to avoid full re-extraction.
     pub fn from_ast_with_wiki_links(ast: Ast, wiki_links: Vec<WikiLinkOwned>) -> Self {
-        Self::from_ast_with_wiki_links_opt(ast, Some(wiki_links))
+        Self::from_ast_with_overrides_opt(ast, Some(wiki_links), None)
     }
 
-    fn from_ast_with_wiki_links_opt(
+    /// Build a document index from a parsed AST while overriding blocks.
+    ///
+    /// This is used by incremental reindexing paths that already computed
+    /// a selective block merge and want to avoid full re-extraction.
+    pub fn from_ast_with_blocks(ast: Ast, blocks: Vec<BlockOwned>) -> Self {
+        Self::from_ast_with_overrides_opt(ast, None, Some(blocks))
+    }
+
+    /// Build a document index from a parsed AST while overriding both wiki-links and blocks.
+    ///
+    /// This is the primary incremental path when both extractors have been merged.
+    pub fn from_ast_with_wiki_links_and_blocks(
+        ast: Ast,
+        wiki_links: Vec<WikiLinkOwned>,
+        blocks: Vec<BlockOwned>,
+    ) -> Self {
+        Self::from_ast_with_overrides_opt(ast, Some(wiki_links), Some(blocks))
+    }
+
+    fn from_ast_with_overrides_opt(
         ast: Ast,
         wiki_links_override: Option<Vec<WikiLinkOwned>>,
+        blocks_override: Option<Vec<BlockOwned>>,
     ) -> Self {
         #[derive(Debug)]
         struct HeadingOwned {
             text: String,
             level: u8,
-            range: Range,
-        }
-        #[derive(Debug)]
-        struct BlockOwned {
-            id: String,
             range: Range,
         }
         #[derive(Debug)]
@@ -156,13 +171,20 @@ impl DocumentIndex {
             }
         }
 
-        let mut blocks_owned = Vec::new();
-        for block_id in ast.extract_block_ids() {
-            blocks_owned.push(BlockOwned {
-                id: block_id.id().to_string(),
-                range: block_id.range(),
-            });
-        }
+        let blocks_owned = if let Some(blocks_override) = blocks_override {
+            blocks_override
+        } else {
+            let mut blocks_owned = Vec::new();
+            for block_id in ast.extract_block_ids() {
+                blocks_owned.push(BlockOwned {
+                    id: block_id.id().to_string(),
+                    range: block_id.range(),
+                    start_byte: block_id.start_byte(),
+                    end_byte: block_id.end_byte(),
+                });
+            }
+            blocks_owned
+        };
 
         let wiki_links_owned = if let Some(wiki_links_override) = wiki_links_override {
             wiki_links_override
@@ -255,6 +277,8 @@ impl DocumentIndex {
                     BlockEntry {
                         id,
                         range: block.range,
+                        start_byte: block.start_byte,
+                        end_byte: block.end_byte,
                     },
                 );
             }
@@ -450,11 +474,15 @@ impl DocumentIndex {
                     &line_starts,
                     b.offset + 1 + b.id.len() as u32,
                 );
+                let start_byte = b.offset as usize;
+                let end_byte = (b.offset + 1 + b.id.len() as u32) as usize;
                 blocks.insert(
                     id,
                     BlockEntry {
                         id,
                         range: Range::new(pos, end_pos),
+                        start_byte,
+                        end_byte,
                     },
                 );
             }

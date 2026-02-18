@@ -33,6 +33,8 @@ fn block_entry_uses_arena_lifetime() {
     let entry = BlockEntry {
         id: arena.alloc_str("block-1"),
         range: Range::new(Position::new(0, 0), Position::new(0, 7)),
+        start_byte: 0,
+        end_byte: 7,
     };
 
     assert_eq!(entry.id, "block-1");

@@ -252,6 +252,8 @@ pub fn extract_block_ids<'a>(
             blocks.push(BlockId::new(
                 arena_alloc_str(arena, id_match.as_str()),
                 range,
+                start,
+                end,
             ));
         }
     }

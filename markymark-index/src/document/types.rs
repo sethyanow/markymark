@@ -23,6 +23,23 @@ pub struct BlockEntry<'arena> {
     pub id: &'arena str,
     /// Source range of the block.
     pub range: Range,
+    /// Byte offset of the `^` character.
+    pub start_byte: usize,
+    /// Byte offset one past the last character of the block ID.
+    pub end_byte: usize,
+}
+
+/// Owned block payload used by incremental merge paths before arena allocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockOwned {
+    /// The block identifier.
+    pub id: String,
+    /// Source range of the block.
+    pub range: Range,
+    /// Byte offset of the `^` character.
+    pub start_byte: usize,
+    /// Byte offset one past the last character of the block ID.
+    pub end_byte: usize,
 }
 
 /// A table-of-contents entry.
