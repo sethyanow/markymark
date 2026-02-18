@@ -966,6 +966,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "insta",
+ "log",
  "markymark-core",
  "markymark-index",
  "markymark-kernels",

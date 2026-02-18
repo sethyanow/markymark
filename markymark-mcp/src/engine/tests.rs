@@ -377,8 +377,7 @@ fn streamed_preview(path: &std::path::Path, target_line: u32, max_bytes: usize) 
             }
         }
     }
-    let end = buf.len().min(max_bytes);
-    let mut end = end;
+    let mut end = buf.len().min(max_bytes);
     while end > 0 && !buf.is_char_boundary(end) {
         end -= 1;
     }

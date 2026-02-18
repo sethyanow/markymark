@@ -7,7 +7,7 @@ hover, go-to-definition, find-references, completions, and diagnostics for `.md`
 
 - **Hover**: Show link targets and heading details
 - **Find References**: All files that link to the current heading or file
-- **Go to Definition**: Follow wiki links and markdown links
+- **Go to Definition**: Follow wiki links and Markdown links
 - **Completion**: Complete wiki links, heading anchors, and tags
 - **Diagnostics**: Broken links, duplicate headings
 - **Frontmatter awareness**: Obsidian aliases, Logseq properties

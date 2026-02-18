@@ -11,6 +11,10 @@ const RELEASE_URL = 'https://github.com/sethyanow/markymark/releases';
 
 let client: LanguageClient | undefined;
 
+/**
+ * Activates the Markymark language server extension.
+ * @param context - The extension context provided by VS Code.
+ */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const configPath = vscode.workspace
     .getConfiguration('markymark')
@@ -60,6 +64,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   await client.start();
 }
 
+/**
+ * Deactivates the extension by stopping the language client.
+ */
 export async function deactivate(): Promise<void> {
   await client?.stop();
 }

@@ -172,8 +172,8 @@ pub(crate) fn handle_realm_stats(
     let total_tokens = if include_token_counts {
         let (total, unreadable_docs) = helpers::total_tokens_for_realm(&realm_data.index);
         if unreadable_docs > 0 {
-            eprintln!(
-                "warning: token count omitted for realm '{realm}' due to {unreadable_docs} unreadable documents"
+            log::warn!(
+                "token count omitted for realm '{realm}' due to {unreadable_docs} unreadable documents"
             );
             None
         } else {

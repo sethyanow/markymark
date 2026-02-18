@@ -340,6 +340,7 @@ impl DocumentIndex {
         }
 
         // Extract block refs as owned data BEFORE arena move.
+        #[derive(Debug)]
         struct BlockRefOwned {
             uuid: String,
             range: markymark_core::Range,

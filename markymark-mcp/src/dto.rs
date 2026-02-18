@@ -539,7 +539,7 @@ pub struct SearchForPatternResponse {
 }
 
 /// Request to analyse the link graph of a realm.
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct GraphAnalysisRequest {
     /// Realm to analyse. Defaults to `"default"`.
     pub realm: Option<String>,
