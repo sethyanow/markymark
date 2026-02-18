@@ -211,6 +211,30 @@ Expected: block 5.7ms + inline ~13us = **~2.8x** vs 15.8ms full.
 of changed region) from slow AST rebuild (tree-sitter). Defer parse until request needs AST.
 Requires marky-v8g (TreeSitterScanBackend). Potentially 10x+.
 
+### Option G: Zig md4c Streaming Parser (marky-0mr, 2026-02-18)
+
+Research found Bun's `src/md/` is a **Zig port of md4c** (~8,274 lines, 15 files, MIT).
+md4c is the same parser powering GitHub's markdown rendering. Architecture: single-pass
+streaming with callback vtable (`Renderer: enterBlock/leaveBlock/enterSpan/leaveSpan/text`).
+CommonMark + GFM (tables, strikethrough, tasklists, wiki-links, LaTeX math).
+
+**Why it matters:** Eliminates the dual-grammar bottleneck entirely. No block+inline split,
+no 500 FFI round-trips. Single pass over `[]const u8`. md4c benchmarks at ~200MB/s —
+our 50KB doc would be ~0.25ms vs tree-sitter's 12.8ms.
+
+**Plan:** Copy Bun `src/md/` into our Zig workspace, strip Bun-specific deps, write custom
+Renderer vtable that emits extractor-compatible types with byte offsets, wire into ScanBackend
+trait. Keep tree-sitter only for lazy AST (hover/goto-def). Supersedes D and E if successful.
+F (debounce) remains complementary.
+
+**Risks:** Maintenance of md4c fork, XML tags still need custom extractor (not markdown),
+lazy AST adds LSP state complexity. Needs benchmark validation with extraction overhead.
+
+**Key source files (Bun src/md/):** parser.zig (285L, Parser struct + API), blocks.zig
+(865L, block-level), inlines.zig (746L, emphasis/inline), line_analysis.zig (527L, heading/
+fence/table detection), links.zig (527L, bracket/wiki/auto links), types.zig (387L, enums +
+Renderer vtable), html_renderer.zig (714L, reference renderer).
+
 ### Byte Offsets for MarkdownLink/XmlTag (2026-02-18)
 
 All four non-heading extractors now carry `start_byte`/`end_byte` and share the same three-check incremental pattern: `range_intersects_edit` || `range_within_neighbor_window` || `any_edit_starts_at_or_after_last_*`.
@@ -219,4 +243,5 @@ All four non-heading extractors now carry `start_byte`/`end_byte` and share the 
 
 Epic assumed extractors = 60% of cost. In release mode: 3%. Tree-sitter is the wall.
 Ceiling with D alone: ~2.8x. Combined with F: dramatic UX improvement but per-parse
-ratio needs architectural decoupling (E) for true 10x.
+ratio needs architectural decoupling (E) for true 10x. Option G (md4c) may bypass this
+ceiling entirely by eliminating tree-sitter from the hot path.
