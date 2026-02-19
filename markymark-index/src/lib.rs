@@ -11,6 +11,7 @@ pub mod bench_config;
 pub mod bench_corpus;
 #[cfg(feature = "bench-internals")]
 pub mod bench_report;
+pub mod diagnostics;
 pub mod document;
 pub mod graph;
 pub mod realm;
@@ -25,6 +26,7 @@ pub use bench_config::*;
 pub use bench_corpus::*;
 #[cfg(feature = "bench-internals")]
 pub use bench_report::*;
+pub use diagnostics::compute_diagnostics;
 pub use document::*;
 pub use graph::*;
 pub use realm::*;

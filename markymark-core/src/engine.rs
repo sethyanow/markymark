@@ -43,6 +43,26 @@ pub struct SemanticSearchMatch {
     pub section_preview: String,
 }
 
+/// Severity level for a diagnostic produced by document analysis.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiagnosticSeverity {
+    /// An error (e.g., broken link). LSP value 1.
+    Error,
+    /// A warning (e.g., duplicate heading slug). LSP value 2.
+    Warning,
+}
+
+/// A diagnostic produced by document analysis.
+#[derive(Debug, Clone)]
+pub struct CoreDiagnostic {
+    /// Source range of the problem (0-based lines, 0-based characters).
+    pub range: crate::Range,
+    /// Severity level.
+    pub severity: DiagnosticSeverity,
+    /// Human-readable description of the problem.
+    pub message: String,
+}
+
 /// An operation that can be executed by the core engine.
 #[derive(Debug)]
 pub enum CoreOperation {
@@ -181,6 +201,15 @@ pub enum CoreOperation {
         top_n_hubs: u32,
         /// Whether to compute weakly-connected clusters (can be expensive for large workspaces).
         include_clusters: bool,
+    },
+    /// Compute diagnostics (broken links, duplicate headings, unclosed XML tags) for a file or
+    /// all files in a realm.
+    GetDiagnostics {
+        /// Optional specific document URI to check. When `None`, all documents in the realm are
+        /// checked.
+        uri: Option<crate::DocumentUri>,
+        /// Realm to query. Defaults to `"default"` when `None`.
+        realm: Option<String>,
     },
 }
 
@@ -330,6 +359,14 @@ pub enum CoreOperationResult {
         broken_links: Vec<(DocumentUri, String, String)>,
         /// Weakly-connected clusters. `None` when `include_clusters` was `false`.
         clusters: Option<Vec<Vec<DocumentUri>>>,
+    },
+    /// Diagnostics for one or more files.
+    Diagnostics {
+        /// Realm that was checked.
+        realm: String,
+        /// Per-file diagnostics: `(document_uri, diagnostics)`.
+        /// Only files that have at least one diagnostic are included.
+        items: Vec<(crate::DocumentUri, Vec<CoreDiagnostic>)>,
     },
     /// Success with no payload.
     Ok,

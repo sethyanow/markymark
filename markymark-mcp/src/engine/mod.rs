@@ -17,6 +17,7 @@ use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
 use markymark_parser::structured::parse_structured;
 use markymark_parser::Parser;
 
+mod diagnostics;
 mod export;
 mod helpers;
 mod outline;
@@ -454,6 +455,24 @@ impl CoreEngine for RuntimeEngine {
                     top_n_hubs,
                     include_clusters,
                 )
+            }
+            CoreOperation::GetDiagnostics {
+                uri,
+                realm: realm_name,
+            } => {
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
+                let state = self.state.read().expect("lock poisoned");
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
+                        format!("realm does not exist: {realm_key}"),
+                    ));
+                };
+                match uri {
+                    Some(uri) => {
+                        diagnostics::handle_get_diagnostics_file(realm_data, realm_key, &uri)
+                    }
+                    None => diagnostics::handle_get_diagnostics_realm(realm_data, realm_key),
+                }
             }
         }
     }
