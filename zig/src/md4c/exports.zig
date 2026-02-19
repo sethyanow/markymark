@@ -291,10 +291,8 @@ test "md4c_extract: double free is no-op" {
     marky_md4c_free(&result);
 }
 
-test "md4c_extract: entity text passed through in heading" {
-    // NOTE: md4c sends entity references as raw text (e.g. "&amp;") via the
-    // TextType.entity callback. The ExtractionRenderer does NOT decode entities —
-    // it passes them through as-is. See marky-v03o entity handling discussion.
+test "md4c_extract: entity text decoded in heading" {
+    // Entity references are decoded to UTF-8 by ExtractionRenderer (marky-yfh7)
     const input = "# Hello &amp; World\n";
     var result: CMd4cResult = undefined;
     const rc = marky_md4c_extract(input.ptr, input.len, &result);
@@ -302,8 +300,7 @@ test "md4c_extract: entity text passed through in heading" {
     try testing.expectEqual(@as(i32, 0), rc);
     const blob = result.text_blob.?[0..result.text_blob_len];
     const h = result.headings.?[0];
-    // Entities are NOT decoded — raw text passed through
-    try testing.expectEqualStrings("Hello &amp; World", blob[h.text_offset..h.text_offset + h.text_length]);
+    try testing.expectEqualStrings("Hello & World", blob[h.text_offset..h.text_offset + h.text_length]);
 }
 
 test "md4c_extract: mixed document headings and links" {

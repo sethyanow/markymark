@@ -223,14 +223,21 @@ pub const ExtractionRenderer = struct {
 
     // ── Text callback ────────────────────────────────────────────────
 
-    fn text(self: *ExtractionRenderer, _: TextType, content: []const u8) void {
+    fn text(self: *ExtractionRenderer, text_type: TextType, content: []const u8) void {
         if (self.in_code_block) return;
 
+        // Decode HTML entity references to UTF-8; fall back to raw text if unknown
+        var decode_buf: [8]u8 = undefined;
+        const effective = if (text_type == .entity)
+            helpers.decodeEntityToUtf8(content, &decode_buf) orelse content
+        else
+            content;
+
         if (self.in_heading) {
-            self.heading_text_buf.appendSlice(self.allocator, content) catch {};
+            self.heading_text_buf.appendSlice(self.allocator, effective) catch {};
         }
         if (self.in_link and !self.in_image) {
-            self.link_text_buf.appendSlice(self.allocator, content) catch {};
+            self.link_text_buf.appendSlice(self.allocator, effective) catch {};
         }
     }
 
@@ -721,15 +728,50 @@ test "no headings or links" {
     try testing.expectEqual(@as(usize, 0), result.links.len);
 }
 
-test "entity in heading" {
+test "entity in heading decoded" {
     const input = "# Hello &amp; World\n";
     var result = try extractFromMarkdown(input, testing.allocator);
     defer result.deinit();
 
     try testing.expectEqual(@as(usize, 1), result.headings.len);
-    // md4c sends entity references as raw text via TextType.entity callback.
-    // ExtractionRenderer does NOT decode entities — passes through as-is.
-    try testing.expectEqualStrings("Hello &amp; World", result.headings[0].text);
+    // Entity references should be decoded to their UTF-8 representation
+    try testing.expectEqualStrings("Hello & World", result.headings[0].text);
     // Offset should point to '#'
     try testing.expect(input[result.headings[0].offset] == '#');
+}
+
+test "numeric entity in heading decoded" {
+    const input = "# A &#38; B\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqualStrings("A & B", result.headings[0].text);
+}
+
+test "hex entity in heading decoded" {
+    const input = "# &#x3C;tag&#x3E;\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqualStrings("<tag>", result.headings[0].text);
+}
+
+test "entity in link text decoded" {
+    const input = "[A &amp; B](url)\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.links.len);
+    try testing.expectEqualStrings("A & B", result.links[0].text);
+}
+
+test "multiple entities in heading decoded" {
+    const input = "# &lt;div&gt; &amp; &quot;test&quot;\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqualStrings("<div> & \"test\"", result.headings[0].text);
 }
