@@ -16,8 +16,8 @@
 - [ ] Drop entire `Bump` to free all memory at once
 - [ ] Data lifetimes tied to arena lifetime (`'arena`)
 - [ ] Use `DocumentArena` wrapper for per-document arenas (provides `Debug`, capacity hints)
-- [ ] Understand `Bump: !Sync` constraint: `ArenaHashMap` makes types `!Send` (see [advanced.md](bumpalo/advanced.md))
-- [ ] If struct owns arena + stores refs into it, see [advanced.md](bumpalo/advanced.md)
+- [ ] Understand `Bump: !Sync` constraint: `ArenaHashMap` makes types `!Send` (see [Send Constraint](#send-constraint))
+- [ ] If struct owns arena + stores refs into it, see [Self-Referential Arena](#self-referential-arena-ownership) pattern
 
 ---
 
@@ -337,30 +337,299 @@ fn track_memory() {
 
 ---
 
-## Advanced Topics
+## Real-World Patterns (from markymark)
 
-For complex arena usage patterns that emerged from production use:
+These patterns emerged from the arena migration in markymark and address cases
+the textbook `'arena` lifetime pattern cannot express.
 
-- **[bumpalo/advanced.md](bumpalo/advanced.md)** - Real-world patterns:
-  - Self-referential arena ownership (`'static` with safety invariants)
-  - Arena transfer between structs (ptr::read + mem::forget)
-  - Hybrid ownership model (arena for docs, owned for cross-doc lookups)
-  - ArenaHashMap with allocator-api2
-  - Send constraint and tower-lsp integration
+### Self-Referential Arena Ownership
 
-- **[bumpalo/pitfalls.md](bumpalo/pitfalls.md)** - Common mistakes:
-  - Lifetime mismatches
-  - Individual deallocation expectations
-  - Drop not being called
-  - Thread safety constraints
-  - Arena capacity growth
+When a struct **owns** the arena and also stores references into it, you cannot
+express the lifetime with a parameter (`'arena`), because the struct would need
+to borrow from itself. The workaround is `'static` with raw-pointer casts.
+
+```rust
+use markymark_core::arena::DocumentArena;
+
+/// Owns its arena; stores references as 'static (valid for Self's lifetime).
+pub struct Ast {
+    arena: DocumentArena,
+    // 'static is a lie — actually valid for arena's lifetime, which is Self's.
+    root_elements: Vec<Element<'static>>,
+}
+
+impl Ast {
+    /// Internal: cast arena ref to 'static for self-referential storage.
+    fn arena_ref(&self) -> &'static bumpalo::Bump {
+        // SAFETY: arena is owned by Self; ref valid for Self's lifetime.
+        unsafe { &*(self.arena.bump() as *const bumpalo::Bump) }
+    }
+}
+```
+
+**Safety invariants:**
+1. No `'static` references may escape beyond `&self` method returns.
+2. The arena must not be dropped, moved, or reset while references exist.
+3. The struct must not implement `Clone` (would create aliased arenas).
+
+### Arena Transfer (ptr::read + mem::forget)
+
+When building a second struct (e.g. `DocumentIndex`) that borrows from the
+first struct's arena (e.g. `Ast`) during construction, then needs to **take
+ownership** of that arena:
+
+```rust
+pub fn from_ast(ast: Ast) -> DocumentIndex {
+    // 1. Get raw pointer to the owned DocumentArena
+    let doc_arena_ptr = ast.doc_arena_ptr();
+    // 2. Borrow inner Bump for allocations (cast to 'static)
+    let arena_ref: &'static Bump =
+        unsafe { &*((*doc_arena_ptr).bump() as *const Bump) };
+
+    // 3. Build index data using arena_ref ...
+    let headings = /* ... allocate in arena_ref ... */;
+
+    // 4. Move arena ownership: read DocumentArena out, forget Ast shell
+    let doc_arena = unsafe { std::ptr::read(doc_arena_ptr) };
+    std::mem::forget(ast);
+
+    DocumentIndex { _arena: Mutex::new(doc_arena), headings, /* ... */ }
+}
+```
+
+**Why Mutex?** `Bump: !Sync` means `DocumentArena: !Sync`. Wrapping in `Mutex`
+makes `DocumentIndex` `Send + Sync` for async LSP contexts (tower-lsp requires it).
+
+### Hybrid Ownership Model { #hybrid-model }
+
+Per-document arena for parsed content; owned `String` for cross-document lookups.
+
+```text
+┌─────────────────────────────────────┐
+│ RealmIndex (owns cross-doc state)   │
+│  slug_to_headings: HashMap<String,  │ ← owned String keys
+│    Vec<(DocumentUri, Resolved...)>> │ ← owned copies for survival
+│                                     │
+│  docs: HashMap<String,              │
+│    (DocumentUri, DocumentIndex)>    │
+│      └─ _arena: Mutex<DocArena>    │ ← per-doc arena
+│         headings: &'static [...]   │ ← borrows from arena
+│         wiki_links: &'static [...] │
+└─────────────────────────────────────┘
+```
+
+- **Per-document arena**: headings, slugs, links, tags borrow from arena `&str`.
+- **Cross-document**: `RealmIndex` stores **owned** copies (`String`, not `&str`)
+  so lookups survive document removal/replacement.
+
+### hashbrown with Arena Allocator (ArenaHashMap) { #arena-hashmap }
+
+Parser types (e.g. `Frontmatter`, `XmlTag`) use `ArenaHashMap` where the map's
+internal buckets are arena-allocated alongside keys/values:
+
+```rust
+use markymark_core::arena::{ArenaHashMap, new_arena_hashmap};
+
+struct Frontmatter<'arena> {
+    data: ArenaHashMap<'arena, &'arena str, FrontmatterValue<'arena>>,
+}
+
+fn parse_frontmatter<'a>(arena: &'a Bump) -> Frontmatter<'a> {
+    let mut data = new_arena_hashmap(arena);
+    data.insert(arena.alloc_str("title"), /* ... */);
+    Frontmatter { data }
+}
+```
+
+### Send Constraint
+
+<pitfall>
+**Problem:** `Bump: !Sync` → `&Bump: !Send` → `ArenaHashMap: !Send`.
+
+Any type containing `ArenaHashMap` cannot satisfy `Send`, which tower-lsp
+requires for async LSP handlers.
+
+**Rule of thumb:**
+- **Parser types** (transient, consumed by `from_ast`): **can** use `ArenaHashMap`.
+- **Index types** (stored in `DocumentIndex` → `RealmIndex` → `ServerState`): **must** use standard `HashMap` with arena-borrowed keys/values.
+
+```rust
+// GOOD: Index type uses std HashMap, keys borrow from arena
+pub struct XmlTagEntry<'arena> {
+    pub tag_name: &'arena str,
+    pub attributes: HashMap<&'arena str, &'arena str>,  // std HashMap, Send-safe
+}
+
+// GOOD: Parser type uses ArenaHashMap (never stored long-term)
+pub struct XmlTag<'arena> {
+    pub tag_name: &'arena str,
+    pub attributes: ArenaHashMap<'arena, &'arena str, &'arena str>,  // arena-allocated
+}
+```
+</pitfall>
+
+---
+
+## Pitfalls
+
+### Lifetimes Must Match Arena
+
+<pitfall>
+**Problem:** Data allocated in arena cannot outlive the arena.
+
+```rust
+// BAD: Returns reference to arena-local data
+fn parse_heading(content: &str) -> &str {
+    let arena = Bump::new();
+    let heading = arena.alloc_str(&content[0..10]);
+    heading // ERROR: arena dropped, heading invalid!
+}
+```
+
+**Solution:** Pass arena from caller or return owned data:
+
+```rust
+// GOOD: Arena lifetime flows through
+fn parse_heading<'a>(arena: &'a Bump, content: &str) -> &'a str {
+    arena.alloc_str(&content[0..10])
+}
+
+// Or return owned
+fn parse_heading_owned(content: &str) -> String {
+    content[0..10].to_string()
+}
+```
+</pitfall>
+
+### No Individual Deallocation
+
+<pitfall>
+**Problem:** Cannot free individual allocations.
+
+```rust
+// BAD: Expecting to free individual items
+let arena = Bump::new();
+let a = arena.alloc(1);
+let b = arena.alloc(2);
+// Cannot free just 'a' - must drop entire arena
+
+// This is a design feature, not a bug!
+```
+
+**Solution:** Design around bulk deallocation:
+
+```rust
+// GOOD: One arena per logical unit that's freed together
+struct Request {
+    arena: Bump,
+    // ... request-scoped data
+}
+
+// When request completes, drop Request, arena freed
+```
+</pitfall>
+
+### Drop Not Called
+
+<pitfall>
+**Problem:** `Bump::alloc` doesn't call `Drop` on allocated values.
+
+```rust
+struct NeedsDrop {
+    data: String, // Has Drop impl
+}
+
+let arena = Bump::new();
+let x = arena.alloc(NeedsDrop { data: "hello".into() });
+// When arena dropped, NeedsDrop::drop() is NOT called!
+// The String inside is leaked!
+```
+
+**Solution:** Only allocate types that don't need Drop, or use `alloc_with`:
+
+```rust
+// GOOD: Use types without Drop
+struct NoDrop<'a> {
+    data: &'a str, // Borrowed, no Drop
+}
+
+// Or use bumpalo's collections which handle this
+use bumpalo::collections::String as BumpString;
+let s = BumpString::from_str_in("hello", &arena);
+// BumpString doesn't heap-allocate, so no leak
+```
+
+For types that need Drop, use `bumpalo::boxed::Box`:
+
+```rust
+use bumpalo::boxed::Box as BumpBox;
+
+let arena = Bump::new();
+let boxed = BumpBox::new_in(NeedsDrop { data: "hello".into() }, &arena);
+// Drop WILL be called when arena is dropped (with "boxed" feature)
+```
+</pitfall>
+
+### Thread Safety
+
+<pitfall>
+**Problem:** `Bump` is not `Sync` - cannot be shared across threads.
+
+```rust
+// BAD: Sharing arena across threads
+let arena = Arc::new(Bump::new());
+let arena_clone = arena.clone();
+std::thread::spawn(move || {
+    arena_clone.alloc(1); // ERROR: Bump is not Sync
+});
+```
+
+**Solution:** Use one arena per thread or protect with mutex (defeats purpose):
+
+```rust
+// GOOD: Thread-local arenas
+thread_local! {
+    static ARENA: RefCell<Bump> = RefCell::new(Bump::new());
+}
+
+fn alloc_in_thread<T>(value: T) -> *mut T {
+    ARENA.with(|arena| {
+        arena.borrow().alloc(value) as *mut T
+    })
+}
+```
+</pitfall>
+
+### Arena Capacity Growth
+
+<pitfall>
+**Problem:** Arena grows but never shrinks until dropped.
+
+```rust
+let arena = Bump::new();
+// Allocate 1GB
+let _big = arena.alloc_slice_fill_copy(1_000_000_000, 0u8);
+arena.reset(); // Frees logically, but capacity stays at 1GB!
+```
+
+**Solution:** Drop and recreate arena to release memory:
+
+```rust
+// If you need to release memory:
+fn process_with_fresh_arena() {
+    let arena = Bump::new();
+    // ... use arena ...
+} // Arena dropped, memory released
+
+// Or use with_capacity for predictable size:
+let arena = Bump::with_capacity(1024 * 1024); // 1MB initial
+```
+</pitfall>
 
 ---
 
 ## Related
 
-- [bumpalo/advanced.md](bumpalo/advanced.md) - Advanced patterns
-- [bumpalo/pitfalls.md](bumpalo/pitfalls.md) - Common mistakes
 - Parser output storage: `tree-sitter.md`
 - Graph with arena nodes: `petgraph.md`
 - bumpalo docs: https://docs.rs/bumpalo/

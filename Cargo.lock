@@ -883,7 +883,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -896,7 +896,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "bumpalo",
@@ -911,7 +911,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-index"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "bumpalo",
  "criterion",
@@ -919,6 +919,7 @@ dependencies = [
  "insta",
  "libc",
  "markymark-core",
+ "markymark-kernels",
  "markymark-parser",
  "memory-stats",
  "petgraph",
@@ -931,14 +932,20 @@ dependencies = [
 
 [[package]]
 name = "markymark-kernels"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
+ "criterion",
+ "markymark-core",
+ "markymark-index",
+ "markymark-parser",
+ "md5",
+ "regex",
  "walkdir",
 ]
 
 [[package]]
 name = "markymark-lsp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "insta",
@@ -955,24 +962,28 @@ dependencies = [
 
 [[package]]
 name = "markymark-mcp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "insta",
+ "log",
  "markymark-core",
  "markymark-index",
+ "markymark-kernels",
  "markymark-parser",
+ "regex",
  "rmcp",
  "schemars",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "tokio",
 ]
 
 [[package]]
 name = "markymark-parser"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "bumpalo",
  "criterion",
@@ -991,6 +1002,12 @@ dependencies = [
  "tree-sitter-toml-ng",
  "tree-sitter-yaml",
 ]
+
+[[package]]
+name = "md5"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
 
 [[package]]
 name = "memchr"

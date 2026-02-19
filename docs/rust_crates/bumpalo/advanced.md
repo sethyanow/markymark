@@ -1,12 +1,21 @@
 # bumpalo Advanced Patterns
 
+<agent>
+<goal>Master advanced arena allocation patterns for complex ownership scenarios.</goal>
+<when_to_use>When the standard 'arena lifetime pattern cannot express your ownership requirements (self-referential structs, arena transfer, Send constraints).</when_to_use>
+<contains>Self-referential arena ownership, arena transfer patterns, hybrid ownership models, ArenaHashMap usage, Send/Sync constraints</contains>
+<see_also>bumpalo.md, pitfalls.md</see_also>
+</agent>
+
 Real-world patterns from markymark arena migration addressing cases the textbook `'arena` lifetime pattern cannot express.
 
 [← Back to bumpalo.md](../bumpalo.md)
 
 ---
 
-## Self-Referential Arena Ownership
+## Patterns
+
+### Self-Referential Arena Ownership
 
 When a struct **owns** the arena and also stores references into it, you cannot
 express the lifetime with a parameter (`'arena`), because the struct would need
@@ -36,7 +45,7 @@ impl Ast {
 2. The arena must not be dropped, moved, or reset while references exist.
 3. The struct must not implement `Clone` (would create aliased arenas).
 
-## Arena Transfer (ptr::read + mem::forget)
+### Arena Transfer (ptr::read + mem::forget)
 
 When building a second struct (e.g. `DocumentIndex`) that borrows from the
 first struct's arena (e.g. `Ast`) during construction, then needs to **take
@@ -64,7 +73,7 @@ pub fn from_ast(ast: Ast) -> DocumentIndex {
 **Why Mutex?** `Bump: !Sync` means `DocumentArena: !Sync`. Wrapping in `Mutex`
 makes `DocumentIndex` `Send + Sync` for async LSP contexts (tower-lsp requires it).
 
-## Hybrid Ownership Model
+### Hybrid Ownership Model
 
 Per-document arena for parsed content; owned `String` for cross-document lookups.
 
@@ -86,7 +95,7 @@ Per-document arena for parsed content; owned `String` for cross-document lookups
 - **Cross-document**: `RealmIndex` stores **owned** copies (`String`, not `&str`)
   so lookups survive document removal/replacement.
 
-## hashbrown with Arena Allocator (ArenaHashMap)
+### hashbrown with Arena Allocator (ArenaHashMap)
 
 Parser types (e.g. `Frontmatter`, `XmlTag`) use `ArenaHashMap` where the map's
 internal buckets are arena-allocated alongside keys/values:
@@ -105,7 +114,9 @@ fn parse_frontmatter<'a>(arena: &'a Bump) -> Frontmatter<'a> {
 }
 ```
 
-## Send Constraint
+## Pitfalls
+
+### Send Constraint
 
 <pitfall>
 **Problem:** `Bump: !Sync` → `&Bump: !Send` → `ArenaHashMap: !Send`.

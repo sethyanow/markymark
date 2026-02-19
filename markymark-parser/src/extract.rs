@@ -69,6 +69,8 @@ pub fn extract_wiki_links<'a>(
                     Position::new(line, start_char),
                     Position::new(line, end_char),
                 ),
+                start,
+                end,
             ));
         }
     }
@@ -170,7 +172,9 @@ pub fn extract_markdown_links<'a>(
                 Position::new(line, end_char),
             );
 
-            links.push(MarkdownLink::new(text, url, anchor, None, range));
+            links.push(MarkdownLink::new(
+                text, url, anchor, None, range, start, end,
+            ));
         }
     }
 
@@ -198,6 +202,8 @@ pub fn extract_markdown_links<'a>(
                 None,
                 Some(reference),
                 range,
+                start,
+                end,
             ));
         }
     }
@@ -250,6 +256,8 @@ pub fn extract_block_ids<'a>(
             blocks.push(BlockId::new(
                 arena_alloc_str(arena, id_match.as_str()),
                 range,
+                start,
+                end,
             ));
         }
     }
@@ -266,8 +274,21 @@ pub fn extract_block_refs<'a>(
     let mut refs = Vec::new();
 
     for captures in BLOCK_REF_RE.captures_iter(source) {
-        if let Some(uuid_match) = captures.get(1) {
-            refs.push(BlockRef::new(arena_alloc_str(arena, uuid_match.as_str())));
+        if let (Some(full_match), Some(uuid_match)) = (captures.get(0), captures.get(1)) {
+            let start = full_match.start();
+            let end = full_match.end();
+            let line = source[..start].matches('\n').count() as u32;
+            let line_start = source[..start].rfind('\n').map(|p| p + 1).unwrap_or(0);
+            let start_char = (start - line_start) as u32;
+            let end_char = start_char + (end - start) as u32;
+            let range = Range::new(
+                Position::new(line, start_char),
+                Position::new(line, end_char),
+            );
+            refs.push(BlockRef::new(
+                arena_alloc_str(arena, uuid_match.as_str()),
+                range,
+            ));
         }
     }
 
@@ -729,6 +750,8 @@ pub fn extract_xml_tags<'a>(
                             false,
                             content,
                             range,
+                            frame.tag_start,
+                            tag_end,
                         ));
                         break;
                     }
@@ -764,7 +787,9 @@ pub fn extract_xml_tags<'a>(
 
         if is_self_closing || is_void {
             let range = compute_range(tag_start, tag_end);
-            tags.push(XmlTag::new(tag_name, attrs, true, None, range));
+            tags.push(XmlTag::new(
+                tag_name, attrs, true, None, range, tag_start, tag_end,
+            ));
         } else {
             // Regular opening tag — push onto stack
             stack.push(StackFrame {
@@ -781,7 +806,13 @@ pub fn extract_xml_tags<'a>(
     // Emit remaining unclosed tags from the stack
     for frame in stack {
         let range = compute_range(frame.tag_start, frame.content_start);
-        tags.push(XmlTag::unclosed(frame.tag_name, frame.attrs, range));
+        tags.push(XmlTag::unclosed(
+            frame.tag_name,
+            frame.attrs,
+            range,
+            frame.tag_start,
+            frame.content_start,
+        ));
     }
 
     // Sort by position in source for consistent ordering
@@ -798,9 +829,15 @@ fn parse_simple_yaml<'a>(content: &str, arena: &'a bumpalo::Bump) -> Frontmatter
     let mut data = new_arena_hashmap(arena);
 
     for line in content.lines() {
-        if let Some(colon_pos) = line.find(':') {
-            let key = arena_alloc_str(arena, line[..colon_pos].trim());
-            let value_str = line[colon_pos + 1..].trim();
+        // Use splitn(2, ':') so values containing colons (e.g. URLs) are preserved.
+        let mut parts = line.splitn(2, ':');
+        if let (Some(raw_key), Some(raw_value)) = (parts.next(), parts.next()) {
+            let key_str = raw_key.trim();
+            if key_str.is_empty() {
+                continue;
+            }
+            let key = arena_alloc_str(arena, key_str);
+            let value_str = raw_value.trim();
 
             let value = if value_str.starts_with('[') && value_str.ends_with(']') {
                 let inner = &value_str[1..value_str.len() - 1];

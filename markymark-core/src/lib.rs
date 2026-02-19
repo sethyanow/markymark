@@ -165,14 +165,11 @@ pub mod prelude {
     //! Prelude module with common imports
 
     pub use crate::embeddings::{EmbedError, EmbeddingProvider};
+    #[cfg(feature = "zig-kernels")]
+    pub use crate::scanner::ZigScanBackend;
     pub use crate::scanner::{ScanBackend, ScanError};
     pub use crate::structured::{DocumentKind, KeyEntry, StructuredAst, ValueKind};
     pub use crate::{CoreError, CoreResult, DocumentUri, Position, Range};
-
-    #[cfg(feature = "zig-kernels")]
-    pub use crate::embeddings::{ZigEmbeddingIndex, ZigSearchResult};
-    #[cfg(feature = "zig-kernels")]
-    pub use crate::scanner::ZigScanBackend;
 }
 
 pub mod error {

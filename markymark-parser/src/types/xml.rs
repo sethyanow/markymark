@@ -12,6 +12,8 @@ pub struct XmlTag<'arena> {
     is_unclosed: bool,
     content: Option<&'arena str>,
     range: Range,
+    start_byte: usize,
+    end_byte: usize,
 }
 
 impl<'arena> XmlTag<'arena> {
@@ -22,6 +24,8 @@ impl<'arena> XmlTag<'arena> {
         is_self_closing: bool,
         content: Option<&'arena str>,
         range: Range,
+        start_byte: usize,
+        end_byte: usize,
     ) -> Self {
         Self {
             tag_name,
@@ -30,6 +34,8 @@ impl<'arena> XmlTag<'arena> {
             is_unclosed: false,
             content,
             range,
+            start_byte,
+            end_byte,
         }
     }
 
@@ -38,6 +44,8 @@ impl<'arena> XmlTag<'arena> {
         tag_name: &'arena str,
         attributes: ArenaHashMap<'arena, &'arena str, &'arena str>,
         range: Range,
+        start_byte: usize,
+        end_byte: usize,
     ) -> Self {
         Self {
             tag_name,
@@ -46,6 +54,8 @@ impl<'arena> XmlTag<'arena> {
             is_unclosed: true,
             content: None,
             range,
+            start_byte,
+            end_byte,
         }
     }
 
@@ -77,5 +87,10 @@ impl<'arena> XmlTag<'arena> {
     /// Get range in source document
     pub fn range(&self) -> Range {
         self.range
+    }
+
+    /// Get byte range as (start_byte, end_byte)
+    pub fn byte_range(&self) -> (usize, usize) {
+        (self.start_byte, self.end_byte)
     }
 }
