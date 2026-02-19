@@ -10,4 +10,6 @@ RUN curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-${ZIG_ARCH}-${ZI
     | tar -xJ -C /usr/local \
     && ln -s "/usr/local/zig-${ZIG_ARCH}-${ZIG_VERSION}/zig" /usr/local/bin/zig
 
+ENV ZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache
+
 RUN zig version

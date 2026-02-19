@@ -141,6 +141,12 @@ fn build_zig_library(zig_dir: &std::path::Path, zig_target: Option<&str>) {
     if let Some(t) = zig_target {
         cmd.arg(format!("-Dtarget={t}"));
     }
+    // Build with ReleaseSafe to avoid debug-only symbols (___zig_probe_stack,
+    // ___chkstk_ms) that require Zig's compiler-rt at link time.
+    let profile = env::var("PROFILE").unwrap_or_default();
+    if profile == "release" {
+        cmd.arg("-Doptimize=ReleaseSafe");
+    }
     let output = cmd
         .output()
         .unwrap_or_else(|e| panic!("Failed to run zig build lib: {e}"));
