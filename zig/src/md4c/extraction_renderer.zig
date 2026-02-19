@@ -597,9 +597,8 @@ test "extract autolink" {
 }
 
 test "extract reference link" {
-    // Use page_allocator due to known normalizeLabel leak (marky-i3fl)
     const input = "[text][ref]\n\n[ref]: https://example.com\n";
-    var result = try extractFromMarkdown(input, std.heap.page_allocator);
+    var result = try extractFromMarkdown(input, testing.allocator);
     defer result.deinit();
 
     try testing.expectEqual(@as(usize, 1), result.links.len);
@@ -628,9 +627,8 @@ test "link inside heading" {
 // --- Wiki link tests ---
 
 test "extract wiki link" {
-    // page_allocator due to normalizeLabel leak (marky-i3fl)
     const input = "[[Target]]\n";
-    var result = try extractFromMarkdown(input, std.heap.page_allocator);
+    var result = try extractFromMarkdown(input, testing.allocator);
     defer result.deinit();
 
     try testing.expectEqual(@as(usize, 1), result.links.len);
@@ -639,9 +637,8 @@ test "extract wiki link" {
 }
 
 test "extract wiki link with alias" {
-    // page_allocator due to normalizeLabel leak (marky-i3fl)
     const input = "[[Target|Display]]\n";
-    var result = try extractFromMarkdown(input, std.heap.page_allocator);
+    var result = try extractFromMarkdown(input, testing.allocator);
     defer result.deinit();
 
     try testing.expectEqual(@as(usize, 1), result.links.len);
@@ -651,9 +648,8 @@ test "extract wiki link with alias" {
 }
 
 test "extract wiki link byte offset" {
-    // page_allocator due to normalizeLabel leak (marky-i3fl)
     const input = "Text [[Target]]\n";
-    var result = try extractFromMarkdown(input, std.heap.page_allocator);
+    var result = try extractFromMarkdown(input, testing.allocator);
     defer result.deinit();
 
     try testing.expectEqual(@as(usize, 1), result.links.len);
@@ -682,7 +678,6 @@ test "link in code block not extracted" {
 // --- Mixed document test ---
 
 test "mixed document: headings, links, wiki links" {
-    // page_allocator due to normalizeLabel leak (marky-i3fl)
     const input =
         \\# Title
         \\
@@ -693,7 +688,7 @@ test "mixed document: headings, links, wiki links" {
         \\See [[Wiki Page]] for details.
         \\
     ;
-    var result = try extractFromMarkdown(input, std.heap.page_allocator);
+    var result = try extractFromMarkdown(input, testing.allocator);
     defer result.deinit();
 
     try testing.expectEqual(@as(usize, 2), result.headings.len);

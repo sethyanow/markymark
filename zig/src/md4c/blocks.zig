@@ -804,10 +804,13 @@ pub fn consumeRefDefsFromCurrentBlock(self: *Parser) void {
             }
         }
         if (!already_exists) {
+            // Dupe label, dest, and title — label points into normalize_buf (reused),
+            // dest and title point into self.buffer (reused). All freed in Parser.deinit.
+            const label_dupe = self.allocator.dupe(u8, norm_label) catch return;
             const dest_dupe = self.allocator.dupe(u8, result.dest) catch return;
             const title_dupe = self.allocator.dupe(u8, result.title) catch return;
             self.ref_defs.append(self.allocator, .{
-                .label = norm_label,
+                .label = label_dupe,
                 .dest = dest_dupe,
                 .title = title_dupe,
             }) catch return;

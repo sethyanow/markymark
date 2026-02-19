@@ -10,17 +10,22 @@ pub const RefDef = struct {
 
 /// Normalize a link label for comparison: collapse whitespace runs to single space,
 /// strip leading/trailing whitespace, case-fold.
+///
+/// Returns a slice into the Parser's `normalize_buf` scratch buffer. The returned
+/// slice is only valid until the next call to normalizeLabel. Callers that need
+/// to persist the result (e.g. storing in ref_defs) must dupe it.
 pub fn normalizeLabel(self: *Parser, raw: []const u8) []const u8 {
     // Collapse whitespace and apply Unicode case folding (per CommonMark §6.7)
-    var result = std.ArrayListUnmanaged(u8){};
+    // Reuse Parser scratch buffer to avoid per-call allocation leaks.
+    self.normalize_buf.clearRetainingCapacity();
     var in_ws = true; // skip leading whitespace
     var i: usize = 0;
     while (i < raw.len) {
         const c = raw[i];
         switch (c) {
             ' ', '\t', '\n', '\r' => {
-                if (!in_ws and result.items.len > 0) {
-                    result.append(self.allocator, ' ') catch return raw;
+                if (!in_ws and self.normalize_buf.items.len > 0) {
+                    self.normalize_buf.append(self.allocator, ' ') catch return raw;
                     in_ws = true;
                 }
                 i += 1;
@@ -34,7 +39,7 @@ pub fn normalizeLabel(self: *Parser, raw: []const u8) []const u8 {
                     var buf: [4]u8 = undefined;
                     const len = helpers.encodeUtf8(fold.codepoints[j], &buf);
                     if (len > 0) {
-                        result.appendSlice(self.allocator, buf[0..len]) catch return raw;
+                        self.normalize_buf.appendSlice(self.allocator, buf[0..len]) catch return raw;
                     }
                 }
                 in_ws = false;
@@ -42,17 +47,17 @@ pub fn normalizeLabel(self: *Parser, raw: []const u8) []const u8 {
             },
             else => {
                 // ASCII: simple toLower
-                result.append(self.allocator, std.ascii.toLower(c)) catch return raw;
+                self.normalize_buf.append(self.allocator, std.ascii.toLower(c)) catch return raw;
                 in_ws = false;
                 i += 1;
             },
         }
     }
     // Strip trailing space
-    if (result.items.len > 0 and result.items[result.items.len - 1] == ' ') {
-        result.items.len -= 1;
+    if (self.normalize_buf.items.len > 0 and self.normalize_buf.items[self.normalize_buf.items.len - 1] == ' ') {
+        self.normalize_buf.items.len -= 1;
     }
-    return result.items;
+    return self.normalize_buf.items;
 }
 
 /// Look up a reference definition by label (case-insensitive, whitespace-normalized).
@@ -300,11 +305,13 @@ pub fn buildRefDefHashtable(self: *Parser) error{OutOfMemory}!void {
                 }
             }
             if (!already_exists) {
-                // Dupe dest and title since they point into self.buffer which gets reused
+                // Dupe label, dest, and title — label points into normalize_buf (reused),
+                // dest and title point into self.buffer (reused). All freed in Parser.deinit.
+                const label_dupe = self.allocator.dupe(u8, norm_label) catch return error.OutOfMemory;
                 const dest_dupe = self.allocator.dupe(u8, result.dest) catch return error.OutOfMemory;
                 const title_dupe = self.allocator.dupe(u8, result.title) catch return error.OutOfMemory;
                 try self.ref_defs.append(self.allocator, .{
-                    .label = norm_label,
+                    .label = label_dupe,
                     .dest = dest_dupe,
                     .title = title_dupe,
                 });
@@ -343,6 +350,7 @@ pub fn buildRefDefHashtable(self: *Parser) error{OutOfMemory}!void {
 
 const helpers = @import("./helpers.zig");
 const parser_mod = @import("./parser.zig");
+const root = @import("./root.zig");
 const std = @import("std");
 const unicode = @import("./unicode.zig");
 
@@ -353,3 +361,29 @@ const types = @import("./types.zig");
 const Align = types.Align;
 const Mark = types.Mark;
 const VerbatimLine = types.VerbatimLine;
+
+// ── Tests ──────────────────────────────────────────────────────
+
+const testing = std.testing;
+
+test "normalizeLabel does not leak on ref def storage" {
+    // Reference link input triggers normalizeLabel via:
+    // 1. consumeRefDefsFromCurrentBlock (stores normalized label in ref_defs)
+    // 2. lookupRefDef (normalizes for comparison, result previously leaked)
+    // Also has duplicate ref def to exercise "already exists" path.
+    const allocator = testing.allocator;
+    const input = "[text][ref]\n\n[ref]: https://example.com\n[ref]: https://duplicate.com\n";
+    const html = try root.renderToHtml(input, allocator);
+    defer allocator.free(html);
+    try testing.expect(html.len > 0);
+}
+
+test "normalizeLabel does not leak on lookup-only path" {
+    // Reference link where label doesn't match any ref def — normalizeLabel
+    // is called in lookupRefDef but the result is only used for comparison.
+    const allocator = testing.allocator;
+    const input = "[text][nonexistent]\n";
+    const html = try root.renderToHtml(input, allocator);
+    defer allocator.free(html);
+    try testing.expect(html.len > 0);
+}

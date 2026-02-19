@@ -135,11 +135,7 @@ test "md4c smoke: code fence" {
 }
 
 test "md4c smoke: wiki link passthrough" {
-    // Use page_allocator: the vendored md4c normalizeLabel in ref_defs.zig
-    // leaks temporary ArrayListUnmanaged buffers during ref-def lookup.
-    // This is a pre-existing Bun behavior (they rely on arena/GC cleanup).
-    // We cannot modify parsing logic per anti-patterns; tracked for later fix.
-    const allocator = std.heap.page_allocator;
+    const allocator = std.testing.allocator;
     // Without wiki_links extension, [[link]] should be treated as nested brackets
     const input = "[[link]]\n";
     const html = try renderToHtmlWithOptions(input, allocator, Options.commonmark);

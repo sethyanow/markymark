@@ -270,7 +270,6 @@ test "md4c_extract: empty input returns zero results" {
 }
 
 test "md4c_extract: wiki link" {
-    // page_allocator used internally, so normalizeLabel leak is tolerated
     const input = "[[Target]]\n";
     var result: CMd4cResult = undefined;
     const rc = marky_md4c_extract(input.ptr, input.len, &result);
