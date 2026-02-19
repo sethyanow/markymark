@@ -26,11 +26,17 @@ fn main() {
     build_zig_library(&zig_dir, zig_target.as_deref());
 
     // Verify the library artifact exists
+    // Zig produces libmarky_kernels.a on Unix, marky_kernels.lib on Windows
     let lib_path = zig_dir.join("zig-out").join("lib");
-    let lib_file = lib_path.join("libmarky_kernels.a");
+    let lib_file = if cfg!(target_os = "windows") {
+        lib_path.join("marky_kernels.lib")
+    } else {
+        lib_path.join("libmarky_kernels.a")
+    };
     if !lib_file.exists() {
         panic!(
-            "zig build lib did not produce libmarky_kernels.a at {}",
+            "zig build lib did not produce {} at {}",
+            lib_file.file_name().unwrap().to_string_lossy(),
             lib_file.display()
         );
     }
@@ -120,6 +126,9 @@ fn rust_target_to_zig_target(rust_target: &str) -> Option<String> {
         "aarch64-unknown-linux-musl" => Some("aarch64-linux-musl".to_string()),
         "x86_64-unknown-linux-gnu" => Some("x86_64-linux-gnu".to_string()),
         "x86_64-unknown-linux-musl" => Some("x86_64-linux-musl".to_string()),
+        "x86_64-apple-darwin" => Some("x86_64-macos".to_string()),
+        "aarch64-apple-darwin" => Some("aarch64-macos".to_string()),
+        "x86_64-pc-windows-msvc" => Some("x86_64-windows".to_string()),
         _ => None,
     }
 }
