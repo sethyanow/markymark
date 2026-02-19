@@ -25,6 +25,9 @@ comptime {
     _ = @import("exports_embed.zig");
     _ = @import("exports_graph.zig");
     _ = @import("exports_serde.zig");
+    // Provide ___chkstk_ms on Windows x86_64 — Zig's compiler-rt does not
+    // bundle it into static libraries (ziglang/zig#6817).
+    _ = @import("chkstk.zig");
 }
 
 /// Re-export types for C consumers

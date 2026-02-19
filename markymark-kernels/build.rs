@@ -142,10 +142,7 @@ fn build_zig_library(zig_dir: &std::path::Path, zig_target: Option<&str>) {
         cmd.arg(format!("-Dtarget={t}"));
     }
 
-    // Match Zig optimization level to Cargo profile. ReleaseFast eliminates
-    // Zig's debug/panic infrastructure whose large stack frames reference
-    // ___chkstk_ms on Windows — an MSVC compiler-rt symbol not bundled
-    // into static libraries.
+    // Match Zig optimization level to Cargo profile.
     let profile = env::var("PROFILE").unwrap_or_default();
     if profile == "release" {
         cmd.arg("-Doptimize=ReleaseFast");
