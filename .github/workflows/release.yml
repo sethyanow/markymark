@@ -54,9 +54,10 @@ jobs:
           $zip = "zig-x86_64-windows-$env:ZIG_VER.zip"
           Invoke-WebRequest -Uri "https://ziglang.org/download/$env:ZIG_VER/$zip" -OutFile $zip -UseBasicParsing
           Expand-Archive -Path $zip -DestinationPath . -Force
-          $zigDir = (Get-ChildItem -Directory -Filter "zig-*").FullName
+          $zigDir = (Get-ChildItem -Directory -Filter "zig-*" | Select-Object -First 1).FullName
+          $zigDirUnix = $zigDir -replace '\\', '/'
           echo "$zigDir" >> $env:GITHUB_PATH
-          echo "ZIG_DIR=$zigDir" >> $env:GITHUB_ENV
+          echo "ZIG_DIR=$zigDirUnix" >> $env:GITHUB_ENV
         shell: pwsh
 
       - name: Install cross (Linux ARM64)
@@ -65,6 +66,14 @@ jobs:
 
       - name: Build release binary
         run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            if [ -z "${ZIG_DIR:-}" ]; then
+              echo "::error::ZIG_DIR not set; Install Zig (Windows) may have failed"
+              exit 1
+            fi
+            export PATH="$ZIG_DIR:$PATH"
+            zig version || { echo "::error::zig not found in $ZIG_DIR"; exit 1; }
+          fi
           if [ "${{ matrix.cross }}" = "true" ]; then
             cross build --release --target ${{ matrix.target }} -p markymark-cli
           else
