@@ -16,8 +16,14 @@ fn main() {
     let zig_version = get_zig_version();
     check_zig_version(&zig_version);
 
+    // When cross-compiling (e.g. aarch64-unknown-linux-gnu), Zig must build the static lib
+    // for the same target; otherwise we'd link host-arch lib into target-arch binary.
+    let zig_target = env::var("TARGET")
+        .ok()
+        .and_then(|t| rust_target_to_zig_target(&t));
+
     // Run zig build lib
-    build_zig_library(&zig_dir);
+    build_zig_library(&zig_dir, zig_target.as_deref());
 
     // Verify the library artifact exists
     let lib_path = zig_dir.join("zig-out").join("lib");
@@ -107,10 +113,25 @@ fn check_zig_version(version_str: &str) {
     }
 }
 
-/// Run `zig build lib` in the zig directory.
-fn build_zig_library(zig_dir: &std::path::Path) {
+/// Map Rust TARGET to Zig -Dtarget when cross-compiling (so Zig builds for the same arch).
+fn rust_target_to_zig_target(rust_target: &str) -> Option<String> {
+    match rust_target {
+        "aarch64-unknown-linux-gnu" => Some("aarch64-linux-gnu".to_string()),
+        "aarch64-unknown-linux-musl" => Some("aarch64-linux-musl".to_string()),
+        "x86_64-unknown-linux-gnu" => Some("x86_64-linux-gnu".to_string()),
+        "x86_64-unknown-linux-musl" => Some("x86_64-linux-musl".to_string()),
+        _ => None,
+    }
+}
+
+/// Run `zig build lib` in the zig directory, optionally with -Dtarget for cross-compilation.
+fn build_zig_library(zig_dir: &std::path::Path, zig_target: Option<&str>) {
+    let mut args = vec!["build", "lib"];
+    if let Some(t) = zig_target {
+        args.extend(["-Dtarget", t]);
+    }
     let output = Command::new("zig")
-        .args(["build", "lib"])
+        .args(&args)
         .current_dir(zig_dir)
         .output()
         .unwrap_or_else(|e| panic!("Failed to run zig build lib: {e}"));
