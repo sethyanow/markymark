@@ -88,35 +88,17 @@ impl std::fmt::Debug for AnyDocumentIndex {
 ///
 /// Handles `..` and `.` components by normalising the resulting path component-by-component.
 fn resolve_relative_path(base_dir: &std::path::Path, relative_url: &str) -> std::path::PathBuf {
-    use std::path::{Component, PathBuf};
-    // Build initial stack from the base directory.
-    let mut stack: Vec<std::ffi::OsString> = base_dir
-        .components()
-        .filter_map(|c| match c {
-            Component::Normal(s) => Some(s.to_os_string()),
-            Component::RootDir => Some(std::ffi::OsString::from("/")),
-            _ => None,
-        })
-        .collect();
-
-    // Walk through the relative URL split on '/'.
+    // Start from the base directory and apply each URL segment.
+    // PathBuf::pop() clamps at the filesystem root and preserves Windows drive prefixes,
+    // so excessive `..` never underflow into a relative path.
+    let mut result = base_dir.to_path_buf();
     for segment in relative_url.split('/') {
         match segment {
             "" | "." => {}
             ".." => {
-                stack.pop();
+                result.pop();
             }
-            s => stack.push(std::ffi::OsString::from(s)),
-        }
-    }
-
-    // Reconstruct the path.
-    let mut result = PathBuf::new();
-    for (i, part) in stack.iter().enumerate() {
-        if i == 0 && part == "/" {
-            result.push("/");
-        } else {
-            result.push(part);
+            s => result.push(s),
         }
     }
     result
@@ -906,6 +888,48 @@ mod tests {
 
         let feb = realm.lookup_journal_by_month(2024, 2);
         assert_eq!(feb.len(), 2, "expected 2 Feb docs, got {}", feb.len());
+    }
+
+    // ------------------------------------------------------------------
+    // resolve_relative_path unit tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_resolve_relative_path_normal() {
+        // From /vault/docs/api → ../guide/overview.md = /vault/docs/guide/overview.md
+        let result = resolve_relative_path(
+            std::path::Path::new("/vault/docs/api"),
+            "../guide/overview.md",
+        );
+        assert_eq!(
+            result,
+            std::path::PathBuf::from("/vault/docs/guide/overview.md")
+        );
+    }
+
+    #[test]
+    fn test_resolve_relative_path_dot_underflow_clamps_at_root() {
+        // Excessive `..` must not produce a relative path — result must stay absolute.
+        // Old code empties the stack and returns a bare filename (relative path).
+        // Fixed code clamps at root via PathBuf::pop() semantics.
+        let result = resolve_relative_path(std::path::Path::new("/vault"), "../../file.md");
+        assert!(
+            result.is_absolute(),
+            "excessive `..` must not produce a relative path; got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_resolve_relative_path_single_dot_is_noop() {
+        let result = resolve_relative_path(std::path::Path::new("/vault/docs"), "./same.md");
+        assert_eq!(result, std::path::PathBuf::from("/vault/docs/same.md"));
+    }
+
+    #[test]
+    fn test_resolve_relative_path_no_segments() {
+        let result = resolve_relative_path(std::path::Path::new("/vault/docs"), "file.md");
+        assert_eq!(result, std::path::PathBuf::from("/vault/docs/file.md"));
     }
 
     #[test]

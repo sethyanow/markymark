@@ -341,6 +341,38 @@ fn test_resolve_markdown_link_path_relative_falls_back_to_stem() {
 }
 
 // ---------------------------------------------------------------------------
+// External URL filtering
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_resolve_markdown_link_https_url_returns_none() {
+    // Realm has a document whose stem happens to match the hostname of an external URL.
+    // resolve_markdown_link must NOT return it as a false-positive match.
+    let mut realm = RealmIndex::new();
+    let local_uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/example.com.md"));
+    let idx = index_from("# Example\n\nSome content.");
+    realm.add_document(local_uri, idx);
+
+    let from = DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/page.md"));
+    let result = resolution::resolve_markdown_link(&realm, &from, "https://example.com", None);
+    assert!(
+        result.is_none(),
+        "external https:// URL must not resolve to a local document"
+    );
+}
+
+#[test]
+fn test_resolve_markdown_link_mailto_url_returns_none() {
+    let realm = RealmIndex::new();
+    let from = DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/page.md"));
+    let result = resolution::resolve_markdown_link(&realm, &from, "mailto:user@example.com", None);
+    assert!(
+        result.is_none(),
+        "mailto: URL must not attempt local resolution"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Block reference resolution
 // ---------------------------------------------------------------------------
 
