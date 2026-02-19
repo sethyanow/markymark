@@ -84,6 +84,44 @@ impl std::fmt::Debug for AnyDocumentIndex {
     }
 }
 
+/// Resolve a URL-style relative path against a base directory without hitting the filesystem.
+///
+/// Handles `..` and `.` components by normalising the resulting path component-by-component.
+fn resolve_relative_path(base_dir: &std::path::Path, relative_url: &str) -> std::path::PathBuf {
+    use std::path::{Component, PathBuf};
+    // Build initial stack from the base directory.
+    let mut stack: Vec<std::ffi::OsString> = base_dir
+        .components()
+        .filter_map(|c| match c {
+            Component::Normal(s) => Some(s.to_os_string()),
+            Component::RootDir => Some(std::ffi::OsString::from("/")),
+            _ => None,
+        })
+        .collect();
+
+    // Walk through the relative URL split on '/'.
+    for segment in relative_url.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                stack.pop();
+            }
+            s => stack.push(std::ffi::OsString::from(s)),
+        }
+    }
+
+    // Reconstruct the path.
+    let mut result = PathBuf::new();
+    for (i, part) in stack.iter().enumerate() {
+        if i == 0 && part == "/" {
+            result.push("/");
+        } else {
+            result.push(part);
+        }
+    }
+    result
+}
+
 /// Detect whether a URI filename matches a Logseq journal page date pattern.
 ///
 /// Matches filenames of the form `YYYY_MM_DD.md` (underscore) or `YYYY-MM-DD.md` (dash).
@@ -448,6 +486,27 @@ impl RealmIndex {
             }
         }
         None
+    }
+
+    /// Find a document URI by resolving `relative_url` relative to `from_uri`'s directory.
+    ///
+    /// Returns `None` if the resolved path is not present in the realm.
+    pub(crate) fn find_uri_by_relative_path(
+        &self,
+        from_uri: &DocumentUri,
+        relative_url: &str,
+    ) -> Option<DocumentUri> {
+        let from_path = from_uri.to_file_path()?;
+        let parent = from_path.parent()?;
+        // Resolve the relative URL against the parent directory, then canonicalise components.
+        let resolved = resolve_relative_path(parent, relative_url);
+        let candidate = DocumentUri::from_file_path(&resolved);
+        // Check whether the resolved URI is present in the realm.
+        if self.docs.contains_key(candidate.as_str()) {
+            Some(candidate)
+        } else {
+            None
+        }
     }
 
     /// Run semantic search if embeddings are enabled.
