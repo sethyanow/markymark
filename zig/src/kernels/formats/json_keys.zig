@@ -309,15 +309,22 @@ test "test_json_depth_limit: depth > 100 sets depth_exceeded" {
     var buf: [768]u8 = undefined;
     var pos: usize = 0;
     for (0..depth_count) |_| {
-        buf[pos] = '{'; pos += 1;
-        buf[pos] = '"'; pos += 1;
-        buf[pos] = 'k'; pos += 1;
-        buf[pos] = '"'; pos += 1;
-        buf[pos] = ':'; pos += 1;
+        buf[pos] = '{';
+        pos += 1;
+        buf[pos] = '"';
+        pos += 1;
+        buf[pos] = 'k';
+        pos += 1;
+        buf[pos] = '"';
+        pos += 1;
+        buf[pos] = ':';
+        pos += 1;
     }
-    buf[pos] = '1'; pos += 1;
+    buf[pos] = '1';
+    pos += 1;
     for (0..depth_count) |_| {
-        buf[pos] = '}'; pos += 1;
+        buf[pos] = '}';
+        pos += 1;
     }
 
     var out: [256]JsonKeyEntry = undefined;

@@ -294,13 +294,13 @@ test "toml_tables: [table] header emits table_header entry, kv carries table con
 
     // Second entry: host = "localhost" (kind=kv, inherits table context)
     try std.testing.expectEqual(@intFromEnum(TomlKind.kv), out[1].kind);
-    try std.testing.expectEqual(@as(u32, 1), out[1].table_offset);  // same table
+    try std.testing.expectEqual(@as(u32, 1), out[1].table_offset); // same table
     try std.testing.expectEqual(@as(u16, 8), out[1].table_len);
-    try std.testing.expectEqual(@as(u16, 4), out[1].key_len);       // "host"
+    try std.testing.expectEqual(@as(u16, 4), out[1].key_len); // "host"
 
     // Third entry: port = 5432
     try std.testing.expectEqual(@intFromEnum(TomlKind.kv), out[2].kind);
-    try std.testing.expectEqual(@as(u16, 4), out[2].key_len);       // "port"
+    try std.testing.expectEqual(@as(u16, 4), out[2].key_len); // "port"
 }
 
 test "toml_array_tables: [[array]] header emits array_table_header entry" {
@@ -316,18 +316,18 @@ test "toml_array_tables: [[array]] header emits array_table_header entry" {
 
     // First [[servers]] header
     try std.testing.expectEqual(@intFromEnum(TomlKind.array_table_header), out[0].kind);
-    try std.testing.expectEqual(@as(u16, 7), out[0].table_len);   // "servers"
+    try std.testing.expectEqual(@as(u16, 7), out[0].table_len); // "servers"
 
     // host = "alpha" kv under first [[servers]]
     try std.testing.expectEqual(@intFromEnum(TomlKind.kv), out[1].kind);
-    try std.testing.expectEqual(@as(u16, 7), out[1].table_len);   // table context = "servers"
+    try std.testing.expectEqual(@as(u16, 7), out[1].table_len); // table context = "servers"
 
     // Second [[servers]] header
     try std.testing.expectEqual(@intFromEnum(TomlKind.array_table_header), out[2].kind);
 
     // host = "beta" kv under second [[servers]]
     try std.testing.expectEqual(@intFromEnum(TomlKind.kv), out[3].kind);
-    try std.testing.expectEqual(@as(u16, 4), out[3].key_len);     // "host"
+    try std.testing.expectEqual(@as(u16, 4), out[3].key_len); // "host"
 }
 
 test "toml_dotted_keys: dotted key a.b.c reported verbatim" {
@@ -349,7 +349,7 @@ test "toml_inline_tables: inline { } value does not crash scanner" {
     // One kv entry: key="config", value="{ a = 1, b = 2 }"
     try std.testing.expectEqual(@as(u32, 1), w);
     try std.testing.expectEqual(@intFromEnum(TomlKind.kv), out[0].kind);
-    try std.testing.expectEqual(@as(u16, 6), out[0].key_len);  // "config"
+    try std.testing.expectEqual(@as(u16, 6), out[0].key_len); // "config"
     try std.testing.expect(out[0].val_len > 0);
 }
 
@@ -385,7 +385,7 @@ test "toml_comments: # comment lines are skipped" {
     const w = scan_toml(text.ptr, text.len, &out, 4);
     try std.testing.expectEqual(@as(u32, 1), w);
     try std.testing.expectEqual(@intFromEnum(TomlKind.kv), out[0].kind);
-    try std.testing.expectEqual(@as(u16, 3), out[0].key_len);  // "key"
+    try std.testing.expectEqual(@as(u16, 3), out[0].key_len); // "key"
 }
 
 test "toml_inline_comment: trailing # comment stripped from value" {
@@ -405,7 +405,7 @@ test "toml_crlf: Windows CRLF line endings handled" {
     try std.testing.expectEqual(@as(u32, 2), w);
     try std.testing.expectEqual(@intFromEnum(TomlKind.table_header), out[0].kind);
     try std.testing.expectEqual(@intFromEnum(TomlKind.kv), out[1].kind);
-    try std.testing.expectEqual(@as(u16, 3), out[1].key_len);  // "key"
+    try std.testing.expectEqual(@as(u16, 3), out[1].key_len); // "key"
 }
 
 test "toml_no_trailing_newline: last line without newline is parsed" {
@@ -413,8 +413,8 @@ test "toml_no_trailing_newline: last line without newline is parsed" {
     var out: [4]TomlEntry = undefined;
     const w = scan_toml(text.ptr, text.len, &out, 4);
     try std.testing.expectEqual(@as(u32, 2), w);
-    try std.testing.expectEqual(@as(u16, 3), out[1].key_len);  // "key"
-    try std.testing.expectEqual(@as(u16, 3), out[1].val_len);  // "val"
+    try std.testing.expectEqual(@as(u16, 3), out[1].key_len); // "key"
+    try std.testing.expectEqual(@as(u16, 3), out[1].val_len); // "val"
 }
 
 test "toml_empty_input: returns 0 entries" {
@@ -436,7 +436,7 @@ test "toml_empty_value: key = with no value yields val_len 0" {
     const w = scan_toml(text.ptr, text.len, &out, 4);
     // table header + kv
     try std.testing.expectEqual(@as(u32, 2), w);
-    try std.testing.expectEqual(@as(u16, 1), out[1].key_len);  // "k"
+    try std.testing.expectEqual(@as(u16, 1), out[1].key_len); // "k"
     try std.testing.expectEqual(@as(u16, 0), out[1].val_len);
 }
 
@@ -454,9 +454,9 @@ test "toml_multiline_string: lines inside triple-quoted block skipped" {
     // Only two real entries: desc = """... and real_key = "actual"
     try std.testing.expectEqual(@as(u32, 2), w);
     // First: desc = """ (multi-line open, val truncated to """)
-    try std.testing.expectEqual(@as(u16, 4), out[0].key_len);  // "desc"
+    try std.testing.expectEqual(@as(u16, 4), out[0].key_len); // "desc"
     // Second: real_key = "actual"
-    try std.testing.expectEqual(@as(u16, 8), out[1].key_len);  // "real_key"
+    try std.testing.expectEqual(@as(u16, 8), out[1].key_len); // "real_key"
 }
 
 test "toml_mixed_tables_and_arrays: interleaved [table] and [[array]] entries" {
@@ -472,12 +472,12 @@ test "toml_mixed_tables_and_arrays: interleaved [table] and [[array]] entries" {
     const w = scan_toml(text.ptr, text.len, &out, 8);
     try std.testing.expectEqual(@as(u32, 6), w);
 
-    try std.testing.expectEqual(@intFromEnum(TomlKind.table_header), out[0].kind);       // [owner]
-    try std.testing.expectEqual(@intFromEnum(TomlKind.kv), out[1].kind);                  // name = "Alice"
+    try std.testing.expectEqual(@intFromEnum(TomlKind.table_header), out[0].kind); // [owner]
+    try std.testing.expectEqual(@intFromEnum(TomlKind.kv), out[1].kind); // name = "Alice"
     try std.testing.expectEqual(@intFromEnum(TomlKind.array_table_header), out[2].kind); // [[products]]
-    try std.testing.expectEqual(@intFromEnum(TomlKind.kv), out[3].kind);                  // name = "Widget"
-    try std.testing.expectEqual(@intFromEnum(TomlKind.table_header), out[4].kind);        // [owner.details]
-    try std.testing.expectEqual(@intFromEnum(TomlKind.kv), out[5].kind);                  // email = ...
+    try std.testing.expectEqual(@intFromEnum(TomlKind.kv), out[3].kind); // name = "Widget"
+    try std.testing.expectEqual(@intFromEnum(TomlKind.table_header), out[4].kind); // [owner.details]
+    try std.testing.expectEqual(@intFromEnum(TomlKind.kv), out[5].kind); // email = ...
 }
 
 test "toml_whitespace_around_eq: spaces trimmed from key and value" {
@@ -485,6 +485,6 @@ test "toml_whitespace_around_eq: spaces trimmed from key and value" {
     var out: [2]TomlEntry = undefined;
     const w = scan_toml(text.ptr, text.len, &out, 2);
     try std.testing.expectEqual(@as(u32, 1), w);
-    try std.testing.expectEqual(@as(u16, 3), out[0].key_len);  // "key"
-    try std.testing.expectEqual(@as(u16, 5), out[0].val_len);  // "value"
+    try std.testing.expectEqual(@as(u16, 3), out[0].key_len); // "key"
+    try std.testing.expectEqual(@as(u16, 5), out[0].val_len); // "value"
 }

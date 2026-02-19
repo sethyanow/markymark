@@ -345,7 +345,7 @@ test "bench_simd_vs_scalar" {
     std.debug.print("[bench] SIMD:   {d}ns total, {d}ns/iter\n", .{ simd_ns, simd_ns / iterations });
     std.debug.print("[bench] Scalar: {d}ns total, {d}ns/iter\n", .{ scalar_ns, scalar_ns / iterations });
     if (scalar_ns > 0) {
-        std.debug.print("[bench] Speedup: {d:.1}x\n", .{ @as(f64, @floatFromInt(scalar_ns)) / @as(f64, @floatFromInt(simd_ns)) });
+        std.debug.print("[bench] Speedup: {d:.1}x\n", .{@as(f64, @floatFromInt(scalar_ns)) / @as(f64, @floatFromInt(simd_ns))});
     }
 
     // Both should find the same number of links

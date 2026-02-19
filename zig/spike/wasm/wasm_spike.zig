@@ -7,7 +7,6 @@
 /// Build:  zig build wasm-spike
 /// Output: zig-out/wasm/heading_scan.wasm
 /// Test:   wasmtime zig-out/wasm/heading_scan.wasm --invoke has_simd_path
-
 const heading_scan = @import("../../src/kernels/heading_scan.zig");
 const HeadingScan = heading_scan.HeadingScan;
 
