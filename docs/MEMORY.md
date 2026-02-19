@@ -169,6 +169,8 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 - **Stem-only is the fallback, not the primary**: For Markdown links, path-relative resolution wins when URL contains `/`. Stem-only fires when path-relative misses (nonexistent path) or URL has no directory component.
 
 ### LSP/MCP
+- **Diagnostic logic lives in `markymark-index/src/diagnostics.rs`** (marky-6i9, 2026-02-19). Shared `compute_diagnostics(index, realm, uri)` is used by both LSP (`publishDiagnostics`) and MCP (`get-diagnostics` tool). DiagnosticSeverity/CoreDiagnostic types are in `markymark-core::engine`.
+- **Adding a new CoreOperation follows a 5-stop pattern**: (1) types in `core/engine.rs`, (2) compute logic in `index/`, (3) engine handler in `mcp/src/engine/{op}.rs`, (4) DTO + tool handler in `mcp/src/tools/{op}.rs`, (5) `#[tool]` wiring in `lib.rs`.
 - Drop read lock before async publish_diagnostics (deadlock prevention)
 - MCP realm threading: dto.rs, lib.rs, runtime_engine.rs, prompts.rs, resources.rs — all updated together
 - Optional PromptArgument in rmcp: `required: Some(false)`, extract with `.get(key).and_then(|v| v.as_str())`
