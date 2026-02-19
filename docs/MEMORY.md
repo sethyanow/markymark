@@ -16,7 +16,7 @@ Six-crate workspace (core, parser, index, lsp, mcp, cli) is well-partitioned.
 Arena allocation (bumpalo) lives in parser layer, not crossing into transport (lsp/mcp).
 This keeps Send/Sync constraints manageable.
 
-**Watch:** `realm.rs` at 926 lines — approaching 1000-line hard stop. Refactor issue needed soon.
+**Watch:** `realm.rs` at 950 lines — approaching 1000-line hard stop. Refactor issue needed soon.
 
 ### Rust Agent Docs: Grade A (2026-02-15)
 
@@ -183,7 +183,7 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 - Safe file splits: (1) module dir, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit
 - Land RED→GREEN regression set before tuning merge logic
 - Use `assert_eq!` not `>=` — `>=` masked a closing-tag rename bug
-- Integration tests in tests/ are standalone crates — duplicate helpers, no mod.rs
+- Integration test crate roots (`tests/*.rs`) resolve `mod foo;` in `tests/foo.rs` (sibling), NOT `tests/basename/foo.rs`. To split a large integration test into subdirectory files, use `#[path = "basename/foo.rs"] mod foo;` in the root file. (Pattern established marky-a90, 2026-02-19)
 - Env-gated benchmarks (`MARKYMARK_RUN_100K_BENCH=1`) for checkpoint evidence
 
 ### Project-Specific
