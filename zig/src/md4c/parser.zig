@@ -59,6 +59,9 @@ pub const Parser = struct {
     // Ref defs
     ref_defs: std.ArrayListUnmanaged(RefDef) = .{},
 
+    // Scratch buffer for normalizeLabel — reused across calls to avoid per-call leaks.
+    normalize_buf: std.ArrayListUnmanaged(u8) = .{},
+
     // State
     last_line_has_list_loosening_effect: bool = false,
     last_list_item_starts_with_two_blank_lines: bool = false,
@@ -105,7 +108,14 @@ pub const Parser = struct {
         self.block_bytes.deinit(self.allocator);
         self.buffer.deinit(self.allocator);
         self.current_block_lines.deinit(self.allocator);
+        // Free duped ref_def contents (label, dest, title) before the list itself.
+        for (self.ref_defs.items) |rd| {
+            self.allocator.free(rd.label);
+            self.allocator.free(rd.dest);
+            self.allocator.free(rd.title);
+        }
         self.ref_defs.deinit(self.allocator);
+        self.normalize_buf.deinit(self.allocator);
         self.emph_delims.deinit(self.allocator);
     }
 
