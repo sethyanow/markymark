@@ -1,5 +1,7 @@
 //! SearchSymbols and SemanticSearch operation handlers.
 
+use std::borrow::Cow;
+
 use markymark_core::engine::CoreOperationResult;
 #[cfg(feature = "semantic-search")]
 use markymark_core::engine::SemanticSearchMatch;
@@ -32,24 +34,33 @@ pub(crate) fn handle_search_symbols(realm: &RealmIndex, query: String) -> CoreOp
         ));
     }
 
-    let mut candidates: Vec<(String, DocumentUri, Range)> = Vec::new();
+    // Collect document refs before building candidates so that the borrow on
+    // each `&DocumentIndex` has a lifetime that spans the entire candidate
+    // collection phase (not just a single loop iteration).
+    let docs: Vec<(&DocumentUri, &markymark_index::DocumentIndex)> =
+        realm.iter_documents().collect();
 
-    // Collect markdown heading candidates.
-    for (uri, index) in realm.iter_documents() {
+    // Candidates use Cow<str> to borrow heading text from the arena instead of
+    // cloning every name upfront.  Only the final ranked results (≤ TOP_K_LIMIT)
+    // are converted to owned Strings.
+    let mut candidates: Vec<(Cow<'_, str>, DocumentUri, Range)> = Vec::new();
+
+    // Collect markdown heading candidates — borrow text from arena, no clone.
+    for (uri, index) in &docs {
         for heading in index.headings() {
-            candidates.push((heading.text.to_string(), uri.clone(), heading.range));
+            candidates.push((Cow::Borrowed(heading.text), (*uri).clone(), heading.range));
         }
     }
 
     // Collect structured key-path candidates (pre-filtered by search_key_paths,
     // unlike headings which are collected exhaustively then ranked by fuzzy score).
     for (uri, path, _key, _kind, range) in realm.search_key_paths(&query) {
-        candidates.push((path, uri, range));
+        candidates.push((Cow::Owned(path), uri, range));
     }
 
     let candidate_refs: Vec<&str> = candidates
         .iter()
-        .map(|(name, _, _)| name.as_str())
+        .map(|(name, _, _)| name.as_ref())
         .collect();
     // Cap top_k to avoid O(n log n) heap degradation when all candidates are ranked.
     const TOP_K_LIMIT: usize = 100;
@@ -62,7 +73,13 @@ pub(crate) fn handle_search_symbols(realm: &RealmIndex, query: String) -> CoreOp
                 .filter(|m| m.score > 0)
                 .filter_map(|m| {
                     candidates.get(m.index as usize).map(|(name, uri, range)| {
-                        (m.score, m.starts_with, name.clone(), uri.clone(), *range)
+                        (
+                            m.score,
+                            m.starts_with,
+                            name.as_ref().to_string(),
+                            uri.clone(),
+                            *range,
+                        )
                     })
                 })
                 .collect();
@@ -76,12 +93,12 @@ pub(crate) fn handle_search_symbols(realm: &RealmIndex, query: String) -> CoreOp
             // Fallback path keeps previous per-candidate behavior.
             let mut scored_matches: Vec<(i32, bool, String, DocumentUri, Range)> = Vec::new();
             for (name, uri, range) in &candidates {
-                if let Ok(m) = fuzzy_match(&query, name) {
+                if let Ok(m) = fuzzy_match(&query, name.as_ref()) {
                     if m.score > 0 {
                         scored_matches.push((
                             m.score,
                             m.starts_with,
-                            name.clone(),
+                            name.as_ref().to_string(),
                             uri.clone(),
                             *range,
                         ));
