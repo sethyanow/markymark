@@ -10,18 +10,21 @@ use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_core::{DocumentUri, Position, Range};
 use markymark_mcp::RuntimeEngine;
 
+#[path = "runtime_engine_tests/startup.rs"]
+mod startup;
+
 /// Compare two ranges for deterministic sorting (test-local copy).
-fn compare_ranges(a: Range, b: Range) -> Ordering {
+pub(crate) fn compare_ranges(a: Range, b: Range) -> Ordering {
     a.start.cmp(&b.start).then_with(|| a.end.cmp(&b.end))
 }
 
-struct TempWorkspace {
+pub(crate) struct TempWorkspace {
     _dir: tempfile::TempDir,
     root: PathBuf,
 }
 
 impl TempWorkspace {
-    fn new(name: &str) -> Self {
+    pub(crate) fn new(name: &str) -> Self {
         let dir = tempfile::Builder::new()
             .prefix(&format!("markymark-mcp-runtime-{name}-"))
             .tempdir()
@@ -30,89 +33,8 @@ impl TempWorkspace {
         Self { _dir: dir, root }
     }
 
-    fn root(&self) -> PathBuf {
+    pub(crate) fn root(&self) -> PathBuf {
         self.root.clone()
-    }
-}
-
-#[test]
-fn rejects_empty_workspace_roots() {
-    let err = match RuntimeEngine::from_workspace_roots(Vec::new()) {
-        Ok(_) => panic!("empty workspace roots should fail"),
-        Err(err) => err,
-    };
-    assert!(err
-        .to_string()
-        .contains("at least one workspace root is required"));
-}
-
-#[test]
-fn rejects_missing_workspace_root() {
-    let dir = tempfile::TempDir::new().expect("temp dir should be created");
-    let missing = dir.path().to_path_buf();
-    drop(dir); // delete the directory so `missing` is a non-existent path
-
-    let err = match RuntimeEngine::from_workspace_roots(vec![missing.clone()]) {
-        Ok(_) => panic!("missing workspace root should fail"),
-        Err(err) => err,
-    };
-    assert!(err.to_string().contains(&format!(
-        "workspace root does not exist: {}",
-        missing.display()
-    )));
-}
-
-#[test]
-fn rejects_workspace_root_file_path() {
-    let ws = TempWorkspace::new("root-file");
-    let file_path = ws.root().join("not-a-directory.md");
-    fs::write(&file_path, "# Heading").expect("test file should be created");
-
-    let err = match RuntimeEngine::from_workspace_roots(vec![file_path.clone()]) {
-        Ok(_) => panic!("workspace root file should fail"),
-        Err(err) => err,
-    };
-    assert!(err.to_string().contains(&format!(
-        "workspace root is not a directory: {}",
-        file_path.display()
-    )));
-}
-
-#[test]
-fn indexes_markdown_and_returns_deterministic_symbols() {
-    let ws = TempWorkspace::new("indexed");
-    let first = ws.root().join("a.md");
-    let second = ws.root().join("b.md");
-    fs::write(&first, "# Zebra\n## Alpha\n").expect("first markdown should be created");
-    fs::write(&second, "# Beta\n").expect("second markdown should be created");
-
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
-
-    let outline = engine.execute(CoreOperation::GetOutline {
-        uri: DocumentUri::from_file_path(&first),
-        realm: None,
-    });
-    match outline {
-        CoreOperationResult::Outline(headings) => {
-            assert_eq!(headings, vec!["Zebra".to_string(), "Alpha".to_string()]);
-        }
-        other => panic!("expected outline result, got: {other:?}"),
-    }
-
-    let symbols = engine.execute(CoreOperation::SearchSymbols {
-        query: "a".to_string(),
-        realm: None,
-    });
-    match symbols {
-        CoreOperationResult::Symbols(matches) => {
-            let names: Vec<_> = matches.into_iter().map(|(name, _, _)| name).collect();
-            assert_eq!(
-                names,
-                vec!["Alpha".to_string(), "Beta".to_string(), "Zebra".to_string()]
-            );
-        }
-        other => panic!("expected symbol matches, got: {other:?}"),
     }
 }
 
