@@ -166,7 +166,7 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 
 - **`resolve_markdown_link` handles cross-document links** (marky-z9z, 2026-02-19). Was previously a stub returning `None` for anything beyond same-page anchors. Now resolves `other.md` → Document, `other.md#heading` → Heading, `dir/other.md` → path-relative first, stem fallback.
 - **Path-relative without filesystem access**: Use component-stack normalization (pop on `..`, skip `.`/empty) instead of `std::fs::canonicalize`. `canonicalize` requires the path to exist on disk — bad for indexed-but-not-on-this-machine vaults. See `resolve_relative_path` in `realm.rs`.
-- **Stem-only is the fallback, not the primary**: For markdown links, path-relative resolution wins when URL contains `/`. Stem-only fires when path-relative misses (nonexistent path) or URL has no directory component.
+- **Stem-only is the fallback, not the primary**: For Markdown links, path-relative resolution wins when URL contains `/`. Stem-only fires when path-relative misses (nonexistent path) or URL has no directory component.
 
 ### LSP/MCP
 - Drop read lock before async publish_diagnostics (deadlock prevention)

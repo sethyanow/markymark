@@ -55,6 +55,11 @@ fn find_document_by_markdown_url(
     from_uri: &DocumentUri,
     url: &str,
 ) -> Option<DocumentUri> {
+    // Skip external URLs; they can never resolve to a workspace document.
+    if url.contains("://") || url.starts_with("mailto:") {
+        return None;
+    }
+
     // Path-relative: only attempted when url contains a directory separator.
     if url.contains('/') {
         if let Some(uri) = realm.find_uri_by_relative_path(from_uri, url) {
