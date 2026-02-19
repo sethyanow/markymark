@@ -208,6 +208,10 @@ impl CoreEngine for MockEngine {
                 broken_links: vec![],
                 clusters: None,
             },
+            (_, CoreOperation::GetDiagnostics { realm, .. }) => CoreOperationResult::Diagnostics {
+                realm: realm.unwrap_or_else(|| "default".to_string()),
+                items: vec![],
+            },
         }
     }
 }

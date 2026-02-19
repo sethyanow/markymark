@@ -3,6 +3,7 @@
 //! Each submodule contains the body logic for one group of `#[tool]` methods.
 //! The `#[tool]`-decorated method signatures remain in `lib.rs` and delegate here.
 
+pub(crate) mod diagnostics;
 pub(crate) mod graph;
 pub(crate) mod outline;
 pub(crate) mod realm;
