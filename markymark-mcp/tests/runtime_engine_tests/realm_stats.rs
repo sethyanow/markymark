@@ -164,7 +164,7 @@ fn semantic_search_returns_ranked_matches() {
             assert!(!matches[0].section_preview.is_empty());
             assert!(
                 matches[0].section_preview.len() <= 200,
-                "preview should be truncated to 200 chars"
+                "preview should be truncated to 200 bytes"
             );
         }
         other => panic!("expected SemanticMatches result, got: {other:?}"),
