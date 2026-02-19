@@ -100,17 +100,19 @@ fn test_markdown_links_need_update_true_when_link_intersects_edit() {
 fn test_markdown_link_after_edit_not_affected_when_no_intersection_and_far() {
     // Link at line 5, bytes 500-520; edit at line 3, bytes 0-1.
     // No range intersection AND outside the 100-byte neighbor window →
-    // link is NOT affected (only needs position adjustment).
+    // the individual link is NOT affected (only needs position adjustment).
     let ml = make_ml_bytes(5, 0, 5, 20, 500, 520);
     let edit = make_edit(3, 0, 3, 5);
     assert!(
         !markdown_link_affected_by_edits(&ml, &[edit]),
         "link far from edit (no intersection, outside neighbor window) should NOT be affected"
     );
-    // needs_update still returns false: no entry affected and edit is before last link
+    // marky-wjf: needs_update now returns TRUE because the edit is in an
+    // uncovered gap (before the first entry, outside the neighbor window).
+    // The edit could create new links that position adjustment alone can't detect.
     assert!(
-        !markdown_links_need_update(&[ml], &[edit]),
-        "link far from edit with no intersection should not trigger re-extraction"
+        markdown_links_need_update(&[ml], &[edit]),
+        "edit in uncovered gap should trigger re-extraction (marky-wjf)"
     );
 }
 
@@ -442,8 +444,10 @@ fn test_blocks_need_update_returns_true_for_intersecting_edit() {
 }
 
 #[test]
-fn test_blocks_need_update_returns_false_for_pre_block_edit_no_neighbor() {
-    // Edit at byte 0-1, block at bytes 500-508 (far beyond 100-byte neighbor window)
+fn test_blocks_need_update_returns_true_for_pre_block_edit_in_gap() {
+    // Edit at byte 0-1, block at bytes 500-508 (far beyond 100-byte neighbor window).
+    // marky-wjf: The edit is in an uncovered gap before the first entry.
+    // The edit could create new block IDs that position adjustment alone can't detect.
     let old_blocks = vec![make_block_owned("block-far", 10, 0, 8, 500, 508)];
     let edit = InputEdit {
         start_byte: 0,
@@ -455,10 +459,10 @@ fn test_blocks_need_update_returns_false_for_pre_block_edit_no_neighbor() {
     };
     // range_intersects_edit: false (no overlap)
     // range_within_neighbor_window: false (500 >> 100 + 1)
-    // Block is NOT affected — will get position adjustment instead of re-extraction
+    // any_edit_in_entry_gap: TRUE (edit at byte 0 is outside all entries' windows)
     assert!(
-        !blocks_need_update(&old_blocks, &[edit]),
-        "block far from edit is not affected; position adjustment handles shifting"
+        blocks_need_update(&old_blocks, &[edit]),
+        "edit in uncovered gap should trigger re-extraction (marky-wjf)"
     );
 }
 
@@ -1081,4 +1085,207 @@ fn test_incremental_blocks_parity_with_positions() {
             "block mismatch:\n  full: {full:?}\n  inc:  {inc:?}"
         );
     }
+}
+
+// ─── marky-wjf: Regression tests for gap detection ────────────────────────
+
+/// marky-wjf: Edit in a large gap between two wiki links must trigger re-extraction.
+#[test]
+fn test_wiki_links_need_update_detects_edit_in_large_gap() {
+    // Link A at bytes 100-150, Link B at bytes 500-550.
+    // Edit at byte 300 — outside 100-byte neighbor window of both entries,
+    // before last entry, no range intersection. Current code misses this.
+    let wl_a = WikiLinkOwned {
+        target: "PageA".to_string(),
+        alias: None,
+        heading: None,
+        range: Range::new(Position::new(2, 0), Position::new(2, 20)),
+        start_byte: 100,
+        end_byte: 150,
+    };
+    let wl_b = WikiLinkOwned {
+        target: "PageB".to_string(),
+        alias: None,
+        heading: None,
+        range: Range::new(Position::new(10, 0), Position::new(10, 20)),
+        start_byte: 500,
+        end_byte: 550,
+    };
+    let edit = InputEdit {
+        start_byte: 300,
+        old_end_byte: 300,
+        new_end_byte: 315,
+        start_position: Point { row: 6, column: 0 },
+        old_end_position: Point { row: 6, column: 0 },
+        new_end_position: Point { row: 6, column: 15 },
+    };
+    assert!(
+        wiki_links_need_update(&[wl_a, wl_b], &[edit]),
+        "edit in large gap between entries must trigger re-extraction"
+    );
+}
+
+/// marky-wjf: Edit in a large gap between two blocks must trigger re-extraction.
+#[test]
+fn test_blocks_need_update_detects_edit_in_large_gap() {
+    let block_a = make_block_owned("block-a", 2, 10, 18, 100, 150);
+    let block_b = make_block_owned("block-b", 10, 10, 18, 500, 550);
+    let edit = InputEdit {
+        start_byte: 300,
+        old_end_byte: 300,
+        new_end_byte: 315,
+        start_position: Point { row: 6, column: 0 },
+        old_end_position: Point { row: 6, column: 0 },
+        new_end_position: Point { row: 6, column: 15 },
+    };
+    assert!(
+        blocks_need_update(&[block_a, block_b], &[edit]),
+        "edit in large gap between entries must trigger re-extraction"
+    );
+}
+
+/// marky-wjf: Edit in a large gap between two markdown links must trigger re-extraction.
+#[test]
+fn test_markdown_links_need_update_detects_edit_in_large_gap() {
+    let ml_a = make_ml_bytes(2, 0, 2, 20, 100, 150);
+    let ml_b = make_ml_bytes(10, 0, 10, 20, 500, 550);
+    let edit = InputEdit {
+        start_byte: 300,
+        old_end_byte: 300,
+        new_end_byte: 315,
+        start_position: Point { row: 6, column: 0 },
+        old_end_position: Point { row: 6, column: 0 },
+        new_end_position: Point { row: 6, column: 15 },
+    };
+    assert!(
+        markdown_links_need_update(&[ml_a, ml_b], &[edit]),
+        "edit in large gap between entries must trigger re-extraction"
+    );
+}
+
+/// marky-wjf: Edit in a large gap between two XML tags must trigger re-extraction.
+#[test]
+fn test_xml_tags_need_update_detects_edit_in_large_gap() {
+    let xt_a = make_xt_bytes(2, 0, 2, 20, "div", 100, 150);
+    let xt_b = make_xt_bytes(10, 0, 10, 20, "span", 500, 550);
+    let edit = InputEdit {
+        start_byte: 300,
+        old_end_byte: 300,
+        new_end_byte: 315,
+        start_position: Point { row: 6, column: 0 },
+        old_end_position: Point { row: 6, column: 0 },
+        new_end_position: Point { row: 6, column: 15 },
+    };
+    assert!(
+        xml_tags_need_update(&[xt_a, xt_b], &[edit]),
+        "edit in large gap between entries must trigger re-extraction"
+    );
+}
+
+/// marky-wjf: Edit far before the first entry (outside neighbor window) must trigger.
+#[test]
+fn test_wiki_links_need_update_detects_edit_before_first_entry() {
+    let wl = WikiLinkOwned {
+        target: "Page".to_string(),
+        alias: None,
+        heading: None,
+        range: Range::new(Position::new(10, 0), Position::new(10, 20)),
+        start_byte: 500,
+        end_byte: 550,
+    };
+    let edit = InputEdit {
+        start_byte: 10,
+        old_end_byte: 10,
+        new_end_byte: 25,
+        start_position: Point { row: 0, column: 10 },
+        old_end_position: Point { row: 0, column: 10 },
+        new_end_position: Point { row: 0, column: 25 },
+    };
+    assert!(
+        wiki_links_need_update(&[wl], &[edit]),
+        "edit far before first entry must trigger re-extraction"
+    );
+}
+
+/// marky-wjf: any_edit_in_entry_gap returns false when edit IS covered by an entry's window.
+#[test]
+fn test_any_edit_in_entry_gap_returns_false_when_covered() {
+    use super::any_edit_in_entry_gap;
+    // Entry at bytes 100-150, edit at byte 200 — within 100-byte window of entry end (150).
+    let ranges = [(100usize, 150usize)];
+    let edit = InputEdit {
+        start_byte: 200,
+        old_end_byte: 200,
+        new_end_byte: 210,
+        start_position: Point { row: 5, column: 0 },
+        old_end_position: Point { row: 5, column: 0 },
+        new_end_position: Point { row: 5, column: 10 },
+    };
+    assert!(
+        !any_edit_in_entry_gap(&ranges, &[edit], 100),
+        "edit within entry's window should NOT be detected as a gap"
+    );
+}
+
+/// marky-wjf: any_edit_in_entry_gap detects gap when edit is 1 byte past the window boundary.
+#[test]
+fn test_any_edit_in_entry_gap_boundary() {
+    use super::any_edit_in_entry_gap;
+    // Entry at bytes 100-150, window=100. Coverage extends to byte 250.
+    // Edit at byte 251 is 1 byte past the window boundary.
+    let ranges = [(100usize, 150usize)];
+    let edit = InputEdit {
+        start_byte: 251,
+        old_end_byte: 251,
+        new_end_byte: 260,
+        start_position: Point { row: 8, column: 0 },
+        old_end_position: Point { row: 8, column: 0 },
+        new_end_position: Point { row: 8, column: 9 },
+    };
+    assert!(
+        any_edit_in_entry_gap(&ranges, &[edit], 100),
+        "edit 1 byte past window boundary should be detected as a gap"
+    );
+    // Edit at byte 250 is exactly at the window boundary — still covered.
+    let edit_at_boundary = InputEdit {
+        start_byte: 250,
+        old_end_byte: 250,
+        new_end_byte: 260,
+        start_position: Point { row: 8, column: 0 },
+        old_end_position: Point { row: 8, column: 0 },
+        new_end_position: Point { row: 8, column: 10 },
+    };
+    assert!(
+        !any_edit_in_entry_gap(&ranges, &[edit_at_boundary], 100),
+        "edit exactly at window boundary should be covered (inclusive)"
+    );
+}
+
+/// marky-wjf: Multiple edits where only one falls in a gap.
+#[test]
+fn test_blocks_need_update_multiple_edits_one_in_gap() {
+    let block_a = make_block_owned("block-a", 2, 10, 18, 100, 150);
+    let block_b = make_block_owned("block-b", 10, 10, 18, 500, 550);
+    // Edit 1: within block_a's neighbor window (near byte 150)
+    let edit_covered = InputEdit {
+        start_byte: 200,
+        old_end_byte: 200,
+        new_end_byte: 205,
+        start_position: Point { row: 4, column: 0 },
+        old_end_position: Point { row: 4, column: 0 },
+        new_end_position: Point { row: 4, column: 5 },
+    };
+    // Edit 2: in the gap at byte 300 (outside both windows)
+    let edit_in_gap = InputEdit {
+        start_byte: 300,
+        old_end_byte: 300,
+        new_end_byte: 310,
+        start_position: Point { row: 6, column: 0 },
+        old_end_position: Point { row: 6, column: 0 },
+        new_end_position: Point { row: 6, column: 10 },
+    };
+    assert!(
+        blocks_need_update(&[block_a, block_b], &[edit_covered, edit_in_gap]),
+        "one of two edits is in a gap — must trigger re-extraction"
+    );
 }
