@@ -28,6 +28,15 @@ Known issue: XML tag false positives in code blocks (marky-8la).
 
 ## Lessons Learned
 
+### Zig ArrayListUnmanaged scratch buffer pattern (2026-02-19)
+
+When a function builds a temporary string via `ArrayListUnmanaged(u8){}` and returns
+`.items`, the backing allocation leaks because nobody calls `.deinit()`. Fix: add a
+reusable scratch buffer field to the owning struct, `clearRetainingCapacity()` at
+the start of each call, and have callers that persist the result `dupe()` it.
+Also: if a struct stores duped slices, its deinit must free them individually before
+freeing the container list (marky-i3fl).
+
 ### FFI serialization: validate math, pointers, and alignment (2026-02-17/18)
 
 For mmap-friendly binary formats, treat header counts and C pointers as untrusted input.
@@ -77,7 +86,7 @@ architectural relevance. Implementation minutiae live in commit history.
 
 - **self_cell owner/dependent for Ast internals on stable Rust** (dec-051).
 - **Parameterize SymbolAtPosition over lifetime instead of 'static** (dec-049). LSP state clones index entries; 'static caused borrow escape errors.
-- **Cow<str> optimization deferred** (dec-046). Requires self-referential invariants not yet provided.
+- **Cow str optimization deferred** (dec-046). Requires self-referential invariants not yet provided.
 
 ### Incremental Indexing (Phase 3)
 
@@ -246,6 +255,27 @@ lazy AST adds LSP state complexity. Needs benchmark validation with extraction o
 (865L, block-level), inlines.zig (746L, emphasis/inline), line_analysis.zig (527L, heading/
 fence/table detection), links.zig (527L, bracket/wiki/auto links), types.zig (387L, enums +
 Renderer vtable), html_renderer.zig (714L, reference renderer).
+
+### md4c Integration Architecture (2026-02-19)
+
+**Integration point: `ScanBackend` trait + `DocumentIndex::from_scan()`.**
+md4c does NOT need to produce an `Ast` or `Element` enum. `from_scan()` bypasses AST entirely
+and builds index directly from `ScanBackend` results (headings, links, tags, block IDs).
+
+**Why this works:** All 13 extractors in `extract.rs` work on raw source text via regex, NOT
+the tree-sitter AST. The AST tree is only used for: (1) root element list (headings, paragraphs,
+list items), (2) Logseq-style heading detection in list items, (3) storing `MarkdownTree` for
+LSP incremental reuse. Since md4c's Renderer vtable callbacks provide the same element info
+(enterBlock/leaveBlock for headings, enterSpan/leaveSpan for links), it maps directly to
+`ScanBackend`'s scan methods.
+
+**Bun dependency audit (2026-02-19):** Bun's md4c has minimal external deps — mainly
+`bun.JSError` in Renderer callback return types. Uses `std.mem.Allocator` (compatible with
+any Zig allocator). entity.zig is 2164 lines but is a data lookup table (HTML entity mappings),
+exempt from 1000-line hard stop.
+
+**Active work:** marky-s02r (child of marky-0mr) — copy Bun src/md/ into zig/src/md4c/,
+strip Bun deps, smoke test with HtmlRenderer. Working despite marky-77i blocker (user decision).
 
 ### Byte Offsets for MarkdownLink/XmlTag (2026-02-18)
 
