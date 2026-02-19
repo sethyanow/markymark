@@ -27,6 +27,13 @@ pub fn build(b: *std.Build) void {
         // ___zig_probe_stack / ___chkstk_ms (compiler-rt symbols not
         // bundled into static libs). See ziglang/zig#6817.
         .stack_check = false,
+        // Strip debug info so Zig's panic/debug infrastructure (panicExtra
+        // etc.) is removed. On Windows/MSVC those functions have large stack
+        // frames that emit ___chkstk_ms even with stack_check=false.
+        .strip = true,
+        // Disable unwind tables — not needed for a static FFI library and
+        // avoids MSVC exception-handling references to compiler-rt.
+        .unwind_tables = .none,
     });
 
     // Static library artifact (libmarky_kernels.a)
