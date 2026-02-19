@@ -98,8 +98,7 @@ impl ServerState {
                 // 2. Search all documents for wiki links referencing the old slug
                 for (doc_uri, index) in self.realm.iter_documents() {
                     for wl in index.wiki_links() {
-                        let wl_heading_slug =
-                            wl.heading.map(|h| slugify(h));
+                        let wl_heading_slug = wl.heading.map(slugify);
                         if wl_heading_slug.as_deref() == Some(old_slug) {
                             let doc_text = self.get_document_text(doc_uri);
                             if let Some(anchor_range) =

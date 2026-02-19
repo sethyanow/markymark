@@ -1,110 +1,189 @@
-<handoff session="2026-02-15" branch="feature/mark-rustdocs">
+<handoff session="2026-02-18" branch="dev">
 
 <summary>
-Evaluated rust_agent_docs quality against source material (gigapowers/.rust_docs/) and
-implemented 8 improvements to close gaps that caused agents to need 2-3x passes for
-quality Rust code. Used markymark MCP tools to dogfood markdown diagnostics. Filed a
-markymark bug for XML-in-code-block false positives.
+PR #36 review fixes session: addressed 4 CodeRabbit findings (env-gated report write,
+wiki-link slug comparison bug, symlink metadata check, stale doc comment). Triaged all
+remaining PR #36 review comments, filed 5 new beads issues (3 P1 bugs, 2 P2). Produced
+v0.4.0 release triage categorizing 35 open issues into release-blocking vs post-release.
 </summary>
 
 <completed>
-<task id="marky-5n9" status="closed">
-Evaluated and improved rust_agent_docs for first-pass code quality.
-8 improvements implemented, docs grew from 4,289 to 4,973 lines (42 files).
+<task id="marky-u6p" status="closed">
+Report write in extraction_parity.rs gated behind WRITE_PARITY_REPORT env var.
 </task>
 
-<changes>
-<new-file path="docs/rust_agent_docs/core/closures.md">
-Fn/FnMut/FnOnce hierarchy, capture semantics, move keyword, closure vs function pointer
-decision tree, returning closures, common closure errors table. 156 lines.
-</new-file>
+<task status="done">
+PR #36 review fix: rename.rs wiki link heading slugified before comparison (regression test added).
+</task>
 
-<expanded path="docs/rust_agent_docs/advanced/concurrency.md">
-Added Send/Sync auto-derivation rules, field-chain diagnostic flowchart,
-unsafe impl Send/Sync pattern with safety reasoning, MutexGuard !Send example.
-Real-world example from this project's Bump/ArenaHashMap !Send chain.
-</expanded>
+<task status="done">
+PR #36 review fix: extraction_parity.rs symlink check uses fs::symlink_metadata.
+</task>
 
-<expanded path="docs/rust_agent_docs/core/ownership.md">
-Added advanced lifetimes (HRTB for<'a>, lifetime subtyping 'a: 'b,
-self-referential struct solutions), borrow splitting (struct fields vs slices,
-split_at_mut), mem::take/replace/swap patterns with when-to-use guidance.
-</expanded>
+<task status="done">
+PR #36 review fix: incremental/mod.rs stale doc comment for range_within_neighbor_window updated.
+</task>
 
-<expanded path="docs/rust_agent_docs/core/collections.md">
-Added custom Iterator implementation pattern and the IntoIterator triple
-(&T, &mut T, T) with complete examples.
-</expanded>
-
-<expanded path="docs/rust_agent_docs/advanced/async.md">
-Added async testing (#[tokio::test], multi_thread flavor), async trait patterns
-(native vs async-trait crate), JoinSet for structured concurrency,
-cancellation safety decision tree.
-</expanded>
-
-<expanded path="docs/rust_agent_docs/tooling/cargo.md">
-Added prerelease version semantics (exact match required), workspace dependency
-inheritance patterns, feature unification explanation.
-</expanded>
-
-<updated path="docs/rust_agent_docs/AGENTS.md">
-Converted all backtick refs to clickable markdown links. Added closures.md entry.
-Added 3 new HIGH-severity mistakes. Updated docs_index to include closures.md.
-</updated>
-
-<updated path="docs/rust_agent_docs/README.md">
-Renamed from "God-Tier Rust Agent Docs" to "Rust Agent Docs".
-Added closures.md to file tree and 3 new mistake entries.
-</updated>
-
-<updated path="docs/rust_agent_docs/MISTAKES.md">
-Added 3 new entries: wrong Fn trait bound (HIGH), transitive !Send (HIGH),
-cancellation safety (HIGH). Renumbered table.
-</updated>
-
-<updated path="docs/rust_agent_docs/reference/decision-trees.md">
-Added 3 new decision trees: Which Fn Trait Bound, Why Is My Type !Send,
-Is My Future Cancellation-Safe.
-</updated>
-
-<updated path="docs/rust_agent_docs/core/_index.md">
-Added closures.md to reading order and common tasks table.
-</updated>
-</changes>
+<task status="done">
+Triaged all PR #36 CodeRabbit/Copilot review comments. Filed 5 new issues for unaddressed findings.
+</task>
 </completed>
 
-<open-issues>
-<issue id="marky-8la" priority="P2" type="bug">
-markymark: XML tag false positives in fenced code blocks. Rust generics like
-&lt;T&gt;, &lt;Mutex&gt;, &lt;dyn Trait&gt; inside code blocks are reported as
-unclosed XML tags. 198+ false positives across rust_agent_docs.
+<created_issues>
+<issue id="marky-e2j" priority="P1" type="bug" label="pr-36,safety">
+completion.rs: UTF-16 position used as byte offset for line slicing. Panic on multi-byte chars.
+File: markymark-lsp/src/state/completion.rs:76-82
 </issue>
-</open-issues>
 
-<assessment grade="A-">
-<strengths>
-- Decision trees are excellent for agent retrieval
-- Three-level progressive disclosure (L0/L1/L2) is well-designed
-- Cross-references between files work well
-- Mistake tables with severity ratings are high-signal
-- TL;DR summaries enable fast scanning
-</strengths>
+<issue id="marky-pj4" priority="P1" type="bug" label="pr-36,safety">
+rename.rs: closing-tag Position::new can underflow on short tag names.
+File: markymark-lsp/src/state/rename.rs:155-168
+</issue>
 
-<remaining-gaps priority-order="true">
-<gap priority="1">Real compiler error walkthroughs — step-by-step rustc output reading, not just lookup tables</gap>
-<gap priority="2">Cookbook/recipes — complete working examples combining 5-6 concepts (parse config, implement handler)</gap>
-<gap priority="3">Cross-cutting guides — "make your type async-ready" (Send+Sync+Pin+lifetime)</gap>
-<gap priority="4">Language migration bridges — "coming from Python/TS" translation patterns</gap>
-<gap priority="5">Real failure examples — mine harness memory for concrete "don't do this" cases</gap>
-</remaining-gaps>
-</assessment>
+<issue id="marky-v8y" priority="P1" type="bug" label="pr-36,safety">
+incremental/mod.rs: signed arithmetic wraparound in adjust_range_after_edit/adjust_bytes_after_edit.
+File: markymark-lsp/src/incremental/mod.rs:138-166
+</issue>
 
-<context>
-<branch>feature/mark-rustdocs</branch>
-<worktree>/Volumes/code/markymark/.worktrees/feature-mark-bumpalo/.worktrees/feature-mark-rustdocs</worktree>
-<uncommitted-changes>11 files (10 modified, 1 new)</uncommitted-changes>
-<parent-branch>feature/mark-bumpalo (arena allocation epic)</parent-branch>
-<source-docs>/Volumes/code/gigapowers/.rust_docs/ (Rust 1.93.0, captured 2026-02-09)</source-docs>
-</context>
+<issue id="marky-d4v" priority="P2" type="bug" label="pr-36,docs">
+README.md: markymark-vscode listed in crates table but not a workspace member.
+</issue>
+
+<issue id="marky-wjf" priority="P2" type="bug" label="pr-36,incremental">
+incremental: neighbor-window (100 bytes) can miss insertions in large gaps between entries.
+File: markymark-lsp/src/incremental/mod.rs:170-555
+</issue>
+</created_issues>
+
+<v040_release_triage>
+
+## RELEASE TRIAGE: v0.4.0 (PR #36: dev -> main)
+
+### Philosophy
+"Don't call it a release with lingering bugs -- establish standards early."
+
+### VERDICT: 4 P1 bugs must be fixed before merge. All are small, scoped fixes.
+
+---
+
+### RELEASE-BLOCKING (P1 bugs -- fix before merge)
+
+| ID | Title | Scope | Est. |
+|----|-------|-------|------|
+| marky-e2j | completion.rs UTF-16 as byte offset | 1 file, use existing converter | 15min |
+| marky-pj4 | rename.rs closing-tag underflow | 1 file, saturating_sub | 15min |
+| marky-v8y | incremental adjust_range wraparound | 1 file, saturating arithmetic | 20min |
+| marky-kvr | find-references fails on structured docs | 2 files, branch on AnyDocumentIndex | 45min |
+
+**Total estimated: ~1.5 hours of focused work.**
+
+All four are correctness/safety bugs that can cause panics or wrong behavior.
+marky-kvr has a detailed fix plan already written in the beads comments.
+
+---
+
+### SHOULD-FIX (P2 -- fix before or shortly after merge)
+
+| ID | Title | Category |
+|----|-------|----------|
+| marky-d4v | README lists non-existent markymark-vscode crate | docs accuracy |
+| marky-wjf | incremental gap detection misses in large gaps | correctness edge case |
+
+---
+
+### PR #36 REVIEW COMMENTS STATUS
+
+#### Addressed this session (4):
+1. extraction_parity.rs:491 -- report write env-gated (marky-u6p closed)
+2. rename.rs:101 -- wiki link slug comparison fixed + regression test
+3. extraction_parity.rs:222 -- symlink_metadata check
+4. incremental/mod.rs:107 -- stale doc comment updated
+
+#### Rejected with justification (1):
+- rename.rs byte-offset-for-UTF16: NOT A BUG. Entire parser uses byte offsets consistently. LSP layer converts at boundary.
+
+#### Filed as new issues (5):
+- marky-e2j, marky-pj4, marky-v8y (P1 bugs)
+- marky-d4v, marky-wjf (P2)
+
+#### Intentionally deferred (nitpicks/improvements from CodeRabbit):
+These are code quality suggestions, not bugs. File as post-release improvements if desired:
+- DRY: extract duplicated sort closures in engine/search.rs and engine/references.rs
+- Use tempfile crate instead of manual temp_dir in pattern/tests.rs
+- Escape # in glob_to_regex (defensive, no current bug)
+- Make semantic duplicate threshold configurable (0.85 hardcoded)
+- Use Display instead of Debug for ValueKind in outline.rs
+- Add SAFETY comments to FFI test unsafe blocks in index_serde.rs
+- Use .len() instead of .chars().count() in ASCII comparison (scan.rs)
+- Property value serialization loses list structure (dto.rs)
+- Symlink loop protection in collect_documents (helpers.rs)
+- Update lib.rs doc comment to mention diagnostics/incremental modules
+- HashSet contains check before insert in completion.rs XmlTag
+- Rename percent() to ratio() in extraction_parity.rs
+- Various markdown formatting fixes in docs/corpus/legendary_handoff.md
+- HTML entity escapes (&amp;) in handoff doc code snippets
+
+---
+
+### POST-RELEASE OPEN ISSUES (31 issues, all P2-P4)
+
+#### Performance Epic (marky-77i): Incremental Indexing
+- marky-7dq (P2): Debounce did_change -- 50-100ms async cancellation
+- marky-0jz (P2): Vendor tree-sitter-md, selective inline skip
+- marky-0mr (P2): Zig md4c streaming parser (potential 50x speedup)
+- marky-syx (P3): BRZA-powered lazy AST
+- marky-v8g (P3): TreeSitterScanBackend wrapper
+
+#### Feature Epics
+- marky-v8e (P1 epic): v1.0 Product Launch umbrella
+- marky-mkr (P2 epic): Agent Tooling (skills, MCP expansion)
+- marky-hwc (P2 epic): Knowledge Plugins (Obsidian, Logseq)
+- marky-qyf (P2 epic): Editor Distribution (VSCode, Neovim, Zed)
+- marky-7pw (P3 epic): Roadmap Research
+
+#### Code Quality
+- marky-itd (P2): Refactor markymark-mcp/lib.rs (919 lines)
+- marky-n5w (P2): Eliminate eager alloc in SearchSymbols
+- marky-agk (P2): Polish plugin hooks/skills/config
+- marky-luy (P2): Arena conformance closeout
+- marky-u3m (P4): Split incremental/mod.rs into per-extractor submodules
+- marky-lkj.1 (P4): Extract runtime_engine unit tests
+
+#### Features
+- marky-6i9 (P2): markdown-check CLI / get_diagnostics MCP tool
+- marky-efm (P3): JSON document LSP support
+- marky-z9z (P3): Improve markdown link resolution beyond stem-only
+- marky-agv (P3): Deduplicate link edges in graph analysis
+- marky-pvr (P3): Deduplicate file reads in SemanticSearch
+
+#### Research
+- marky-f2c (P3): AI-Augmented Markdown Features
+- marky-n7i (P3): Advanced Markdown Intelligence
+- marky-vz6 (P3): Ecosystem Integration
+- marky-ix3 (P3): Cross-language symbol bridging
+
+#### Chores
+- marky-lsl (P3): Remove pr-*.json snapshot artifacts
+- marky-ejt (P3): Refactor zig similarity.zig tests
+- marky-w85 (P3): Non-existent realm error path test coverage
+- marky-a5w (P3): Refactor oversized c_adapter.zig
+
+</v040_release_triage>
+
+<next_steps>
+1. Fix the 4 P1 bugs (marky-e2j, marky-pj4, marky-v8y, marky-kvr) on dev branch
+2. Run full test suite: cargo nextest run --workspace && cargo clippy --workspace --all-targets
+3. Fix marky-d4v (README) and marky-wjf (gap detection) if time permits
+4. Push to dev, update PR #36
+5. Human reviews and merges PR #36 (Rule 7: agent never merges)
+6. Tag v0.4.0 after merge
+</next_steps>
+
+<rules>
+- Rule 7: Agent NEVER merges PRs. Human merges all PRs.
+- Rule 5: Never squash merge. Preserve full git history.
+- All 4 P1 bugs are scoped, small fixes with clear locations. Total ~1.5 hours.
+- PR #36 has passing CI. The 4 bugs are latent issues found by code review, not test failures.
+</rules>
 
 </handoff>
