@@ -16,7 +16,7 @@ Six-crate workspace (core, parser, index, lsp, mcp, cli) is well-partitioned.
 Arena allocation (bumpalo) lives in parser layer, not crossing into transport (lsp/mcp).
 This keeps Send/Sync constraints manageable.
 
-**Watch:** markymark-index at 600+ lines, approaching 500-line refactor threshold.
+**Watch:** `realm.rs` at 926 lines — approaching 1000-line hard stop. Refactor issue needed soon.
 
 ### Rust Agent Docs: Grade A (2026-02-15)
 
@@ -161,6 +161,12 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 - `bumpalo Vec::new_in(arena).into_bump_slice()` for empty arena slice, not `&[]` (UAF)
 - When migrating wrapper types, trace all ptr::read/mem::forget — type must match
 - compile_fail doctests first, then narrow signatures, then adapt call sites
+
+### Resolution Layer
+
+- **`resolve_markdown_link` handles cross-document links** (marky-z9z, 2026-02-19). Was previously a stub returning `None` for anything beyond same-page anchors. Now resolves `other.md` → Document, `other.md#heading` → Heading, `dir/other.md` → path-relative first, stem fallback.
+- **Path-relative without filesystem access**: Use component-stack normalization (pop on `..`, skip `.`/empty) instead of `std::fs::canonicalize`. `canonicalize` requires the path to exist on disk — bad for indexed-but-not-on-this-machine vaults. See `resolve_relative_path` in `realm.rs`.
+- **Stem-only is the fallback, not the primary**: For markdown links, path-relative resolution wins when URL contains `/`. Stem-only fires when path-relative misses (nonexistent path) or URL has no directory component.
 
 ### LSP/MCP
 - Drop read lock before async publish_diagnostics (deadlock prevention)
