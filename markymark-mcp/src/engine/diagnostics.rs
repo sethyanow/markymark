@@ -29,26 +29,35 @@ pub(crate) fn handle_get_diagnostics_realm(
     }
 }
 
-/// Compute diagnostics for a single markdown document.
+/// Compute diagnostics for a single document.
 ///
-/// Returns `Error` if the document is not indexed in the given realm.
+/// For markdown documents, runs the full diagnostic suite. For structured
+/// documents (JSON, YAML, TOML, etc.) returns empty diagnostics since the
+/// diagnostic checks only apply to markdown. Returns `Error` only if the
+/// document is not indexed at all.
 pub(crate) fn handle_get_diagnostics_file(
     realm_data: &RealmData,
     realm_name: &str,
     uri: &DocumentUri,
 ) -> CoreOperationResult {
-    let Some(doc_index) = realm_data.index.get_document(uri) else {
+    let Some(any_doc) = realm_data.index.get_any_document(uri) else {
         return CoreOperationResult::Error(CoreError::Message(format!(
             "document not indexed: {}",
             uri.as_str()
         )));
     };
 
-    let diags = compute_diagnostics(doc_index, &realm_data.index, uri);
-    let items = if diags.is_empty() {
-        vec![]
-    } else {
-        vec![(uri.clone(), diags)]
+    // Diagnostics only apply to markdown; structured docs get empty results.
+    let items = match any_doc.as_markdown() {
+        Some(doc_index) => {
+            let diags = compute_diagnostics(doc_index, &realm_data.index, uri);
+            if diags.is_empty() {
+                vec![]
+            } else {
+                vec![(uri.clone(), diags)]
+            }
+        }
+        None => vec![],
     };
 
     CoreOperationResult::Diagnostics {
