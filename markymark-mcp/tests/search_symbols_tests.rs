@@ -4,30 +4,13 @@
 //! These tests validate that `SearchSymbols` correctly returns both markdown
 //! heading candidates and structured-document key-path candidates.
 
-use std::fs;
-use std::path::PathBuf;
+mod common;
 
+use std::fs;
+
+use common::TempWorkspace;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_mcp::RuntimeEngine;
-
-struct TempWorkspace {
-    _dir: tempfile::TempDir,
-    root: PathBuf,
-}
-
-impl TempWorkspace {
-    fn new(name: &str) -> Self {
-        let dir = tempfile::Builder::new()
-            .prefix(&format!("markymark-search-symbols-{name}-"))
-            .tempdir()
-            .expect("secure temporary workspace directory should be created");
-        let root = dir.path().to_path_buf();
-        Self { _dir: dir, root }
-    }
-    fn root(&self) -> PathBuf {
-        self.root.clone()
-    }
-}
 
 /// Returns the matched symbol names from a `CoreOperationResult::Symbols` result.
 fn symbol_names(result: CoreOperationResult) -> Vec<String> {

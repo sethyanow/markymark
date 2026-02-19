@@ -1,5 +1,8 @@
 //! Shared test utilities for `markymark-mcp` integration tests.
 
+// Not every consumer uses every method; suppress per-binary dead_code lint.
+#![allow(dead_code)]
+
 use std::path::PathBuf;
 
 /// A temporary workspace directory that is automatically cleaned up when dropped.
