@@ -16,7 +16,7 @@ Six-crate workspace (core, parser, index, lsp, mcp, cli) is well-partitioned.
 Arena allocation (bumpalo) lives in parser layer, not crossing into transport (lsp/mcp).
 This keeps Send/Sync constraints manageable.
 
-**Watch:** `realm.rs` at 950 lines — approaching 1000-line hard stop. Refactor issue needed soon.
+realm.rs was refactored into submodules (marky-ltcu, 2026-02-19): `realm/mod.rs`, `realm/helpers.rs`, `realm/tests.rs`.
 
 ### Rust Agent Docs: Grade A (2026-02-15)
 
@@ -139,7 +139,9 @@ merge PRs. Human merges all PRs. Agent prepares PRs and pushes branches only.
 ### Zig 0.15 API breaks from 0.14 (fail-zig-015-api)
 `addStaticLibrary` → `addLibrary` with `.linkage = .static`.
 `root_source_file` → `root_module` via `b.createModule()`.
-`callconv(.C)` → just use `export fn`. Always read Zig build system docs first.
+`callconv(.C)` → just use `export fn`.
+`ArrayList(T).init(allocator)` → `ArrayListUnmanaged(T){}` (allocator passed per-call).
+Always read Zig build system docs first.
 
 ### ${CLAUDE_PLUGIN_ROOT} in file content triggers hook blocks (fail-write-plugin-root)
 Some hooks intercept Write when content contains this literal string. Use `Bash cat` heredoc
@@ -234,51 +236,25 @@ Expected: block 5.7ms + inline ~13us = **~2.8x** vs 15.8ms full.
 of changed region) from slow AST rebuild (tree-sitter). Defer parse until request needs AST.
 Requires marky-v8g (TreeSitterScanBackend). Potentially 10x+.
 
-### Option G: Zig md4c Streaming Parser (marky-0mr, 2026-02-18)
+### Option G: Zig md4c Streaming Parser (marky-0mr, COMPLETE 2026-02-19)
 
-Research found Bun's `src/md/` is a **Zig port of md4c** (~8,274 lines, 15 files, MIT).
-md4c is the same parser powering GitHub's markdown rendering. Architecture: single-pass
-streaming with callback vtable (`Renderer: enterBlock/leaveBlock/enterSpan/leaveSpan/text`).
-CommonMark + GFM (tables, strikethrough, tasklists, wiki-links, LaTeX math).
+Vendored Bun's Zig md4c port (~8K lines, MIT) into `zig/src/md4c/`. Single-pass streaming
+parser with callback vtable. CommonMark + GFM. Eliminates tree-sitter's dual-grammar bottleneck.
 
-**Why it matters:** Eliminates the dual-grammar bottleneck entirely. No block+inline split,
-no 500 FFI round-trips. Single pass over `[]const u8`. Measured: **2.8x faster** full pipeline
-at 50KB (9.4ms vs 26.7ms tree-sitter). Raw md4c claimed ~200MB/s but extraction callbacks
-add per-element allocation overhead (actual: 23 MB/s at 50KB with extraction).
+**Architecture:** `Md4cScanBackend` implements `ScanBackend` trait → `DocumentIndex::from_scan()`
+bypasses AST entirely. md4c Renderer vtable maps to scan methods (headings, links). Tags, block
+IDs, and token estimation still use Zig SIMD kernels. Tree-sitter retained for lazy AST
+(hover/goto-def) only.
 
-**Plan:** Copy Bun `src/md/` into our Zig workspace, strip Bun-specific deps, write custom
-Renderer vtable that emits extractor-compatible types with byte offsets, wire into ScanBackend
-trait. Keep tree-sitter only for lazy AST (hover/goto-def). Supersedes D and E if successful.
-F (debounce) remains complementary.
+**Measured speedup:** 2.8x at 50KB full pipeline (see benchmark section below). Raw md4c
+parse is fast (~200MB/s claimed) but extraction callback allocations dominate at scale (actual:
+23 MB/s with extraction at 50KB).
 
-**Risks:** Maintenance of md4c fork, XML tags still need custom extractor (not markdown),
-lazy AST adds LSP state complexity. Needs benchmark validation with extraction overhead.
+**Remaining risks:** Maintenance of md4c fork (stable spec mitigates), XML tags still need
+separate extractor, lazy AST adds LSP state complexity.
 
-**Key source files (Bun src/md/):** parser.zig (285L, Parser struct + API), blocks.zig
-(865L, block-level), inlines.zig (746L, emphasis/inline), line_analysis.zig (527L, heading/
-fence/table detection), links.zig (527L, bracket/wiki/auto links), types.zig (387L, enums +
-Renderer vtable), html_renderer.zig (714L, reference renderer).
-
-### md4c Integration Architecture (2026-02-19)
-
-**Integration point: `ScanBackend` trait + `DocumentIndex::from_scan()`.**
-md4c does NOT need to produce an `Ast` or `Element` enum. `from_scan()` bypasses AST entirely
-and builds index directly from `ScanBackend` results (headings, links, tags, block IDs).
-
-**Why this works:** All 13 extractors in `extract.rs` work on raw source text via regex, NOT
-the tree-sitter AST. The AST tree is only used for: (1) root element list (headings, paragraphs,
-list items), (2) Logseq-style heading detection in list items, (3) storing `MarkdownTree` for
-LSP incremental reuse. Since md4c's Renderer vtable callbacks provide the same element info
-(enterBlock/leaveBlock for headings, enterSpan/leaveSpan for links), it maps directly to
-`ScanBackend`'s scan methods.
-
-**Bun dependency audit (2026-02-19):** Bun's md4c has minimal external deps — mainly
-`bun.JSError` in Renderer callback return types. Uses `std.mem.Allocator` (compatible with
-any Zig allocator). entity.zig is 2164 lines but is a data lookup table (HTML entity mappings),
-exempt from 1000-line hard stop.
-
-**Active work:** marky-s02r (child of marky-0mr) — copy Bun src/md/ into zig/src/md4c/,
-strip Bun deps, smoke test with HtmlRenderer. Working despite marky-77i blocker (user decision).
+**Future optimization:** Arena allocator in ExtractionRenderer to batch per-element allocations
+could recover closer to raw parse throughput.
 
 ### md4c vs tree-sitter Performance (2026-02-19, marky-jpot)
 
@@ -333,9 +309,9 @@ closer to raw md4c throughput). Debounce (marky-7dq) remains complementary.
 
 All four non-heading extractors now carry `start_byte`/`end_byte` and share the same three-check incremental pattern: `range_intersects_edit` || `range_within_neighbor_window` || `any_edit_starts_at_or_after_last_*`.
 
-### Decision: 10x not achievable at parse level
+### Decision: 10x not achievable at parse level (CONFIRMED 2026-02-19)
 
-Epic assumed extractors = 60% of cost. In release mode: 3%. Tree-sitter is the wall.
-Ceiling with D alone: ~2.8x. Combined with F: dramatic UX improvement but per-parse
-ratio needs architectural decoupling (E) for true 10x. Option G (md4c) may bypass this
-ceiling entirely by eliminating tree-sitter from the hot path.
+Tree-sitter is the wall — extractors are 3% of cost, not 60% as originally assumed.
+Option G (md4c) achieved **2.8x** at 50KB, **3.2x** at 100KB. Extraction allocation
+overhead prevents reaching raw parse speed. Remaining path to 10x: F (debounce) for UX
+improvement + arena allocator in ExtractionRenderer for throughput recovery.
