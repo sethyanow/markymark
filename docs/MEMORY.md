@@ -198,6 +198,7 @@ if entry_affected_by_edits(new_entry, pending_edits)
 - Land RED→GREEN regression set before tuning merge logic
 - Use `assert_eq!` not `>=` — `>=` masked a closing-tag rename bug
 - Integration test crate roots (`tests/*.rs`) resolve `mod foo;` in `tests/foo.rs` (sibling), NOT `tests/basename/foo.rs`. To split a large integration test into subdirectory files, use `#[path = "basename/foo.rs"] mod foo;` in the root file. (Pattern established marky-a90, 2026-02-19)
+- Shared helpers across integration test binaries: create `tests/common/mod.rs` (subdirectory → not compiled as standalone binary). Each test file independently declares `mod common;`. Add `#![allow(dead_code)]` at top of `common/mod.rs` since not every consumer uses every method. (marky-whjg, 2026-02-19)
 - Env-gated benchmarks (`MARKYMARK_RUN_100K_BENCH=1`) for checkpoint evidence
 
 ### Project-Specific
