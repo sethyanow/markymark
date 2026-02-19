@@ -26,6 +26,10 @@ impl TempWorkspace {
     }
 
     pub fn write(&self, name: &str, content: &str) {
-        std::fs::write(self.root.join(name), content).expect("write file");
+        let path = self.root.join(name);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create parent directories");
+        }
+        std::fs::write(&path, content).expect("write file");
     }
 }
