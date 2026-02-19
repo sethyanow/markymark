@@ -23,6 +23,10 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .pic = true,
+        // Disable stack checking so the static library doesn't reference
+        // ___zig_probe_stack / ___chkstk_ms (compiler-rt symbols not
+        // bundled into static libs). See ziglang/zig#6817.
+        .stack_check = false,
     });
 
     // Static library artifact (libmarky_kernels.a)
