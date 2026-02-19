@@ -54,8 +54,22 @@
 
 ## Agent Memory
 
-**Read [docs/MEMORY.md](docs/MEMORY.md) at session start** for cross-session assessments,
-quality grades, and lessons learned. Append new entries as you work — never delete.
+**Read [docs/MEMORY.md](docs/MEMORY.md) at session start.** This is the single source of truth
+for cross-session knowledge: architectural decisions, failure patterns, reusable conventions,
+quality assessments, and lessons learned.
+
+**Session discipline:**
+- **Start:** Read MEMORY.md before doing any work. Check the Key Architectural Decisions
+  and Key Failure Patterns sections — they prevent re-debating closed questions and repeating
+  known mistakes.
+- **During:** When you make a significant decision, discover a failure pattern, or learn
+  something reusable, append it to MEMORY.md immediately (not at session end).
+- **Curate often:** If a section grows stale, outdated, or redundant with the codebase,
+  trim or consolidate it. MEMORY.md should stay concise and high-signal. Remove entries
+  that are now obvious from the code itself.
+- **Do NOT use claude-mem `save_memory`** for this project — the API is unreliable. Use
+  MEMORY.md as the sole persistent memory store. claude-mem search/timeline/get_observations
+  are fine for reading cross-project history.
 
 # Agent Instructions
 
@@ -74,15 +88,19 @@ markymark is a Rust workspace producing a Markdown LSP + MCP server. Six crates:
 | `markymark-mcp` | MCP server (rmcp) |
 | `markymark-cli` | CLI entry point |
 
+
 ## Quick Reference
+
+> **Note:** Always prefer using the `cargo-mcp` tools for building, testing, and running this project, as they provide the canonical workflows. Only use the raw `cargo` commands below if you specifically need to bypass `cargo-mcp` or for troubleshooting purposes.
+
 
 ```bash
 # Build
 cargo build --release
 
 # Test
-cargo test
-cargo test -p markymark-core    # specific crate
+cargo nextest
+cargo nextest -p markymark-core    # specific crate
 
 # Lint
 cargo clippy --workspace --all-targets
@@ -94,20 +112,30 @@ cargo run -- --lsp
 cargo run -- --mcp /path/to/workspace
 ```
 
-## Rust Code Navigation (LSP)
+## Code Navigation (LSP-first)
 
-**Use the built-in LSP tool (rust-analyzer) for navigating Rust code.** It provides semantic understanding that text search cannot match.
+**Use the built-in LSP tool first for Rust and Zig code navigation.** It provides semantic understanding that text search cannot match.
 
 | Operation | Use Case |
 |-----------|----------|
-| `documentSymbol` | Full symbol tree for a file |
-| `hover` | Type info, doc comments, size/alignment |
-| `goToDefinition` | Jump to definition (cross-crate) |
+| `documentSymbol` | Full symbol tree for a file (best first step) |
+| `hover` | Type info, doc comments, signatures |
+| `goToDefinition` | Jump to definition (cross-crate / cross-file) |
 | `findReferences` | All usages of a symbol |
-| `workspaceSymbol` | Search symbols by name |
+| `workspaceSymbol` | Search symbols by name across workspace |
 | `incomingCalls` / `outgoingCalls` | Call graphs |
 
-**When grep is appropriate**: string literals, comments, TODO markers, non-code files.
+### LSP usage workflow
+
+1. Run `LSP documentSymbol [file]` to discover exact symbol names/locations.
+2. Run `LSP hover [file] [line] [col]` on the symbol token (not whitespace).
+3. Run `LSP goToDefinition` and `LSP findReferences` for navigation and impact checks.
+4. Use `Read` only after LSP narrows the target region.
+
+### Notes
+
+- If `hover`/`findReferences` returns no data, retry on the exact symbol position.
+- Prefer grep for string literals, comments, TODOs, and non-code files.
 
 ## Beads Workflow
 
@@ -118,6 +146,21 @@ bd update <id> --status in_progress  # Claim work
 bd close <id>         # Complete work
 bd sync               # Sync with git
 ```
+
+## Project Rules (Learned Constraints)
+
+These rules were extracted from past session failures and user corrections. Violating them
+has caused real bugs, wasted work, or merge conflicts.
+
+| # | Rule | Context |
+|---|------|---------|
+| 1 | **Use built-in LSP tool for Rust, not Serena** | Serena MCP has no Rust language server. Its symbolic tools return garbage for `.rs` files. Always use rust-analyzer via the LSP tool. |
+| 2 | **1000-line HARD STOP** | If any file exceeds 1000 lines, immediately stop feature work, cut a P0 beads refactor issue, and escalate. The 500-line threshold is a suggestion; 1000 is a block. |
+| 3 | **Create doc blockers before complex implementations** | Before implementing with unfamiliar crates, create a blocking issue for documentation setup. Stale tower-lsp.md docs caused implementation failure during feature-006. |
+| 4 | **Bump plugin.json version alongside Cargo.toml** | `markymark-plugin/.claude-plugin/plugin.json` has its own version string not derived from Cargo.toml — must be updated manually. |
+| 5 | **Never squash merge** | Preserve full git history always. Squash merges destroy context, make bisect harder, and lose the narrative of how work evolved. |
+| 6 | **Exclude generated artifacts from metric input corpora** | If a test/benchmark writes a report file, exclude it from the input corpus used to compute the same metrics. Prevents self-referential drift. |
+| 7 | **NEVER merge PRs** | Agent must never run `gh pr merge` or equivalent. The human merges all PRs. Agent prepares PRs, pushes branches, but stops there. |
 
 ## Landing the Plane (Session Completion)
 
@@ -148,8 +191,8 @@ bd sync               # Sync with git
 ## Document Intelligence
 
 This project uses markymark LSP. ALWAYS prefer LSP over reading raw files:
-- `LSP documentSymbol <file>` for structure/outline before Read
-- `LSP hover <file> <line> <col>` for heading backlinks and key path info
+- `LSP documentSymbol [file]` for structure/outline before Read
+- `LSP hover [file] [line] [col]` for heading backlinks and key path info
 - Diagnostics (broken links, duplicate headings) are reported automatically
 - Works for Markdown, JSON, YAML, TOML, .env, INI, and more
 - Only use the Read tool when you need full prose content

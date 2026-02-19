@@ -85,6 +85,8 @@ mod arena_allocation_tests {
             Some(arena.alloc_str("section")),
             None,
             Range::new(Position::new(0, 0), Position::new(0, 12)),
+            0,
+            12,
         );
 
         assert_eq!(link.target_page(), Some("target-page"));
@@ -102,6 +104,8 @@ mod arena_allocation_tests {
             Some(arena.alloc_str("anchor")),
             None,
             Range::new(Position::new(0, 0), Position::new(0, 9)),
+            0,
+            9,
         );
 
         assert_eq!(link.text(), "link text");
@@ -129,7 +133,7 @@ mod arena_allocation_tests {
     fn block_id_uses_arena_lifetime() {
         let arena = Bump::new();
         let range = Range::new(Position::new(0, 0), Position::new(0, 7));
-        let id = BlockId::new(arena.alloc_str("abc123"), range);
+        let id = BlockId::new(arena.alloc_str("abc123"), range, 0, 6);
 
         assert_eq!(id.id(), "abc123");
         assert_eq!(id.range().start.line, 0);
@@ -139,9 +143,11 @@ mod arena_allocation_tests {
     #[test]
     fn block_ref_uses_arena_lifetime() {
         let arena = Bump::new();
-        let block_ref = BlockRef::new(arena.alloc_str("uuid-1234-5678"));
+        let range = Range::new(Position::new(0, 0), Position::new(0, 42));
+        let block_ref = BlockRef::new(arena.alloc_str("uuid-1234-5678"), range);
 
         assert_eq!(block_ref.uuid(), "uuid-1234-5678");
+        assert_eq!(block_ref.range(), range);
     }
 
     /// Tag uses arena-allocated name
@@ -238,6 +244,8 @@ mod arena_allocation_tests {
             false,
             Some(arena_alloc_str(&arena, "content")),
             Range::new(Position::new(0, 0), Position::new(0, 10)),
+            0,
+            10,
         );
 
         assert_eq!(tag.tag_name(), "agent");

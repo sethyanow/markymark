@@ -3,6 +3,46 @@
 use crate::structured::DocumentKind;
 use crate::{CoreError, DocumentUri, Range};
 
+/// A single result from a workspace-wide search.
+#[derive(Debug, Clone)]
+pub struct WorkspaceSearchResult {
+    /// Document URI.
+    pub uri: DocumentUri,
+    /// First H1 heading text, or filename derived from URI (stripped extension, underscores to spaces).
+    pub title: String,
+    /// Relevance score: 1.0 = title match, 0.8 = heading match, 0.6 = frontmatter/property match, 1.0 = filter-only (no query).
+    pub score: f32,
+    /// Which fields matched the query, e.g. ["title", "frontmatter:status", "property:type", "heading"].
+    pub matched_fields: Vec<String>,
+    /// First 3 frontmatter key-value pairs (value stringified for display).
+    pub frontmatter_preview: Vec<(String, String)>,
+    /// First 3 Logseq inline property key-value pairs.
+    pub property_preview: Vec<(String, String)>,
+    /// All tag names on this document (without `#` prefix).
+    pub tags: Vec<String>,
+    /// Whether this document was detected as a Logseq journal page.
+    pub is_journal: bool,
+    /// Logseq journal date `(year, month, day)` if detected.
+    pub journal_date: Option<(u16, u8, u8)>,
+}
+
+/// Semantic search match payload shared across transports.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SemanticSearchMatch {
+    /// Matched document URI.
+    pub doc_uri: DocumentUri,
+    /// Matched heading text.
+    pub heading: String,
+    /// Matched heading level.
+    pub heading_level: u8,
+    /// Similarity score.
+    pub score: f32,
+    /// Heading/section source range.
+    pub section_range: Range,
+    /// Short preview snippet for the matched section.
+    pub section_preview: String,
+}
+
 /// An operation that can be executed by the core engine.
 #[derive(Debug)]
 pub enum CoreOperation {
@@ -40,6 +80,17 @@ pub enum CoreOperation {
         /// Realm to query. Defaults to "default" when `None`.
         realm: Option<String>,
     },
+    /// Run semantic search across indexed document sections.
+    SemanticSearch {
+        /// Search query string.
+        query: String,
+        /// Optional realm name. Defaults to "default" when omitted.
+        realm: Option<String>,
+        /// Max number of results to return.
+        top_k: u32,
+        /// Score floor in `[0.0, 1.0]`.
+        min_score: f32,
+    },
     /// Create a new named realm.
     CreateRealm {
         /// Realm name (must be unique).
@@ -68,6 +119,10 @@ pub enum CoreOperation {
     RealmStats {
         /// Realm name (e.g. "default").
         realm: String,
+        /// Include semantic duplicate counts.
+        check_duplicates: bool,
+        /// Include aggregate token estimation.
+        include_token_counts: bool,
     },
     /// Export the full document index for a single document.
     ExportIndex {
@@ -83,6 +138,71 @@ pub enum CoreOperation {
         /// Output format: "json" or "dot".
         format: String,
     },
+    /// Search workspace files by regex pattern with optional glob file filter.
+    SearchForPattern {
+        /// Regex pattern to search for. Must not be empty or whitespace-only.
+        pattern: String,
+        /// Optional glob filter (e.g. `"*.md"`, `"**/*.rs"`). When the glob has no `/`,
+        /// it is matched against the filename only; otherwise against the full path.
+        include_glob: Option<String>,
+        /// Lines of context around each match. Clamped to `[0, 20]`.
+        context_lines: u32,
+        /// Maximum total matches to return. Clamped to `[1, 500]`.
+        limit: u32,
+        /// Case-insensitive regex matching.
+        case_insensitive: bool,
+        /// Realm to search. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+    },
+    /// Search workspace documents by text, frontmatter, and property queries.
+    SearchWorkspace {
+        /// Free-text search query. Case-insensitive substring match against title, heading
+        /// text, frontmatter values, and property values. `None` means no text filter.
+        query: Option<String>,
+        /// Filter: only include docs where `frontmatter[key]` value contains the given string.
+        /// Key match is case-insensitive and exact. Value match is case-insensitive substring.
+        /// For list frontmatter values (e.g. `aliases`), any element matching is sufficient.
+        frontmatter_filter: Option<(String, String)>,
+        /// Filter: only include docs where Logseq property `key:: value` matches.
+        /// Key is case-insensitive exact match; value is case-insensitive substring.
+        property_filter: Option<(String, String)>,
+        /// Filter: only include docs that have this tag (case-insensitive, exact name after `#`).
+        tag_filter: Option<String>,
+        /// Realm to search. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+        /// Max results to return. `0` returns empty (not an error). Clamped to 100 silently.
+        limit: u32,
+    },
+    /// Analyse the link graph of a realm: orphans, hubs, broken links, clusters, stats.
+    GraphAnalysis {
+        /// Realm to analyse. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+        /// Number of top hub documents to return (by incoming link count). Default 10.
+        top_n_hubs: u32,
+        /// Whether to compute weakly-connected clusters (can be expensive for large workspaces).
+        include_clusters: bool,
+    },
+}
+
+/// A single match result from a regex pattern search.
+#[derive(Debug, Clone)]
+pub struct PatternMatch {
+    /// Document URI where the match was found.
+    pub uri: DocumentUri,
+    /// 0-based line number of the match.
+    pub line: u32,
+    /// 0-based character offset of the match start within the line.
+    pub column: u32,
+    /// The text that the regex matched.
+    pub match_text: String,
+    /// The full line containing the match (trailing `\r` stripped).
+    pub line_text: String,
+    /// Lines before the match line (empty if `context_lines` is 0 or match is at file start).
+    pub context_before: Vec<String>,
+    /// Lines after the match line (empty if `context_lines` is 0 or match is at file end).
+    pub context_after: Vec<String>,
+    /// 0-based line number of `context_before[0]`.
+    pub context_start_line: u32,
 }
 
 /// Transport-agnostic interface for executing core operations.
@@ -105,6 +225,8 @@ pub enum CoreOperationResult {
     WorkspaceEdit(Vec<(DocumentUri, Vec<(Range, String)>)>),
     /// A list of symbols (name, uri, range).
     Symbols(Vec<(String, DocumentUri, Range)>),
+    /// Semantic search results.
+    SemanticMatches(Vec<SemanticSearchMatch>),
     /// Realm info: name, root count, document count.
     RealmInfo {
         /// Realm name.
@@ -134,6 +256,10 @@ pub enum CoreOperationResult {
         structured_doc_count: usize,
         /// Total key paths across all structured documents.
         key_path_count: usize,
+        /// Optional count of near-duplicate document pairs.
+        duplicate_pairs: Option<usize>,
+        /// Optional aggregate token count across realm documents.
+        total_tokens: Option<u64>,
     },
     /// Exported document index: full structured data for a single document.
     DocumentExport {
@@ -149,6 +275,10 @@ pub enum CoreOperationResult {
         wiki_links: Vec<(String, Option<String>, Range)>,
         /// Markdown link URLs with ranges.
         markdown_links: Vec<(String, String, Range)>,
+        /// Frontmatter key-value pairs. String values are wrapped as single-element vecs.
+        frontmatter: Vec<(String, Vec<String>)>,
+        /// Logseq inline properties. String values are wrapped as single-element vecs.
+        properties: Vec<(String, Vec<String>)>,
     },
     /// A dependency graph in the requested format (json or dot).
     DependencyGraph {
@@ -158,6 +288,48 @@ pub enum CoreOperationResult {
         format: String,
         /// Serialized graph content.
         content: String,
+    },
+    /// Results from a workspace-wide search.
+    WorkspaceSearchResults {
+        /// Realm that was searched.
+        realm: String,
+        /// The original query, if any.
+        query: Option<String>,
+        /// Ranked search results.
+        results: Vec<WorkspaceSearchResult>,
+    },
+    /// Results from a regex pattern search across workspace files.
+    PatternSearchResults {
+        /// Realm that was searched.
+        realm: String,
+        /// The original pattern.
+        pattern: String,
+        /// Number of files that were actually read and searched.
+        files_searched: u32,
+        /// Number of files skipped (read error, size limit, or missing path).
+        files_skipped: u32,
+        /// Matches found (up to `limit`).
+        matches: Vec<PatternMatch>,
+        /// `true` when the result was truncated at `limit`.
+        truncated: bool,
+    },
+    /// Results from a link graph analysis of the workspace.
+    GraphAnalysis {
+        /// Realm that was analysed.
+        realm: String,
+        /// Total markdown documents in the realm.
+        total_docs: u32,
+        /// Total resolved internal links (wiki + local markdown).
+        total_internal_links: u32,
+        /// Documents with zero incoming AND zero outgoing internal links.
+        orphans: Vec<DocumentUri>,
+        /// Top documents by incoming link count: `(uri, incoming_count)`, sorted descending.
+        hubs: Vec<(DocumentUri, u32)>,
+        /// Outgoing links that could not be resolved to any indexed document.
+        /// Each entry is `(source_uri, target_string, kind)` where kind is `"wiki"` or `"markdown"`.
+        broken_links: Vec<(DocumentUri, String, String)>,
+        /// Weakly-connected clusters. `None` when `include_clusters` was `false`.
+        clusters: Option<Vec<Vec<DocumentUri>>>,
     },
     /// Success with no payload.
     Ok,

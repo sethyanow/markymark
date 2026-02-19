@@ -11,12 +11,20 @@
 //! - [`similarity`] — Jaccard similarity and related set operations
 //! - [`tokens`] — Token estimation and content hashing
 //! - [`hash`] — Entity hashing (FNV-1a based)
+//! - [`index_serde`] — Binary index serialization (mmap-friendly format)
 
 pub mod embed;
 pub mod hash;
+pub mod index_serde;
 pub mod scan;
 pub mod similarity;
 pub mod tokens;
+
+pub use scan::{
+    fuzzy_match, fuzzy_match_batch, scan_block_ids, scan_headings, scan_links, scan_tags,
+    BlockIdScan, FuzzyBatchMatch, FuzzyMatch, HeadingScan, KernelError, LinkScan, LinkType,
+    TagScan,
+};
 
 // Re-export the raw FFI version check for linkage verification
 extern "C" {

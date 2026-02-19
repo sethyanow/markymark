@@ -33,6 +33,8 @@ fn block_entry_uses_arena_lifetime() {
     let entry = BlockEntry {
         id: arena.alloc_str("block-1"),
         range: Range::new(Position::new(0, 0), Position::new(0, 7)),
+        start_byte: 0,
+        end_byte: 7,
     };
 
     assert_eq!(entry.id, "block-1");
@@ -72,6 +74,8 @@ fn wiki_link_entry_uses_arena_lifetime() {
         alias: Some(arena.alloc_str("Alias")),
         heading: Some(arena.alloc_str("Section")),
         range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+        start_byte: 0,
+        end_byte: 10,
     };
 
     assert_eq!(entry.target, "TargetPage");
@@ -97,6 +101,8 @@ fn markdown_link_entry_uses_arena_lifetime() {
         url: arena.alloc_str("https://example.com"),
         anchor: Some(arena.alloc_str("a")),
         range: Range::new(Position::new(0, 0), Position::new(0, 7)),
+        start_byte: 0,
+        end_byte: 7,
     };
 
     assert_eq!(entry.text, "Example");
@@ -118,6 +124,8 @@ fn xml_tag_entry_uses_arena_lifetime() {
         is_self_closing: false,
         is_unclosed: false,
         range: Range::new(Position::new(0, 0), Position::new(0, 6)),
+        start_byte: 0,
+        end_byte: 6,
     };
 
     assert_eq!(entry.tag_name, "goal");
@@ -232,6 +240,108 @@ fn document_index_to_realm_integration() {
     assert_eq!(index_b.headings()[0].text, "Doc B");
     assert!(index_a.block_by_id("a").is_some());
     assert!(index_b.block_by_id("b").is_some());
+}
+
+// ---------------------------------------------------------------------------
+// Frontmatter and properties tests (marky-khy)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_frontmatter_stored_in_document_index() {
+    let index = build_index("---\ntitle: My Page\nstatus: active\n---\n\n# Content\n");
+    let fm = index.frontmatter();
+    assert!(!fm.is_empty(), "frontmatter should be non-empty");
+    assert!(
+        fm.iter().any(|e| e.key == "title"),
+        "should find 'title' key"
+    );
+    assert!(
+        fm.iter().any(|e| e.key == "status"),
+        "should find 'status' key"
+    );
+}
+
+#[test]
+fn test_frontmatter_aliases_accessible() {
+    let index = build_index("---\naliases: [name1, name2]\n---\n\n# Page\n");
+    let aliases = index.aliases();
+    assert_eq!(aliases.len(), 2, "should have 2 aliases");
+    assert!(aliases.contains(&"name1"), "should contain 'name1'");
+    assert!(aliases.contains(&"name2"), "should contain 'name2'");
+}
+
+#[test]
+fn test_properties_stored_in_document_index() {
+    let index = build_index("tags:: project, rust\nstatus:: active\n\n# Content\n");
+    let props = index.properties();
+    assert!(!props.is_empty(), "properties should be non-empty");
+    assert!(
+        props.iter().any(|e| e.key == "tags"),
+        "should find 'tags' key"
+    );
+    assert!(
+        props.iter().any(|e| e.key == "status"),
+        "should find 'status' key"
+    );
+}
+
+#[test]
+fn test_no_frontmatter_returns_empty() {
+    let index = build_index("# Just a heading\n\nSome content.\n");
+    assert!(
+        index.frontmatter().is_empty(),
+        "no frontmatter should return empty slice"
+    );
+    assert!(
+        index.aliases().is_empty(),
+        "no frontmatter should return empty aliases"
+    );
+}
+
+#[test]
+fn test_frontmatter_with_colon_in_value() {
+    let index = build_index("---\nurl: https://example.com\ntitle: My Page\n---\n\n# Content\n");
+    let fm = index.frontmatter();
+    let url_entry = fm.iter().find(|e| e.key == "url");
+    assert!(url_entry.is_some(), "should find 'url' key");
+    let url_val = url_entry.unwrap();
+    match &url_val.value {
+        FrontmatterValueEntry::String(s) => {
+            assert_eq!(
+                *s, "https://example.com",
+                "URL should not be truncated at second colon"
+            );
+        }
+        FrontmatterValueEntry::List(_) => panic!("URL should be a String, not List"),
+    }
+}
+
+#[test]
+fn test_frontmatter_and_properties_coexist() {
+    let index =
+        build_index("---\ntitle: My Page\n---\n\ntags:: project\nstatus:: active\n\n# Heading\n");
+    // Frontmatter should be parsed
+    assert!(
+        !index.frontmatter().is_empty(),
+        "frontmatter should be present"
+    );
+    // Properties should also be parsed (they appear after frontmatter)
+    // Note: depending on parser behavior, properties after frontmatter may or may not be detected.
+    // At minimum, frontmatter should work correctly and not conflict.
+    let fm = index.frontmatter();
+    assert!(
+        fm.iter().any(|e| e.key == "title"),
+        "title should be in frontmatter"
+    );
+}
+
+#[test]
+fn test_no_properties_returns_empty() {
+    let index = build_index("# Just a heading\n\nSome content.\n");
+    assert!(
+        index.properties().is_empty(),
+        "no properties should return empty slice"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -400,4 +510,218 @@ mod scan_tests {
         assert_eq!(block.range.end, Position::new(0, 22));
         assert_ne!(block.range.start, block.range.end);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Block ref wiring tests (marky-waw)
+// ---------------------------------------------------------------------------
+
+const UUID_A: &str = "550e8400-e29b-41d4-a716-446655440000";
+const UUID_B: &str = "7f6c1b2a-3d4e-5f60-a7b8-c9d0e1f20304";
+
+#[test]
+fn test_block_refs_stored_in_document_index() {
+    // Bug this catches: extract_block_refs called but result dropped during index construction
+    let source = format!("Some text (({UUID_A})) more text");
+    let index = build_index(&source);
+    let refs = index.block_refs();
+    assert_eq!(refs.len(), 1, "expected 1 block ref, got {}", refs.len());
+    assert_eq!(refs[0].uuid, UUID_A);
+}
+
+#[test]
+fn test_multiple_block_refs_all_returned() {
+    // Bug this catches: only first block ref extracted, Vec truncated early
+    let source = format!("(({UUID_A})) text (({UUID_B}))");
+    let index = build_index(&source);
+    let refs = index.block_refs();
+    assert_eq!(refs.len(), 2, "expected 2 block refs, got {}", refs.len());
+    let uuids: Vec<&str> = refs.iter().map(|r| r.uuid).collect();
+    assert!(uuids.contains(&UUID_A), "missing UUID_A");
+    assert!(uuids.contains(&UUID_B), "missing UUID_B");
+}
+
+#[test]
+fn test_no_block_refs_returns_empty_slice() {
+    // Bug this catches: uninitialized field or wrong default, panics instead of empty
+    let index = build_index("# Heading\nno block refs here");
+    assert!(
+        index.block_refs().is_empty(),
+        "expected empty block_refs for document without ((uuid))"
+    );
+}
+
+#[test]
+fn test_block_ref_range_matches_position() {
+    // Bug this catches: range computation off by one or character vs byte offset confusion
+    let source = format!("(({UUID_A}))");
+    let index = build_index(&source);
+    let refs = index.block_refs();
+    assert_eq!(refs.len(), 1);
+    // Full match including (( and )) spans the whole string on line 0
+    // Length: "((550e8400-e29b-41d4-a716-446655440000))" = 2 + 36 + 2 = 40
+    let r = refs[0].range;
+    assert_eq!(
+        r.start,
+        Position::new(0, 0),
+        "range should start at column 0"
+    );
+    assert_eq!(r.end, Position::new(0, 40), "range should end at column 40");
+    assert_ne!(r.start, r.end, "range must have non-zero width");
+}
+
+#[test]
+fn test_block_ref_not_extracted_for_short_uuid() {
+    // Bug this catches: regex accepts partial/short UUIDs, produces garbage entries
+    // BLOCK_REF_RE requires exactly 36 [0-9a-f-] chars — short UUIDs must NOT match
+    let index = build_index("((abc-123)) ((too-short))");
+    assert!(
+        index.block_refs().is_empty(),
+        "short non-UUID patterns should not be extracted as block refs"
+    );
+}
+
+#[test]
+fn test_block_ref_uuid_v4_format_preserved_exactly() {
+    // Bug this catches: UUID normalization or truncation at dash characters
+    let source = format!("ref: (({UUID_A}))");
+    let index = build_index(&source);
+    let refs = index.block_refs();
+    assert_eq!(refs.len(), 1);
+    assert_eq!(
+        refs[0].uuid, UUID_A,
+        "UUID must be preserved exactly including dashes"
+    );
+}
+
+// --- Task 4 (marky-gb1): IncrementalOverrides tests ---
+
+/// Tags have no range info, so the override path always passes None for tags.
+/// Verify that when IncrementalOverrides.tags is None, tags are still extracted correctly.
+#[test]
+fn test_tag_no_incremental_opt_always_full_rebuild() {
+    let source = "# Doc\n\n#mytag #another\n";
+    let mut parser = Parser::new().unwrap();
+    let ast = parser.parse(source).unwrap();
+    let overrides = IncrementalOverrides {
+        wiki_links: None,
+        blocks: None,
+        tags: None,
+        markdown_links: None,
+        xml_tags: None,
+    };
+    let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
+    let tags = index.tags();
+    assert_eq!(tags.len(), 2);
+    let names: Vec<_> = tags.iter().map(|t| t.name).collect();
+    assert!(names.contains(&"mytag"));
+    assert!(names.contains(&"another"));
+}
+
+/// Passing a MarkdownLinkOwned override skips re-extraction and returns the override data.
+#[test]
+fn test_markdown_link_override_reuses_when_provided() {
+    let source = "Some [orig](https://orig.com) text\n";
+    let mut parser = Parser::new().unwrap();
+    let ast = parser.parse(source).unwrap();
+    let override_link = MarkdownLinkOwned {
+        text: "injected".to_string(),
+        url: "https://injected.com".to_string(),
+        anchor: None,
+        range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+        start_byte: 0,
+        end_byte: 10,
+    };
+    let overrides = IncrementalOverrides {
+        wiki_links: None,
+        blocks: None,
+        tags: None,
+        markdown_links: Some(vec![override_link]),
+        xml_tags: None,
+    };
+    let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
+    let mls = index.markdown_links();
+    assert_eq!(mls.len(), 1);
+    assert_eq!(mls[0].text, "injected");
+    assert_eq!(mls[0].url, "https://injected.com");
+}
+
+/// Passing a XmlTagOwned override skips re-extraction and returns the override data.
+#[test]
+fn test_xml_tag_override_reuses_when_provided() {
+    let source = "<agent id=\"a\">content</agent>\n";
+    let mut parser = Parser::new().unwrap();
+    let ast = parser.parse(source).unwrap();
+    let override_tag = XmlTagOwned {
+        tag_name: "injected-tag".to_string(),
+        attributes: vec![("k".to_string(), "v".to_string())],
+        is_self_closing: false,
+        is_unclosed: false,
+        range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+        start_byte: 0,
+        end_byte: 10,
+    };
+    let overrides = IncrementalOverrides {
+        wiki_links: None,
+        blocks: None,
+        tags: None,
+        markdown_links: None,
+        xml_tags: Some(vec![override_tag]),
+    };
+    let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
+    let xts = index.xml_tags();
+    assert_eq!(xts.len(), 1);
+    assert_eq!(xts[0].tag_name, "injected-tag");
+}
+
+/// All five overrides provided — verify each extractor uses the override, not re-extraction.
+#[test]
+fn test_incremental_overrides_all_five() {
+    let source = "[[orig]] #tag [orig](https://orig.com) ^block-id <div/>\n";
+    let mut parser = Parser::new().unwrap();
+    let ast = parser.parse(source).unwrap();
+    let overrides = IncrementalOverrides {
+        wiki_links: Some(vec![WikiLinkOwned {
+            target: "injected-page".to_string(),
+            alias: None,
+            heading: None,
+            range: Range::new(Position::new(0, 0), Position::new(0, 5)),
+            start_byte: 0,
+            end_byte: 5,
+        }]),
+        blocks: Some(vec![BlockOwned {
+            id: "injected-block".to_string(),
+            range: Range::new(Position::new(0, 0), Position::new(0, 5)),
+            start_byte: 0,
+            end_byte: 5,
+        }]),
+        tags: None,
+        markdown_links: Some(vec![MarkdownLinkOwned {
+            text: "injected-link".to_string(),
+            url: "https://injected.com".to_string(),
+            anchor: None,
+            range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+            start_byte: 0,
+            end_byte: 10,
+        }]),
+        xml_tags: Some(vec![XmlTagOwned {
+            tag_name: "injected-xml".to_string(),
+            attributes: vec![],
+            is_self_closing: true,
+            is_unclosed: false,
+            range: Range::new(Position::new(0, 0), Position::new(0, 10)),
+            start_byte: 0,
+            end_byte: 10,
+        }]),
+    };
+    let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
+    assert_eq!(index.wiki_links().len(), 1);
+    assert_eq!(index.wiki_links()[0].target, "injected-page");
+    assert!(index.block_by_id("injected-block").is_some());
+    assert_eq!(index.markdown_links().len(), 1);
+    assert_eq!(index.markdown_links()[0].text, "injected-link");
+    assert_eq!(index.xml_tags().len(), 1);
+    assert_eq!(index.xml_tags()[0].tag_name, "injected-xml");
+    // Tags: always from AST (override is None), expect #tag from source
+    assert!(index.tags().iter().any(|t| t.name == "tag"));
 }

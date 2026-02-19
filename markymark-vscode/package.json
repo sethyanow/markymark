@@ -1,0 +1,62 @@
+{
+  "name": "markymark",
+  "displayName": "Markymark",
+  "description": "Markdown LSP intelligence — hover, completions, references, diagnostics for .md and .mdx",
+  "version": "0.1.0",
+  "publisher": "sethyanow",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sethyanow/markymark"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "keywords": ["markdown", "lsp", "obsidian", "logseq", "pkm"],
+  "activationEvents": [
+    "onLanguage:markdown",
+    "onLanguage:mdx"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "mdx",
+        "extensions": [".mdx"],
+        "aliases": ["MDX", "mdx"]
+      }
+    ],
+    "configuration": {
+      "title": "Markymark",
+      "properties": {
+        "markymark.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the markymark binary. If empty, uses the bundled binary."
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Markymark LSP is read-only but runs a binary to provide language intelligence."
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "scripts": {
+    "compile": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=dist/extension.js",
+    "package": "vsce package",
+    "test": "vitest run test/binary.test.ts"
+  }
+}

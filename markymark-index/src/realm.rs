@@ -4,9 +4,13 @@
 //! cross-doc lookups use owned String copies that survive document removal.
 //! Supports both markdown (DocumentIndex) and structured (StructuredDocumentIndex) documents.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+#[cfg(feature = "embeddings")]
+use std::sync::Arc;
 
 use crate::document::DocumentIndex;
+#[cfg(feature = "embeddings")]
+use crate::semantic::{DuplicateMatch, SearchResult, SemanticIndex};
 use crate::structured_document::StructuredDocumentIndex;
 use markymark_core::prelude::*;
 use markymark_core::structured::ValueKind;
@@ -80,6 +84,46 @@ impl std::fmt::Debug for AnyDocumentIndex {
     }
 }
 
+/// Detect whether a URI filename matches a Logseq journal page date pattern.
+///
+/// Matches filenames of the form `YYYY_MM_DD.md` (underscore) or `YYYY-MM-DD.md` (dash).
+/// The filename stem must be exactly 10 characters in the form `YYYY{sep}MM{sep}DD`
+/// where both separators are the same character.
+///
+/// Returns `Some((year, month, day))` on a valid date, `None` otherwise.
+/// Does NOT require the file to be in a `journals/` directory — Logseq journal
+/// directory is user-configurable.
+fn detect_journal_date(uri: &str) -> Option<(u16, u8, u8)> {
+    // Extract filename from URI (after last '/')
+    let filename = uri.rsplit('/').next()?;
+    // Strip .md or .markdown extension
+    let stem = filename
+        .strip_suffix(".md")
+        .or_else(|| filename.strip_suffix(".markdown"))?;
+    // Stem must be exactly 10 bytes: YYYY{sep}MM{sep}DD
+    if stem.len() != 10 {
+        return None;
+    }
+    let bytes = stem.as_bytes();
+    // Check separator at positions 4 and 7 (must be the same char: '_' or '-')
+    let sep = bytes[4];
+    if sep != b'_' && sep != b'-' {
+        return None;
+    }
+    if bytes[7] != sep {
+        return None; // mixed separators not allowed
+    }
+    // Parse year (bytes 0..4), month (5..7), day (8..10)
+    let y: u16 = stem[0..4].parse().ok()?;
+    let m: u8 = stem[5..7].parse().ok()?;
+    let d: u8 = stem[8..10].parse().ok()?;
+    // Validate ranges
+    if !(1900..=2100).contains(&y) || !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    Some((y, m, d))
+}
+
 /// A multi-document index that aggregates document instances
 /// and provides global cross-document lookups using owned storage.
 pub struct RealmIndex {
@@ -92,6 +136,13 @@ pub struct RealmIndex {
     tag_to_docs: HashMap<String, Vec<DocumentUri>>,
     /// Key path → URIs of structured docs containing it.
     key_path_to_docs: HashMap<String, Vec<DocumentUri>>,
+    /// Journal date → list of URIs for that date (BTreeMap enables range queries by month).
+    date_to_docs: BTreeMap<(u16, u8, u8), Vec<DocumentUri>>,
+    /// URI → detected journal date for cleanup on removal.
+    uri_to_date: HashMap<String, (u16, u8, u8)>,
+    /// Optional semantic index for embedding-based search.
+    #[cfg(feature = "embeddings")]
+    semantic_index: Option<SemanticIndex>,
 }
 
 impl RealmIndex {
@@ -103,7 +154,19 @@ impl RealmIndex {
             block_to_location: HashMap::new(),
             tag_to_docs: HashMap::new(),
             key_path_to_docs: HashMap::new(),
+            date_to_docs: BTreeMap::new(),
+            uri_to_date: HashMap::new(),
+            #[cfg(feature = "embeddings")]
+            semantic_index: None,
         }
+    }
+
+    /// Create a realm index with semantic embeddings enabled.
+    #[cfg(feature = "embeddings")]
+    pub fn new_with_embeddings(provider: Arc<dyn EmbeddingProvider>) -> Result<Self, EmbedError> {
+        let mut realm = Self::new();
+        realm.semantic_index = Some(SemanticIndex::new(provider)?);
+        Ok(realm)
     }
 
     /// Add a markdown document to the realm index.
@@ -155,6 +218,22 @@ impl RealmIndex {
             }
         }
 
+        #[cfg(feature = "embeddings")]
+        if let Some(semantic) = &mut self.semantic_index {
+            if let Err(err) = semantic.add_document(uri.clone(), &index) {
+                eprintln!(
+                    "warning: semantic indexing failed for {}: {err}",
+                    uri.as_str()
+                );
+            }
+        }
+
+        // Detect and index journal pages by date pattern in URI filename.
+        if let Some(date) = detect_journal_date(uri.as_str()) {
+            self.date_to_docs.entry(date).or_default().push(uri.clone());
+            self.uri_to_date.insert(uri.as_str().to_string(), date);
+        }
+
         self.docs
             .insert(key, (uri, AnyDocumentIndex::Markdown(index)));
     }
@@ -182,6 +261,10 @@ impl RealmIndex {
     /// Remove a document from the realm index.
     pub fn remove_document(&mut self, uri: &DocumentUri) {
         let key = uri.as_str().to_string();
+        #[cfg(feature = "embeddings")]
+        if let Some(semantic) = &mut self.semantic_index {
+            semantic.remove_document(uri);
+        }
         self.remove_from_cross_doc_indexes(&key);
         self.docs.remove(&key);
     }
@@ -247,6 +330,16 @@ impl RealmIndex {
                             self.key_path_to_docs.remove(path);
                         }
                     }
+                }
+            }
+        }
+
+        // Clean up journal date index if this was a journal page.
+        if let Some(date) = self.uri_to_date.remove(key) {
+            if let Some(uris) = self.date_to_docs.get_mut(&date) {
+                uris.retain(|u| u.as_str() != key);
+                if uris.is_empty() {
+                    self.date_to_docs.remove(&date);
                 }
             }
         }
@@ -357,6 +450,33 @@ impl RealmIndex {
         None
     }
 
+    /// Run semantic search if embeddings are enabled.
+    ///
+    /// Returns an empty vector when semantic indexing is not configured.
+    #[cfg(feature = "embeddings")]
+    pub fn semantic_search(
+        &self,
+        query: &str,
+        top_k: u32,
+        min_score: f32,
+    ) -> Result<Vec<SearchResult>, EmbedError> {
+        match &self.semantic_index {
+            Some(index) => index.search(query, top_k, min_score),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    /// Detect near-duplicate documents if embeddings are enabled.
+    ///
+    /// Returns an empty vector when semantic indexing is not configured.
+    #[cfg(feature = "embeddings")]
+    pub fn detect_semantic_duplicates(&self, threshold: f32) -> Vec<DuplicateMatch> {
+        match &self.semantic_index {
+            Some(index) => index.detect_duplicates(threshold),
+            None => Vec::new(),
+        }
+    }
+
     /// Search key paths across all structured documents.
     /// Returns (uri, path, key, value_kind, range) tuples.
     pub fn search_key_paths(
@@ -376,6 +496,23 @@ impl RealmIndex {
             }
         }
         results
+    }
+
+    /// Returns all journal documents for a given year and month, sorted by day ascending.
+    /// The tuple is `(DocumentUri, day)` so callers can sort or filter by specific dates.
+    pub fn lookup_journal_by_month(&self, year: u16, month: u8) -> Vec<(DocumentUri, u8)> {
+        let start = (year, month, 1u8);
+        let end = (year, month, 31u8);
+        self.date_to_docs
+            .range(start..=end)
+            .flat_map(|((_, _, d), uris)| uris.iter().map(move |u| (u.clone(), *d)))
+            .collect()
+    }
+
+    /// Returns the detected journal date `(year, month, day)` for a URI, or `None`
+    /// if the URI does not correspond to a journal page.
+    pub fn journal_date(&self, uri: &DocumentUri) -> Option<(u16, u8, u8)> {
+        self.uri_to_date.get(uri.as_str()).copied()
     }
 }
 
@@ -611,5 +748,120 @@ mod tests {
 
         let json_any = realm.get_any_document(&json_uri).unwrap();
         assert!(json_any.is_structured());
+    }
+
+    // --- Journal page detection tests (marky-waw) ---
+
+    #[test]
+    fn test_journal_date_detected_underscore_separator() {
+        // Bug this catches: function returns None when it should match YYYY_MM_DD format
+        let u = "file:///vault/journals/2024_01_15.md";
+        let result = detect_journal_date(u);
+        assert_eq!(
+            result,
+            Some((2024, 1, 15)),
+            "expected (2024,1,15) for 2024_01_15.md"
+        );
+    }
+
+    #[test]
+    fn test_journal_date_detected_dash_separator() {
+        // Bug this catches: only one separator format supported, ISO 8601 not handled
+        let u = "file:///vault/journals/2024-01-15.md";
+        let result = detect_journal_date(u);
+        assert_eq!(
+            result,
+            Some((2024, 1, 15)),
+            "expected (2024,1,15) for 2024-01-15.md"
+        );
+    }
+
+    #[test]
+    fn test_journal_date_rejected_for_non_journal_filename() {
+        // Bug this catches: function matching any file with date-like substring
+        let u = "file:///vault/notes/meeting.md";
+        assert_eq!(
+            detect_journal_date(u),
+            None,
+            "meeting.md should not be a journal"
+        );
+    }
+
+    #[test]
+    fn test_journal_date_rejected_for_suffix_filename() {
+        // Bug this catches: stem length not validated, extra suffix accepted
+        let u = "file:///vault/journals/2024_01_15_extra_notes.md";
+        assert_eq!(
+            detect_journal_date(u),
+            None,
+            "2024_01_15_extra_notes.md should not match — stem too long"
+        );
+    }
+
+    #[test]
+    fn test_journal_date_rejected_for_mixed_separators() {
+        // Bug this catches: accepting inconsistent separator usage (2024-01_15)
+        let u = "file:///vault/journals/2024-01_15.md";
+        assert_eq!(
+            detect_journal_date(u),
+            None,
+            "mixed separators (2024-01_15.md) should not match"
+        );
+    }
+
+    #[test]
+    fn test_journal_date_rejected_for_invalid_month() {
+        // Bug this catches: no range validation, accepting out-of-range months
+        let u = "file:///vault/journals/2024_13_01.md";
+        assert_eq!(
+            detect_journal_date(u),
+            None,
+            "month=13 is invalid, should return None"
+        );
+    }
+
+    #[test]
+    fn test_realm_indexes_journal_by_date() {
+        // Bug this catches: detection runs but result not stored in date_to_docs
+        let mut realm = RealmIndex::new();
+        let journal_uri = uri("journals/2024_01_15.md");
+        realm.add_document(journal_uri.clone(), make_md_index("# Jan 15"));
+
+        let results = realm.lookup_journal_by_month(2024, 1);
+        assert_eq!(results.len(), 1, "expected 1 journal doc for Jan 2024");
+        assert_eq!(results[0].1, 15u8, "expected day=15");
+    }
+
+    #[test]
+    fn test_realm_lookup_journal_by_month_multiple() {
+        // Bug this catches: BTreeMap range query off by one, returns wrong month
+        let mut realm = RealmIndex::new();
+        realm.add_document(uri("journals/2024_01_01.md"), make_md_index("day 1"));
+        realm.add_document(uri("journals/2024_01_15.md"), make_md_index("day 15"));
+        realm.add_document(uri("journals/2024_01_31.md"), make_md_index("day 31"));
+        realm.add_document(uri("journals/2024_02_01.md"), make_md_index("feb 1"));
+        realm.add_document(uri("journals/2024_02_15.md"), make_md_index("feb 15"));
+
+        let jan = realm.lookup_journal_by_month(2024, 1);
+        assert_eq!(jan.len(), 3, "expected 3 Jan docs, got {}", jan.len());
+
+        let feb = realm.lookup_journal_by_month(2024, 2);
+        assert_eq!(feb.len(), 2, "expected 2 Feb docs, got {}", feb.len());
+    }
+
+    #[test]
+    fn test_realm_remove_journal_doc_cleans_up_date_index() {
+        // Bug this catches: remove_document doesn't clean date_to_docs, causing stale entries
+        let mut realm = RealmIndex::new();
+        let journal_uri = uri("journals/2024_03_10.md");
+        realm.add_document(journal_uri.clone(), make_md_index("day"));
+        realm.remove_document(&journal_uri);
+
+        let results = realm.lookup_journal_by_month(2024, 3);
+        assert!(
+            results.is_empty(),
+            "after removal, lookup should return empty — got {} docs",
+            results.len()
+        );
     }
 }

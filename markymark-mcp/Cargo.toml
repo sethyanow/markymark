@@ -9,17 +9,25 @@ description = "MCP server for markdown intelligence in AI assistants"
 keywords = ["markdown", "mcp", "ai", "language-server"]
 categories = ["development-tools", "text-processing"]
 
+[features]
+default = []
+semantic-search = ["markymark-index/embeddings"]
+
 [dependencies]
-markymark-core = { version = "0.3.0", path = "../markymark-core" }
-markymark-parser = { version = "0.3.0", path = "../markymark-parser" }
-markymark-index = { version = "0.3.0", path = "../markymark-index" }
+markymark-core = { version = "0.4.0", path = "../markymark-core" }
+markymark-parser = { version = "0.4.0", path = "../markymark-parser" }
+markymark-index = { version = "0.4.0", path = "../markymark-index" }
+markymark-kernels = { version = "0.4.0", path = "../markymark-kernels" }
 rmcp = { workspace = true }
+regex = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
+log = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
+tempfile = { workspace = true }
