@@ -1270,6 +1270,129 @@ fn search_symbols_returns_empty_after_destroy_realm() {
     );
 }
 
+/// Querying a realm that was **never created** must return a structured error
+/// (`CoreOperationResult::Error`), not panic or return empty data. This covers
+/// every query operation that accepts a realm parameter.
+///
+/// Regression coverage for marky-w85.
+#[test]
+fn query_operations_error_on_never_created_realm() {
+    let engine = RuntimeEngine::default();
+    let bogus = "never-created-realm";
+    let dummy_uri = DocumentUri::from_file_path(std::path::Path::new("/tmp/dummy.md"));
+    let dummy_pos = Range {
+        start: Position {
+            line: 0,
+            character: 0,
+        },
+        end: Position {
+            line: 0,
+            character: 5,
+        },
+    };
+
+    let operations: Vec<(&str, CoreOperation)> = vec![
+        (
+            "SearchSymbols",
+            CoreOperation::SearchSymbols {
+                query: "anything".to_string(),
+                realm: Some(bogus.to_string()),
+            },
+        ),
+        (
+            "GetOutline",
+            CoreOperation::GetOutline {
+                uri: dummy_uri.clone(),
+                realm: Some(bogus.to_string()),
+            },
+        ),
+        (
+            "FindReferences",
+            CoreOperation::FindReferences {
+                uri: dummy_uri.clone(),
+                position: dummy_pos,
+                realm: Some(bogus.to_string()),
+            },
+        ),
+        (
+            "Rename",
+            CoreOperation::Rename {
+                uri: dummy_uri.clone(),
+                position: dummy_pos,
+                new_name: "new".to_string(),
+                realm: Some(bogus.to_string()),
+            },
+        ),
+        (
+            "ExportIndex",
+            CoreOperation::ExportIndex {
+                uri: dummy_uri.clone(),
+                realm: Some(bogus.to_string()),
+            },
+        ),
+        (
+            "SearchWorkspace",
+            CoreOperation::SearchWorkspace {
+                query: Some("anything".to_string()),
+                frontmatter_filter: None,
+                property_filter: None,
+                tag_filter: None,
+                realm: Some(bogus.to_string()),
+                limit: 20,
+            },
+        ),
+        (
+            "SearchForPattern",
+            CoreOperation::SearchForPattern {
+                pattern: "test".to_string(),
+                include_glob: None,
+                context_lines: 0,
+                limit: 10,
+                case_insensitive: false,
+                realm: Some(bogus.to_string()),
+            },
+        ),
+        (
+            "GraphAnalysis",
+            CoreOperation::GraphAnalysis {
+                realm: Some(bogus.to_string()),
+                top_n_hubs: 10,
+                include_clusters: false,
+            },
+        ),
+        (
+            "SemanticSearch",
+            CoreOperation::SemanticSearch {
+                query: "anything".to_string(),
+                realm: Some(bogus.to_string()),
+                top_k: 5,
+                min_score: 0.0,
+            },
+        ),
+        (
+            "DependencyGraph",
+            CoreOperation::DependencyGraph {
+                realm: bogus.to_string(),
+                format: "json".to_string(),
+            },
+        ),
+    ];
+
+    for (label, op) in operations {
+        let result = engine.execute(op);
+        match &result {
+            CoreOperationResult::Error(err) => {
+                let msg = err.to_string();
+                assert!(
+                    msg.contains("realm does not exist"),
+                    "{label}: error message should mention 'realm does not exist', got: {msg}"
+                );
+            }
+            other => panic!("{label}: expected Error for non-existent realm, got: {other:?}"),
+        }
+    }
+}
+
 // --- export-index integration tests ---
 
 #[test]
