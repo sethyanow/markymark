@@ -102,6 +102,7 @@ pub const types = @import("./types.zig");
 const Flags = types.Flags;
 
 pub const entity = @import("./entity.zig");
+pub const extraction_renderer = @import("./extraction_renderer.zig");
 pub const helpers = @import("./helpers.zig");
 
 const parser = @import("./parser.zig");
