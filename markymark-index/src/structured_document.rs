@@ -52,6 +52,11 @@ impl StructuredDocumentIndex {
             .and_then(|&idx| self.ast.keys.get(idx))
     }
 
+    /// Find the key entry whose key range contains the cursor position.
+    pub fn find_key_at_position(&self, cursor: markymark_core::Position) -> Option<&KeyEntry> {
+        self.ast.keys.iter().find(|k| k.key_range.contains(cursor))
+    }
+
     /// Number of key entries in the document.
     pub fn key_count(&self) -> usize {
         self.ast.keys.len()
@@ -142,6 +147,23 @@ mod tests {
                 markymark_core::Position::new(0, 0),
                 markymark_core::Position::new(0, 0),
             ),
+        }
+    }
+
+    fn key_with_range(
+        path: &str,
+        key_name: &str,
+        depth: usize,
+        vk: ValueKind,
+        key_range: Range,
+    ) -> KeyEntry {
+        KeyEntry {
+            path: path.to_string(),
+            key: key_name.to_string(),
+            depth,
+            value_kind: vk,
+            key_range,
+            value_range: key_range,
         }
     }
 
@@ -251,5 +273,91 @@ mod tests {
         assert_eq!(paths.len(), 2);
         assert_eq!(paths[0].0, "a");
         assert_eq!(paths[1].0, "b");
+    }
+
+    #[test]
+    fn test_find_key_at_position_hit() {
+        let ast = make_ast(
+            DocumentKind::Json,
+            vec![
+                key_with_range(
+                    "database",
+                    "database",
+                    0,
+                    ValueKind::Object,
+                    Range::new(
+                        markymark_core::Position::new(1, 2),
+                        markymark_core::Position::new(1, 10),
+                    ),
+                ),
+                key_with_range(
+                    "database.host",
+                    "host",
+                    1,
+                    ValueKind::String,
+                    Range::new(
+                        markymark_core::Position::new(2, 4),
+                        markymark_core::Position::new(2, 8),
+                    ),
+                ),
+            ],
+        );
+        let idx = StructuredDocumentIndex::from_ast(ast);
+
+        let hit = idx
+            .find_key_at_position(markymark_core::Position::new(2, 5))
+            .map(|k| k.path.clone());
+        assert_eq!(hit.as_deref(), Some("database.host"));
+    }
+
+    #[test]
+    fn test_find_key_at_position_miss() {
+        let ast = make_ast(
+            DocumentKind::Json,
+            vec![key_with_range(
+                "database.host",
+                "host",
+                1,
+                ValueKind::String,
+                Range::new(
+                    markymark_core::Position::new(2, 4),
+                    markymark_core::Position::new(2, 8),
+                ),
+            )],
+        );
+        let idx = StructuredDocumentIndex::from_ast(ast);
+
+        assert!(idx
+            .find_key_at_position(markymark_core::Position::new(2, 20))
+            .is_none());
+    }
+
+    #[test]
+    fn test_find_key_at_position_boundary() {
+        let ast = make_ast(
+            DocumentKind::Json,
+            vec![key_with_range(
+                "database.host",
+                "host",
+                1,
+                ValueKind::String,
+                Range::new(
+                    markymark_core::Position::new(2, 4),
+                    markymark_core::Position::new(2, 8),
+                ),
+            )],
+        );
+        let idx = StructuredDocumentIndex::from_ast(ast);
+
+        assert!(
+            idx.find_key_at_position(markymark_core::Position::new(2, 4))
+                .is_some(),
+            "range start must be inclusive"
+        );
+        assert!(
+            idx.find_key_at_position(markymark_core::Position::new(2, 8))
+                .is_none(),
+            "range end must be exclusive"
+        );
     }
 }

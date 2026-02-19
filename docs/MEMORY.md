@@ -168,6 +168,8 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 - Optional PromptArgument in rmcp: `required: Some(false)`, extract with `.get(key).and_then(|v| v.as_str())`
 - Centralize UTF-16/line to byte-range normalization in one helper; warn on clamp
 - LSP character offsets from clients are untrusted — always bounds-check (`if offset > line.len()`) before byte-slicing (marky-xpk, marky-u46)
+- MCP handlers that accept any URI kind must use `realm.get_any_document()` and branch on `AnyDocumentIndex`; `get_document()` silently rejects structured docs and misreports "document is not indexed" (marky-kvr)
+- For edit-delta math on `u32`/`usize` positions, avoid signed casts (`as i64`/`as isize`) and use explicit saturating add/sub with signed deltas to prevent wraparound at extreme values (marky-v8y)
 
 ### Testing
 - Safe file splits: (1) module dir, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit
