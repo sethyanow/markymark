@@ -125,15 +125,14 @@ fn rust_target_to_zig_target(rust_target: &str) -> Option<String> {
 }
 
 /// Run `zig build lib` in the zig directory, optionally with -Dtarget for cross-compilation.
+/// Zig requires -Dtarget=value as a single argument; passing -Dtarget and value separately fails.
 fn build_zig_library(zig_dir: &std::path::Path, zig_target: Option<&str>) {
-    let args: Vec<&str> = if let Some(t) = zig_target {
-        vec!["build", "lib", "-Dtarget", t]
-    } else {
-        vec!["build", "lib"]
-    };
-    let output = Command::new("zig")
-        .args(args)
-        .current_dir(zig_dir)
+    let mut cmd = Command::new("zig");
+    cmd.arg("build").arg("lib").current_dir(zig_dir);
+    if let Some(t) = zig_target {
+        cmd.arg(format!("-Dtarget={t}"));
+    }
+    let output = cmd
         .output()
         .unwrap_or_else(|e| panic!("Failed to run zig build lib: {e}"));
 
