@@ -432,33 +432,41 @@ export fn marky_multi_scan(
         return -2;
     }
 
-    var fence_buf: [256]FenceRange = undefined;
+    // Use threadlocal static buffers instead of stack-allocated arrays.
+    // The raw_buf (16KB) and fence_buf (2KB) together exceed the 4KB
+    // Windows stack frame threshold, causing LLVM to emit ___chkstk_ms
+    // (an MSVC compiler-rt symbol not bundled into Zig static libraries).
+    const S = struct {
+        threadlocal var fence_buf: [256]FenceRange = undefined;
+        threadlocal var raw_buf: [2048]ScanResult = undefined;
+    };
+
     const fence_slice: []const FenceRange = if (fence_count == 0)
         &[_]FenceRange{}
     else blk: {
         const fr = fence_ranges orelse return -1;
         const src = fr[0..fence_count];
 
-        if (fence_count > fence_buf.len) {
+        if (fence_count > S.fence_buf.len) {
             w.* = 0;
             return -2; // Internal buffer too small
         }
 
-        std.mem.copyForwards(FenceRange, fence_buf[0..fence_count], src);
-        std.mem.sort(FenceRange, fence_buf[0..fence_count], {}, struct {
+        std.mem.copyForwards(FenceRange, S.fence_buf[0..fence_count], src);
+        std.mem.sort(FenceRange, S.fence_buf[0..fence_count], {}, struct {
             fn lessThan(_: void, a: FenceRange, b: FenceRange) bool {
                 return a.start < b.start;
             }
         }.lessThan);
 
-        break :blk fence_buf[0..fence_count];
+        break :blk S.fence_buf[0..fence_count];
     };
 
     // Worst-case raw candidates can exceed cap due to rejected candidates.
-    // Use fixed stack buffer to avoid heap allocation in hot path.
-    var raw_buf: [2048]ScanResult = undefined;
+    // threadlocal avoids heap allocation while keeping the stack frame small.
+    const raw_buf = &S.raw_buf;
     const raw_cap: u32 = @intCast(raw_buf.len);
-    const raw_count = multi_scan.scan_multi(t, len, &raw_buf, raw_cap);
+    const raw_count = multi_scan.scan_multi(t, len, raw_buf, raw_cap);
 
     // If raw candidates exceed internal buffer, results may be truncated.
     // Return -2 to signal partial results rather than silently dropping.

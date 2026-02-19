@@ -204,7 +204,7 @@ fn process_line(
             // Optional chomping indicator (+/-) or explicit indentation digit.
             if (scan < line_end and
                 (buf[scan] == '+' or buf[scan] == '-' or
-                (buf[scan] >= '1' and buf[scan] <= '9')))
+                    (buf[scan] >= '1' and buf[scan] <= '9')))
             {
                 scan += 1;
             }
