@@ -16,7 +16,7 @@ Six-crate workspace (core, parser, index, lsp, mcp, cli) is well-partitioned.
 Arena allocation (bumpalo) lives in parser layer, not crossing into transport (lsp/mcp).
 This keeps Send/Sync constraints manageable.
 
-**Watch:** `realm.rs` at 950 lines — approaching 1000-line hard stop. Refactor issue needed soon.
+**Done:** `realm.rs` split into `realm/mod.rs`, `realm/types.rs`, `realm/helpers.rs`, `realm/tests.rs` (marky-ltcu, 2026-02-19). All 128 markymark-index tests pass.
 
 ### Rust Agent Docs: Grade A (2026-02-15)
 
