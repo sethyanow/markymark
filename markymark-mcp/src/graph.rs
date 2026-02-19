@@ -58,6 +58,11 @@ pub fn execute_graph_analysis(
     for (uri, doc) in realm.iter_documents() {
         let source = uri.as_str().to_string();
 
+        // Track seen (source, resolved_target) pairs to deduplicate edges.
+        // Multiple occurrences of the same link within one document should
+        // count as a single edge (marky-agv).
+        let mut seen_targets: HashSet<String> = HashSet::new();
+
         // --- Wiki links ---
         for wl in doc.wiki_links() {
             let target = wl.target;
@@ -70,13 +75,15 @@ pub fn execute_graph_analysis(
             match stem_to_uri.get(&stem.to_lowercase()) {
                 Some(resolved) => {
                     let resolved_str = resolved.as_str().to_string();
-                    *in_degree.entry(resolved_str.clone()).or_insert(0) += 1;
-                    *out_degree.entry(source.clone()).or_insert(0) += 1;
-                    adj.entry(source.clone())
-                        .or_default()
-                        .push(resolved_str.clone());
-                    adj.entry(resolved_str).or_default().push(source.clone());
-                    total_internal_links += 1;
+                    if seen_targets.insert(resolved_str.clone()) {
+                        *in_degree.entry(resolved_str.clone()).or_insert(0) += 1;
+                        *out_degree.entry(source.clone()).or_insert(0) += 1;
+                        adj.entry(source.clone())
+                            .or_default()
+                            .push(resolved_str.clone());
+                        adj.entry(resolved_str).or_default().push(source.clone());
+                        total_internal_links += 1;
+                    }
                 }
                 None => {
                     broken_links.push((uri.clone(), target.to_string(), "wiki".to_string()));
@@ -108,13 +115,15 @@ pub fn execute_graph_analysis(
             match stem_to_uri.get(&stem.to_lowercase()) {
                 Some(resolved) => {
                     let resolved_str = resolved.as_str().to_string();
-                    *in_degree.entry(resolved_str.clone()).or_insert(0) += 1;
-                    *out_degree.entry(source.clone()).or_insert(0) += 1;
-                    adj.entry(source.clone())
-                        .or_default()
-                        .push(resolved_str.clone());
-                    adj.entry(resolved_str).or_default().push(source.clone());
-                    total_internal_links += 1;
+                    if seen_targets.insert(resolved_str.clone()) {
+                        *in_degree.entry(resolved_str.clone()).or_insert(0) += 1;
+                        *out_degree.entry(source.clone()).or_insert(0) += 1;
+                        adj.entry(source.clone())
+                            .or_default()
+                            .push(resolved_str.clone());
+                        adj.entry(resolved_str).or_default().push(source.clone());
+                        total_internal_links += 1;
+                    }
                 }
                 None => {
                     broken_links.push((uri.clone(), url.to_string(), "markdown".to_string()));
@@ -406,6 +415,89 @@ mod tests {
             } => {
                 assert!(broken_links.is_empty(), "broken: {broken_links:?}");
                 assert_eq!(total_internal_links, 1);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn duplicate_wiki_links_within_document_count_once() {
+        // marky-agv: [[b]] appears 3 times in document a.
+        // In-degree for b should be 1 (one unique source), not 3.
+        let realm = make_realm(&[
+            ("a", "[[b]]\n\nSome text.\n\n[[b]]\n\nMore text.\n\n[[b]]"),
+            ("b", "# B"),
+        ]);
+        match super::execute_graph_analysis("default", &realm, 10, false) {
+            CoreOperationResult::GraphAnalysis {
+                hubs,
+                total_internal_links,
+                ..
+            } => {
+                let b_hub = hubs
+                    .iter()
+                    .find(|(u, _)| u == &uri("b"))
+                    .expect("b should appear in hubs");
+                assert_eq!(
+                    b_hub.1, 1,
+                    "duplicate wiki links within same document should count once, got {}",
+                    b_hub.1
+                );
+                assert_eq!(
+                    total_internal_links, 1,
+                    "total_internal_links should count deduplicated edges, got {}",
+                    total_internal_links
+                );
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn duplicate_markdown_links_within_document_count_once() {
+        // marky-agv: [link](b.md) appears twice in document a.
+        let realm = make_realm(&[("a", "[link](b.md)\n\ntext\n\n[other](b.md)"), ("b", "# B")]);
+        match super::execute_graph_analysis("default", &realm, 10, false) {
+            CoreOperationResult::GraphAnalysis {
+                hubs,
+                total_internal_links,
+                ..
+            } => {
+                let b_hub = hubs
+                    .iter()
+                    .find(|(u, _)| u == &uri("b"))
+                    .expect("b should appear in hubs");
+                assert_eq!(
+                    b_hub.1, 1,
+                    "duplicate markdown links within same document should count once, got {}",
+                    b_hub.1
+                );
+                assert_eq!(
+                    total_internal_links, 1,
+                    "total_internal_links should count deduplicated edges, got {}",
+                    total_internal_links
+                );
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unique_sources_still_count_separately() {
+        // a→b and c→b are distinct edges; b should have in-degree 2.
+        let realm = make_realm(&[("a", "[[b]]"), ("b", "# B"), ("c", "[[b]]")]);
+        match super::execute_graph_analysis("default", &realm, 10, false) {
+            CoreOperationResult::GraphAnalysis {
+                hubs,
+                total_internal_links,
+                ..
+            } => {
+                let b_hub = hubs
+                    .iter()
+                    .find(|(u, _)| u == &uri("b"))
+                    .expect("b should appear in hubs");
+                assert_eq!(b_hub.1, 2, "two unique sources should give in-degree 2");
+                assert_eq!(total_internal_links, 2);
             }
             other => panic!("unexpected: {other:?}"),
         }

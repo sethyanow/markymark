@@ -84,6 +84,26 @@ impl std::fmt::Debug for AnyDocumentIndex {
     }
 }
 
+/// Resolve a URL-style relative path against a base directory without hitting the filesystem.
+///
+/// Handles `..` and `.` components by normalising the resulting path component-by-component.
+fn resolve_relative_path(base_dir: &std::path::Path, relative_url: &str) -> std::path::PathBuf {
+    // Start from the base directory and apply each URL segment.
+    // PathBuf::pop() clamps at the filesystem root and preserves Windows drive prefixes,
+    // so excessive `..` never underflow into a relative path.
+    let mut result = base_dir.to_path_buf();
+    for segment in relative_url.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                result.pop();
+            }
+            s => result.push(s),
+        }
+    }
+    result
+}
+
 /// Detect whether a URI filename matches a Logseq journal page date pattern.
 ///
 /// Matches filenames of the form `YYYY_MM_DD.md` (underscore) or `YYYY-MM-DD.md` (dash).
@@ -448,6 +468,27 @@ impl RealmIndex {
             }
         }
         None
+    }
+
+    /// Find a document URI by resolving `relative_url` relative to `from_uri`'s directory.
+    ///
+    /// Returns `None` if the resolved path is not present in the realm.
+    pub(crate) fn find_uri_by_relative_path(
+        &self,
+        from_uri: &DocumentUri,
+        relative_url: &str,
+    ) -> Option<DocumentUri> {
+        let from_path = from_uri.to_file_path()?;
+        let parent = from_path.parent()?;
+        // Resolve the relative URL against the parent directory, then canonicalise components.
+        let resolved = resolve_relative_path(parent, relative_url);
+        let candidate = DocumentUri::from_file_path(&resolved);
+        // Check whether the resolved URI is present in the realm.
+        if self.docs.contains_key(candidate.as_str()) {
+            Some(candidate)
+        } else {
+            None
+        }
     }
 
     /// Run semantic search if embeddings are enabled.
@@ -847,6 +888,48 @@ mod tests {
 
         let feb = realm.lookup_journal_by_month(2024, 2);
         assert_eq!(feb.len(), 2, "expected 2 Feb docs, got {}", feb.len());
+    }
+
+    // ------------------------------------------------------------------
+    // resolve_relative_path unit tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_resolve_relative_path_normal() {
+        // From /vault/docs/api → ../guide/overview.md = /vault/docs/guide/overview.md
+        let result = resolve_relative_path(
+            std::path::Path::new("/vault/docs/api"),
+            "../guide/overview.md",
+        );
+        assert_eq!(
+            result,
+            std::path::PathBuf::from("/vault/docs/guide/overview.md")
+        );
+    }
+
+    #[test]
+    fn test_resolve_relative_path_dot_underflow_clamps_at_root() {
+        // Excessive `..` must not produce a relative path — result must stay absolute.
+        // Old code empties the stack and returns a bare filename (relative path).
+        // Fixed code clamps at root via PathBuf::pop() semantics.
+        let result = resolve_relative_path(std::path::Path::new("/vault"), "../../file.md");
+        assert!(
+            result.is_absolute(),
+            "excessive `..` must not produce a relative path; got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_resolve_relative_path_single_dot_is_noop() {
+        let result = resolve_relative_path(std::path::Path::new("/vault/docs"), "./same.md");
+        assert_eq!(result, std::path::PathBuf::from("/vault/docs/same.md"));
+    }
+
+    #[test]
+    fn test_resolve_relative_path_no_segments() {
+        let result = resolve_relative_path(std::path::Path::new("/vault/docs"), "file.md");
+        assert_eq!(result, std::path::PathBuf::from("/vault/docs/file.md"));
     }
 
     #[test]

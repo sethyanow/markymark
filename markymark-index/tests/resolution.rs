@@ -152,6 +152,226 @@ fn test_resolve_markdown_link_to_heading() {
     }
 }
 
+/// Build a test realm with documents in subdirectories for path-resolution tests.
+///
+/// Layout:
+///   /vault/docs/api/endpoints.md
+///   /vault/docs/guide/overview.md
+///   /vault/docs/api/auth.md   (same directory as endpoints.md)
+///   /vault/index.md
+fn path_realm() -> (
+    RealmIndex,
+    DocumentUri,
+    DocumentUri,
+    DocumentUri,
+    DocumentUri,
+) {
+    let mut realm = RealmIndex::new();
+
+    // /vault/docs/api/endpoints.md
+    let uri_endpoints =
+        DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/docs/api/endpoints.md"));
+    let idx_endpoints = index_from("# API Endpoints\n\n## List Endpoints\n\nSome content.");
+    realm.add_document(uri_endpoints.clone(), idx_endpoints);
+
+    // /vault/docs/guide/overview.md — same stem as... nothing yet, but in a different dir
+    let uri_overview =
+        DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/docs/guide/overview.md"));
+    let idx_overview = index_from("# Guide Overview\n\n## Introduction\n\nGuide content.");
+    realm.add_document(uri_overview.clone(), idx_overview);
+
+    // /vault/docs/api/auth.md — same directory as endpoints.md
+    let uri_auth =
+        DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/docs/api/auth.md"));
+    let idx_auth = index_from("# Auth\n\n## OAuth Flow\n\nAuth content.");
+    realm.add_document(uri_auth.clone(), idx_auth);
+
+    // /vault/index.md — root level doc
+    let uri_index = DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/index.md"));
+    let idx_index = index_from("# Index\n\nRoot document.");
+    realm.add_document(uri_index.clone(), idx_index);
+
+    (realm, uri_endpoints, uri_overview, uri_auth, uri_index)
+}
+
+// ---------------------------------------------------------------------------
+// Markdown link → document resolution (stem-only)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_resolve_markdown_link_to_document_by_stem() {
+    let (realm, uri_a, _uri_b, _uri_c) = test_realm();
+
+    // [text](page-b.md) from page A — stem "page-b" should resolve to page-b.md
+    let result = resolution::resolve_markdown_link(&realm, &uri_a, "page-b.md", None);
+    assert!(
+        result.is_some(),
+        "[text](page-b.md) should resolve to the document"
+    );
+
+    match result.unwrap() {
+        ResolvedTarget::Document(resolved_uri) => {
+            assert_eq!(resolved_uri.as_str(), uri("page-b.md").as_str());
+        }
+        other => panic!("expected Document variant, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_resolve_markdown_link_to_document_with_anchor() {
+    let (realm, uri_a, _uri_b, _uri_c) = test_realm();
+
+    // [text](page-b.md#overview) from page A should resolve to the heading in page-b.md
+    let result = resolution::resolve_markdown_link(&realm, &uri_a, "page-b.md", Some("overview"));
+    assert!(
+        result.is_some(),
+        "[text](page-b.md#overview) should resolve to heading"
+    );
+
+    match result.unwrap() {
+        ResolvedTarget::Heading {
+            uri: resolved_uri,
+            slug,
+            ..
+        } => {
+            assert_eq!(resolved_uri.as_str(), uri("page-b.md").as_str());
+            assert_eq!(slug, "overview");
+        }
+        other => panic!("expected Heading variant, got {:?}", other),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Markdown link → path-relative resolution
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_resolve_markdown_link_path_relative_in_same_dir() {
+    let (realm, uri_endpoints, _uri_overview, uri_auth, _uri_index) = path_realm();
+
+    // From /vault/docs/api/endpoints.md → [text](auth.md)
+    // "auth.md" has no directory segment, so stem-only resolution applies.
+    // Stem "auth" resolves to /vault/docs/api/auth.md.
+    let result = resolution::resolve_markdown_link(&realm, &uri_endpoints, "auth.md", None);
+    assert!(
+        result.is_some(),
+        "[text](auth.md) should resolve via stem to auth.md"
+    );
+    match result.unwrap() {
+        ResolvedTarget::Document(resolved) => {
+            assert_eq!(resolved.as_str(), uri_auth.as_str());
+        }
+        other => panic!("expected Document, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_resolve_markdown_link_path_relative_with_directory_segment() {
+    let (realm, uri_endpoints, _uri_overview, _uri_auth, _uri_index) = path_realm();
+
+    // From /vault/docs/api/endpoints.md → [text](../guide/overview.md)
+    // Has directory segment → try path-relative: resolves to /vault/docs/guide/overview.md.
+    let result =
+        resolution::resolve_markdown_link(&realm, &uri_endpoints, "../guide/overview.md", None);
+    assert!(
+        result.is_some(),
+        "[text](../guide/overview.md) should resolve path-relatively"
+    );
+    match result.unwrap() {
+        ResolvedTarget::Document(resolved) => {
+            let expected = DocumentUri::from_file_path(&std::path::PathBuf::from(
+                "/vault/docs/guide/overview.md",
+            ));
+            assert_eq!(resolved.as_str(), expected.as_str());
+        }
+        other => panic!("expected Document, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_resolve_markdown_link_path_relative_with_anchor() {
+    let (realm, uri_endpoints, _uri_overview, _uri_auth, _uri_index) = path_realm();
+
+    // From /vault/docs/api/endpoints.md → [text](../guide/overview.md#introduction)
+    let result = resolution::resolve_markdown_link(
+        &realm,
+        &uri_endpoints,
+        "../guide/overview.md",
+        Some("introduction"),
+    );
+    assert!(
+        result.is_some(),
+        "[text](../guide/overview.md#introduction) should resolve to heading"
+    );
+    match result.unwrap() {
+        ResolvedTarget::Heading {
+            uri: resolved_uri,
+            slug,
+            ..
+        } => {
+            let expected = DocumentUri::from_file_path(&std::path::PathBuf::from(
+                "/vault/docs/guide/overview.md",
+            ));
+            assert_eq!(resolved_uri.as_str(), expected.as_str());
+            assert_eq!(slug, "introduction");
+        }
+        other => panic!("expected Heading, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_resolve_markdown_link_path_relative_falls_back_to_stem() {
+    let (realm, _uri_endpoints, _uri_overview, uri_auth, _uri_index) = path_realm();
+
+    // From /vault/index.md → [text](api/auth.md)
+    // Path-relative: /vault/api/auth.md — does NOT exist.
+    // Fall back to stem "auth" → finds /vault/docs/api/auth.md.
+    let uri_root = DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/index.md"));
+    let result = resolution::resolve_markdown_link(&realm, &uri_root, "api/auth.md", None);
+    assert!(
+        result.is_some(),
+        "[text](api/auth.md) should fall back to stem resolution"
+    );
+    match result.unwrap() {
+        ResolvedTarget::Document(resolved) => {
+            assert_eq!(resolved.as_str(), uri_auth.as_str());
+        }
+        other => panic!("expected Document, got {:?}", other),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// External URL filtering
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_resolve_markdown_link_https_url_returns_none() {
+    // Realm has a document whose stem happens to match the hostname of an external URL.
+    // resolve_markdown_link must NOT return it as a false-positive match.
+    let mut realm = RealmIndex::new();
+    let local_uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/example.com.md"));
+    let idx = index_from("# Example\n\nSome content.");
+    realm.add_document(local_uri, idx);
+
+    let from = DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/page.md"));
+    let result = resolution::resolve_markdown_link(&realm, &from, "https://example.com", None);
+    assert!(
+        result.is_none(),
+        "external https:// URL must not resolve to a local document"
+    );
+}
+
+#[test]
+fn test_resolve_markdown_link_mailto_url_returns_none() {
+    let realm = RealmIndex::new();
+    let from = DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/page.md"));
+    let result = resolution::resolve_markdown_link(&realm, &from, "mailto:user@example.com", None);
+    assert!(
+        result.is_none(),
+        "mailto: URL must not attempt local resolution"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Block reference resolution
 // ---------------------------------------------------------------------------
