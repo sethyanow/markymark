@@ -16,7 +16,7 @@ Six-crate workspace (core, parser, index, lsp, mcp, cli) is well-partitioned.
 Arena allocation (bumpalo) lives in parser layer, not crossing into transport (lsp/mcp).
 This keeps Send/Sync constraints manageable.
 
-**Watch:** `realm.rs` at 926 lines — approaching 1000-line hard stop. Refactor issue needed soon.
+**Watch:** `realm.rs` at 950 lines — approaching 1000-line hard stop. Refactor issue needed soon.
 
 ### Rust Agent Docs: Grade A (2026-02-15)
 
@@ -178,6 +178,8 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 - **Stem-only is the fallback, not the primary**: For Markdown links, path-relative resolution wins when URL contains `/`. Stem-only fires when path-relative misses (nonexistent path) or URL has no directory component.
 
 ### LSP/MCP
+- **Diagnostic logic lives in `markymark-index/src/diagnostics.rs`** (marky-6i9, 2026-02-19). Shared `compute_diagnostics(index, realm, uri)` is used by both LSP (`publishDiagnostics`) and MCP (`get-diagnostics` tool). DiagnosticSeverity/CoreDiagnostic types are in `markymark-core::engine`.
+- **Adding a new CoreOperation follows a 5-stop pattern**: (1) types in `core/engine.rs`, (2) compute logic in `index/`, (3) engine handler in `mcp/src/engine/{op}.rs`, (4) DTO + tool handler in `mcp/src/tools/{op}.rs`, (5) `#[tool]` wiring in `lib.rs`.
 - Drop read lock before async publish_diagnostics (deadlock prevention)
 - MCP realm threading: dto.rs, lib.rs, runtime_engine.rs, prompts.rs, resources.rs — all updated together
 - Optional PromptArgument in rmcp: `required: Some(false)`, extract with `.get(key).and_then(|v| v.as_str())`
@@ -190,7 +192,7 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 - Safe file splits: (1) module dir, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit
 - Land RED→GREEN regression set before tuning merge logic
 - Use `assert_eq!` not `>=` — `>=` masked a closing-tag rename bug
-- Integration tests in tests/ are standalone crates — duplicate helpers, no mod.rs
+- Integration test crate roots (`tests/*.rs`) resolve `mod foo;` in `tests/foo.rs` (sibling), NOT `tests/basename/foo.rs`. To split a large integration test into subdirectory files, use `#[path = "basename/foo.rs"] mod foo;` in the root file. (Pattern established marky-a90, 2026-02-19)
 - Env-gated benchmarks (`MARKYMARK_RUN_100K_BENCH=1`) for checkpoint evidence
 
 ### Project-Specific

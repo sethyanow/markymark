@@ -608,6 +608,49 @@ pub struct ClusterDto {
     pub size: usize,
 }
 
+/// Request payload for `get-diagnostics`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetDiagnosticsRequest {
+    /// Document URI (`file://...`) to check. When omitted, all documents in the realm are
+    /// checked.
+    #[serde(default)]
+    pub uri: Option<String>,
+    /// Realm to query. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+}
+
+/// A single diagnostic item in a `get-diagnostics` response.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DiagnosticItemDto {
+    /// Location of the problem in the source file.
+    pub range: RangeDto,
+    /// Severity: `"error"` or `"warning"`.
+    pub severity: String,
+    /// Human-readable description of the problem.
+    pub message: String,
+}
+
+/// Diagnostics for one file in a `get-diagnostics` response.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FileDiagnosticsDto {
+    /// Document URI.
+    pub uri: String,
+    /// Diagnostics found in this file.
+    pub diagnostics: Vec<DiagnosticItemDto>,
+}
+
+/// Response from the `get-diagnostics` tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetDiagnosticsResponse {
+    /// Realm that was checked.
+    pub realm: String,
+    /// Number of files with at least one diagnostic.
+    pub files_with_issues: usize,
+    /// Per-file diagnostic lists (only files that have issues are included).
+    pub diagnostics: Vec<FileDiagnosticsDto>,
+}
+
 /// Response from the graph-analysis tool.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct GraphAnalysisResponse {
