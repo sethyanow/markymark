@@ -242,8 +242,9 @@ streaming with callback vtable (`Renderer: enterBlock/leaveBlock/enterSpan/leave
 CommonMark + GFM (tables, strikethrough, tasklists, wiki-links, LaTeX math).
 
 **Why it matters:** Eliminates the dual-grammar bottleneck entirely. No block+inline split,
-no 500 FFI round-trips. Single pass over `[]const u8`. md4c benchmarks at ~200MB/s —
-our 50KB doc would be ~0.25ms vs tree-sitter's 12.8ms.
+no 500 FFI round-trips. Single pass over `[]const u8`. Measured: **2.8x faster** full pipeline
+at 50KB (9.4ms vs 26.7ms tree-sitter). Raw md4c claimed ~200MB/s but extraction callbacks
+add per-element allocation overhead (actual: 23 MB/s at 50KB with extraction).
 
 **Plan:** Copy Bun `src/md/` into our Zig workspace, strip Bun-specific deps, write custom
 Renderer vtable that emits extractor-compatible types with byte offsets, wire into ScanBackend
@@ -278,6 +279,55 @@ exempt from 1000-line hard stop.
 
 **Active work:** marky-s02r (child of marky-0mr) — copy Bun src/md/ into zig/src/md4c/,
 strip Bun deps, smoke test with HtmlRenderer. Working despite marky-77i blocker (user decision).
+
+### md4c vs tree-sitter Performance (2026-02-19, marky-jpot)
+
+Criterion benchmarks (release mode, synthetic docs via `generate_markdown_doc()`).
+
+**Full pipeline: `from_scan(md4c)` vs `from_ast(tree-sitter)` (parse + index build)**
+
+| Size | md4c extract only | md4c from_scan | tree-sitter from_ast | Speedup (pipeline) | Speedup (extract) |
+|------|------------------|----------------|---------------------|-------------------|-------------------|
+| 1KB | 0.115ms | 0.229ms | 0.490ms | 2.1x | 4.3x |
+| 10KB | 0.850ms | 1.836ms | 4.573ms | 2.5x | 5.4x |
+| 50KB | 4.686ms | 9.436ms | 26.662ms | 2.8x | 5.7x |
+| 100KB | 9.882ms | 20.692ms | 66.962ms | 3.2x | 6.8x |
+
+**Zig-only (GPA allocator, 1000 iterations, ReleaseFast, no FFI)**
+
+| Size | Zig extract | Throughput | Headings | Links |
+|------|------------|------------|----------|-------|
+| 1KB | 0.075ms | 15.1 MB/s | 5 | 16 |
+| 10KB | 0.189ms | 53.1 MB/s | 37 | 144 |
+| 50KB | 2.129ms | 23.0 MB/s | 177 | 704 |
+| 100KB | 9.568ms | 10.2 MB/s | 352 | 1404 |
+
+**Key findings:**
+
+1. **Sub-1ms NOT achieved at 50KB.** md4c extract-only is 4.7ms, full pipeline is 9.4ms. The
+   200MB/s claim is for raw parsing without extraction callbacks — our ExtractionRenderer adds
+   per-heading/per-link string allocation overhead that dominates at scale.
+
+2. **md4c is 2.8x faster than tree-sitter** for the full parse+index pipeline at 50KB. This is
+   meaningful but below the hoped-for 10x. The speedup increases with document size (3.2x at 100KB)
+   because tree-sitter's dual-grammar cost scales worse than md4c's single-pass.
+
+3. **FFI overhead is moderate.** Zig-only at 50KB: 2.1ms vs FFI extract: 4.7ms (2.2x overhead from
+   blob packing, Rust String allocation, page_allocator). At 100KB the gap narrows (9.6ms vs 9.9ms).
+
+4. **from_scan index build doubles the extraction time.** md4c extract at 50KB: 4.7ms, from_scan:
+   9.4ms. The difference is ScanBackend trait dispatch + DocumentIndex construction (line_starts,
+   self_cell setup, 5 extractors for tags/block-ids via Zig SIMD).
+
+5. **Correctness verified.** md4c heading count matches tree-sitter heading count on same 10KB doc.
+
+6. **Throughput drops at scale** due to extraction allocation density: 53 MB/s at 10KB → 23 MB/s
+   at 50KB → 10 MB/s at 100KB. Parser itself is fast; the bottleneck is N allocations in
+   ExtractionRenderer (one per heading text, two per link text+target).
+
+**Architecture is sound.** 2.8x pipeline speedup validates md4c as the fast path for indexing.
+Future optimization: arena allocator in ExtractionRenderer to batch allocations (could recover
+closer to raw md4c throughput). Debounce (marky-7dq) remains complementary.
 
 ### Byte Offsets for MarkdownLink/XmlTag (2026-02-18)
 
