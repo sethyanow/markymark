@@ -245,10 +245,10 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_entity_not_decoded() {
-        // ExtractionRenderer does NOT decode HTML entities — they pass through raw
+    fn test_extract_entity_decoded() {
+        // ExtractionRenderer decodes HTML entities to UTF-8 (marky-yfh7)
         let result = extract_md4c("# Hello &amp; World\n").unwrap();
-        assert_eq!(result.headings[0].text, "Hello &amp; World");
+        assert_eq!(result.headings[0].text, "Hello & World");
     }
 
     #[test]

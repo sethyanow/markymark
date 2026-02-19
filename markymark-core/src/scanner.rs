@@ -451,12 +451,12 @@ mod tests {
         }
 
         #[test]
-        fn test_md4c_scan_entity_not_decoded() {
-            // md4c ExtractionRenderer does NOT decode HTML entities (marky-yfh7)
+        fn test_md4c_scan_entity_decoded() {
+            // md4c ExtractionRenderer decodes HTML entities to UTF-8 (marky-yfh7)
             let backend = Md4cScanBackend;
             let results = backend.scan_headings("# Hello &amp; World\n").unwrap();
             assert_eq!(results.len(), 1);
-            assert_eq!(results[0].text, "Hello &amp; World");
+            assert_eq!(results[0].text, "Hello & World");
         }
     }
 }
