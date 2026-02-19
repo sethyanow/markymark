@@ -131,38 +131,62 @@ pub fn range_is_after_edit_end(range: Range, edit: &InputEdit) -> bool {
     range_start >= edit_old_end
 }
 
+fn saturating_add_u32_delta(value: u32, delta: i128) -> u32 {
+    if delta >= 0 {
+        let add = u32::try_from(delta).unwrap_or(u32::MAX);
+        value.saturating_add(add)
+    } else {
+        let sub = u32::try_from(delta.unsigned_abs()).unwrap_or(u32::MAX);
+        value.saturating_sub(sub)
+    }
+}
+
+fn saturating_add_usize_delta(value: usize, delta: i128) -> usize {
+    if delta >= 0 {
+        let add = usize::try_from(delta).unwrap_or(usize::MAX);
+        value.saturating_add(add)
+    } else {
+        let sub = usize::try_from(delta.unsigned_abs()).unwrap_or(usize::MAX);
+        value.saturating_sub(sub)
+    }
+}
+
 /// Adjust a Range's line/character positions for an entry that starts after the edit's old end.
 ///
 /// When an edit changes the document length, entries after the edit shift. This function
 /// applies the line/column delta from the InputEdit to keep positions accurate.
 pub fn adjust_range_after_edit(range: &mut Range, edit: &InputEdit) {
-    let old_end_row = edit.old_end_position.row as u32;
-    let line_delta = edit.new_end_position.row as i64 - edit.old_end_position.row as i64;
+    let old_end_row = u32::try_from(edit.old_end_position.row).unwrap_or(u32::MAX);
+    let line_delta = i128::try_from(edit.new_end_position.row).unwrap_or(i128::MAX)
+        - i128::try_from(edit.old_end_position.row).unwrap_or(i128::MAX);
 
     // Adjust start position
     if range.start.line == old_end_row {
-        let col_delta = edit.new_end_position.column as i64 - edit.old_end_position.column as i64;
-        range.start.line = (range.start.line as i64 + line_delta).max(0) as u32;
-        range.start.character = (range.start.character as i64 + col_delta).max(0) as u32;
+        let col_delta = i128::try_from(edit.new_end_position.column).unwrap_or(i128::MAX)
+            - i128::try_from(edit.old_end_position.column).unwrap_or(i128::MAX);
+        range.start.line = saturating_add_u32_delta(range.start.line, line_delta);
+        range.start.character = saturating_add_u32_delta(range.start.character, col_delta);
     } else {
-        range.start.line = (range.start.line as i64 + line_delta).max(0) as u32;
+        range.start.line = saturating_add_u32_delta(range.start.line, line_delta);
     }
 
     // Adjust end position
     if range.end.line == old_end_row {
-        let col_delta = edit.new_end_position.column as i64 - edit.old_end_position.column as i64;
-        range.end.line = (range.end.line as i64 + line_delta).max(0) as u32;
-        range.end.character = (range.end.character as i64 + col_delta).max(0) as u32;
+        let col_delta = i128::try_from(edit.new_end_position.column).unwrap_or(i128::MAX)
+            - i128::try_from(edit.old_end_position.column).unwrap_or(i128::MAX);
+        range.end.line = saturating_add_u32_delta(range.end.line, line_delta);
+        range.end.character = saturating_add_u32_delta(range.end.character, col_delta);
     } else {
-        range.end.line = (range.end.line as i64 + line_delta).max(0) as u32;
+        range.end.line = saturating_add_u32_delta(range.end.line, line_delta);
     }
 }
 
 /// Adjust byte offsets for an entry that starts after the edit's old end.
 pub fn adjust_bytes_after_edit(start_byte: &mut usize, end_byte: &mut usize, edit: &InputEdit) {
-    let byte_delta = edit.new_end_byte as isize - edit.old_end_byte as isize;
-    *start_byte = (*start_byte as isize + byte_delta).max(0) as usize;
-    *end_byte = (*end_byte as isize + byte_delta).max(0) as usize;
+    let byte_delta = i128::try_from(edit.new_end_byte).unwrap_or(i128::MAX)
+        - i128::try_from(edit.old_end_byte).unwrap_or(i128::MAX);
+    *start_byte = saturating_add_usize_delta(*start_byte, byte_delta);
+    *end_byte = saturating_add_usize_delta(*end_byte, byte_delta);
 }
 
 // ─── WikiLink incremental helpers ─────────────────────────────────────────────

@@ -1,5 +1,5 @@
 use super::*;
-use markymark_core::Position;
+use markymark_core::{Position, Range};
 use std::fs;
 
 fn make_temp_realm_dir(_suffix: &str) -> tempfile::TempDir {
@@ -194,6 +194,90 @@ fn rename_uses_named_realm() {
         !matches!(result, CoreOperationResult::Error(_)),
         "expected success from named realm, got {result:?}"
     );
+}
+
+#[test]
+fn find_references_structured_doc_key_returns_empty_locations() {
+    let dir = make_temp_realm_dir("find-refs-structured-key");
+    fs::write(
+        dir.path().join("config.json"),
+        "{\n  \"database\": {\n    \"host\": \"localhost\"\n  }\n}\n",
+    )
+    .unwrap();
+    let engine = make_engine_with_custom_realm("refs-structured", dir.path());
+    let uri = DocumentUri::from_file_path(&dir.path().join("config.json"));
+
+    let result = engine.execute(CoreOperation::FindReferences {
+        uri,
+        position: Range::new(Position::new(2, 5), Position::new(2, 5)),
+        realm: Some("refs-structured".to_string()),
+    });
+
+    match result {
+        CoreOperationResult::Locations(locations) => {
+            assert!(
+                locations.is_empty(),
+                "structured keys have no cross-doc refs"
+            )
+        }
+        other => panic!("expected empty Locations result, got {other:?}"),
+    }
+}
+
+#[test]
+fn find_references_structured_doc_off_key_returns_error() {
+    let dir = make_temp_realm_dir("find-refs-structured-off-key");
+    fs::write(
+        dir.path().join("config.json"),
+        "{\n  \"database\": {\n    \"host\": \"localhost\"\n  }\n}\n",
+    )
+    .unwrap();
+    let engine = make_engine_with_custom_realm("refs-structured-off-key", dir.path());
+    let uri = DocumentUri::from_file_path(&dir.path().join("config.json"));
+
+    let result = engine.execute(CoreOperation::FindReferences {
+        uri,
+        // Cursor on value text ("localhost"), not on a key.
+        position: Range::new(Position::new(2, 15), Position::new(2, 15)),
+        realm: Some("refs-structured-off-key".to_string()),
+    });
+
+    match result {
+        CoreOperationResult::Error(err) => {
+            assert!(
+                err.to_string()
+                    .contains("no referenceable symbol at position"),
+                "expected no-symbol error, got {err:?}"
+            );
+        }
+        other => panic!("expected Error result, got {other:?}"),
+    }
+}
+
+#[test]
+fn rename_structured_doc_returns_not_supported_error() {
+    let dir = make_temp_realm_dir("rename-structured");
+    fs::write(dir.path().join("config.toml"), "host = \"localhost\"\n").unwrap();
+    let engine = make_engine_with_custom_realm("rename-structured", dir.path());
+    let uri = DocumentUri::from_file_path(&dir.path().join("config.toml"));
+
+    let result = engine.execute(CoreOperation::Rename {
+        uri,
+        position: Range::new(Position::new(0, 1), Position::new(0, 1)),
+        new_name: "server_host".to_string(),
+        realm: Some("rename-structured".to_string()),
+    });
+
+    match result {
+        CoreOperationResult::Error(err) => {
+            assert!(
+                err.to_string()
+                    .contains("rename is not supported for structured documents"),
+                "expected structured rename unsupported error, got {err:?}"
+            );
+        }
+        other => panic!("expected Error result, got {other:?}"),
+    }
 }
 
 #[test]

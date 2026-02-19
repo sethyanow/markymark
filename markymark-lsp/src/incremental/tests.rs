@@ -889,6 +889,51 @@ fn test_adjust_bytes_after_edit_saturates_on_large_deletion() {
     assert_eq!(end_byte, 0, "end_byte must saturate at 0, not underflow");
 }
 
+/// marky-v8y: positive line deltas must saturate at u32::MAX, not wrap.
+#[test]
+fn test_adjust_range_after_edit_saturates_on_large_positive_delta() {
+    let mut range = Range::new(
+        Position::new(u32::MAX - 2, 10),
+        Position::new(u32::MAX - 1, 20),
+    );
+    let edit = InputEdit {
+        start_byte: 0,
+        old_end_byte: 0,
+        new_end_byte: 1,
+        start_position: Point { row: 0, column: 0 },
+        old_end_position: Point { row: 0, column: 0 },
+        new_end_position: Point {
+            row: u32::MAX as usize,
+            column: 0,
+        },
+    };
+
+    adjust_range_after_edit(&mut range, &edit);
+
+    assert_eq!(range.start.line, u32::MAX);
+    assert_eq!(range.end.line, u32::MAX);
+}
+
+/// marky-v8y: positive byte deltas must saturate at usize::MAX, not wrap.
+#[test]
+fn test_adjust_bytes_after_edit_saturates_on_large_positive_delta() {
+    let mut start_byte = usize::MAX - 5;
+    let mut end_byte = usize::MAX - 1;
+    let edit = InputEdit {
+        start_byte: 0,
+        old_end_byte: 0,
+        new_end_byte: 10,
+        start_position: Point { row: 0, column: 0 },
+        old_end_position: Point { row: 0, column: 0 },
+        new_end_position: Point { row: 0, column: 10 },
+    };
+
+    adjust_bytes_after_edit(&mut start_byte, &mut end_byte, &edit);
+
+    assert_eq!(start_byte, usize::MAX);
+    assert_eq!(end_byte, usize::MAX);
+}
+
 // ─── Full parity test: incremental must match full rebuild INCLUDING positions ─
 
 #[test]
