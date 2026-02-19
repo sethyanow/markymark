@@ -5,7 +5,7 @@ use markymark_parser::InputEdit;
 
 use super::{
     adjust_bytes_after_edit, adjust_range_after_edit, any_edit_in_entry_gap, range_intersects_edit,
-    range_is_after_edit_end, range_within_neighbor_window,
+    range_is_after_edit_end, range_within_neighbor_window, range_within_new_end_window,
 };
 
 /// Returns true if this wiki-link is affected by any of the pending edits.
@@ -108,7 +108,11 @@ pub fn merge_incremental_wiki_links(
         }
     }
     for new_link in new_wiki_links {
-        if wiki_link_affected_by_edits(new_link, pending_edits) {
+        if wiki_link_affected_by_edits(new_link, pending_edits)
+            || pending_edits.iter().any(|edit| {
+                range_within_new_end_window(new_link.start_byte, new_link.end_byte, edit, 100)
+            })
+        {
             merged.push(new_link.clone());
         }
     }
