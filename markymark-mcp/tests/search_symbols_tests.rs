@@ -127,7 +127,11 @@ fn search_symbols_mixes_headings_and_key_paths() {
     let has_key_path = names.iter().any(|n| n.contains("api_"));
 
     assert!(
-        has_heading || has_key_path,
-        "expected at least one heading or key-path result for 'api', got: {names:?}"
+        has_heading,
+        "expected a heading result (API Reference or API Guide) for 'api', got: {names:?}"
+    );
+    assert!(
+        has_key_path,
+        "expected a key-path result (api_*) for 'api', got: {names:?}"
     );
 }
