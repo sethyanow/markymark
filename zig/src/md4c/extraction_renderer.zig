@@ -732,8 +732,9 @@ test "entity in heading" {
     defer result.deinit();
 
     try testing.expectEqual(@as(usize, 1), result.headings.len);
-    // md4c decodes entities: &amp; → &
-    try testing.expectEqualStrings("Hello & World", result.headings[0].text);
+    // md4c sends entity references as raw text via TextType.entity callback.
+    // ExtractionRenderer does NOT decode entities — passes through as-is.
+    try testing.expectEqualStrings("Hello &amp; World", result.headings[0].text);
     // Offset should point to '#'
     try testing.expect(input[result.headings[0].offset] == '#');
 }
