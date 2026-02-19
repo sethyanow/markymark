@@ -126,3 +126,28 @@ fn get_diagnostics_missing_realm_returns_error() {
         "nonexistent realm should return Error, got {result:?}"
     );
 }
+
+#[test]
+fn get_diagnostics_structured_doc_returns_empty_not_error() {
+    let ws = TempWorkspace::new("structured-doc");
+    ws.write("data.json", r#"{"key": "value"}"#);
+    ws.write("notes.md", "# Notes\n\nSome text.\n");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("engine should build");
+
+    // Get a file:// URI for the JSON file
+    let file_path = ws.root().join("data.json");
+    let uri = markymark_core::DocumentUri::from_file_path(&file_path);
+
+    let result = engine.execute(CoreOperation::GetDiagnostics {
+        uri: Some(uri),
+        realm: None,
+    });
+
+    // Should return empty diagnostics, NOT an error
+    let items = extract_diagnostics(result);
+    let all_diags: Vec<_> = items.into_iter().flat_map(|(_, d)| d).collect();
+    assert!(
+        all_diags.is_empty(),
+        "structured doc should have empty diagnostics, not an error; got: {all_diags:?}"
+    );
+}
