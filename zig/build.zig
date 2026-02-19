@@ -136,8 +136,8 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_tests.step);
 
     // ── md4c parser tests ────────────────────────────────────────────────
-    // Vendored Zig md4c parser (from Bun). Test-only — not linked into
-    // libmarky_kernels.a yet.
+    // Vendored Zig md4c parser (from Bun). Linked into libmarky_kernels.a
+    // via c_adapter.zig comptime import of md4c/exports.zig.
     const md4c_test_mod = b.createModule(.{
         .root_source_file = b.path("src/md4c/root.zig"),
         .target = target,
