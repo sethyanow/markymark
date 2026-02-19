@@ -103,6 +103,31 @@ pub fn range_is_after_edit_start(range: Range, edit: &InputEdit) -> bool {
     range_start >= edit_start
 }
 
+/// Returns true if any edit falls in a region not covered by any entry's byte
+/// range extended by `window_bytes`.
+///
+/// This catches insertions in large gaps between consecutive entries (or before
+/// the first entry) where the fixed-size neighbor window doesn't reach.
+///
+/// Complexity: O(edits × entries), both typically small.
+pub fn any_edit_in_entry_gap(
+    entry_byte_ranges: &[(usize, usize)],
+    pending_edits: &[InputEdit],
+    window_bytes: usize,
+) -> bool {
+    if entry_byte_ranges.is_empty() {
+        // Caller handles the empty-entries case with a full rebuild
+        // (build_markdown_index_incremental checks old.is_empty() first).
+        return false;
+    }
+    pending_edits.iter().any(|edit| {
+        !entry_byte_ranges.iter().any(|&(start, end)| {
+            start <= edit.old_end_byte.saturating_add(window_bytes)
+                && end.saturating_add(window_bytes) >= edit.start_byte
+        })
+    })
+}
+
 /// Returns true if the byte range is within `window_bytes` of the edit region.
 /// Used for extractors that have byte offsets (e.g., wiki_links, markdown links, XML tags, blocks).
 pub fn range_within_neighbor_window(
@@ -208,10 +233,18 @@ pub fn wiki_links_need_update(
     old_wiki_links: &[WikiLinkOwned],
     pending_edits: &[InputEdit],
 ) -> bool {
+    if pending_edits.is_empty() {
+        return false;
+    }
+    let byte_ranges: Vec<(usize, usize)> = old_wiki_links
+        .iter()
+        .map(|link| (link.start_byte, link.end_byte))
+        .collect();
     old_wiki_links
         .iter()
         .any(|link| wiki_link_affected_by_edits(link, pending_edits))
         || any_edit_starts_at_or_after_last_wiki_link(old_wiki_links, pending_edits)
+        || any_edit_in_entry_gap(&byte_ranges, pending_edits, 100)
 }
 
 /// Returns true if any edit starts at or after the last wiki-link end.
@@ -309,10 +342,15 @@ pub fn blocks_need_update(old_blocks: &[BlockOwned], pending_edits: &[InputEdit]
     if pending_edits.is_empty() {
         return false;
     }
+    let byte_ranges: Vec<(usize, usize)> = old_blocks
+        .iter()
+        .map(|block| (block.start_byte, block.end_byte))
+        .collect();
     old_blocks
         .iter()
         .any(|block| block_affected_by_edits(block, pending_edits))
         || any_edit_starts_at_or_after_last_block(old_blocks, pending_edits)
+        || any_edit_in_entry_gap(&byte_ranges, pending_edits, 100)
 }
 
 /// Returns true if any edit starts at or after the last block ID end.
@@ -403,10 +441,15 @@ pub fn markdown_links_need_update(
     if pending_edits.is_empty() {
         return false;
     }
+    let byte_ranges: Vec<(usize, usize)> = old_mls
+        .iter()
+        .map(|ml| (ml.start_byte, ml.end_byte))
+        .collect();
     old_mls
         .iter()
         .any(|ml| markdown_link_affected_by_edits(ml, pending_edits))
         || any_edit_starts_at_or_after_last_markdown_link(old_mls, pending_edits)
+        || any_edit_in_entry_gap(&byte_ranges, pending_edits, 100)
 }
 
 /// Returns true if any edit starts at or after the last markdown link end.
@@ -496,10 +539,15 @@ pub fn xml_tags_need_update(old_xts: &[XmlTagOwned], pending_edits: &[InputEdit]
     if pending_edits.is_empty() {
         return false;
     }
+    let byte_ranges: Vec<(usize, usize)> = old_xts
+        .iter()
+        .map(|xt| (xt.start_byte, xt.end_byte))
+        .collect();
     old_xts
         .iter()
         .any(|xt| xml_tag_affected_by_edits(xt, pending_edits))
         || any_edit_starts_at_or_after_last_xml_tag(old_xts, pending_edits)
+        || any_edit_in_entry_gap(&byte_ranges, pending_edits, 100)
 }
 
 /// Returns true if any edit starts at or after the last XML tag end.

@@ -45,6 +45,38 @@ fn find_document_by_page_name(realm: &RealmIndex, target: &str) -> Option<Docume
     realm.find_uri_by_stem(target)
 }
 
+/// Resolve a markdown link URL to a document URI.
+///
+/// Strategy:
+/// - If `url` contains a `/` (directory segment), try path-relative resolution first.
+/// - Fall back to stem-only matching (strips any `.md`/`.markdown` extension, then matches stem).
+fn find_document_by_markdown_url(
+    realm: &RealmIndex,
+    from_uri: &DocumentUri,
+    url: &str,
+) -> Option<DocumentUri> {
+    // Skip external URLs; they can never resolve to a workspace document.
+    if url.contains("://") || url.starts_with("mailto:") {
+        return None;
+    }
+
+    // Path-relative: only attempted when url contains a directory separator.
+    if url.contains('/') {
+        if let Some(uri) = realm.find_uri_by_relative_path(from_uri, url) {
+            return Some(uri);
+        }
+    }
+
+    // Stem-only fallback: strip extension from the last path component, then match by stem.
+    let filename = url.rsplit('/').next().unwrap_or(url);
+    let stem = filename
+        .strip_suffix(".markdown")
+        .or_else(|| filename.strip_suffix(".md"))
+        .unwrap_or(filename);
+
+    find_document_by_page_name(realm, stem)
+}
+
 /// Resolve a wiki link to its target.
 ///
 /// - `[[page-name]]` → document
@@ -110,7 +142,10 @@ pub fn resolve_wiki_link(
 /// Resolve a markdown link anchor to its target.
 ///
 /// - `[text](#heading-slug)` → heading in current document
+/// - `[text](other.md)` → another document (stem-only match)
 /// - `[text](other.md#heading)` → heading in another document
+/// - `[text](dir/other.md)` → path-relative first, stem-only fallback
+/// - `[text](dir/other.md#heading)` → heading in path-relative or stem-matched document
 pub fn resolve_markdown_link(
     realm: &RealmIndex,
     from_uri: &DocumentUri,
@@ -128,7 +163,24 @@ pub fn resolve_markdown_link(
                 text: entry.text.to_string(),
             })
         }
-        _ => None,
+        // [text](url) or [text](url#anchor) - cross-document link
+        (false, anchor) => {
+            let doc_uri = find_document_by_markdown_url(realm, from_uri, url)?;
+            match anchor {
+                None => Some(ResolvedTarget::Document(doc_uri)),
+                Some(slug) => {
+                    let doc = realm.get_document(&doc_uri)?;
+                    let entry = doc.heading_by_slug(slug)?;
+                    Some(ResolvedTarget::Heading {
+                        uri: doc_uri,
+                        slug: entry.slug.to_string(),
+                        text: entry.text.to_string(),
+                    })
+                }
+            }
+        }
+        // Empty url with no anchor - nothing to resolve
+        (true, None) => None,
     }
 }
 
