@@ -279,8 +279,8 @@ mod tests {
         let version = u16::from_le_bytes([data[4], data[5]]);
         assert_eq!(version, 1);
 
-        // heading_count at offset 12 (after magic:4 + version:2 + flags:2 + content_hash:8)
-        let heading_count = u32::from_le_bytes([data[12], data[13], data[14], data[15]]);
+        // heading_count at offset 16 (after magic:4 + version:2 + flags:2 + content_hash:8)
+        let heading_count = u32::from_le_bytes([data[16], data[17], data[18], data[19]]);
         assert!(
             heading_count >= 1,
             "should have at least 1 heading, got {heading_count}"
