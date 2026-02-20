@@ -24,12 +24,7 @@ Known issue: XML tag false positives in code blocks (marky-8la).
 
 ### Known Bugs
 
-- **UB in `DocumentIndex::arena_ref`** (marky-f9vv, P3). `document/mod.rs:83-98` escapes
-  MutexGuard lifetime via raw pointer, then dereferences `&Bump` (interior mutability via Cell)
-  without the guard held. Technically UB under Rust aliasing rules. Single-threaded in practice
-  (only called during `from_ast` construction). Fix: restructure self_cell builder or replace
-  Mutex with UnsafeCell + safety proof. Note: the LSP hot path now uses `from_blob()` which
-  avoids this entirely; `arena_ref` is only hit by MCP/batch `from_ast()` callers.
+(none currently)
 
 ---
 
@@ -97,6 +92,7 @@ CLAUDE.md "Document Intelligence" section for the full LSP vs MCP decision tree.
 ### Arena Allocation
 
 - **ArenaHashMap (!Send) restricted to parser types only; index types use std HashMap** (dec-arena-send-001). Bump:!Sync -> &Bump:!Send -> ArenaHashMap:!Send. tower-lsp requires Send+'static for async handlers.
+- **DocumentIndex uses bare DocumentArena + unsafe impl Sync instead of Mutex** (marky-f9vv). The previous Mutex wrapper led to UB via raw-pointer MutexGuard escape. Bare arena + `unsafe impl Sync` is sound because the arena is only mutated during single-threaded self_cell construction; post-construction access is read-only. Compile-time Send+Sync assertion test guards against regression.
 - **Adopted DocumentArena wrapper in Ast and DocumentIndex** (dec-docarena-adopt-001). Provides Debug, capacity hints, semantic boundary vs raw Bump.
 - **Reorder Ast struct fields so root_elements before arena** (dec-031). Rust drops in declaration order. Arena must outlive elements.
 - **Arena reuse via reset is NOT worth implementing** (dec-041). Arena lifecycle = 0.07% of reparse cost.
