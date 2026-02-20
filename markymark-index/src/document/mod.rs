@@ -557,8 +557,10 @@ impl DocumentIndex {
         let line_starts = helpers::byte_offset_line_starts(text);
 
         // Collect owned data from scan backend before entering self_cell closure
-        let scan_headings = backend.scan_headings(text).unwrap_or_default();
-        let scan_links = backend.scan_links(text).unwrap_or_default();
+        let ScanAllResult {
+            headings: scan_headings,
+            links: scan_links,
+        } = backend.scan_all(text).unwrap_or_default();
         let scan_tags = backend.scan_tags(text).unwrap_or_default();
         let scan_blocks = backend.scan_block_ids(text).unwrap_or_default();
 
