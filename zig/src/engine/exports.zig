@@ -73,6 +73,9 @@ export fn marky_engine_get_blob(
         error.ParseFailed => @as(i32, -4),
     };
 
+    // Defense-in-depth: blobs are bounded by u32 throughout (computeBlobSize returns ?u32),
+    // so this can only trigger on 64-bit if somehow >4 GB of blob data is produced.
+    if (data.len > std.math.maxInt(u32)) return @as(i32, -5);
     out_ptr.* = data.ptr;
     out_len.* = @intCast(data.len);
     return 0;

@@ -210,15 +210,17 @@ pub fn writeHeader(data: []u8, header: ScanBlobHeader) void {
 }
 
 /// Write a struct into the blob buffer at a given byte offset.
-pub fn writeStruct(comptime T: type, buf: []u8, offset: usize, value: T) void {
-    std.debug.assert(offset + @sizeOf(T) <= buf.len); // bounds check (debug only)
+/// Returns `error.OutOfRange` if the struct does not fit in the buffer.
+pub fn writeStruct(comptime T: type, buf: []u8, offset: usize, value: T) !void {
+    if (offset + @sizeOf(T) > buf.len) return error.OutOfRange;
     const src: [*]const u8 = @ptrCast(&value);
     @memcpy(buf[offset..][0..@sizeOf(T)], src[0..@sizeOf(T)]);
 }
 
 /// Read a struct from the blob buffer at a given byte offset.
-pub fn readStruct(comptime T: type, buf: []const u8, offset: usize) T {
-    std.debug.assert(offset + @sizeOf(T) <= buf.len); // bounds check (debug only)
+/// Returns `error.OutOfRange` if the struct does not fit in the buffer.
+pub fn readStruct(comptime T: type, buf: []const u8, offset: usize) !T {
+    if (offset + @sizeOf(T) > buf.len) return error.OutOfRange;
     var result: T = undefined;
     const dst: [*]u8 = @ptrCast(&result);
     @memcpy(dst[0..@sizeOf(T)], buf[offset..][0..@sizeOf(T)]);
@@ -316,10 +318,22 @@ test "writeStruct and readStruct roundtrip" {
         .end_col = 7,
         .level = 1,
     };
-    writeStruct(BlobHeading, &buf, 64, heading);
-    const read_back = readStruct(BlobHeading, &buf, 64);
+    try writeStruct(BlobHeading, &buf, 64, heading);
+    const read_back = try readStruct(BlobHeading, &buf, 64);
     try testing.expectEqual(heading.text_off, read_back.text_off);
     try testing.expectEqual(heading.text_len, read_back.text_len);
     try testing.expectEqual(heading.level, read_back.level);
     try testing.expectEqual(heading.end_col, read_back.end_col);
+}
+
+test "writeStruct returns error on out-of-bounds offset" {
+    var buf: [10]u8 = .{0} ** 10;
+    // BlobHeading is 40 bytes; offset 5 puts it at bytes 5..45, beyond buf.len=10
+    try testing.expectError(error.OutOfRange, writeStruct(BlobHeading, &buf, 5, std.mem.zeroes(BlobHeading)));
+}
+
+test "readStruct returns error on out-of-bounds offset" {
+    const buf: [10]u8 = .{0} ** 10;
+    // BlobHeading is 40 bytes; offset 5 puts it at bytes 5..45, beyond buf.len=10
+    try testing.expectError(error.OutOfRange, readStruct(BlobHeading, buf[0..], 5));
 }
