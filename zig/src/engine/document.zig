@@ -178,7 +178,7 @@ pub const DocumentEngine = struct {
 
 // ── Core parse/extract pipeline ─────────────────────────────────────
 
-fn parseAll(
+pub fn parseAll(
     allocator: Allocator,
     text: []const u8,
     out_headings: *[]StoredHeading,
@@ -403,7 +403,7 @@ fn makeSlug(
 }
 
 /// Slugify text into a stack buffer. Returns the slug slice.
-fn slugifyText(text: []const u8, out: *[512]u8) []const u8 {
+pub fn slugifyText(text: []const u8, out: *[512]u8) []const u8 {
     if (text.len == 0) return "";
     const rc = slug_kernel.slugify(text.ptr, @intCast(text.len), out, 512);
     if (rc >= 0) {
@@ -609,7 +609,7 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
 
 // ── Free helpers ────────────────────────────────────────────────────
 
-fn freeHeadings(allocator: Allocator, headings: []StoredHeading) void {
+pub fn freeHeadings(allocator: Allocator, headings: []StoredHeading) void {
     for (headings) |h| {
         allocator.free(h.text);
         allocator.free(h.slug);
@@ -617,7 +617,7 @@ fn freeHeadings(allocator: Allocator, headings: []StoredHeading) void {
     if (headings.len > 0) allocator.free(headings);
 }
 
-fn freeLinks(allocator: Allocator, links: []StoredLink) void {
+pub fn freeLinks(allocator: Allocator, links: []StoredLink) void {
     for (links) |l| {
         allocator.free(l.text);
         allocator.free(l.target);
@@ -625,21 +625,21 @@ fn freeLinks(allocator: Allocator, links: []StoredLink) void {
     if (links.len > 0) allocator.free(links);
 }
 
-fn freeTags(allocator: Allocator, tags: []StoredTag) void {
+pub fn freeTags(allocator: Allocator, tags: []StoredTag) void {
     for (tags) |t| {
         allocator.free(t.name);
     }
     if (tags.len > 0) allocator.free(tags);
 }
 
-fn freeBlockIds(allocator: Allocator, block_ids: []StoredBlockId) void {
+pub fn freeBlockIds(allocator: Allocator, block_ids: []StoredBlockId) void {
     for (block_ids) |b| {
         allocator.free(b.id);
     }
     if (block_ids.len > 0) allocator.free(block_ids);
 }
 
-fn freeStoredHeadingsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredHeading), free_texts: bool) void {
+pub fn freeStoredHeadingsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredHeading), free_texts: bool) void {
     for (list.items) |h| {
         // h.text was transferred from extraction; only free it when texts_transferred=true
         // (i.e., after extraction.headings/links slice containers were freed at line 289-290).
@@ -649,7 +649,7 @@ fn freeStoredHeadingsList(allocator: Allocator, list: *std.ArrayListUnmanaged(St
     list.deinit(allocator);
 }
 
-fn freeStoredLinksList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredLink), free_texts: bool) void {
+pub fn freeStoredLinksList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredLink), free_texts: bool) void {
     // l.text and l.target were transferred from extraction; free them only when
     // texts_transferred=true (after extraction slice containers freed at line 289-290).
     if (free_texts) {
