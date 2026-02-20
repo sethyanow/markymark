@@ -426,6 +426,61 @@ Three additional findings from cursor and codex reviews, SRE-refined:
   offsets. Zig always produces valid offsets but a parser bug would panic the LSP/MCP process.
   from_blob validates via pool_str; this path does not. Fix: safe_blob_slice helper.
 
+## PR #41 Code Review Triage (2026-02-20)
+
+SRE-level assessment of findings from CodeRabbit (6 inline + 1 outside-diff + 7 nitpicks),
+Semgrep/GHAS (22 comments = 11 blocks × 2 rules), and Copilot (0 comments, clean pass).
+Consolidated into 5 tracks after dismissing 3 findings.
+
+**Dismissed:** (3 items)
+- **did_open generation ordering (server.rs:157-176)** — INVALID. `next_generation` starts
+  at 1 (line 51), so `unwrap_or(0)` always mismatches any captured gen (≥1). Same class as
+  PR #40 "Debounce edit loss" dismissal. Design is correct.
+- **u32 truncation in md4c.rs** — already dismissed in PR #40 review (see above). Same finding.
+- **Semgrep nosemgrep alignment** — engine.rs and md4c.rs already have complete SAFETY +
+  nosemgrep coverage. GHAS still flags because it may not honor inline nosemgrep in diff view.
+  Platform limitation, not a code issue.
+
+**Accepted:** (5 beads created)
+- **marky-0rl6 (P1):** ExtractionRenderer scan_cursor corrupts heading offsets on nested elements.
+  Shared mutable scan_cursor between findHeadingOffset/findLinkOffset causes heading offset
+  to be garbage when link closes before heading block. Fix: split into heading_scan_cursor
+  and link_scan_cursor. Test gap: "link inside heading" test (line 697) doesn't assert offsets.
+- **marky-c44x (P2):** Debounce flush calls apply_document_changes per batch, causing N full
+  reparses. Flatten into single call. Safe because changes are already sequential.
+- **marky-pk33 (P3):** FFI safety hardening — exports.zig u32 intCast guard + blob.zig
+  writeStruct/readStruct fallibility.
+- **marky-i873 (P4):** Vendored autolinks.zig — boolean check, doc comment, debug assertion.
+- **marky-4atp (P4):** Code quality — test lengths, eprintln→tracing, glob import.
+
+---
+
+## Cross-Language Symbol Bridging (Epic marky-ix3)
+
+### Vision (2026-02-20): Universal Symbol Search for Agents
+
+ix3's value expanded from "cross-language symbol bridging" to "unified agent knowledge layer."
+Generated code docs (external markdown from rustdoc etc.) dropped into workspace. markymark
+indexes all backtick code references uniformly. Agents query via standard LSP calls
+(workspaceSymbol, hover, findReferences) — no special tooling. Tool stays indifferent to
+generated vs hand-written markdown.
+
+### Architectural Drift (assessed 2026-02-20)
+
+Design was cut Feb 16. Three shifts since: Option H blob format (no code_span_count),
+ExtractionRenderer solidified (SpanType::code exists but ignored), ScanBackend trait has
+no scan_code_spans(). All three DocumentIndex construction paths need code span support
+(from_ast, from_scan, from_blob) — ix3 only addressed from_scan.
+
+### Key Decisions
+
+- **Tier 1 only for first pass** — backtick inline code spans, no confidence scoring
+- **kind field is Optional** — Tier 1 can't determine struct/fn/trait from backtick text
+- **fgl8 (extract.rs split) decoupled** — not blocking Tier 1
+- **Zig layer consolidation explored** — sink all extraction to Zig over time, extract.rs
+  becomes compatibility shim. Aligns with Option H trajectory.
+- **Refinement blocker:** marky-bt3e must complete before ix3 implementation starts
+
 ---
 
 ## Documentation Overhaul (Epic marky-y1gm)
