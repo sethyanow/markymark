@@ -21,16 +21,34 @@ use std::collections::HashMap;
 /// Debounce delay in milliseconds: only the final pause after typing triggers a reparse.
 const DEBOUNCE_MS: u64 = 75;
 
+/// State shared between the LSP handler and spawned debounce tasks.
+///
+/// Both maps are protected by a single mutex so that cancellation + pending-drain
+/// are always atomic (T1-1: eliminates the race between two independent locks).
+struct DebounceState {
+    /// Pending change batches buffered during a debounce window, keyed by document URI.
+    pending_changes: HashMap<DocumentUri, Vec<Vec<crate::state::DocumentChange>>>,
+    /// Active debounce abort handles, keyed by document URI.
+    debounce_handles: HashMap<DocumentUri, tokio::task::AbortHandle>,
+}
+
+impl DebounceState {
+    fn new() -> Self {
+        Self {
+            pending_changes: HashMap::new(),
+            debounce_handles: HashMap::new(),
+        }
+    }
+}
+
 /// The LSP server backend.
 pub struct Backend {
     /// The tower-lsp client for sending notifications.
     client: Client,
     /// Shared server state behind a read-write lock.
     state: Arc<RwLock<ServerState>>,
-    /// Pending change batches buffered during a debounce window, keyed by document URI.
-    pending_changes: Arc<Mutex<HashMap<DocumentUri, Vec<Vec<crate::state::DocumentChange>>>>>,
-    /// Active debounce abort handles, keyed by document URI.
-    debounce_handles: Arc<Mutex<HashMap<DocumentUri, tokio::task::AbortHandle>>>,
+    /// Debounce state: pending changes and abort handles under a single lock (T1-1).
+    debounce: Arc<Mutex<DebounceState>>,
 }
 
 impl Backend {
@@ -39,8 +57,7 @@ impl Backend {
         Self {
             client,
             state: Arc::new(RwLock::new(ServerState::new())),
-            pending_changes: Arc::new(Mutex::new(HashMap::new())),
-            debounce_handles: Arc::new(Mutex::new(HashMap::new())),
+            debounce: Arc::new(Mutex::new(DebounceState::new())),
         }
     }
 
@@ -49,8 +66,7 @@ impl Backend {
         Self {
             client,
             state: Arc::new(RwLock::new(state)),
-            pending_changes: Arc::new(Mutex::new(HashMap::new())),
-            debounce_handles: Arc::new(Mutex::new(HashMap::new())),
+            debounce: Arc::new(Mutex::new(DebounceState::new())),
         }
     }
 
@@ -174,16 +190,14 @@ impl LanguageServer for Backend {
             return;
         }
 
-        // Buffer this change batch.
+        // Atomically buffer this change batch and cancel any existing debounce (T1-1).
         {
-            let mut pending = self.pending_changes.lock().unwrap();
-            pending.entry(doc_uri.clone()).or_default().push(changes);
-        }
-
-        // Cancel any existing debounce task for this document.
-        {
-            let mut handles = self.debounce_handles.lock().unwrap();
-            if let Some(handle) = handles.remove(&doc_uri) {
+            let mut deb = self.debounce.lock().unwrap();
+            deb.pending_changes
+                .entry(doc_uri.clone())
+                .or_default()
+                .push(changes);
+            if let Some(handle) = deb.debounce_handles.remove(&doc_uri) {
                 handle.abort();
             }
         }
@@ -191,42 +205,37 @@ impl LanguageServer for Backend {
         // Spawn debounce task.
         let state = Arc::clone(&self.state);
         let client = self.client.clone();
-        let pending_changes = Arc::clone(&self.pending_changes);
-        let debounce_handles = Arc::clone(&self.debounce_handles);
+        let debounce = Arc::clone(&self.debounce);
         let uri_str_clone = uri_str.clone();
         let doc_uri_clone = doc_uri.clone();
 
         let join_handle = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(DEBOUNCE_MS)).await;
 
-            // Remove self from handles (not aborted).
-            {
-                let mut handles = debounce_handles.lock().unwrap();
-                handles.remove(&doc_uri_clone);
-            }
-
-            // Drain pending batches.
+            // Atomically remove self from handles and drain pending batches (T1-1, T2-4).
+            // If pending is absent the document was closed while we were sleeping;
+            // abort fires at the next await — return early to avoid stale work (T2-8).
             let batches = {
-                let mut pending = pending_changes.lock().unwrap();
-                pending.remove(&doc_uri_clone).unwrap_or_default()
+                let mut deb = debounce.lock().unwrap();
+                deb.debounce_handles.remove(&doc_uri_clone);
+                match deb.pending_changes.remove(&doc_uri_clone) {
+                    Some(batches) => batches,
+                    None => return,
+                }
             };
 
             if batches.is_empty() {
                 return;
             }
 
-            // Apply all accumulated change batches in order.
-            {
+            // Apply all accumulated change batches and compute diagnostics in a single
+            // write lock scope, eliminating the write→read lock ordering (T2-2).
+            let diagnostics = {
                 let mut state_w = state.write().await;
                 for batch in batches {
                     state_w.apply_document_changes(&doc_uri_clone, batch);
                 }
-            }
-
-            // Compute diagnostics (separate read lock after write lock is dropped).
-            let diagnostics = {
-                let state_r = state.read().await;
-                state_r.compute_diagnostics(&doc_uri_clone)
+                state_w.compute_diagnostics(&doc_uri_clone)
             };
 
             let lsp_diagnostics: Vec<Diagnostic> = diagnostics
@@ -250,19 +259,28 @@ impl LanguageServer for Backend {
 
         // Store abort handle.
         {
-            let mut handles = self.debounce_handles.lock().unwrap();
-            handles.insert(doc_uri, join_handle.abort_handle());
+            let mut deb = self.debounce.lock().unwrap();
+            deb.debounce_handles
+                .insert(doc_uri, join_handle.abort_handle());
         }
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri_str = params.text_document.uri;
         if let Ok(doc_uri) = crate::convert::from_lsp_uri(&uri_str) {
+            // Cancel any pending debounce and clear buffered changes before closing (T2-8).
+            {
+                let mut deb = self.debounce.lock().unwrap();
+                if let Some(handle) = deb.debounce_handles.remove(&doc_uri) {
+                    handle.abort();
+                }
+                deb.pending_changes.remove(&doc_uri);
+            }
             {
                 let mut state = self.state.write().await;
                 state.close_document(&doc_uri);
             }
-            // Clear diagnostics on close
+            // Clear diagnostics on close.
             self.client
                 .publish_diagnostics(uri_str, Vec::new(), None)
                 .await;
