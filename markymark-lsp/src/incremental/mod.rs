@@ -22,6 +22,18 @@ use markymark_index::{
 };
 use markymark_parser::{InputEdit, MarkdownTree};
 
+mod blocks;
+pub use blocks::*;
+
+mod markdown_links;
+pub use markdown_links::*;
+
+mod wiki_links;
+pub use wiki_links::*;
+
+mod xml_tags;
+pub use xml_tags::*;
+
 // ─── Byte-offset helpers (used by state.rs for apply_document_changes) ───────
 
 /// Byte bounds computed from a LSP incremental-change range.
@@ -140,6 +152,26 @@ pub fn range_within_neighbor_window(
         && end_byte.saturating_add(window_bytes) >= edit.start_byte
 }
 
+/// Returns true if the byte range falls within `window_bytes` of the edit's *new* end.
+///
+/// Used by merge functions when filtering **new** entries (post-edit coordinate space).
+/// Complements `range_within_neighbor_window` for large insertions: when more than
+/// `window_bytes` bytes are inserted, new entries deep inside the inserted text have
+/// post-edit offsets beyond `old_end_byte + window_bytes` and would otherwise be
+/// silently dropped. Checking against `new_end_byte` instead catches them.
+///
+/// No-op for deletions and same-length replacements where `new_end_byte <= old_end_byte`;
+/// in those cases the old-end check already provides full coverage.
+pub fn range_within_new_end_window(
+    start_byte: usize,
+    end_byte: usize,
+    edit: &InputEdit,
+    window_bytes: usize,
+) -> bool {
+    start_byte <= edit.new_end_byte.saturating_add(window_bytes)
+        && end_byte.saturating_add(window_bytes) >= edit.start_byte
+}
+
 /// Returns true if the range starts at or after the edit's old end position.
 /// Used to identify entries that need position adjustment (but not re-extraction).
 ///
@@ -212,417 +244,6 @@ pub fn adjust_bytes_after_edit(start_byte: &mut usize, end_byte: &mut usize, edi
         - i128::try_from(edit.old_end_byte).unwrap_or(i128::MAX);
     *start_byte = saturating_add_usize_delta(*start_byte, byte_delta);
     *end_byte = saturating_add_usize_delta(*end_byte, byte_delta);
-}
-
-// ─── WikiLink incremental helpers ─────────────────────────────────────────────
-
-/// Returns true if this wiki-link is affected by any of the pending edits.
-///
-/// Only entries that directly intersect the edit or are within the byte-level
-/// neighbor window need re-extraction. Entries merely *after* the edit are
-/// retained with adjusted positions instead of being re-extracted.
-pub fn wiki_link_affected_by_edits(wl: &WikiLinkOwned, pending_edits: &[InputEdit]) -> bool {
-    pending_edits.iter().any(|edit| {
-        range_intersects_edit(wl.range, edit)
-            || range_within_neighbor_window(wl.start_byte, wl.end_byte, edit, 100)
-    })
-}
-
-/// Returns true if any wiki-link in the old index needs re-extraction.
-pub fn wiki_links_need_update(
-    old_wiki_links: &[WikiLinkOwned],
-    pending_edits: &[InputEdit],
-) -> bool {
-    if pending_edits.is_empty() {
-        return false;
-    }
-    let byte_ranges: Vec<(usize, usize)> = old_wiki_links
-        .iter()
-        .map(|link| (link.start_byte, link.end_byte))
-        .collect();
-    old_wiki_links
-        .iter()
-        .any(|link| wiki_link_affected_by_edits(link, pending_edits))
-        || any_edit_starts_at_or_after_last_wiki_link(old_wiki_links, pending_edits)
-        || any_edit_in_entry_gap(&byte_ranges, pending_edits, 100)
-}
-
-/// Returns true if any edit starts at or after the last wiki-link end.
-/// Catches insertions after the last link that might create new links.
-pub fn any_edit_starts_at_or_after_last_wiki_link(
-    old_wiki_links: &[WikiLinkOwned],
-    pending_edits: &[InputEdit],
-) -> bool {
-    let Some(last_old_end) = old_wiki_links
-        .iter()
-        .map(|link| (link.range.end.line, link.range.end.character))
-        .max()
-    else {
-        return false;
-    };
-
-    pending_edits.iter().any(|edit| {
-        let edit_start = (
-            edit.start_position.row as u32,
-            edit.start_position.column as u32,
-        );
-        edit_start >= last_old_end
-    })
-}
-
-/// Extract all wiki-links from the AST as owned data.
-pub fn extract_wiki_links_owned(ast: &markymark_parser::Ast) -> Vec<WikiLinkOwned> {
-    ast.extract_wiki_links()
-        .into_iter()
-        .filter(|wl| {
-            wl.target_page().is_some()
-                || wl.target_heading().is_some()
-                || wl.target_block_id().is_some()
-        })
-        .map(|wl| {
-            let (start_byte, end_byte) = wl.byte_range();
-            WikiLinkOwned {
-                target: wl.target_page().unwrap_or("").to_string(),
-                alias: wl.alias().map(str::to_string),
-                heading: wl.target_heading().map(str::to_string),
-                range: wl.range(),
-                start_byte,
-                end_byte,
-            }
-        })
-        .collect()
-}
-
-/// Merge old and new wiki-links using selective purge-and-replace.
-///
-/// Keeps old entries not affected by edits (with position adjustment for entries
-/// after the edit); takes new entries from affected regions.
-pub fn merge_incremental_wiki_links(
-    old_wiki_links: &[WikiLinkOwned],
-    new_wiki_links: &[WikiLinkOwned],
-    pending_edits: &[InputEdit],
-) -> Vec<WikiLinkOwned> {
-    let mut merged = Vec::new();
-    for old in old_wiki_links {
-        if !wiki_link_affected_by_edits(old, pending_edits) {
-            let mut adjusted = old.clone();
-            for edit in pending_edits {
-                if range_is_after_edit_end(adjusted.range, edit) {
-                    adjust_range_after_edit(&mut adjusted.range, edit);
-                    adjust_bytes_after_edit(&mut adjusted.start_byte, &mut adjusted.end_byte, edit);
-                }
-            }
-            merged.push(adjusted);
-        }
-    }
-    for new_link in new_wiki_links {
-        if wiki_link_affected_by_edits(new_link, pending_edits) {
-            merged.push(new_link.clone());
-        }
-    }
-    merged.sort_by_key(|wl| (wl.range.start.line, wl.range.start.character));
-    merged
-}
-
-// ─── Block incremental helpers ─────────────────────────────────────────────────
-
-/// Returns true if this block ID is affected by any of the pending edits.
-///
-/// Only entries that directly intersect the edit or are within the byte-level
-/// neighbor window need re-extraction.
-pub fn block_affected_by_edits(block: &BlockOwned, pending_edits: &[InputEdit]) -> bool {
-    pending_edits.iter().any(|edit| {
-        range_intersects_edit(block.range, edit)
-            || range_within_neighbor_window(block.start_byte, block.end_byte, edit, 100)
-    })
-}
-
-/// Returns true if any block ID in the old index needs re-extraction.
-pub fn blocks_need_update(old_blocks: &[BlockOwned], pending_edits: &[InputEdit]) -> bool {
-    if pending_edits.is_empty() {
-        return false;
-    }
-    let byte_ranges: Vec<(usize, usize)> = old_blocks
-        .iter()
-        .map(|block| (block.start_byte, block.end_byte))
-        .collect();
-    old_blocks
-        .iter()
-        .any(|block| block_affected_by_edits(block, pending_edits))
-        || any_edit_starts_at_or_after_last_block(old_blocks, pending_edits)
-        || any_edit_in_entry_gap(&byte_ranges, pending_edits, 100)
-}
-
-/// Returns true if any edit starts at or after the last block ID end.
-pub fn any_edit_starts_at_or_after_last_block(
-    old_blocks: &[BlockOwned],
-    pending_edits: &[InputEdit],
-) -> bool {
-    let Some(last_old_end) = old_blocks
-        .iter()
-        .map(|block| (block.range.end.line, block.range.end.character))
-        .max()
-    else {
-        return false;
-    };
-
-    pending_edits.iter().any(|edit| {
-        let edit_start = (
-            edit.start_position.row as u32,
-            edit.start_position.column as u32,
-        );
-        edit_start >= last_old_end
-    })
-}
-
-/// Extract all block IDs from the AST as owned data.
-pub fn extract_blocks_owned(ast: &markymark_parser::Ast) -> Vec<BlockOwned> {
-    ast.extract_block_ids()
-        .into_iter()
-        .map(|b| BlockOwned {
-            id: b.id().to_string(),
-            range: b.range(),
-            start_byte: b.start_byte(),
-            end_byte: b.end_byte(),
-        })
-        .collect()
-}
-
-/// Merge old and new block IDs using selective purge-and-replace.
-pub fn merge_incremental_blocks(
-    old_blocks: &[BlockOwned],
-    new_blocks: &[BlockOwned],
-    pending_edits: &[InputEdit],
-) -> Vec<BlockOwned> {
-    let mut merged = Vec::new();
-    for old in old_blocks {
-        if !block_affected_by_edits(old, pending_edits) {
-            let mut adjusted = old.clone();
-            for edit in pending_edits {
-                if range_is_after_edit_end(adjusted.range, edit) {
-                    adjust_range_after_edit(&mut adjusted.range, edit);
-                    adjust_bytes_after_edit(&mut adjusted.start_byte, &mut adjusted.end_byte, edit);
-                }
-            }
-            merged.push(adjusted);
-        }
-    }
-    for new_block in new_blocks {
-        if block_affected_by_edits(new_block, pending_edits) {
-            merged.push(new_block.clone());
-        }
-    }
-    merged.sort_by_key(|b| (b.range.start.line, b.range.start.character));
-    merged
-}
-
-// ─── MarkdownLink incremental helpers ─────────────────────────────────────────
-
-/// Returns true if this markdown link is affected by any of the pending edits.
-///
-/// Entries that directly intersect the edit or are within the byte-level
-/// neighbor window need re-extraction. Entries merely *after* the edit are
-/// retained with adjusted positions instead of being re-extracted.
-pub fn markdown_link_affected_by_edits(
-    ml: &MarkdownLinkOwned,
-    pending_edits: &[InputEdit],
-) -> bool {
-    pending_edits.iter().any(|edit| {
-        range_intersects_edit(ml.range, edit)
-            || range_within_neighbor_window(ml.start_byte, ml.end_byte, edit, 100)
-    })
-}
-
-/// Returns true if any markdown link in the old index needs re-extraction.
-pub fn markdown_links_need_update(
-    old_mls: &[MarkdownLinkOwned],
-    pending_edits: &[InputEdit],
-) -> bool {
-    if pending_edits.is_empty() {
-        return false;
-    }
-    let byte_ranges: Vec<(usize, usize)> = old_mls
-        .iter()
-        .map(|ml| (ml.start_byte, ml.end_byte))
-        .collect();
-    old_mls
-        .iter()
-        .any(|ml| markdown_link_affected_by_edits(ml, pending_edits))
-        || any_edit_starts_at_or_after_last_markdown_link(old_mls, pending_edits)
-        || any_edit_in_entry_gap(&byte_ranges, pending_edits, 100)
-}
-
-/// Returns true if any edit starts at or after the last markdown link end.
-/// Catches insertions after the last link that might create new links.
-pub fn any_edit_starts_at_or_after_last_markdown_link(
-    old_mls: &[MarkdownLinkOwned],
-    pending_edits: &[InputEdit],
-) -> bool {
-    let Some(last_old_end) = old_mls
-        .iter()
-        .map(|ml| (ml.range.end.line, ml.range.end.character))
-        .max()
-    else {
-        return false;
-    };
-
-    pending_edits.iter().any(|edit| {
-        let edit_start = (
-            edit.start_position.row as u32,
-            edit.start_position.column as u32,
-        );
-        edit_start >= last_old_end
-    })
-}
-
-/// Extract all markdown links from the AST as owned data.
-pub fn extract_markdown_links_owned(ast: &markymark_parser::Ast) -> Vec<MarkdownLinkOwned> {
-    ast.extract_markdown_links()
-        .into_iter()
-        .map(|ml| {
-            let (start_byte, end_byte) = ml.byte_range();
-            MarkdownLinkOwned {
-                text: ml.text().to_string(),
-                url: ml.url().to_string(),
-                anchor: ml.anchor().map(str::to_string),
-                range: ml.range(),
-                start_byte,
-                end_byte,
-            }
-        })
-        .collect()
-}
-
-/// Merge old and new markdown links using selective purge-and-replace.
-pub fn merge_incremental_markdown_links(
-    old_mls: &[MarkdownLinkOwned],
-    new_mls: &[MarkdownLinkOwned],
-    pending_edits: &[InputEdit],
-) -> Vec<MarkdownLinkOwned> {
-    let mut merged = Vec::new();
-    for old in old_mls {
-        if !markdown_link_affected_by_edits(old, pending_edits) {
-            let mut adjusted = old.clone();
-            for edit in pending_edits {
-                if range_is_after_edit_end(adjusted.range, edit) {
-                    adjust_range_after_edit(&mut adjusted.range, edit);
-                    adjust_bytes_after_edit(&mut adjusted.start_byte, &mut adjusted.end_byte, edit);
-                }
-            }
-            merged.push(adjusted);
-        }
-    }
-    for new_ml in new_mls {
-        if markdown_link_affected_by_edits(new_ml, pending_edits) {
-            merged.push(new_ml.clone());
-        }
-    }
-    merged.sort_by_key(|ml| (ml.range.start.line, ml.range.start.character));
-    merged
-}
-
-// ─── XmlTag incremental helpers ────────────────────────────────────────────────
-
-/// Returns true if this XML tag is affected by any of the pending edits.
-///
-/// Entries that directly intersect the edit or are within the byte-level
-/// neighbor window need re-extraction.
-pub fn xml_tag_affected_by_edits(xt: &XmlTagOwned, pending_edits: &[InputEdit]) -> bool {
-    pending_edits.iter().any(|edit| {
-        range_intersects_edit(xt.range, edit)
-            || range_within_neighbor_window(xt.start_byte, xt.end_byte, edit, 100)
-    })
-}
-
-/// Returns true if any XML tag in the old index needs re-extraction.
-pub fn xml_tags_need_update(old_xts: &[XmlTagOwned], pending_edits: &[InputEdit]) -> bool {
-    if pending_edits.is_empty() {
-        return false;
-    }
-    let byte_ranges: Vec<(usize, usize)> = old_xts
-        .iter()
-        .map(|xt| (xt.start_byte, xt.end_byte))
-        .collect();
-    old_xts
-        .iter()
-        .any(|xt| xml_tag_affected_by_edits(xt, pending_edits))
-        || any_edit_starts_at_or_after_last_xml_tag(old_xts, pending_edits)
-        || any_edit_in_entry_gap(&byte_ranges, pending_edits, 100)
-}
-
-/// Returns true if any edit starts at or after the last XML tag end.
-pub fn any_edit_starts_at_or_after_last_xml_tag(
-    old_xts: &[XmlTagOwned],
-    pending_edits: &[InputEdit],
-) -> bool {
-    let Some(last_old_end) = old_xts
-        .iter()
-        .map(|xt| (xt.range.end.line, xt.range.end.character))
-        .max()
-    else {
-        return false;
-    };
-
-    pending_edits.iter().any(|edit| {
-        let edit_start = (
-            edit.start_position.row as u32,
-            edit.start_position.column as u32,
-        );
-        edit_start >= last_old_end
-    })
-}
-
-/// Extract all XML tags from the AST as owned data with sorted attributes.
-pub fn extract_xml_tags_owned(ast: &markymark_parser::Ast) -> Vec<XmlTagOwned> {
-    ast.extract_xml_tags()
-        .into_iter()
-        .map(|xt| {
-            let mut attributes: Vec<(String, String)> = xt
-                .attributes()
-                .iter()
-                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
-                .collect();
-            attributes.sort_by(|a, b| a.0.cmp(&b.0));
-            let (start_byte, end_byte) = xt.byte_range();
-            XmlTagOwned {
-                tag_name: xt.tag_name().to_string(),
-                attributes,
-                is_self_closing: xt.is_self_closing(),
-                is_unclosed: xt.is_unclosed(),
-                range: xt.range(),
-                start_byte,
-                end_byte,
-            }
-        })
-        .collect()
-}
-
-/// Merge old and new XML tags using selective purge-and-replace.
-pub fn merge_incremental_xml_tags(
-    old_xts: &[XmlTagOwned],
-    new_xts: &[XmlTagOwned],
-    pending_edits: &[InputEdit],
-) -> Vec<XmlTagOwned> {
-    let mut merged = Vec::new();
-    for old in old_xts {
-        if !xml_tag_affected_by_edits(old, pending_edits) {
-            let mut adjusted = old.clone();
-            for edit in pending_edits {
-                if range_is_after_edit_end(adjusted.range, edit) {
-                    adjust_range_after_edit(&mut adjusted.range, edit);
-                    adjust_bytes_after_edit(&mut adjusted.start_byte, &mut adjusted.end_byte, edit);
-                }
-            }
-            merged.push(adjusted);
-        }
-    }
-    for new_xt in new_xts {
-        if xml_tag_affected_by_edits(new_xt, pending_edits) {
-            merged.push(new_xt.clone());
-        }
-    }
-    merged.sort_by_key(|xt| (xt.range.start.line, xt.range.start.character));
-    merged
 }
 
 // ─── Main incremental build entry point ───────────────────────────────────────
