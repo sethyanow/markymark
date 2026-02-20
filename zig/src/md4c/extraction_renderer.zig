@@ -77,6 +77,9 @@ pub const ExtractionRenderer = struct {
     // code block tracking
     in_code_block: bool = false,
 
+    // set to true if any allocation fails inside a callback; checked after rendering
+    oom: bool = false,
+
     pub fn init(allocator: Allocator, src_text: []const u8) ExtractionRenderer {
         return .{
             .src_text = src_text,
@@ -182,7 +185,7 @@ pub const ExtractionRenderer = struct {
                     self.link_is_autolink = detail.autolink or detail.permissive_autolink;
                     self.link_text_buf.clearRetainingCapacity();
                     self.link_href_buf.clearRetainingCapacity();
-                    self.link_href_buf.appendSlice(self.allocator, detail.href) catch {};
+                    self.link_href_buf.appendSlice(self.allocator, detail.href) catch { self.oom = true; };
                 }
             },
             .wikilink => {
@@ -191,7 +194,7 @@ pub const ExtractionRenderer = struct {
                 self.link_is_autolink = false;
                 self.link_text_buf.clearRetainingCapacity();
                 self.link_href_buf.clearRetainingCapacity();
-                self.link_href_buf.appendSlice(self.allocator, detail.href) catch {};
+                self.link_href_buf.appendSlice(self.allocator, detail.href) catch { self.oom = true; };
             },
             .img => {
                 self.in_image = true;
@@ -234,17 +237,20 @@ pub const ExtractionRenderer = struct {
             content;
 
         if (self.in_heading) {
-            self.heading_text_buf.appendSlice(self.allocator, effective) catch {};
+            self.heading_text_buf.appendSlice(self.allocator, effective) catch { self.oom = true; };
         }
         if (self.in_link and !self.in_image) {
-            self.link_text_buf.appendSlice(self.allocator, effective) catch {};
+            self.link_text_buf.appendSlice(self.allocator, effective) catch { self.oom = true; };
         }
     }
 
     // ── Finalization helpers ─────────────────────────────────────────
 
     fn finalizeHeading(self: *ExtractionRenderer) void {
-        const owned_text = self.heading_text_buf.toOwnedSlice(self.allocator) catch return;
+        const owned_text = self.heading_text_buf.toOwnedSlice(self.allocator) catch {
+            self.oom = true;
+            return;
+        };
 
         const offset = self.findHeadingOffset();
         self.headings.append(self.allocator, .{
@@ -252,13 +258,18 @@ pub const ExtractionRenderer = struct {
             .offset = offset,
             .level = self.heading_level,
         }) catch {
+            self.oom = true;
             self.allocator.free(owned_text);
         };
     }
 
     fn finalizeLink(self: *ExtractionRenderer) void {
-        const owned_text = self.link_text_buf.toOwnedSlice(self.allocator) catch return;
+        const owned_text = self.link_text_buf.toOwnedSlice(self.allocator) catch {
+            self.oom = true;
+            return;
+        };
         const owned_target = self.link_href_buf.toOwnedSlice(self.allocator) catch {
+            self.oom = true;
             self.allocator.free(owned_text);
             return;
         };
@@ -270,6 +281,7 @@ pub const ExtractionRenderer = struct {
             .offset = offset,
             .is_wiki = self.link_is_wiki,
         }) catch {
+            self.oom = true;
             self.allocator.free(owned_text);
             self.allocator.free(owned_target);
         };
@@ -323,26 +335,54 @@ pub const ExtractionRenderer = struct {
                 }
             }
         } else {
-            // ATX: search for N '#' characters (possibly after whitespace/blockquote markers)
+            // ATX: '#' must appear at line start (0-3 leading spaces + optional '>' blockquote).
+            // Scan line-by-line; track code fences to skip false '#' matches inside fenced blocks.
+            var in_fence = false;
             while (pos < src.len) {
-                // Find '#' character
-                if (src[pos] == '#') {
-                    // Count consecutive '#' characters
-                    const hash_start = pos;
-                    var hash_count: u8 = 0;
-                    var p = pos;
-                    while (p < src.len and src[p] == '#') : (p += 1) {
-                        hash_count += 1;
-                    }
-                    if (hash_count == self.heading_level and (p >= src.len or src[p] == ' ' or src[p] == '\n' or src[p] == '\r' or src[p] == '\t')) {
-                        // Skip past the heading line
-                        while (p < src.len and src[p] != '\n') : (p += 1) {}
-                        if (p < src.len) p += 1;
-                        self.scan_cursor = @intCast(p);
-                        return @intCast(hash_start);
+                const line_start = pos;
+                var line_end = pos;
+                while (line_end < src.len and src[line_end] != '\n') : (line_end += 1) {}
+                const next_line: u32 = @intCast(if (line_end < src.len) line_end + 1 else src.len);
+
+                // Detect fence open/close: 0-3 spaces then 3+ identical backticks or tildes.
+                var fp = pos;
+                var sp: u32 = 0;
+                while (fp < line_end and src[fp] == ' ' and sp < 3) { fp += 1; sp += 1; }
+                if (fp < line_end and (src[fp] == '`' or src[fp] == '~')) {
+                    const fc = src[fp];
+                    var flen: u32 = 0;
+                    while (fp + flen < line_end and src[fp + flen] == fc) : (flen += 1) {}
+                    if (flen >= 3) {
+                        in_fence = !in_fence;
+                        pos = next_line;
+                        continue;
                     }
                 }
-                pos += 1;
+
+                if (!in_fence) {
+                    // Check for 0-3 leading spaces, optional '>' blockquote prefix, then '#'.
+                    var lp = line_start;
+                    var lsp: u32 = 0;
+                    while (lp < line_end and src[lp] == ' ' and lsp < 3) { lp += 1; lsp += 1; }
+                    while (lp < line_end and src[lp] == '>') {
+                        lp += 1;
+                        if (lp < line_end and src[lp] == ' ') lp += 1;
+                    }
+                    if (lp < line_end and src[lp] == '#') {
+                        const hash_start = lp;
+                        var hash_count: u8 = 0;
+                        var p = lp;
+                        while (p < line_end and src[p] == '#') : (p += 1) { hash_count += 1; }
+                        if (hash_count == self.heading_level and
+                            (p >= line_end or src[p] == ' ' or src[p] == '\t'))
+                        {
+                            self.scan_cursor = next_line;
+                            return @intCast(hash_start);
+                        }
+                    }
+                }
+
+                pos = next_line;
             }
         }
 
@@ -385,9 +425,27 @@ pub const ExtractionRenderer = struct {
                 pos += 1;
             }
         } else {
-            // Search for '[' (inline or reference link)
+            // Search for '[' (inline or reference link), skipping fenced code blocks.
+            var in_fence = false;
             while (pos < src.len) {
-                if (src[pos] == '[') {
+                // Detect fence at line start: 0-3 spaces then 3+ backticks or tildes.
+                if (pos == 0 or src[pos - 1] == '\n') {
+                    var fp = pos;
+                    var sp: u32 = 0;
+                    while (fp < src.len and src[fp] == ' ' and sp < 3) { fp += 1; sp += 1; }
+                    if (fp < src.len and (src[fp] == '`' or src[fp] == '~')) {
+                        const fc = src[fp];
+                        var flen: u32 = 0;
+                        while (fp + flen < src.len and src[fp + flen] == fc) : (flen += 1) {}
+                        if (flen >= 3) {
+                            in_fence = !in_fence;
+                            while (pos < src.len and src[pos] != '\n') : (pos += 1) {}
+                            if (pos < src.len) pos += 1;
+                            continue;
+                        }
+                    }
+                }
+                if (!in_fence and src[pos] == '[') {
                     // Skip image links — they start with ![ and are tracked by in_image
                     if (pos > 0 and src[pos - 1] == '!') {
                         pos += 1;
@@ -441,6 +499,14 @@ pub fn extractFromMarkdown(
         .wiki_links = true,
     };
     try root.renderWithRenderer(input, allocator, opts, ext.renderer());
+
+    // If any callback allocation failed during rendering, propagate OOM now.
+    // Callbacks cannot return errors through the C vtable, so failures are tracked
+    // via the oom flag and converted to an error here.
+    if (ext.oom) {
+        ext.deinit();
+        return error.OutOfMemory;
+    }
 
     // Transfer ownership: take slices from ArrayLists, free temporary buffers
     const headings = ext.headings.toOwnedSlice(allocator) catch {
@@ -774,4 +840,63 @@ test "multiple entities in heading decoded" {
 
     try testing.expectEqual(@as(usize, 1), result.headings.len);
     try testing.expectEqualStrings("<div> & \"test\"", result.headings[0].text);
+}
+
+// --- T1-5 regression: offset correctness with code fences and mid-line markers ---
+
+test "T1-5: ATX heading offset not corrupted by hash inside fenced code block" {
+    // "```\n# not a heading\n```\n\n# Real Heading\n"
+    // byte layout: "```\n"(4) + "# not a heading\n"(16) + "```\n"(4) + "\n"(1) = 25
+    // "# Real Heading" starts at byte 25
+    const input = "```\n# not a heading\n```\n\n# Real Heading\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqualStrings("Real Heading", result.headings[0].text);
+    // offset must point into "# Real Heading", not the fake one inside the fence
+    try testing.expectEqual(@as(u32, 25), result.headings[0].offset);
+    try testing.expect(input[result.headings[0].offset] == '#');
+}
+
+test "T1-5: link offset not corrupted by bracket inside fenced code block" {
+    // "```\n[not a link](url)\n```\n\n[real link](url)\n"
+    // byte layout: "```\n"(4) + "[not a link](url)\n"(18) + "```\n"(4) + "\n"(1) = 27
+    // "[real link](url)" starts at byte 27
+    const input = "```\n[not a link](url)\n```\n\n[real link](url)\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.links.len);
+    try testing.expectEqualStrings("real link", result.links[0].text);
+    try testing.expectEqual(@as(u32, 27), result.links[0].offset);
+    try testing.expect(input[result.links[0].offset] == '[');
+}
+
+test "T1-5: mid-line hash not treated as ATX heading offset" {
+    // "Some text # not-a-heading\n# Real Heading\n"
+    // "Some text # not-a-heading\n" = 26 bytes; '#' of heading at 26
+    const input = "Some text # not-a-heading\n# Real Heading\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqualStrings("Real Heading", result.headings[0].text);
+    try testing.expectEqual(@as(u32, 26), result.headings[0].offset);
+    try testing.expect(input[result.headings[0].offset] == '#');
+}
+
+// --- T1-4 regression: OOM during rendering propagated, not swallowed ---
+
+test "T1-4: OOM from parser is propagated as error.OutOfMemory" {
+    // Use a FailingAllocator that fails immediately (fail_index=0).
+    // Parser init allocations fail → renderWithRenderer returns OutOfMemory.
+    // Verifies that the error pathway from renderWithRenderer is intact.
+    // (Callback-phase OOM is handled by the oom flag; parser-phase OOM by this path.)
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var failing = std.testing.FailingAllocator.init(gpa.allocator(), .{ .fail_index = 0 });
+    const input = "# Hello World\n";
+    const result = extractFromMarkdown(input, failing.allocator());
+    try testing.expectError(error.OutOfMemory, result);
 }
