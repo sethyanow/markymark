@@ -18,6 +18,12 @@ const token_estimate_mod = @import("../kernels/token_estimate.zig");
 const content_hash_mod = @import("../kernels/content_hash.zig");
 const helpers = @import("../md4c/helpers.zig");
 
+/// Maximum number of fenced code block ranges tracked on the stack.
+/// Limits stack allocation to ~2 KB (256 × 8 bytes). Documents with more
+/// than 256 fenced blocks will have tags/block-ids inside excess fences
+/// silently included — a benign false positive on extreme inputs.
+pub const FENCE_MAP_MAX: u32 = 256;
+
 // ── Stored types (engine-internal) ──────────────────────────────────
 
 pub const Position = struct {
@@ -225,11 +231,11 @@ pub fn parseAll(
     errdefer if (line_starts.len > 0) allocator.free(line_starts);
 
     // 3. Build fence map for tag/block filtering
-    var fence_buf: [256]fence_map_mod.FenceRange = undefined;
+    var fence_buf: [FENCE_MAP_MAX]fence_map_mod.FenceRange = undefined;
     var fence_count: u32 = 0;
     if (text.len > 0) {
-        fence_count = fence_map_mod.build_fence_map(text.ptr, @intCast(text.len), &fence_buf, 256);
-        if (fence_count > 256) fence_count = 256;
+        fence_count = fence_map_mod.build_fence_map(text.ptr, @intCast(text.len), &fence_buf, FENCE_MAP_MAX);
+        if (fence_count > FENCE_MAP_MAX) fence_count = FENCE_MAP_MAX;
     }
     const fence_ranges = fence_buf[0..fence_count];
 
@@ -469,6 +475,17 @@ fn inFenceRange(ranges: []const fence_map_mod.FenceRange, pos: u32) bool {
 // ── Blob serialization ──────────────────────────────────────────────
 
 fn serializeState(engine: *const DocumentEngine) ![]u8 {
+    // Defense-in-depth: guard against @intCast trap on >u32::MAX element counts.
+    // Physically impossible (would require hundreds of GB of RAM), but prevents
+    // an uncatchable panic if invariants are ever violated. Must be checked before
+    // the text_pool_size loop which iterates these slices.
+    const max_u32 = std.math.maxInt(u32);
+    if (engine.headings.len > max_u32 or
+        engine.links.len > max_u32 or
+        engine.tags.len > max_u32 or
+        engine.block_ids.len > max_u32 or
+        engine.line_starts.len > max_u32) return error.OutOfMemory;
+
     // Compute text pool size in u64 to avoid u32 wrap-before-check (C6).
     var text_pool_size: u64 = 0;
     for (engine.headings) |h| {

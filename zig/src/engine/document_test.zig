@@ -419,6 +419,34 @@ test "slugifyText truncated heading via DocumentEngine is non-empty" {
     try testing.expectEqualStrings("b" ** 512, engine.headings[0].slug);
 }
 
+// --- marky-wdnc: defense-in-depth guards ---
+
+test "H2: serializeState returns OutOfMemory for oversized element counts" {
+    // Construct a DocumentEngine with a fake oversized headings slice.
+    // Uses the many-pointer trick (MEMORY.md): [*] slicing has no bounds check,
+    // and the guard fires before any data access so the fake pointer is never
+    // dereferenced.
+    var engine = try DocumentEngine.create("", testing.allocator);
+    defer engine.destroy();
+
+    // Save original empty headings and replace with fake oversized slice
+    const original_headings = engine.headings;
+    var sentinel: StoredHeading = undefined;
+    const p: [*]StoredHeading = @ptrCast(&sentinel);
+    const huge_len = @as(usize, std.math.maxInt(u32)) + 1;
+    engine.headings = p[0..huge_len];
+
+    // getBlob → serializeState should return OutOfMemory from the guard
+    try testing.expectError(error.OutOfMemory, engine.getBlob());
+
+    // Restore original before destroy to avoid freeing fake pointer
+    engine.headings = original_headings;
+}
+
+test "H4: FENCE_MAP_MAX constant has expected value" {
+    try testing.expectEqual(@as(u32, 256), doc.FENCE_MAP_MAX);
+}
+
 // --- marky-8nzt: toOwnedSlice cascade leak regression ---
 
 test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
