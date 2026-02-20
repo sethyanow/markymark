@@ -12,6 +12,16 @@ fn build_index(source: &str) -> DocumentIndex {
     DocumentIndex::from_ast(ast)
 }
 
+/// Compile-time assertion: DocumentIndex must be Send + Sync for tower-lsp
+/// (RwLock<ServerState> requires Send + Sync on all contained types).
+///
+/// If this test fails to compile, the arena wrapper strategy has regressed.
+#[test]
+fn document_index_is_send_and_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<DocumentIndex>();
+}
+
 #[test]
 fn heading_entry_uses_arena_lifetime() {
     let arena = Bump::new();
