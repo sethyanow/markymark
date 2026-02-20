@@ -273,3 +273,176 @@ async fn test_single_change_applies_after_debounce() {
         "single change should apply after debounce"
     );
 }
+
+/// Deterministic regression test for the close/reopen race condition (marky-aemm).
+///
+/// Exercises the exact race window: a debounce task drains pending_changes and
+/// captures the generation counter, then a close/reopen happens before the task
+/// can apply the changes. The generation counter must detect the mismatch and
+/// discard the stale batch.
+///
+/// Uses Backend test helpers (drain_pending / try_apply_drained) to avoid
+/// timing-dependent reproduction.
+#[tokio::test]
+async fn test_close_reopen_during_debounce_drain_window() {
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+    let (uri, doc_uri) = doc_uri();
+
+    // 1. Open with initial content.
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "markdown".to_string(),
+                version: 0,
+                text: "# Original".to_string(),
+            },
+        })
+        .await;
+
+    // 2. Fire a change — this buffers pending_changes and starts a debounce timer.
+    backend
+        .did_change(full_change(uri.clone(), 1, "# Stale Change"))
+        .await;
+
+    // 3. Simulate the debounce task waking up and draining pending_changes.
+    //    This captures the current generation and removes the abort handle,
+    //    mirroring the real debounce task's drain step.
+    let (drained_batches, captured_gen) = backend
+        .drain_pending(&doc_uri)
+        .expect("pending changes should exist after did_change");
+    assert!(
+        !drained_batches.is_empty(),
+        "drained batches must not be empty"
+    );
+
+    // 4. Close the document — bumps generation, clears any remaining pending state.
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+        })
+        .await;
+
+    // 5. Reopen with fresh content — bumps generation again.
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "markdown".to_string(),
+                version: 0,
+                text: "# Fresh Content".to_string(),
+            },
+        })
+        .await;
+
+    // 6. Now the debounce task tries to apply the drained stale batches.
+    //    The generation counter should have changed (close + reopen = +2),
+    //    so try_apply_drained must detect the mismatch and discard the batch.
+    let applied = backend
+        .try_apply_drained(&doc_uri, drained_batches, captured_gen)
+        .await;
+    assert!(
+        !applied,
+        "stale batch must be discarded when generation changed (close/reopen happened)"
+    );
+
+    // 7. Verify the document still has the fresh content from the reopen.
+    let state = backend.state().read().await;
+    assert_eq!(
+        state.get_document_text(&doc_uri),
+        Some("# Fresh Content"),
+        "fresh content must persist; stale batch must not overwrite it"
+    );
+}
+
+/// Closing a document must clean up its generation entry to prevent unbounded
+/// growth of the document_generations HashMap (marky-jwsk).
+///
+/// RED: Without cleanup, each unique URI leaves a permanent entry after close.
+#[tokio::test]
+async fn test_close_cleans_up_generation_entries() {
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+
+    // Open and close 100 unique URIs.
+    for i in 0..100 {
+        let raw = format!("file:///test/cleanup_{i}.md");
+        let uri = Uri::from_str(&raw).unwrap();
+
+        backend
+            .did_open(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "markdown".to_string(),
+                    version: 0,
+                    text: format!("# Doc {i}"),
+                },
+            })
+            .await;
+
+        backend
+            .did_close(DidCloseTextDocumentParams {
+                text_document: TextDocumentIdentifier { uri },
+            })
+            .await;
+    }
+
+    // After closing all documents, generation entries should be cleaned up.
+    let gen_count = backend.document_generations_count();
+    assert_eq!(
+        gen_count, 0,
+        "document_generations should be empty after closing all documents, \
+         but has {gen_count} entries (unbounded growth bug)"
+    );
+}
+
+/// Generation entries for currently-open documents must be retained.
+#[tokio::test]
+async fn test_open_documents_retain_generation_entries() {
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+
+    // Open 5 documents.
+    for i in 0..5 {
+        let raw = format!("file:///test/retain_{i}.md");
+        let uri = Uri::from_str(&raw).unwrap();
+
+        backend
+            .did_open(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "markdown".to_string(),
+                    version: 0,
+                    text: format!("# Doc {i}"),
+                },
+            })
+            .await;
+    }
+
+    // All 5 should have generation entries.
+    assert_eq!(
+        backend.document_generations_count(),
+        5,
+        "each open document should have a generation entry"
+    );
+
+    // Close 3 of them.
+    for i in 0..3 {
+        let raw = format!("file:///test/retain_{i}.md");
+        let uri = Uri::from_str(&raw).unwrap();
+
+        backend
+            .did_close(DidCloseTextDocumentParams {
+                text_document: TextDocumentIdentifier { uri },
+            })
+            .await;
+    }
+
+    // Only 2 should remain.
+    assert_eq!(
+        backend.document_generations_count(),
+        2,
+        "only open documents should retain generation entries"
+    );
+}

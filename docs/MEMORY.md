@@ -24,11 +24,7 @@ Known issue: XML tag false positives in code blocks (marky-8la).
 
 ### Known Bugs
 
-- **UB in `DocumentIndex::arena_ref`** (marky-f9vv, P3). `document/mod.rs:83-98` escapes
-  MutexGuard lifetime via raw pointer, then dereferences `&Bump` (interior mutability via Cell)
-  without the guard held. Technically UB under Rust aliasing rules. Single-threaded in practice
-  (only called during `from_ast` construction). Fix: restructure self_cell builder or replace
-  Mutex with UnsafeCell + safety proof. The `from_blob()` path (Option H) avoids this entirely.
+(none currently)
 
 ---
 
@@ -42,6 +38,19 @@ reusable scratch buffer field to the owning struct, `clearRetainingCapacity()` a
 the start of each call, and have callers that persist the result `dupe()` it.
 Also: if a struct stores duped slices, its deinit must free them individually before
 freeing the container list (marky-i3fl).
+
+### Zig md4c error-handling and bounds patterns (2026-02-19)
+
+From PR#39 code review (marky-0mr.4/.6/.9) — patterns that recur in md4c Zig port:
+- **Silent `catch {}`** for buffer appends hides allocation failures → use `try`
+- **Pointer arithmetic on `BlockHeader`**: always compute alignment offset explicitly,
+  never assume `+ @sizeOf(...)` lands on the right boundary; add bounds guard via `if`
+- **Bounds before increment**: `pivot_end += 1` in binary search without checking
+  `pivot_end + 1 < map.len` is latent OOB on degenerate fold tables
+- **Dead code from dual-return**: when two consecutive branches both `return false`,
+  the redundant one is unreachable — remove it rather than leave a code-smell
+- **`>= N` vs `> N-1`**: use the form that most directly names the index being accessed
+  (e.g. `beg > 1` for `content[beg - 2]`)
 
 ### Zig test pointer tricks for >4GB fake slices (2026-02-19)
 
@@ -83,6 +92,7 @@ CLAUDE.md "Document Intelligence" section for the full LSP vs MCP decision tree.
 ### Arena Allocation
 
 - **ArenaHashMap (!Send) restricted to parser types only; index types use std HashMap** (dec-arena-send-001). Bump:!Sync -> &Bump:!Send -> ArenaHashMap:!Send. tower-lsp requires Send+'static for async handlers.
+- **DocumentIndex uses bare DocumentArena + unsafe impl Sync instead of Mutex** (marky-f9vv). The previous Mutex wrapper led to UB via raw-pointer MutexGuard escape. Bare arena + `unsafe impl Sync` is sound because the arena is only mutated during single-threaded self_cell construction; post-construction access is read-only. Compile-time Send+Sync assertion test guards against regression.
 - **Adopted DocumentArena wrapper in Ast and DocumentIndex** (dec-docarena-adopt-001). Provides Debug, capacity hints, semantic boundary vs raw Bump.
 - **Reorder Ast struct fields so root_elements before arena** (dec-031). Rust drops in declaration order. Arena must outlive elements.
 - **Arena reuse via reset is NOT worth implementing** (dec-041). Arena lifecycle = 0.07% of reparse cost.
@@ -92,12 +102,17 @@ CLAUDE.md "Document Intelligence" section for the full LSP vs MCP decision tree.
 - **self_cell owner/dependent for Ast internals on stable Rust** (dec-051).
 - **Parameterize SymbolAtPosition over lifetime instead of 'static** (dec-049). LSP state clones index entries; 'static caused borrow escape errors.
 
-### Incremental Indexing (Phase 3)
+### ~~Incremental Indexing (Phase 3)~~ — SUPERSEDED by Epic H (marky-io3h)
 
-- **LSP-layer orchestration, not index-layer diffing** (dec-phase3-001). Leverages existing InputEdit data.
+The tree-sitter incremental indexing architecture (5 extractors, byte-range merge, LSP-layer
+orchestration) was deleted in Task 4 (marky-n78f, tag `marky-io3h-complete`). Replaced by
+Zig DocumentEngine pipeline: full md4c reparse on every edit, blob serialization, `from_blob()`
+in Rust. Net -2,839 lines. The decisions below are historical context only.
+
+- **LSP-layer orchestration, not index-layer diffing** (dec-phase3-001).
 - **Byte-range granularity using InputEdit ranges** (dec-phase3-002).
-- **All 5 independent extractors get incremental** (dec-phase3-003): wiki_links, blocks, tags, markdown_links, xml_tags.
-- **Headings/TOC/outline always full rebuild** (dec-phase3-004). O(headings), cheap.
+- **All 5 independent extractors get incremental** (dec-phase3-003).
+- **Headings/TOC/outline always full rebuild** (dec-phase3-004).
 - **Markdown incremental only, JSON/YAML/TOML always full rebuild** (dec-phase3-006).
 - **Wiki-link merge: range intersection + neighbor window + tail-boundary guard** (marky-77x).
 
@@ -145,6 +160,19 @@ Always read Zig build system docs first.
 Some hooks intercept Write when content contains this literal string. Use `Bash cat` heredoc
 with single-quoted delimiter (`'EOF'`) to bypass.
 
+### Agent used Grep/Read instead of LSP() for code navigation (fail-lsp-not-used)
+Repeated user correction: always use LSP tools first for Rust/Zig navigation.
+- `LSP documentSymbol` to explore file structure before reaching for Read
+- `LSP findReferences` to find usages instead of Grep
+- `LSP hover` for type/signature info instead of reading source
+- `LSP goToDefinition` to jump cross-file instead of Glob + Read
+Read/Grep only after LSP narrows the target or for non-code files.
+
+### Agent used claude-mem save_memory for this project (fail-save-memory-unreliable)
+CLAUDE.md says not to use `save_memory` for markymark — the API is unreliable.
+Sole persistent memory store is `docs/MEMORY.md`. Update it directly via Edit tool,
+then commit. Never use save_memory as a substitute.
+
 ---
 
 ## Key Patterns
@@ -176,6 +204,17 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 - **Path-relative without filesystem access**: Component-stack normalization (pop on `..`, skip `.`/empty) instead of `std::fs::canonicalize`. `canonicalize` requires path to exist on disk.
 - **Stem-only is the fallback, not the primary**: Path-relative resolution wins when URL contains `/`. Stem-only fires when path-relative misses.
 
+### Engine Pipeline (Epic H)
+
+- **XML tags require supplementary extraction** — md4c treats HTML as pass-through, so the
+  engine blob never contains XML tags. LSP calls `extract_xml_tags_from_text()` (markymark-parser
+  single-pass scanner) and passes results to `from_blob_with_xml_tags()`. Any future blob-missing
+  feature needs the same supplement pattern.
+- **End positions computed in Zig** — heading, link, and block-id end positions are calculated
+  during document construction in `zig/src/engine/document.zig`, avoiding double-computation in Rust.
+- **Engine lifecycle: create → update → get_blob → from_blob → destroy** — per-document
+  `DocumentEngine` in `ServerState.engines` HashMap. Same URI key as `documents` and `realm`.
+
 ### LSP/MCP
 - **Diagnostic logic lives in `markymark-index/src/diagnostics.rs`** (marky-6i9). Shared `compute_diagnostics(index, realm, uri)` used by both LSP and MCP.
 - **Adding a new CoreOperation follows a 5-stop pattern**: (1) types in `core/engine.rs`, (2) compute logic in `index/`, (3) engine handler in `mcp/src/engine/{op}.rs`, (4) DTO + tool handler in `mcp/src/tools/{op}.rs`, (5) `#[tool]` wiring in `lib.rs`.
@@ -183,20 +222,11 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 - LSP character offsets from clients are untrusted — always bounds-check (`if offset > line.len()`) before byte-slicing (marky-xpk, marky-u46)
 - MCP handlers that accept any URI kind must use `realm.get_any_document()` and branch on `AnyDocumentIndex`; `get_document()` silently rejects structured docs (marky-kvr)
 - For edit-delta math on `u32`/`usize` positions, use explicit saturating add/sub with signed deltas to prevent wraparound (marky-v8y)
-
-### Incremental Merge: Two Coordinate Spaces
-
-`*_affected_by_edits()` operates in **pre-edit** coordinate space (uses `old_end_byte`). The merge loop calls it for BOTH old entries (correct) and new entries (wrong for large insertions). New entries exist in **post-edit** space. For insertions >100 bytes, new entries deeper than `old_end_byte + 100` are silently dropped (marky-g0dn, 2026-02-19).
-
-Fix pattern: in the new-entry loop, OR in `range_within_new_end_window()` which checks `new_end_byte` instead. No duplicates guaranteed: a kept-old entry at pre-edit byte X > `old_end_byte+100` adjusts to post-edit `X+delta`, and `X+delta > new_end_byte+100` by substitution, so the new-path check never fires for it.
-
-```rust
-// In each merge_incremental_* function, new-entry filter:
-if entry_affected_by_edits(new_entry, pending_edits)
-    || pending_edits.iter().any(|edit| {
-        range_within_new_end_window(new_entry.start_byte, new_entry.end_byte, edit, 100)
-    })
-```
+- **Global monotonic counter for generation-based cleanup** — when a HashMap entry must be
+  removed on close but a stale async task might race with a reopen, use a global monotonic
+  counter (not per-key counters starting from 1). Per-key counters collide when an entry is
+  removed then re-inserted with the same starting value. Global counters guarantee every
+  allocation is unique, so `unwrap_or(0) != captured_gen` always holds (marky-jwsk).
 
 ### Testing
 - Safe file splits: (1) module dir, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit
@@ -211,23 +241,40 @@ if entry_affected_by_edits(new_entry, pending_edits)
 
 ---
 
-## Performance Optimization Roadmap (Epic marky-77i)
+## Performance Optimization Roadmap
 
-### Current State (2026-02-19)
+### Completed (marky-77i CLOSED, superseded by Epic H)
 
-**Completed:**
 - **F: Debounce** (marky-7dq, DONE) — 75ms async cancellation in LSP `did_change`
-- **G: md4c streaming parser** (marky-0mr, DONE) — Vendored Bun's Zig md4c port. `Md4cScanBackend` → `from_scan()` bypasses tree-sitter AST entirely. 2.8x pipeline speedup at 50KB over tree-sitter.
+- **G: md4c streaming parser** (marky-0mr) — Vendored Bun's Zig md4c port. 2.8x pipeline speedup at 50KB.
+- **H: Zig Document Engine** (marky-io3h, DONE) — see below. Tagged `marky-io3h-complete`.
+- **D: Vendor tree-sitter-md** (marky-0jz, CLOSED) — superseded by Option G.
 
-**Superseded:**
-- **D: Vendor tree-sitter-md** (marky-0jz) — target achieved by Option G. Not yet closed.
+### Deferred (Low ROI after Epic H)
 
-**Active:**
-- **H: Zig Document Engine** (marky-io3h) — see below. Task 1 (marky-6jzs) ready.
-- **E: Lazy AST** (marky-syx, P3) — deferred. Depends on marky-v8g (TreeSitterScanBackend). Value reduced now that md4c handles the indexing hot path.
+- **E: Lazy AST** (marky-syx, P3) — value reduced. Tree-sitter only for MCP batch + hover/goto-def.
+- **Engine incremental diffing** — investigated, low ROI. Zig reparse ~2.5ms at 50KB, not bottleneck.
+- **Zero-copy blob borrowing** — investigated, not worth it. Breaks DocumentIndex lifetime model for ~1-2ms.
+- **Edit range support in engine.update()** — premature without incremental diffing.
 
-**Follow-up:**
-- **RealmIndex string interning** (marky-6qri, P4) — `.to_string()` per heading/tag/block in `add_document`. String interner or `Arc<str>` for large vaults. Blocked on marky-io3h (blob text pool enables efficient interning).
+### Next: RealmIndex v2 (marky-n7wx)
+
+Investigation revealed the real post-Epic-H bottleneck is **RealmIndex cross-doc indexing**, not
+the engine pipeline. On every 75ms edit: remove_document allocates N+B+T Strings for HashMap
+key lookups, add_document allocates ~52 Strings for a 50-heading doc, find_uri_by_stem is O(D).
+
+Epic marky-n7wx addresses this in 4 layers:
+1. **String interning** (marky-2yzz) — lasso Rodeo interner, Spur-keyed HashMaps. Eliminates
+   remove-path String allocations entirely. SRE-reviewed, ready to implement.
+2. **Stem index** — O(1) wiki link resolution via Spur-keyed HashMap.
+3. **Incremental cross-doc updates** — diff old vs new headings, patch only changes.
+4. **Lazy cold indexes** — tag_to_docs, key_path_to_docs built on first query, not every edit.
+
+Key design decisions (SRE review, 2026-02-19):
+- **Rodeo not ThreadedRodeo** — RealmIndex is single-threaded, simpler API.
+- **Don't intern URIs** — unique per document, no dedup benefit.
+- **ResolvedHeading keeps String fields** — resolve Spur→&str at query boundary (cold path).
+- **key_path_to_docs stays String** — structured doc paths have low repetition.
 
 ### Baseline Benchmarks (2026-02-19, marky-jpot)
 
@@ -247,22 +294,18 @@ This is the exact bottleneck Option H eliminates.
 Throughput drops at scale due to per-element allocation density: 53 MB/s (10KB) → 23 MB/s
 (50KB) → 10 MB/s (100KB). Parser is fast; bottleneck is N allocations in ExtractionRenderer.
 
-### Option H: Zig Document Engine (marky-io3h)
+### Option H: Zig Document Engine (marky-io3h) — COMPLETE
 
 Stateful Zig engine that owns per-document parse state and serves a flat binary blob
-to Rust. Replaces N+4 FFI calls with exactly 2 (update + get_blob).
+to Rust. Replaces N+4 FFI calls with exactly 2 (update + get_blob). Tagged `marky-io3h-complete`.
 
-**Problem:** Quadruple text copy: (1) per-element strings during md4c parse, (2) into
-text_blob for FFI, (3) Rust converts to owned Strings, (4) copies into bumpalo arena.
+**Architecture:** Zig `DocumentEngine` with create/update/getBlob/destroy lifecycle.
+Lazy blob serialization. Blob format: 64B header (magic 0x4D4B5343) + packed struct
+arrays + contiguous text pool. Rust `DocumentIndex::from_blob()` / `from_blob_with_xml_tags()`
+copies text from blob pool into arena. Net -2,839 lines (incremental module deleted).
 
-**Architecture:** Zig `DocumentEngine` with create/update/getBlob/destroy lifecycle
-(same pattern as EmbeddingIndex and LinkGraph). Lazy blob serialization. Blob format:
-64B header (magic 0x4D4B5343) + packed struct arrays + contiguous text pool.
-
-**Rust side:** New `DocumentIndex::from_blob()` copies text from blob pool into arena.
-Replaces `from_scan()` in LSP hot path. ~850 lines of Rust incremental code deletable.
-
-**Expected:** ~4ms at 50KB (engine ~2.5ms + from_blob ~1.5ms) vs current 9.4ms.
+**Performance:** Not yet benchmarked post-integration (marky-8d08). Expected ~4ms at 50KB
+vs previous 9.4ms from_scan baseline.
 
 **Key decisions:**
 - Stateful (not stateless) — enables slug caching, lazy blob, future incremental
@@ -270,5 +313,35 @@ Replaces `from_scan()` in LSP hot path. ~850 lines of Rust incremental code dele
 - from_ast()/from_scan() retained for MCP batch and backward compat
 - Tree-sitter stays separate for lazy AST (hover/goto-def)
 
-**Task 1:** marky-6jzs — Zig DocumentEngine struct + blob serialization. SRE-refined with
-18+ TDD test cases, allocator strategy, slug dedup algorithm, 5 edge case mitigations.
+Tasks: 6jzs (engine+blob), atsp (FFI+wrapper), 0mr.9 (parser fixes), 2n4u (from_blob), n78f (LSP integration). All done.
+
+---
+
+## PR #40 Code Review Triage (2026-02-20)
+
+SRE-level assessment of 8 findings from Codex + CodeRabbit. Consolidated into 7 tracks,
+4 valid, 1 already known, 2 dismissed.
+
+### Dismissed Findings
+
+- **Fixed buffer caps (tags 1024, block-ids 1024, fences 256)** — intentional performance
+  tradeoff. Engine path uses stack allocation for LSP hot path. Cap is 16× the Rust path's
+  practical max (~512 via call_scan_ffi retry). No document realistically exceeds these.
+  Architectural asymmetry between paths is deliberate: Rust path (call_scan_ffi → C adapter
+  → `-2` retry) is dynamic; Zig engine path (direct scan_tags call) is fixed stack.
+- **u32 truncation in extract_md4c and call_scan_ffi** — `text.len() as u32` at two sites
+  (md4c.rs:114, scan.rs:283). Theoretical only — 4GB markdown files don't exist. Not UB on
+  truncation (reads fewer bytes, not more). One-liner `u32::try_from` guard available if
+  desired but not worth tracking.
+- **Debounce edit loss (server.rs)** — INVALID finding. Task removes its own abort handle
+  before draining pending_changes, so subsequent did_change can't abort it. Generation
+  counter handles close/reopen races. Design is correct.
+
+### Valid Findings (beads created)
+
+- **marky-5vnt (P3):** Slug truncation returns empty + processLeafBlock silent catch {}.
+  slugifyText returns "" on rc==-2 (truncated) instead of out[0..512]. processLeafBlock
+  has residual catch {} not fixed by marky-0mr.6 (which only fixed collectEmphasisDelimiters).
+- **marky-9m7o (P4):** parseAll errdefer leaks text on late-stage OOM (after ownership
+  transfer at line 289-290, freeStoredHeadingsList only frees slugs not texts). Also link
+  end_offset heuristic is wrong for reference links and titled links (cosmetic LSP ranges).

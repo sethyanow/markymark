@@ -1,7 +1,7 @@
 //! Tests for server state management (document lifecycle).
 
 use markymark_core::DocumentUri;
-use markymark_lsp::state::{ServerState, SymbolAtPosition};
+use markymark_lsp::state::{DocumentChange, ServerState, SymbolAtPosition};
 
 #[test]
 fn test_state_new_is_empty() {
@@ -146,76 +146,9 @@ fn test_symbol_at_position_structured_returns_none_off_key() {
     );
 }
 
-// ── MarkdownTree storage tests (marky-tfd) ──────────────────────────
-
-#[test]
-fn test_md_tree_stored_on_open() {
-    let mut state = ServerState::new();
-    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
-    state.open_document(uri.clone(), "# Hello\n\nWorld".to_string());
-
-    assert!(
-        state.get_md_tree(&uri).is_some(),
-        "MarkdownTree should be stored after opening a markdown document"
-    );
-}
-
-#[test]
-fn test_md_tree_updated_on_change() {
-    let mut state = ServerState::new();
-    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
-    state.open_document(uri.clone(), "# Hello".to_string());
-
-    // Verify tree reflects original document (1 section in block tree root)
-    let tree1 = state.get_md_tree(&uri).unwrap();
-    let root1 = tree1.block_tree().root_node();
-    let child_count_before = root1.child_count();
-
-    state.change_document(&uri, "# Changed\n\n## Added\n\n## Third".to_string());
-
-    let tree2 = state.get_md_tree(&uri);
-    assert!(
-        tree2.is_some(),
-        "MarkdownTree should still exist after change"
-    );
-    let root2 = tree2.unwrap().block_tree().root_node();
-    // More headings → more section nodes in tree-sitter-md's block tree
-    assert!(
-        root2.child_count() >= child_count_before,
-        "tree should reflect updated document structure"
-    );
-}
-
-#[test]
-fn test_md_tree_removed_on_close() {
-    let mut state = ServerState::new();
-    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
-    state.open_document(uri.clone(), "# Hello".to_string());
-    assert!(state.get_md_tree(&uri).is_some());
-
-    state.close_document(&uri);
-    assert!(
-        state.get_md_tree(&uri).is_none(),
-        "MarkdownTree should be removed when document is closed"
-    );
-}
-
-#[test]
-fn test_md_tree_not_stored_for_structured_docs() {
-    let mut state = ServerState::new();
-    let uri = DocumentUri::new("file:///test/config.json").unwrap();
-    state.open_document(uri.clone(), "{\"key\": \"value\"}\n".to_string());
-
-    assert!(
-        state.get_md_tree(&uri).is_none(),
-        "MarkdownTree should not be stored for non-markdown documents"
-    );
-}
-
-// ── Incremental sync tests (marky-tzq) ─────────────────────────────
-
-use markymark_lsp::state::DocumentChange;
-use std::time::{Duration, Instant};
+// ── Incremental text edit tests ────────────────────────────────────────────────
+// These tests verify that apply_document_changes correctly updates document text
+// and rebuilds the index. They do not depend on any implementation internals.
 
 #[test]
 fn test_incremental_single_insert() {
@@ -417,21 +350,6 @@ fn test_incremental_utf16_emoji_surrogate_pair() {
 }
 
 #[test]
-fn test_incremental_crlf_line_ending_edit_matches_full() {
-    assert_incremental_matches_full(
-        "# Title\r\n\r\nHello world\r\n",
-        DocumentChange::Incremental {
-            start_line: 2,
-            start_character: 6,
-            end_line: 2,
-            end_character: 11,
-            text: "earth".to_string(),
-        },
-        "# Title\r\n\r\nHello earth\r\n",
-    );
-}
-
-#[test]
 fn test_incremental_edit_at_document_start() {
     let mut state = ServerState::new();
     let uri = DocumentUri::new("file:///test/doc.md").unwrap();
@@ -501,31 +419,6 @@ fn test_incremental_index_updated_after_changes() {
 }
 
 #[test]
-fn test_incremental_md_tree_updated() {
-    let mut state = ServerState::new();
-    let uri = DocumentUri::new("file:///test/doc.md").unwrap();
-    state.open_document(uri.clone(), "# Hello".to_string());
-
-    assert!(state.get_md_tree(&uri).is_some());
-
-    state.apply_document_changes(
-        &uri,
-        vec![DocumentChange::Incremental {
-            start_line: 0,
-            start_character: 7,
-            end_line: 0,
-            end_character: 7,
-            text: "\n\n## Sub".to_string(),
-        }],
-    );
-
-    assert!(
-        state.get_md_tree(&uri).is_some(),
-        "MarkdownTree should be updated after incremental change"
-    );
-}
-
-#[test]
 fn test_incremental_no_change_for_unknown_uri() {
     let mut state = ServerState::new();
     let uri = DocumentUri::new("file:///test/unknown.md").unwrap();
@@ -545,781 +438,103 @@ fn test_incremental_no_change_for_unknown_uri() {
     assert!(state.get_document_text(&uri).is_none());
 }
 
-// --- Incremental tree-sitter parsing correctness tests ---
-
-/// Helper: open a document, apply an incremental change, then compare the
-/// resulting index against a fresh full-parse index of the same final text.
-fn assert_incremental_matches_full(
-    original: &str,
-    change: DocumentChange,
-    expected_final_text: &str,
-) {
-    // Path 1: incremental (open + apply_document_changes)
-    let mut inc_state = ServerState::new();
-    let uri = DocumentUri::new("file:///test/incr.md").unwrap();
-    inc_state.open_document(uri.clone(), original.to_string());
-    inc_state.apply_document_changes(&uri, vec![change]);
-
-    // Path 2: fresh full parse of the final text
-    let mut full_state = ServerState::new();
-    let full_uri = DocumentUri::new("file:///test/full.md").unwrap();
-    full_state.open_document(full_uri.clone(), expected_final_text.to_string());
-
-    // Verify text matches
-    assert_eq!(
-        inc_state.get_document_text(&uri).unwrap(),
-        expected_final_text,
-        "text after incremental change should match expected"
-    );
-
-    // Compare headings
-    let inc_index = inc_state.get_document_index(&uri).unwrap();
-    let full_index = full_state.get_document_index(&full_uri).unwrap();
-
-    let inc_headings: Vec<_> = inc_index
-        .headings()
-        .iter()
-        .map(|h| (h.level, h.text.to_string()))
-        .collect();
-    let full_headings: Vec<_> = full_index
-        .headings()
-        .iter()
-        .map(|h| (h.level, h.text.to_string()))
-        .collect();
-    assert_eq!(
-        inc_headings, full_headings,
-        "headings should match between incremental and full parse"
-    );
-
-    // Compare wiki links
-    let inc_wl: Vec<_> = inc_index
-        .wiki_links()
-        .iter()
-        .map(|w| w.target.to_string())
-        .collect();
-    let full_wl: Vec<_> = full_index
-        .wiki_links()
-        .iter()
-        .map(|w| w.target.to_string())
-        .collect();
-    assert_eq!(
-        inc_wl, full_wl,
-        "wiki links should match between incremental and full parse"
-    );
-}
+// ── Engine parity tests (marky-n78f) ─────────────────────────────────────────
+// These tests verify that open_document produces correct index data. They pass
+// now (via from_scan) and must continue to pass after migration (via from_blob).
 
 #[test]
-fn test_incremental_parse_insert_heading_matches_full() {
-    // Inserting at (2, 10) = byte 19 (the '\n' after "Some text.")
-    // Original trailing '\n' is preserved after the insertion.
-    assert_incremental_matches_full(
-        "# Hello\n\nSome text.\n",
-        DocumentChange::Incremental {
-            start_line: 2,
-            start_character: 10,
-            end_line: 2,
-            end_character: 10,
-            text: "\n\n## New Section\n".to_string(),
-        },
-        "# Hello\n\nSome text.\n\n## New Section\n\n",
-    );
-}
-
-#[test]
-fn test_incremental_parse_delete_heading_matches_full() {
-    // Deleting (2,0)..(3,0) removes "## Remove\n" (bytes 8..18)
-    // Leaves "# Keep\n\n" + "\nParagraph.\n" = triple newline between them.
-    assert_incremental_matches_full(
-        "# Keep\n\n## Remove\n\nParagraph.\n",
-        DocumentChange::Incremental {
-            start_line: 2,
-            start_character: 0,
-            end_line: 3,
-            end_character: 0,
-            text: String::new(),
-        },
-        "# Keep\n\n\nParagraph.\n",
-    );
-}
-
-#[test]
-fn test_incremental_parse_rename_heading_matches_full() {
-    assert_incremental_matches_full(
-        "# Old Name\n\nBody.\n",
-        DocumentChange::Incremental {
-            start_line: 0,
-            start_character: 2,
-            end_line: 0,
-            end_character: 10,
-            text: "New Name".to_string(),
-        },
-        "# New Name\n\nBody.\n",
-    );
-}
-
-#[test]
-fn test_incremental_parse_add_wiki_link_matches_full() {
-    assert_incremental_matches_full(
-        "# Page\n\nSome text.\n",
-        DocumentChange::Incremental {
-            start_line: 2,
-            start_character: 10,
-            end_line: 2,
-            end_character: 10,
-            text: " See [[Other Page]]".to_string(),
-        },
-        "# Page\n\nSome text. See [[Other Page]]\n",
-    );
-}
-
-#[test]
-fn test_incremental_parse_100_sequential_edits_matches_full() {
-    use markymark_lsp::state::DocumentChange;
-
+fn test_engine_parity_headings() {
     let mut state = ServerState::new();
-    let uri = DocumentUri::new("file:///test/stress.md").unwrap();
-    let mut source = "# Title\n\nContent.\n".to_string();
-    state.open_document(uri.clone(), source.clone());
+    let uri = DocumentUri::new("file:///test/headings.md").unwrap();
+    state.open_document(uri.clone(), "# Foo\n## Bar\n### Baz\n".to_string());
 
-    // Apply 100 single-char insertions before the period
-    for i in 0..100u8 {
-        let ch = (b'a' + (i % 26)) as char;
-        // Find the '.' in the current text to know the line/character
-        let dot_pos = source.find('.').unwrap();
-        let line = source[..dot_pos].matches('\n').count() as u32;
-        let col = dot_pos - source[..dot_pos].rfind('\n').map(|p| p + 1).unwrap_or(0);
+    let index = state.get_document_index(&uri).unwrap();
+    let headings = index.headings();
+    assert_eq!(headings.len(), 3);
 
-        state.apply_document_changes(
-            &uri,
-            vec![DocumentChange::Incremental {
-                start_line: line,
-                start_character: col as u32,
-                end_line: line,
-                end_character: col as u32,
-                text: ch.to_string(),
-            }],
-        );
+    assert_eq!(headings[0].text, "Foo");
+    assert_eq!(headings[0].level, 1);
+    assert_eq!(headings[0].slug, "foo");
 
-        // Update our source tracker to match
-        source.insert(dot_pos, ch);
-    }
+    assert_eq!(headings[1].text, "Bar");
+    assert_eq!(headings[1].level, 2);
+    assert_eq!(headings[1].slug, "bar");
 
-    // Fresh full parse of the same final text
-    let mut full_state = ServerState::new();
-    let full_uri = DocumentUri::new("file:///test/full.md").unwrap();
-    full_state.open_document(full_uri.clone(), source.clone());
-
-    // Compare results
-    let inc_text = state.get_document_text(&uri).unwrap();
-    assert_eq!(inc_text, source.as_str());
-
-    let inc_index = state.get_document_index(&uri).unwrap();
-    let full_index = full_state.get_document_index(&full_uri).unwrap();
-
-    let inc_headings: Vec<_> = inc_index
-        .headings()
-        .iter()
-        .map(|h| (h.level, h.text.to_string()))
-        .collect();
-    let full_headings: Vec<_> = full_index
-        .headings()
-        .iter()
-        .map(|h| (h.level, h.text.to_string()))
-        .collect();
-    assert_eq!(
-        inc_headings, full_headings,
-        "100 sequential edits: headings should match"
-    );
+    assert_eq!(headings[2].text, "Baz");
+    assert_eq!(headings[2].level, 3);
+    assert_eq!(headings[2].slug, "baz");
 }
 
 #[test]
-fn incremental_wiki_links_matches_full_rebuild() {
-    assert_incremental_matches_full(
-        "# Title\n\nSee [[Page]] and [[Keep]] and [[Tail]].\n",
-        DocumentChange::Incremental {
-            start_line: 2,
-            start_character: 4,
-            end_line: 2,
-            end_character: 12,
-            text: "[[Other]]".to_string(),
-        },
-        "# Title\n\nSee [[Other]] and [[Keep]] and [[Tail]].\n",
-    );
-}
-
-#[test]
-fn incremental_append_new_wiki_link_after_last_existing_matches_full() {
-    let tail = "x".repeat(220);
-    let original = format!("# Title\n\n[[Page]]\n{}\n", tail);
-    let expected = format!("# Title\n\n[[Page]]\n{} [[NewTail]]\n", tail);
-
-    assert_incremental_matches_full(
-        &original,
-        DocumentChange::Incremental {
-            start_line: 3,
-            start_character: 220,
-            end_line: 3,
-            end_character: 220,
-            text: " [[NewTail]]".to_string(),
-        },
-        &expected,
-    );
-}
-
-#[test]
-fn wiki_links_unchanged_sections_reused() {
+fn test_engine_parity_wiki_links() {
     let mut state = ServerState::new();
-    let uri = DocumentUri::new("file:///test/reuse.md").unwrap();
+    let uri = DocumentUri::new("file:///test/wiki.md").unwrap();
     state.open_document(
         uri.clone(),
-        "# Title\n\n[[A]]\nmiddle [[B]]\n[[C]]\n".to_string(),
+        "# Page\n\nSee [[My Target]] and [[Other Doc]].\n".to_string(),
     );
 
-    let before = state
-        .get_document_index(&uri)
-        .expect("index should exist")
-        .wiki_links()
-        .iter()
-        .map(|w| (w.target.to_string(), w.range))
-        .collect::<Vec<_>>();
-    assert_eq!(before.len(), 3);
-
-    state.apply_document_changes(
-        &uri,
-        vec![DocumentChange::Incremental {
-            start_line: 3,
-            start_character: 9,
-            end_line: 3,
-            end_character: 10,
-            text: "X".to_string(),
-        }],
-    );
-
-    let after = state
-        .get_document_index(&uri)
-        .expect("index should exist")
-        .wiki_links()
-        .iter()
-        .map(|w| (w.target.to_string(), w.range))
-        .collect::<Vec<_>>();
-    assert_eq!(after.len(), 3);
-
-    assert_eq!(before[0], after[0], "first link should remain unchanged");
-    assert_eq!(before[2], after[2], "third link should remain unchanged");
-    assert_eq!(after[1].0, "X", "middle link target should be updated");
+    let index = state.get_document_index(&uri).unwrap();
+    let links = index.wiki_links();
+    assert_eq!(links.len(), 2, "should find exactly 2 wiki links");
+    assert_eq!(links[0].target, "My Target");
+    assert_eq!(links[1].target, "Other Doc");
 }
 
 #[test]
-fn wiki_links_neighbor_validation() {
+fn test_engine_parity_tags() {
     let mut state = ServerState::new();
-    let uri = DocumentUri::new("file:///test/neighbors.md").unwrap();
-    state.open_document(uri.clone(), "# T\n\n[[A]][[B]]\n".to_string());
-
-    state.apply_document_changes(
-        &uri,
-        vec![DocumentChange::Incremental {
-            start_line: 2,
-            start_character: 5,
-            end_line: 2,
-            end_character: 5,
-            text: " text ".to_string(),
-        }],
-    );
-
-    let links = state
-        .get_document_index(&uri)
-        .expect("index should exist")
-        .wiki_links()
-        .iter()
-        .map(|w| (w.target.to_string(), w.range))
-        .collect::<Vec<_>>();
-
-    assert_eq!(links.len(), 2);
-    assert_eq!(links[0].0, "A");
-    assert_eq!(links[1].0, "B");
-    assert!(links[1].1.start.character > links[0].1.end.character);
-}
-
-#[test]
-fn edge_case_empty_pending_edits() {
-    let mut state = ServerState::new();
-    let uri = DocumentUri::new("file:///test/empty-edits.md").unwrap();
-    state.open_document(uri.clone(), "# T\n\n[[A]] [[B]] [[C]]\n".to_string());
-    assert_eq!(state.pending_edit_count(), 0);
-
-    state.apply_document_changes(&uri, vec![]);
-
-    assert_eq!(state.pending_edit_count(), 0);
-    let links = state
-        .get_document_index(&uri)
-        .expect("index should exist")
-        .wiki_links();
-    assert_eq!(links.len(), 3);
-}
-
-#[test]
-fn edge_case_all_links_in_changed_range() {
-    assert_incremental_matches_full(
-        "# T\n\n[[A]] [[B]]\n",
-        DocumentChange::Incremental {
-            start_line: 2,
-            start_character: 0,
-            end_line: 2,
-            end_character: 11,
-            text: "[[X]] [[Y]]".to_string(),
-        },
-        "# T\n\n[[X]] [[Y]]\n",
-    );
-}
-
-#[test]
-fn wiki_links_overlapping_incremental_edits_match_full() {
-    let mut inc_state = ServerState::new();
-    let uri = DocumentUri::new("file:///test/overlap.md").unwrap();
-    inc_state.open_document(
+    let uri = DocumentUri::new("file:///test/tags.md").unwrap();
+    state.open_document(
         uri.clone(),
-        "# T\n\n[[Alpha]] [[Beta]] [[Gamma]]\n".to_string(),
+        "# Note\n\nSome text #rust #testing here.\n".to_string(),
     );
 
-    inc_state.apply_document_changes(
-        &uri,
-        vec![
-            DocumentChange::Incremental {
-                start_line: 2,
-                start_character: 2,
-                end_line: 2,
-                end_character: 7,
-                text: "Delta".to_string(),
-            },
-            DocumentChange::Incremental {
-                start_line: 2,
-                start_character: 2,
-                end_line: 2,
-                end_character: 7,
-                text: "Epsilon".to_string(),
-            },
-        ],
-    );
-
-    let final_text = inc_state
-        .get_document_text(&uri)
-        .expect("updated text should exist")
-        .to_string();
-
-    let mut full_state = ServerState::new();
-    let full_uri = DocumentUri::new("file:///test/overlap-full.md").unwrap();
-    full_state.open_document(full_uri.clone(), final_text);
-
-    let inc_links: Vec<_> = inc_state
-        .get_document_index(&uri)
-        .expect("incremental index should exist")
-        .wiki_links()
-        .iter()
-        .map(|w| (w.target.to_string(), w.range))
-        .collect();
-    let full_links: Vec<_> = full_state
-        .get_document_index(&full_uri)
-        .expect("full index should exist")
-        .wiki_links()
-        .iter()
-        .map(|w| (w.target.to_string(), w.range))
-        .collect();
-
-    assert_eq!(
-        inc_links, full_links,
-        "overlapping edits should produce identical wiki-link set"
-    );
-}
-
-#[test]
-#[ignore = "performance signal only; run explicitly for local benchmark evidence"]
-fn benchmark_incremental_wiki_link_edit_faster_than_full_rebuild() {
-    let uri = DocumentUri::new("file:///test/wiki-bench.md").unwrap();
-    let mut text = String::new();
-    text.push_str("# Bench\n\n");
-    for i in 0..5000 {
-        text.push_str(&format!("Line {} [[Page{}]] and [[Ref{}]]\n", i, i, i + 1));
-    }
-
-    let marker = "[[Page4000]]";
-    let marker_offset = text.find(marker).expect("marker must exist");
-    let marker_prefix = &text[..marker_offset];
-    let start_line = marker_prefix.chars().filter(|c| *c == '\n').count() as u32;
-    let line_start = marker_prefix.rfind('\n').map(|idx| idx + 1).unwrap_or(0);
-    let start_character = (marker_offset - line_start + 2) as u32;
-    let end_character = start_character + "Page4000".len() as u32;
-
-    let changed = text.replacen("[[Page4000]]", "[[Renamed4000]]", 1);
-
-    let iterations = 8;
-    let mut incremental_total = Duration::ZERO;
-    let mut full_total = Duration::ZERO;
-
-    for _ in 0..iterations {
-        let mut state = ServerState::new();
-        state.open_document(uri.clone(), text.clone());
-        let start = Instant::now();
-        state.apply_document_changes(
-            &uri,
-            vec![DocumentChange::Incremental {
-                start_line,
-                start_character,
-                end_line: start_line,
-                end_character,
-                text: "Renamed4000".to_string(),
-            }],
-        );
-        incremental_total += start.elapsed();
-    }
-
-    for _ in 0..iterations {
-        let mut state = ServerState::new();
-        state.open_document(uri.clone(), text.clone());
-        let start = Instant::now();
-        state.change_document(&uri, changed.clone());
-        full_total += start.elapsed();
-    }
-
-    eprintln!(
-        "wiki benchmark totals over {} iters: incremental={:?}, full={:?}",
-        iterations, incremental_total, full_total
-    );
-
-    assert!(incremental_total > Duration::ZERO);
-    assert!(full_total > Duration::ZERO);
-}
-
-/// Benchmark: single-char edit in PROSE (not touching any wiki links).
-///
-/// This is the common case: user types in a paragraph between wiki links.
-/// With the position-adjustment optimization, all extractors should skip
-/// re-extraction and only adjust positions, giving ≥10x speedup.
-#[test]
-#[ignore = "performance signal only; run explicitly for local benchmark evidence"]
-fn benchmark_incremental_prose_edit_vs_full_rebuild() {
-    let uri = DocumentUri::new("file:///test/prose-bench.md").unwrap();
-    let mut text = String::new();
-    text.push_str("# Large Document\n\n");
-
-    // Build a ~50KB document with wiki links scattered every ~20 lines
-    // with prose paragraphs between them
-    for i in 0..500 {
-        if i % 20 == 0 {
-            text.push_str(&format!("See [[Page{}]] for details.\n\n", i / 20));
-        } else {
-            text.push_str(&format!(
-                "This is line {} of prose text with some content to fill space. \
-                 Lorem ipsum dolor sit amet consectetur adipiscing elit.\n",
-                i
-            ));
-        }
-    }
-
-    // Find a prose line in the middle (line 250) — NOT near any wiki link
-    let prose_target = "This is line 250 of prose text";
-    let target_offset = text.find(prose_target).expect("prose target must exist");
-    let prefix = &text[..target_offset];
-    let start_line = prefix.chars().filter(|c| *c == '\n').count() as u32;
-    let line_start = prefix.rfind('\n').map(|idx| idx + 1).unwrap_or(0);
-    let start_character = (target_offset - line_start) as u32;
-
-    // Insert a single character "X" at the beginning of the prose line
-    let changed = format!("{}X{}", &text[..target_offset], &text[target_offset..]);
-
-    let iterations = 20;
-    let warmup = 3;
-    let mut incremental_total = Duration::ZERO;
-    let mut full_total = Duration::ZERO;
-
-    // Warmup + measurement: incremental
-    for i in 0..(warmup + iterations) {
-        let mut state = ServerState::new();
-        state.open_document(uri.clone(), text.clone());
-        let start = Instant::now();
-        state.apply_document_changes(
-            &uri,
-            vec![DocumentChange::Incremental {
-                start_line,
-                start_character,
-                end_line: start_line,
-                end_character: start_character,
-                text: "X".to_string(),
-            }],
-        );
-        if i >= warmup {
-            incremental_total += start.elapsed();
-        }
-    }
-
-    // Warmup + measurement: full rebuild
-    for i in 0..(warmup + iterations) {
-        let mut state = ServerState::new();
-        state.open_document(uri.clone(), text.clone());
-        let start = Instant::now();
-        state.change_document(&uri, changed.clone());
-        if i >= warmup {
-            full_total += start.elapsed();
-        }
-    }
-
-    let inc_avg = incremental_total / iterations as u32;
-    let full_avg = full_total / iterations as u32;
-    let speedup = full_total.as_nanos() as f64 / incremental_total.as_nanos().max(1) as f64;
-
-    eprintln!(
-        "prose benchmark ({} iters): incremental_avg={:?}, full_avg={:?}, speedup={:.1}x",
-        iterations, inc_avg, full_avg, speedup
-    );
-    eprintln!(
-        "  doc size: {} bytes, {} lines",
-        text.len(),
-        text.lines().count()
-    );
-
-    assert!(incremental_total > Duration::ZERO);
-    assert!(full_total > Duration::ZERO);
-    // The key assertion: incremental should be significantly faster
+    let index = state.get_document_index(&uri).unwrap();
+    let tags: Vec<_> = index.tags().iter().collect();
+    assert_eq!(tags.len(), 2, "should find exactly 2 tags");
+    let tag_names: Vec<&str> = tags.iter().map(|t| t.name).collect();
+    assert!(tag_names.contains(&"rust"), "should contain tag 'rust'");
     assert!(
-        speedup >= 2.0,
-        "incremental prose edit should be ≥2x faster than full rebuild, got {speedup:.1}x"
+        tag_names.contains(&"testing"),
+        "should contain tag 'testing'"
     );
 }
 
-/// Parse-phase breakdown benchmark.
-///
-/// Measures and prints three separate timings:
-///   1. Full parse (no old tree) — tree-sitter from scratch
-///   2. Incremental parse (with old tree) — tree-sitter reuse
-///   3. Full apply_document_changes end-to-end (parse + index)
-///
-/// This isolates how much of the 12.6ms incremental cost comes from
-/// the parse step vs. the index-build step.
 #[test]
-#[ignore = "diagnostic only; run explicitly with --ignored --nocapture"]
-fn benchmark_parse_breakdown() {
-    use markymark_parser::Parser;
-
-    let mut text = String::new();
-    text.push_str("# Large Document\n\n");
-    for i in 0..500 {
-        if i % 20 == 0 {
-            text.push_str(&format!("See [[Page{}]] for details.\n\n", i / 20));
-        } else {
-            text.push_str(&format!(
-                "This is line {} of prose text with some content to fill space. \
-                 Lorem ipsum dolor sit amet consectetur adipiscing elit.\n",
-                i
-            ));
-        }
-    }
-
-    // Find the prose edit position (same as prose benchmark)
-    let prose_target = "This is line 250 of prose text";
-    let target_offset = text.find(prose_target).expect("prose target must exist");
-    let prefix = &text[..target_offset];
-    let start_line = prefix.chars().filter(|c| *c == '\n').count() as u32;
-    let line_start = prefix.rfind('\n').map(|idx| idx + 1).unwrap_or(0);
-    let start_character = (target_offset - line_start) as u32;
-    let changed = format!("{}X{}", &text[..target_offset], &text[target_offset..]);
-
-    let iterations = 20;
-    let warmup = 3;
-
-    // --- Phase -1: Time just the BLOCK parse (no inline grammar) ---
-    let mut full_block_only_total = std::time::Duration::ZERO;
-    let mut inc_block_only_total = std::time::Duration::ZERO;
-    for i in 0..(warmup + iterations) {
-        let mut parser = Parser::new().expect("parser init");
-        let start = std::time::Instant::now();
-        let _ = parser.parse_block_tree_only(&text, None);
-        if i >= warmup {
-            full_block_only_total += start.elapsed();
-        }
-    }
-    for i in 0..(warmup + iterations) {
-        let mut parser = Parser::new().expect("parser init");
-        // Build old block tree first (full parse to get old tree)
-        let old_block_tree = parser
-            .parse_block_tree_only(&text, None)
-            .expect("initial block tree");
-        // Apply edit to old block tree
-        let mut old_block_tree_for_edit = old_block_tree;
-        old_block_tree_for_edit.edit(&markymark_parser::InputEdit {
-            start_byte: target_offset,
-            old_end_byte: target_offset,
-            new_end_byte: target_offset + 1,
-            start_position: markymark_parser::Point {
-                row: start_line as usize,
-                column: start_character as usize,
-            },
-            old_end_position: markymark_parser::Point {
-                row: start_line as usize,
-                column: start_character as usize,
-            },
-            new_end_position: markymark_parser::Point {
-                row: start_line as usize,
-                column: start_character as usize + 1,
-            },
-        });
-        let start = std::time::Instant::now();
-        let _ = parser.parse_block_tree_only(&changed, Some(&old_block_tree_for_edit));
-        if i >= warmup {
-            inc_block_only_total += start.elapsed();
-        }
-    }
-
-    // --- Phase 0: Time just the tree-sitter parse step, no collect_elements ---
-    let mut full_tree_only_total = std::time::Duration::ZERO;
-    let mut inc_tree_only_total = std::time::Duration::ZERO;
-    for i in 0..(warmup + iterations) {
-        // Full tree-only parse
-        let mut parser = Parser::new().expect("parser init");
-        let start = std::time::Instant::now();
-        let _ = parser.parse_tree_only(&text, None);
-        if i >= warmup {
-            full_tree_only_total += start.elapsed();
-        }
-    }
-    for i in 0..(warmup + iterations) {
-        // Incremental tree-only parse
-        let mut parser = Parser::new().expect("parser init");
-        let old_md_tree = parser.parse_tree_only(&text, None).expect("initial tree");
-        let mut old_md_tree_cloned = old_md_tree;
-        let start_pos_edit = markymark_parser::InputEdit {
-            start_byte: target_offset,
-            old_end_byte: target_offset,
-            new_end_byte: target_offset + 1,
-            start_position: markymark_parser::Point {
-                row: start_line as usize,
-                column: start_character as usize,
-            },
-            old_end_position: markymark_parser::Point {
-                row: start_line as usize,
-                column: start_character as usize,
-            },
-            new_end_position: markymark_parser::Point {
-                row: start_line as usize,
-                column: start_character as usize + 1,
-            },
-        };
-        old_md_tree_cloned.edit(&start_pos_edit);
-        let start = std::time::Instant::now();
-        let _ = parser.parse_tree_only(&changed, Some(&old_md_tree_cloned));
-        if i >= warmup {
-            inc_tree_only_total += start.elapsed();
-        }
-    }
-
-    // --- Phase 1: Time full parse_with_old_tree (tree-sitter + collect_elements) ---
-    let mut full_parse_total = std::time::Duration::ZERO;
-    for i in 0..(warmup + iterations) {
-        let mut parser = Parser::new().expect("parser init");
-        let start = std::time::Instant::now();
-        let _ = parser
-            .parse_with_old_tree(&text, None)
-            .expect("parse failed");
-        if i >= warmup {
-            full_parse_total += start.elapsed();
-        }
-    }
-
-    // --- Phase 2: Time just the incremental parse (with old tree) ---
-    let mut inc_parse_total = std::time::Duration::ZERO;
-    for i in 0..(warmup + iterations) {
-        let mut parser = Parser::new().expect("parser init");
-        let mut ast = parser
-            .parse_with_old_tree(&text, None)
-            .expect("initial parse");
-        let mut md_tree = ast.take_md_tree().expect("md_tree");
-        // Apply the edit to the old tree
-        let start_byte = target_offset;
-        let new_end_byte = start_byte + 1; // inserting "X"
-        let start_pos = markymark_parser::InputEdit {
-            start_byte,
-            old_end_byte: start_byte,
-            new_end_byte,
-            start_position: markymark_parser::Point {
-                row: start_line as usize,
-                column: start_character as usize,
-            },
-            old_end_position: markymark_parser::Point {
-                row: start_line as usize,
-                column: start_character as usize,
-            },
-            new_end_position: markymark_parser::Point {
-                row: start_line as usize,
-                column: start_character as usize + 1,
-            },
-        };
-        md_tree.edit(&start_pos);
-        let start = std::time::Instant::now();
-        let _ = parser
-            .parse_with_old_tree(&changed, Some(&md_tree))
-            .expect("incremental parse");
-        if i >= warmup {
-            inc_parse_total += start.elapsed();
-        }
-    }
-
-    // --- Phase 3: Time full apply_document_changes end-to-end ---
-    let uri = DocumentUri::new("file:///test/parse-breakdown-bench.md").unwrap();
-    let mut inc_e2e_total = std::time::Duration::ZERO;
-    for i in 0..(warmup + iterations) {
-        let mut state = ServerState::new();
-        state.open_document(uri.clone(), text.clone());
-        let start = std::time::Instant::now();
-        state.apply_document_changes(
-            &uri,
-            vec![markymark_lsp::state::DocumentChange::Incremental {
-                start_line,
-                start_character,
-                end_line: start_line,
-                end_character: start_character,
-                text: "X".to_string(),
-            }],
-        );
-        if i >= warmup {
-            inc_e2e_total += start.elapsed();
-        }
-    }
-
-    let full_block_avg = full_block_only_total / iterations as u32;
-    let inc_block_avg = inc_block_only_total / iterations as u32;
-    let full_tree_avg = full_tree_only_total / iterations as u32;
-    let inc_tree_avg = inc_tree_only_total / iterations as u32;
-    let full_parse_avg = full_parse_total / iterations as u32;
-    let inc_parse_avg = inc_parse_total / iterations as u32;
-    let inc_e2e_avg = inc_e2e_total / iterations as u32;
-
-    eprintln!("parse breakdown ({iterations} iters):");
-    eprintln!("  full_block_avg     = {full_block_avg:?}  (block grammar only, no inline parses)");
-    eprintln!("  inc_block_avg      = {inc_block_avg:?}  (block grammar incremental only)");
-    eprintln!(
-        "  inline_parse_cost  = {:?}  (full_tree - full_block, N=~500 inline parses)",
-        full_tree_avg.saturating_sub(full_block_avg)
+fn test_engine_parity_block_ids() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/blocks.md").unwrap();
+    state.open_document(
+        uri.clone(),
+        "# Doc\n\nSome block content. ^myblock\n".to_string(),
     );
-    eprintln!(
-        "  full_tree_avg      = {full_tree_avg:?}  (block+inline parse, no collect_elements)"
+
+    let index = state.get_document_index(&uri).unwrap();
+    let block = index.block_by_id("myblock");
+    assert!(block.is_some(), "block ^myblock should be indexed");
+    assert_eq!(block.unwrap().id, "myblock");
+}
+
+#[test]
+fn test_engine_lifecycle_open_and_close() {
+    // Open a document → index is available. Close → index gone. Engine lifecycle.
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/lifecycle.md").unwrap();
+
+    state.open_document(uri.clone(), "# Title\n\n#tag [[link]]\n".to_string());
+    assert_eq!(state.document_count(), 1);
+    let index = state.get_document_index(&uri);
+    assert!(index.is_some(), "index should exist after open");
+    assert!(
+        !index.unwrap().headings().is_empty(),
+        "headings should be indexed"
     );
-    eprintln!(
-        "  inc_tree_avg       = {inc_tree_avg:?}  (block+inline incremental, no collect_elements)"
-    );
-    eprintln!(
-        "  collect_elements   = {:?}  (full_parse - full_tree)",
-        full_parse_avg.saturating_sub(full_tree_avg)
-    );
-    eprintln!("  full_parse_avg     = {full_parse_avg:?}  (tree-sitter + collect_elements)");
-    eprintln!(
-        "  inc_parse_avg      = {inc_parse_avg:?}  (tree-sitter incremental + collect_elements)"
-    );
-    eprintln!("  inc_e2e_avg        = {inc_e2e_avg:?}  (inc_parse + index build)");
-    eprintln!(
-        "  index_build_only   = {:?}  (inc_e2e - inc_parse)",
-        inc_e2e_avg.saturating_sub(inc_parse_avg)
-    );
-    eprintln!(
-        "  doc size: {} bytes, {} lines",
-        text.len(),
-        text.lines().count()
+
+    state.close_document(&uri);
+    assert_eq!(state.document_count(), 0);
+    assert!(
+        state.get_document_index(&uri).is_none(),
+        "index should be gone after close"
     );
 }

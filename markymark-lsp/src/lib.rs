@@ -6,7 +6,6 @@
 //!
 //! - [`convert`]: Type conversions between `lsp_types` and `markymark_core` types
 //! - [`diagnostics`]: Diagnostic generation (broken links, duplicate headings)
-//! - [`incremental`]: Incremental re-indexing after document edits
 //! - [`state`]: Document store, parsing, and indexing (transport-agnostic)
 //! - [`server`]: `LanguageServer` trait implementation delegating to state + convert
 
@@ -15,7 +14,7 @@
 
 pub mod convert;
 pub mod diagnostics;
-pub mod incremental;
+mod helpers;
 pub mod server;
 pub mod state;
 mod symbols;

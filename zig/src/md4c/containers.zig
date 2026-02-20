@@ -96,8 +96,6 @@ pub fn isContainerCompatible(self: *const Parser, existing: *const Container, ne
     if (existing.ch == '>' and new.ch == '>') return true;
     // Same list marker type
     if (existing.ch == new.ch) return true;
-    // Bullet lists: different bullet chars are compatible
-    if (isListBullet(existing.ch) and isListBullet(new.ch)) return false;
     return false;
 }
 

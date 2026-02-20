@@ -6,17 +6,17 @@ pub mod rename;
 
 use std::collections::HashMap;
 
+use markymark_core::scanner::Md4cScanBackend;
 use markymark_core::structured::DocumentKind;
 use markymark_core::DocumentUri;
 use markymark_index::{
-    AnyDocumentIndex, BlockOwned, DocumentIndex, MarkdownLinkOwned, RealmIndex,
-    StructuredDocumentIndex, WikiLinkOwned, XmlTagOwned,
+    extract_xml_tags_from_text, AnyDocumentIndex, DocumentIndex, RealmIndex,
+    StructuredDocumentIndex,
 };
+use markymark_kernels::engine::DocumentEngine;
 use markymark_parser::structured::parse_structured;
-use markymark_parser::{byte_to_point, InputEdit, MarkdownTree, Parser};
 
 pub use crate::diagnostics::{DiagnosticSeverity, MarkyDiagnostic};
-use crate::incremental::{self, incremental_byte_bounds};
 pub use completion::{CompletionCandidate, CompletionCandidateKind, CompletionContext};
 pub use navigation::{StructuredKeyInfo, SymbolAtPosition};
 pub use rename::{PrepareRenameResult, RenameEdit};
@@ -43,22 +43,73 @@ pub enum DocumentChange {
     },
 }
 
+/// Byte bounds computed from a LSP incremental-change range.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct IncrementalByteBounds {
+    /// Byte offset of the start of the change.
+    start_byte: usize,
+    /// Byte offset of the old end of the change.
+    old_end_byte: usize,
+    /// True if the start position was clamped to the text length.
+    start_clamped: bool,
+    /// True if the end position was clamped to the text length.
+    end_clamped: bool,
+    /// True when the raw end position was before the raw start.
+    end_before_start: bool,
+}
+
+/// Compute byte offsets from LSP line/character positions.
+fn incremental_byte_bounds(
+    text: &str,
+    start_line: u32,
+    start_character: u32,
+    end_line: u32,
+    end_character: u32,
+) -> IncrementalByteBounds {
+    let raw_start_byte =
+        crate::convert::lsp_position_to_byte_offset(text, start_line, start_character);
+    let raw_end_byte = crate::convert::lsp_position_to_byte_offset(text, end_line, end_character);
+
+    let end_before_start = raw_end_byte < raw_start_byte;
+    let start_byte = raw_start_byte.min(text.len());
+    let old_end_byte = raw_end_byte.min(text.len()).max(start_byte);
+
+    IncrementalByteBounds {
+        start_byte,
+        old_end_byte,
+        start_clamped: position_was_clamped(text, start_line, start_character),
+        end_clamped: position_was_clamped(text, end_line, end_character),
+        end_before_start,
+    }
+}
+
+/// Returns true if an LSP position was clamped (beyond the actual text).
+fn position_was_clamped(text: &str, line: u32, character: u32) -> bool {
+    let target_line = line as usize;
+    let target_character = character as usize;
+    let Some(line_text) = text.split('\n').nth(target_line) else {
+        return true;
+    };
+    let content = line_text.strip_suffix('\r').unwrap_or(line_text);
+    target_character > content.encode_utf16().count()
+}
+
 /// The internal state of the LSP server.
 ///
-/// Manages document text storage, parsed ASTs, and the realm index.
-/// The parser is stored here to avoid re-creating it on every parse call.
-/// The `MarkdownTree` per document is retained for future incremental parsing.
+/// Manages document text storage, per-document Zig DocumentEngine instances,
+/// and the realm index for cross-document lookups.
 pub struct ServerState {
     /// Raw document text keyed by URI string.
     documents: HashMap<String, String>,
     /// The realm index for cross-document lookups.
     realm: RealmIndex,
-    /// Reusable markdown parser instance.
-    parser: Parser,
-    /// Retained tree-sitter parse trees for incremental reuse (keyed by URI string).
-    md_trees: HashMap<String, MarkdownTree>,
-    /// Pending incremental edits collected between change application and reindex.
-    pending_edits: Vec<InputEdit>,
+    /// Per-document stateful Zig document engines (keyed by URI string).
+    /// Wrapped in `Mutex` so `ServerState: Sync` is derived soundly.
+    /// `DocumentEngine` is `Send` but not `Sync` (get_blob mutates Zig-side
+    /// cached state), so we gate shared access through a mutex even though
+    /// all call-sites already hold `&mut self` and the mutex is uncontested.
+    /// INVARIANT: all maps use `uri.as_str().to_string()` as the key.
+    engines: HashMap<String, std::sync::Mutex<DocumentEngine>>,
 }
 
 impl Default for ServerState {
@@ -73,45 +124,72 @@ impl ServerState {
         Self {
             documents: HashMap::new(),
             realm: RealmIndex::default(),
-            parser: Parser::new().expect("failed to create parser"),
-            md_trees: HashMap::new(),
-            pending_edits: Vec::new(),
+            engines: HashMap::new(),
         }
     }
 
-    /// Parse text and build a markdown document index.
+    /// Build a markdown document index via the stateful Zig DocumentEngine.
     ///
-    /// Returns both the index and the tree-sitter parse tree. The tree is
-    /// retained per-document for future incremental parsing.
-    fn build_markdown_index(&mut self, text: &str) -> (DocumentIndex, Option<MarkdownTree>) {
-        self.build_markdown_index_with_old_tree(text, None, &[], None, None, None, None)
-    }
+    /// If an engine for the URI exists, updates it; otherwise creates one.
+    /// On any engine or blob error, falls back to `DocumentIndex::from_scan`
+    /// with the `Md4cScanBackend` so the index is never empty.
+    ///
+    /// LIFETIME NOTE: `ScanBlob<'_>` borrows `&engine`. `from_blob()` copies
+    /// all text into its own bumpalo arena immediately, so the `DocumentIndex`
+    /// does NOT hold references to the blob after `from_blob()` returns. The
+    /// blob can safely drop and the engine can be mutated or stored.
+    fn build_markdown_index_via_engine(&mut self, uri_str: &str, text: &str) -> DocumentIndex {
+        // Extract XML tags from source text. The Zig engine does not extract
+        // them (md4c treats HTML tags as pass-through), so we run the
+        // markymark-parser single-pass tag scanner as a supplement.
+        let xml_tags = extract_xml_tags_from_text(text);
 
-    /// Parse text with optional old tree reuse and build a markdown document index.
-    ///
-    /// Delegates to [`incremental::build_markdown_index_with_old_tree`] which handles
-    /// all 5 independent extractors (wiki_links, blocks, tags, markdown_links, xml_tags).
-    #[allow(clippy::too_many_arguments)]
-    fn build_markdown_index_with_old_tree(
-        &mut self,
-        text: &str,
-        old_tree: Option<&MarkdownTree>,
-        pending_edits: &[InputEdit],
-        old_wiki_links: Option<&[WikiLinkOwned]>,
-        old_blocks: Option<&[BlockOwned]>,
-        old_markdown_links: Option<&[MarkdownLinkOwned]>,
-        old_xml_tags: Option<&[XmlTagOwned]>,
-    ) -> (DocumentIndex, Option<MarkdownTree>) {
-        incremental::build_markdown_index_with_old_tree(
-            &mut self.parser,
-            text,
-            old_tree,
-            pending_edits,
-            old_wiki_links,
-            old_blocks,
-            old_markdown_links,
-            old_xml_tags,
-        )
+        if let Some(engine_mutex) = self.engines.get(uri_str) {
+            // Engine exists — update it. The mutex is uncontested here because
+            // build_markdown_index_via_engine takes &mut self.
+            let mut engine = engine_mutex.lock().expect("engine mutex poisoned");
+            match engine.update(text) {
+                Ok(()) => match engine.get_blob() {
+                    Ok(blob) => match DocumentIndex::from_blob_with_xml_tags(blob.data(), xml_tags) {
+                        Ok(index) => return index,
+                        Err(e) => eprintln!(
+                            "markymark-lsp: from_blob failed for {uri_str}: {e:?}, falling back to from_scan"
+                        ),
+                    },
+                    Err(e) => eprintln!(
+                        "markymark-lsp: get_blob failed for {uri_str}: {e:?}, falling back to from_scan"
+                    ),
+                },
+                Err(e) => eprintln!(
+                    "markymark-lsp: engine update failed for {uri_str}: {e:?}, falling back to from_scan"
+                ),
+            }
+        } else {
+            // No engine yet — create one
+            match DocumentEngine::new(text) {
+                Ok(engine) => match engine.get_blob() {
+                    Ok(blob) => match DocumentIndex::from_blob_with_xml_tags(blob.data(), xml_tags) {
+                        Ok(index) => {
+                            self.engines
+                                .insert(uri_str.to_string(), std::sync::Mutex::new(engine));
+                            return index;
+                        }
+                        Err(e) => eprintln!(
+                            "markymark-lsp: from_blob failed (new engine) for {uri_str}: {e:?}, falling back to from_scan"
+                        ),
+                    },
+                    Err(e) => eprintln!(
+                        "markymark-lsp: get_blob failed (new engine) for {uri_str}: {e:?}, falling back to from_scan"
+                    ),
+                },
+                Err(e) => eprintln!(
+                    "markymark-lsp: engine create failed for {uri_str}: {e:?}, falling back to from_scan"
+                ),
+            }
+        }
+
+        // Fallback: from_scan with Md4cScanBackend. Never panics.
+        DocumentIndex::from_scan(text, &Md4cScanBackend)
     }
 
     /// Detect document kind from URI file extension.
@@ -129,10 +207,7 @@ impl ServerState {
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                let (index, md_tree) = self.build_markdown_index(&text);
-                if let Some(tree) = md_tree {
-                    self.md_trees.insert(uri.as_str().to_string(), tree);
-                }
+                let index = self.build_markdown_index_via_engine(uri.as_str(), &text);
                 self.realm.add_document(uri, index);
             }
             Some(kind) => {
@@ -146,7 +221,6 @@ impl ServerState {
 
     /// Handle a document being changed: apply changes, re-parse, re-index.
     pub fn change_document(&mut self, uri: &DocumentUri, text: String) {
-        self.pending_edits.clear();
         self.realm.remove_document(uri);
         let kind = Self::document_kind_from_uri(uri);
         self.documents
@@ -154,13 +228,7 @@ impl ServerState {
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                let (index, md_tree) = self.build_markdown_index(&text);
-                let uri_str = uri.as_str().to_string();
-                if let Some(tree) = md_tree {
-                    self.md_trees.insert(uri_str, tree);
-                } else {
-                    self.md_trees.remove(&uri_str);
-                }
+                let index = self.build_markdown_index_via_engine(uri.as_str(), &text);
                 self.realm.add_document(uri.clone(), index);
             }
             Some(kind) => {
@@ -179,82 +247,12 @@ impl ServerState {
     /// Changes are applied in order. Each change operates on the text as modified
     /// by the previous change (per LSP spec). Supports both incremental edits
     /// (with position range in UTF-16 code units) and full-text replacements.
-    ///
-    /// For markdown documents, incremental changes are tracked as tree-sitter
-    /// `InputEdit`s so the old parse tree can be reused for O(edit_size) reparsing.
     pub fn apply_document_changes(&mut self, uri: &DocumentUri, changes: Vec<DocumentChange>) {
-        self.pending_edits.clear();
-
-        // Take the old tree out (if any) for incremental parsing
-        let mut old_tree = self.md_trees.remove(uri.as_str());
-        // Capture all old extractor data in a single get_document() call
-        // before realm.remove_document() invalidates the arena.
-        let (old_wiki_links, old_blocks, old_markdown_links, old_xml_tags) =
-            if let Some(index) = self.realm.get_document(uri) {
-                let wl = index
-                    .wiki_links()
-                    .iter()
-                    .map(|entry| WikiLinkOwned {
-                        target: entry.target.to_string(),
-                        alias: entry.alias.map(str::to_string),
-                        heading: entry.heading.map(str::to_string),
-                        range: entry.range,
-                        start_byte: entry.start_byte,
-                        end_byte: entry.end_byte,
-                    })
-                    .collect::<Vec<_>>();
-                let bl = index
-                    .block_ids()
-                    .filter_map(|id| index.block_by_id(id))
-                    .map(|entry| BlockOwned {
-                        id: entry.id.to_string(),
-                        range: entry.range,
-                        start_byte: entry.start_byte,
-                        end_byte: entry.end_byte,
-                    })
-                    .collect::<Vec<_>>();
-                let ml = index
-                    .markdown_links()
-                    .iter()
-                    .map(|entry| MarkdownLinkOwned {
-                        text: entry.text.to_string(),
-                        url: entry.url.to_string(),
-                        anchor: entry.anchor.map(str::to_string),
-                        range: entry.range,
-                        start_byte: entry.start_byte,
-                        end_byte: entry.end_byte,
-                    })
-                    .collect::<Vec<_>>();
-                let xt = index
-                    .xml_tags()
-                    .iter()
-                    .map(|entry| XmlTagOwned {
-                        tag_name: entry.tag_name.to_string(),
-                        attributes: entry
-                            .attributes
-                            .iter()
-                            .map(|(k, v)| (k.to_string(), v.to_string()))
-                            .collect(),
-                        is_self_closing: entry.is_self_closing,
-                        is_unclosed: entry.is_unclosed,
-                        range: entry.range,
-                        start_byte: entry.start_byte,
-                        end_byte: entry.end_byte,
-                    })
-                    .collect::<Vec<_>>();
-                (Some(wl), Some(bl), Some(ml), Some(xt))
-            } else {
-                (None, None, None, None)
-            };
-
         if changes.is_empty() {
-            if let Some(tree) = old_tree {
-                self.md_trees.insert(uri.as_str().to_string(), tree);
-            }
             return;
         }
 
-        // Phase 1: Apply text edits and track tree-sitter InputEdits
+        // Phase 1: Apply text edits to the stored document text
         let final_text = {
             let Some(text) = self.documents.get_mut(uri.as_str()) else {
                 return;
@@ -264,8 +262,6 @@ impl ServerState {
                 match change {
                     DocumentChange::Full(new_text) => {
                         *text = new_text;
-                        // Full replacement invalidates the old tree
-                        old_tree = None;
                     }
                     DocumentChange::Incremental {
                         start_line,
@@ -295,9 +291,6 @@ impl ServerState {
                             continue;
                         }
 
-                        let start_byte = bounds.start_byte;
-                        let old_end_byte = bounds.old_end_byte;
-
                         if bounds.start_clamped || bounds.end_clamped {
                             eprintln!(
                                 "markymark-lsp: clamped incremental edit range for {} \
@@ -307,62 +300,22 @@ impl ServerState {
                             );
                         }
 
-                        // Compute tree-sitter Points BEFORE applying the text change
-                        let start_position = byte_to_point(text, start_byte);
-                        let old_end_position = byte_to_point(text, old_end_byte);
-
-                        let new_end_byte = start_byte + new_text.len();
-
-                        // Apply the text change
-                        text.replace_range(start_byte..old_end_byte, &new_text);
-
-                        // Compute new end position from the modified text
-                        let new_end_position = byte_to_point(text, new_end_byte);
-
-                        // Update the old tree so tree-sitter can reuse unchanged subtrees
-                        let input_edit = InputEdit {
-                            start_byte,
-                            old_end_byte,
-                            new_end_byte,
-                            start_position,
-                            old_end_position,
-                            new_end_position,
-                        };
-                        self.pending_edits.push(input_edit);
-
-                        if let Some(ref mut tree) = old_tree {
-                            tree.edit(&input_edit);
-                        }
+                        text.replace_range(bounds.start_byte..bounds.old_end_byte, &new_text);
                     }
                 }
             }
             text.clone()
         };
 
-        // Phase 2: Re-parse and re-index with the final text
+        // Phase 2: Re-index with the final text via the engine pipeline
         self.realm.remove_document(uri);
         let kind = Self::document_kind_from_uri(uri);
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                let pending_edits = self.pending_edits.clone();
-                let (index, md_tree) = self.build_markdown_index_with_old_tree(
-                    &final_text,
-                    old_tree.as_ref(),
-                    &pending_edits,
-                    old_wiki_links.as_deref(),
-                    old_blocks.as_deref(),
-                    old_markdown_links.as_deref(),
-                    old_xml_tags.as_deref(),
-                );
-                let uri_str = uri.as_str().to_string();
-                if let Some(tree) = md_tree {
-                    self.md_trees.insert(uri_str, tree);
-                } else {
-                    self.md_trees.remove(&uri_str);
-                }
+                let uri_str = uri.as_str();
+                let index = self.build_markdown_index_via_engine(uri_str, &final_text);
                 self.realm.add_document(uri.clone(), index);
-                self.pending_edits.clear();
             }
             Some(kind) => {
                 if let Ok(ast) = parse_structured(&final_text, kind) {
@@ -371,7 +324,6 @@ impl ServerState {
                         StructuredDocumentIndex::from_ast(ast),
                     );
                 }
-                self.pending_edits.clear();
             }
         }
     }
@@ -379,9 +331,8 @@ impl ServerState {
     /// Handle a document being closed: remove from store and index.
     pub fn close_document(&mut self, uri: &DocumentUri) {
         self.documents.remove(uri.as_str());
-        self.md_trees.remove(uri.as_str());
+        self.engines.remove(uri.as_str());
         self.realm.remove_document(uri);
-        self.pending_edits.clear();
     }
 
     /// Get the stored text for a document.
@@ -405,19 +356,6 @@ impl ServerState {
         uri: &DocumentUri,
     ) -> Option<&StructuredDocumentIndex> {
         self.realm.get_structured_document(uri)
-    }
-
-    /// Get the retained tree-sitter parse tree for a document.
-    ///
-    /// Used for incremental parsing: pass the old tree to `Parser::parse_incremental`
-    /// so tree-sitter can reuse unchanged subtrees.
-    pub fn get_md_tree(&self, uri: &DocumentUri) -> Option<&MarkdownTree> {
-        self.md_trees.get(uri.as_str())
-    }
-
-    /// Number of pending incremental edits awaiting reindex.
-    pub fn pending_edit_count(&self) -> usize {
-        self.pending_edits.len()
     }
 
     /// Get a reference to the realm index.

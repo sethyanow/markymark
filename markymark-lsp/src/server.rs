@@ -1,5 +1,6 @@
 //! LSP server: LanguageServer trait implementation using tower-lsp-server.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -8,15 +9,15 @@ use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::*;
 use tower_lsp_server::{Client, LanguageServer, LspService};
 
-use crate::state::{
-    DiagnosticSeverity as MarkyDiagSeverity, ServerState, StructuredKeyInfo, SymbolAtPosition,
-};
-use markymark_core::{DocumentUri, Range as CoreRange};
+use crate::state::{ServerState, SymbolAtPosition};
+use markymark_core::DocumentUri;
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link, ResolvedTarget};
-use markymark_index::DocumentIndex;
 
+use crate::helpers::{
+    iter_realm_documents, resolved_target_to_location, structured_key_hover_markdown,
+    xml_hover_stats,
+};
 use crate::symbols::{key_entries_to_symbols, outline_children_to_symbols, xml_tags_to_symbols};
-use std::collections::HashMap;
 
 /// Debounce delay in milliseconds: only the final pause after typing triggers a reparse.
 pub const DEBOUNCE_MS: u64 = 75;
@@ -30,6 +31,15 @@ struct DebounceState {
     pending_changes: HashMap<DocumentUri, Vec<Vec<crate::state::DocumentChange>>>,
     /// Active debounce abort handles, keyed by document URI.
     debounce_handles: HashMap<DocumentUri, tokio::task::AbortHandle>,
+    /// Generation token per document URI (globally unique per allocation).
+    /// Inserted on open, removed on close. Used to detect stale batches
+    /// after close/reopen sequences (marky-aemm). Entries are cleaned up
+    /// on close to prevent unbounded growth (marky-jwsk).
+    document_generations: HashMap<DocumentUri, u64>,
+    /// Next generation value to allocate. Monotonically increasing, never resets.
+    /// Ensures each open gets a globally unique generation value, making it safe
+    /// to remove entries on close without collision risk on reopen (marky-jwsk).
+    next_generation: u64,
 }
 
 impl DebounceState {
@@ -37,6 +47,8 @@ impl DebounceState {
         Self {
             pending_changes: HashMap::new(),
             debounce_handles: HashMap::new(),
+            document_generations: HashMap::new(),
+            next_generation: 1,
         }
     }
 }
@@ -86,19 +98,7 @@ impl Backend {
         };
         // Lock is dropped before the async client call (deadlock prevention)
 
-        let lsp_diagnostics: Vec<Diagnostic> = diagnostics
-            .into_iter()
-            .map(|d| Diagnostic {
-                range: crate::convert::to_lsp_range(d.range),
-                severity: Some(match d.severity {
-                    MarkyDiagSeverity::Error => DiagnosticSeverity::ERROR,
-                    MarkyDiagSeverity::Warning => DiagnosticSeverity::WARNING,
-                }),
-                source: Some("markymark".to_string()),
-                message: d.message,
-                ..Default::default()
-            })
-            .collect();
+        let lsp_diagnostics = crate::convert::to_lsp_diagnostics(diagnostics);
 
         self.client
             .publish_diagnostics(lsp_uri, lsp_diagnostics, None)
@@ -161,6 +161,16 @@ impl LanguageServer for Backend {
                 let mut state = self.state.write().await;
                 state.open_document(doc_uri.clone(), params.text_document.text);
             }
+            // Assign a globally unique generation so any in-flight debounce task
+            // from a prior session detects the mismatch and discards its stale
+            // batch (marky-aemm). Globally unique values make it safe to remove
+            // entries on close without collision risk on reopen (marky-jwsk).
+            {
+                let mut deb = self.debounce.lock().unwrap();
+                let gen = deb.next_generation;
+                deb.next_generation += 1;
+                deb.document_generations.insert(doc_uri.clone(), gen);
+            }
             self.publish_diagnostics_for(uri_str, &doc_uri).await;
         }
     }
@@ -212,14 +222,22 @@ impl LanguageServer for Backend {
         let join_handle = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(DEBOUNCE_MS)).await;
 
-            // Atomically remove self from handles and drain pending batches (T1-1, T2-4).
+            // Atomically remove self from handles, drain pending batches, and capture
+            // the current generation (T1-1, T2-4, marky-aemm).
             // If pending is absent the document was closed while we were sleeping;
             // abort fires at the next await — return early to avoid stale work (T2-8).
-            let batches = {
+            let (batches, captured_gen) = {
                 let mut deb = debounce.lock().unwrap();
                 deb.debounce_handles.remove(&doc_uri_clone);
                 match deb.pending_changes.remove(&doc_uri_clone) {
-                    Some(batches) => batches,
+                    Some(batches) => {
+                        let gen = deb
+                            .document_generations
+                            .get(&doc_uri_clone)
+                            .copied()
+                            .unwrap_or(0);
+                        (batches, gen)
+                    }
                     None => return,
                 }
             };
@@ -230,27 +248,36 @@ impl LanguageServer for Backend {
 
             // Apply all accumulated change batches and compute diagnostics in a single
             // write lock scope, eliminating the write→read lock ordering (T2-2).
+            // The generation check MUST be after acquiring state.write() — if placed
+            // before, a close/reopen can slip between the check and the apply.
+            // Since did_close bumps generation under the DebounceState mutex (not the
+            // state lock), a concurrent close will have bumped the generation even while
+            // we hold state.write() (marky-aemm).
             let diagnostics = {
                 let mut state_w = state.write().await;
+
+                // Check generation counter: if a close/reopen happened between drain
+                // and now, the generation will have changed and we discard the stale
+                // batches (marky-aemm).
+                {
+                    let deb = debounce.lock().unwrap();
+                    let current_gen = deb
+                        .document_generations
+                        .get(&doc_uri_clone)
+                        .copied()
+                        .unwrap_or(0);
+                    if current_gen != captured_gen {
+                        return;
+                    }
+                }
+
                 for batch in batches {
                     state_w.apply_document_changes(&doc_uri_clone, batch);
                 }
                 state_w.compute_diagnostics(&doc_uri_clone)
             };
 
-            let lsp_diagnostics: Vec<Diagnostic> = diagnostics
-                .into_iter()
-                .map(|d| Diagnostic {
-                    range: crate::convert::to_lsp_range(d.range),
-                    severity: Some(match d.severity {
-                        crate::state::DiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
-                        crate::state::DiagnosticSeverity::Warning => DiagnosticSeverity::WARNING,
-                    }),
-                    source: Some("markymark".to_string()),
-                    message: d.message,
-                    ..Default::default()
-                })
-                .collect();
+            let lsp_diagnostics = crate::convert::to_lsp_diagnostics(diagnostics);
 
             client
                 .publish_diagnostics(uri_str_clone, lsp_diagnostics, None)
@@ -268,13 +295,19 @@ impl LanguageServer for Backend {
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri_str = params.text_document.uri;
         if let Ok(doc_uri) = crate::convert::from_lsp_uri(&uri_str) {
-            // Cancel any pending debounce and clear buffered changes before closing (T2-8).
+            // Cancel any pending debounce, clear buffered changes, and bump generation
+            // before closing (T2-8, marky-aemm).
             {
                 let mut deb = self.debounce.lock().unwrap();
                 if let Some(handle) = deb.debounce_handles.remove(&doc_uri) {
                     handle.abort();
                 }
                 deb.pending_changes.remove(&doc_uri);
+                // Remove the generation entry: any in-flight debounce task that
+                // already drained will see absent (unwrap_or(0)) ≠ captured gen
+                // (≥1) and discard its stale batch (marky-aemm). On next open,
+                // a fresh globally-unique value is inserted (marky-jwsk).
+                deb.document_generations.remove(&doc_uri);
             }
             {
                 let mut state = self.state.write().await;
@@ -852,101 +885,51 @@ impl LanguageServer for Backend {
     }
 }
 
-/// Convert a `ResolvedTarget` to an `ls_types::Location`, looking up heading/block ranges.
-fn resolved_target_to_location(
-    state: &ServerState,
-    target: &ResolvedTarget,
-) -> Result<Option<Location>> {
-    let zero_range = CoreRange::new(
-        markymark_core::Position::new(0, 0),
-        markymark_core::Position::new(0, 0),
-    );
-
-    match target {
-        ResolvedTarget::Document(uri) => crate::convert::to_lsp_location(uri, zero_range)
-            .map(Some)
-            .map_err(|_| tower_lsp_server::jsonrpc::Error::internal_error()),
-        ResolvedTarget::Heading { uri, slug, .. } => {
-            let range = state
-                .get_document_index(uri)
-                .and_then(|idx| idx.heading_by_slug(slug))
-                .map(|h| h.range)
-                .unwrap_or(zero_range);
-            crate::convert::to_lsp_location(uri, range)
-                .map(Some)
-                .map_err(|_| tower_lsp_server::jsonrpc::Error::internal_error())
-        }
-        ResolvedTarget::Block { uri, id } => {
-            let range = state
-                .get_document_index(uri)
-                .and_then(|idx| idx.block_by_id(id))
-                .map(|b| b.range)
-                .unwrap_or(zero_range);
-            crate::convert::to_lsp_location(uri, range)
-                .map(Some)
-                .map_err(|_| tower_lsp_server::jsonrpc::Error::internal_error())
-        }
-        ResolvedTarget::KeyPath { uri, range, .. } => crate::convert::to_lsp_location(uri, *range)
-            .map(Some)
-            .map_err(|_| tower_lsp_server::jsonrpc::Error::internal_error()),
+#[cfg(any(test, feature = "test-helpers"))]
+impl Backend {
+    /// Drain pending changes for a URI and return the batches with the captured generation.
+    ///
+    /// Simulates the debounce task's drain step without relying on tokio sleep timing.
+    /// Also removes the abort handle (as the real debounce task does).
+    pub fn drain_pending(
+        &self,
+        uri: &DocumentUri,
+    ) -> Option<(Vec<Vec<crate::state::DocumentChange>>, u64)> {
+        let mut deb = self.debounce.lock().unwrap();
+        deb.debounce_handles.remove(uri);
+        deb.pending_changes.remove(uri).map(|batches| {
+            let gen = deb.document_generations.get(uri).copied().unwrap_or(0);
+            (batches, gen)
+        })
     }
-}
 
-/// Iterate over all `(DocumentUri, DocumentIndex)` pairs in the realm.
-fn iter_realm_documents(
-    state: &ServerState,
-) -> impl Iterator<Item = (&DocumentUri, &DocumentIndex)> {
-    state.realm().iter_documents()
-}
-
-#[derive(Debug, Default)]
-struct XmlHoverStats {
-    occurrences: usize,
-    document_count: usize,
-    attribute_counts: Vec<(String, usize)>,
-}
-
-fn xml_hover_stats(state: &ServerState, tag_name: &str) -> XmlHoverStats {
-    let mut occurrences = 0usize;
-    let mut document_count = 0usize;
-    let mut attribute_counts: HashMap<String, usize> = HashMap::new();
-
-    for (_uri, index) in iter_realm_documents(state) {
-        let mut has_tag_in_document = false;
-        for tag in index.xml_tags() {
-            if tag.tag_name != tag_name {
-                continue;
-            }
-            has_tag_in_document = true;
-            occurrences += 1;
-            for attr_name in tag.attributes.keys() {
-                *attribute_counts
-                    .entry((*attr_name).to_string())
-                    .or_insert(0) += 1;
+    /// Try to apply previously drained changes, checking the generation counter.
+    ///
+    /// Returns `true` if applied (generation matched), `false` if discarded (mismatch).
+    /// Mirrors the generation check in the real debounce task for deterministic testing.
+    pub async fn try_apply_drained(
+        &self,
+        uri: &DocumentUri,
+        batches: Vec<Vec<crate::state::DocumentChange>>,
+        captured_gen: u64,
+    ) -> bool {
+        let mut state_w = self.state.write().await;
+        {
+            let deb = self.debounce.lock().unwrap();
+            let current_gen = deb.document_generations.get(uri).copied().unwrap_or(0);
+            if current_gen != captured_gen {
+                return false;
             }
         }
-
-        if has_tag_in_document {
-            document_count += 1;
+        for batch in batches {
+            state_w.apply_document_changes(uri, batch);
         }
+        true
     }
 
-    let mut attribute_counts: Vec<(String, usize)> = attribute_counts.into_iter().collect();
-    attribute_counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-
-    XmlHoverStats {
-        occurrences,
-        document_count,
-        attribute_counts,
+    /// Return the number of entries in the document_generations map (for testing).
+    pub fn document_generations_count(&self) -> usize {
+        let deb = self.debounce.lock().unwrap();
+        deb.document_generations.len()
     }
-}
-
-/// Build hover markdown for a structured document key.
-fn structured_key_hover_markdown(info: &StructuredKeyInfo) -> String {
-    let mut lines = Vec::new();
-    lines.push(format!("**Key:** `{}`", info.path));
-    lines.push(format!("**Type:** {:?}", info.value_kind));
-    lines.push(format!("**Depth:** {}", info.depth));
-    lines.push(format!("**Format:** {:?}", info.document_kind));
-    lines.join("\n\n")
 }
