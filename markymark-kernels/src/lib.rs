@@ -12,14 +12,18 @@
 //! - [`tokens`] — Token estimation and content hashing
 //! - [`hash`] — Entity hashing (FNV-1a based)
 //! - [`index_serde`] — Binary index serialization (mmap-friendly format)
+//! - [`md4c`] — md4c single-pass extraction (headings, links, wiki links)
 
 pub mod embed;
+pub mod engine;
 pub mod hash;
 pub mod index_serde;
+pub mod md4c;
 pub mod scan;
 pub mod similarity;
 pub mod tokens;
 
+pub use md4c::{extract_md4c, Md4cExtraction, Md4cHeading, Md4cLink};
 pub use scan::{
     fuzzy_match, fuzzy_match_batch, scan_block_ids, scan_headings, scan_links, scan_tags,
     BlockIdScan, FuzzyBatchMatch, FuzzyMatch, HeadingScan, KernelError, LinkScan, LinkType,

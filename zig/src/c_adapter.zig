@@ -25,6 +25,8 @@ comptime {
     _ = @import("exports_embed.zig");
     _ = @import("exports_graph.zig");
     _ = @import("exports_serde.zig");
+    _ = @import("md4c/exports.zig");
+    _ = @import("engine/exports.zig");
     // Provide ___chkstk_ms on Windows x86_64 — Zig's compiler-rt does not
     // bundle it into static libraries (ziglang/zig#6817).
     _ = @import("chkstk.zig");
@@ -985,12 +987,18 @@ test {
     _ = @import("kernels/link_graph.zig");
     // Link graph C ABI exports + tests
     _ = @import("exports_graph.zig");
+    // md4c FFI exports + tests
+    _ = @import("md4c/exports.zig");
     // Format extractors
     _ = @import("kernels/formats/env_scan.zig");
     _ = @import("kernels/formats/ini_scan.zig");
     _ = @import("kernels/formats/toml_scan.zig");
     _ = @import("kernels/formats/yaml_scan.zig");
     _ = @import("kernels/formats/json_keys.zig");
+    // Document engine (stateful composite scan with blob serialization)
+    _ = @import("engine/document.zig");
+    // Document engine C ABI exports + tests
+    _ = @import("engine/exports.zig");
 }
 
 test "marky_version returns expected version" {
