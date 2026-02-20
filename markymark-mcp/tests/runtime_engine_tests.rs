@@ -3,10 +3,13 @@
 //! Extracted from `src/runtime_engine.rs` during the z6r refactor.
 //! Split into submodules (marky-a90): each file covers one tool group.
 
+mod common;
+
 use std::cmp::Ordering;
-use std::path::PathBuf;
 
 use markymark_core::Range;
+
+pub(crate) use common::TempWorkspace;
 
 #[path = "runtime_engine_tests/export_index.rs"]
 mod export_index;
@@ -30,24 +33,4 @@ mod startup;
 /// Compare two ranges for deterministic sorting (test-local copy).
 pub(crate) fn compare_ranges(a: Range, b: Range) -> Ordering {
     a.start.cmp(&b.start).then_with(|| a.end.cmp(&b.end))
-}
-
-pub(crate) struct TempWorkspace {
-    _dir: tempfile::TempDir,
-    root: PathBuf,
-}
-
-impl TempWorkspace {
-    pub(crate) fn new(name: &str) -> Self {
-        let dir = tempfile::Builder::new()
-            .prefix(&format!("markymark-mcp-runtime-{name}-"))
-            .tempdir()
-            .expect("secure temporary workspace directory should be created");
-        let root = dir.path().to_path_buf();
-        Self { _dir: dir, root }
-    }
-
-    pub(crate) fn root(&self) -> PathBuf {
-        self.root.clone()
-    }
 }

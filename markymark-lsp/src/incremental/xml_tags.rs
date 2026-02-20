@@ -5,7 +5,7 @@ use markymark_parser::InputEdit;
 
 use super::{
     adjust_bytes_after_edit, adjust_range_after_edit, any_edit_in_entry_gap, range_intersects_edit,
-    range_is_after_edit_end, range_within_neighbor_window,
+    range_is_after_edit_end, range_within_neighbor_window, range_within_new_end_window,
 };
 
 /// Returns true if this XML tag is affected by any of the pending edits.
@@ -102,7 +102,11 @@ pub fn merge_incremental_xml_tags(
         }
     }
     for new_xt in new_xts {
-        if xml_tag_affected_by_edits(new_xt, pending_edits) {
+        if xml_tag_affected_by_edits(new_xt, pending_edits)
+            || pending_edits.iter().any(|edit| {
+                range_within_new_end_window(new_xt.start_byte, new_xt.end_byte, edit, 100)
+            })
+        {
             merged.push(new_xt.clone());
         }
     }

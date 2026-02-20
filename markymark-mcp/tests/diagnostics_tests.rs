@@ -1,31 +1,10 @@
 //! Integration tests for `get_diagnostics` via `RuntimeEngine`.
 
+mod common;
+
+use common::TempWorkspace;
 use markymark_core::engine::{CoreDiagnostic, CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_mcp::RuntimeEngine;
-
-struct TempWorkspace {
-    _dir: tempfile::TempDir,
-    root: std::path::PathBuf,
-}
-
-impl TempWorkspace {
-    fn new(name: &str) -> Self {
-        let dir = tempfile::Builder::new()
-            .prefix(&format!("markymark-mcp-diag-{name}-"))
-            .tempdir()
-            .expect("temp dir");
-        let root = dir.path().to_path_buf();
-        Self { _dir: dir, root }
-    }
-
-    fn write(&self, name: &str, content: &str) {
-        std::fs::write(self.root.join(name), content).expect("write file");
-    }
-
-    fn root(&self) -> std::path::PathBuf {
-        self.root.clone()
-    }
-}
 
 /// Helper to extract `CoreOperationResult::Diagnostics` items.
 fn extract_diagnostics(result: CoreOperationResult) -> Vec<(String, Vec<CoreDiagnostic>)> {
@@ -124,5 +103,30 @@ fn get_diagnostics_missing_realm_returns_error() {
     assert!(
         matches!(result, CoreOperationResult::Error(_)),
         "nonexistent realm should return Error, got {result:?}"
+    );
+}
+
+#[test]
+fn get_diagnostics_structured_doc_returns_empty_not_error() {
+    let ws = TempWorkspace::new("structured-doc");
+    ws.write("data.json", r#"{"key": "value"}"#);
+    ws.write("notes.md", "# Notes\n\nSome text.\n");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("engine should build");
+
+    // Get a file:// URI for the JSON file
+    let file_path = ws.root().join("data.json");
+    let uri = markymark_core::DocumentUri::from_file_path(&file_path);
+
+    let result = engine.execute(CoreOperation::GetDiagnostics {
+        uri: Some(uri),
+        realm: None,
+    });
+
+    // Should return empty diagnostics, NOT an error
+    let items = extract_diagnostics(result);
+    let all_diags: Vec<_> = items.into_iter().flat_map(|(_, d)| d).collect();
+    assert!(
+        all_diags.is_empty(),
+        "structured doc should have empty diagnostics, not an error; got: {all_diags:?}"
     );
 }

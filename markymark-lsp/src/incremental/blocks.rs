@@ -5,7 +5,7 @@ use markymark_parser::InputEdit;
 
 use super::{
     adjust_bytes_after_edit, adjust_range_after_edit, any_edit_in_entry_gap, range_intersects_edit,
-    range_is_after_edit_end, range_within_neighbor_window,
+    range_is_after_edit_end, range_within_neighbor_window, range_within_new_end_window,
 };
 
 /// Returns true if this block ID is affected by any of the pending edits.
@@ -90,7 +90,11 @@ pub fn merge_incremental_blocks(
         }
     }
     for new_block in new_blocks {
-        if block_affected_by_edits(new_block, pending_edits) {
+        if block_affected_by_edits(new_block, pending_edits)
+            || pending_edits.iter().any(|edit| {
+                range_within_new_end_window(new_block.start_byte, new_block.end_byte, edit, 100)
+            })
+        {
             merged.push(new_block.clone());
         }
     }

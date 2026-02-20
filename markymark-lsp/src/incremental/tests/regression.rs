@@ -1,6 +1,7 @@
 use super::super::*;
 use super::{make_block_owned, make_ml_bytes, make_xt_bytes};
 use markymark_core::{Position, Range};
+use markymark_index::WikiLinkOwned;
 use markymark_parser::Point;
 
 // ─── marky-wjf: Regression tests for gap detection ────────────────────────
@@ -203,5 +204,113 @@ fn test_blocks_need_update_multiple_edits_one_in_gap() {
     assert!(
         blocks_need_update(&[block_a, block_b], &[edit_covered, edit_in_gap]),
         "one of two edits is in a gap — must trigger re-extraction"
+    );
+}
+
+// ─── marky-g0dn: New entries from large insertions dropped by merge ────────
+
+/// marky-g0dn: A wiki link created deep inside a large insertion (>100 bytes)
+/// must not be silently dropped during incremental merge.
+///
+/// `range_within_neighbor_window` uses `old_end_byte + 100` as the boundary.
+/// For a 200-byte pure insertion at byte 0, `old_end_byte = 0`, so the window
+/// only covers bytes 0–100. A new entry at byte 150 is outside this window and
+/// was previously dropped. The fix checks `new_end_byte` (200) as well.
+#[test]
+fn test_merge_incremental_wiki_links_includes_new_entry_from_large_insertion() {
+    // Pure insertion of 200 bytes at byte 0 (nothing deleted).
+    let edit = InputEdit {
+        start_byte: 0,
+        old_end_byte: 0,
+        new_end_byte: 200,
+        start_position: Point { row: 0, column: 0 },
+        old_end_position: Point { row: 0, column: 0 },
+        new_end_position: Point { row: 8, column: 0 },
+    };
+    // New wiki link at post-edit byte 150 — inside the insertion but beyond
+    // old_end_byte (0) + 100 = 100, so the old neighbor window misses it.
+    let new_wl = WikiLinkOwned {
+        target: "InsertedPage".to_string(),
+        alias: None,
+        heading: None,
+        range: Range::new(Position::new(3, 0), Position::new(3, 20)),
+        start_byte: 150,
+        end_byte: 170,
+    };
+    let merged = merge_incremental_wiki_links(&[], &[new_wl], &[edit]);
+    assert_eq!(
+        merged.len(),
+        1,
+        "wiki link at byte 150 inside 200-byte insertion must be included (marky-g0dn)"
+    );
+    assert_eq!(merged[0].target, "InsertedPage");
+}
+
+/// marky-g0dn: A markdown link created deep inside a large insertion must not
+/// be silently dropped during incremental merge.
+#[test]
+fn test_merge_incremental_markdown_links_includes_new_entry_from_large_insertion() {
+    // Pure insertion of 200 bytes at byte 0 (nothing deleted).
+    let edit = InputEdit {
+        start_byte: 0,
+        old_end_byte: 0,
+        new_end_byte: 200,
+        start_position: Point { row: 0, column: 0 },
+        old_end_position: Point { row: 0, column: 0 },
+        new_end_position: Point { row: 8, column: 0 },
+    };
+    // New markdown link at post-edit byte 150 — beyond old_end_byte + 100 = 100.
+    let new_ml = make_ml_bytes(3, 0, 3, 20, 150, 170);
+    let merged = merge_incremental_markdown_links(&[], &[new_ml], &[edit]);
+    assert_eq!(
+        merged.len(),
+        1,
+        "markdown link at byte 150 inside 200-byte insertion must be included (marky-g0dn)"
+    );
+}
+
+/// marky-g0dn: An XML tag created deep inside a large insertion must not be
+/// silently dropped during incremental merge.
+#[test]
+fn test_merge_incremental_xml_tags_includes_new_entry_from_large_insertion() {
+    // Pure insertion of 200 bytes at byte 0 (nothing deleted).
+    let edit = InputEdit {
+        start_byte: 0,
+        old_end_byte: 0,
+        new_end_byte: 200,
+        start_position: Point { row: 0, column: 0 },
+        old_end_position: Point { row: 0, column: 0 },
+        new_end_position: Point { row: 8, column: 0 },
+    };
+    // New XML tag at post-edit byte 150 — beyond old_end_byte + 100 = 100.
+    let new_xt = make_xt_bytes(3, 0, 3, 20, "agent", 150, 170);
+    let merged = merge_incremental_xml_tags(&[], &[new_xt], &[edit]);
+    assert_eq!(
+        merged.len(),
+        1,
+        "XML tag at byte 150 inside 200-byte insertion must be included (marky-g0dn)"
+    );
+}
+
+/// marky-g0dn: A block ID created deep inside a large insertion must not be
+/// silently dropped during incremental merge.
+#[test]
+fn test_merge_incremental_blocks_includes_new_entry_from_large_insertion() {
+    // Pure insertion of 200 bytes at byte 0 (nothing deleted).
+    let edit = InputEdit {
+        start_byte: 0,
+        old_end_byte: 0,
+        new_end_byte: 200,
+        start_position: Point { row: 0, column: 0 },
+        old_end_position: Point { row: 0, column: 0 },
+        new_end_position: Point { row: 8, column: 0 },
+    };
+    // New block at post-edit byte 150 — beyond old_end_byte + 100 = 100.
+    let new_block = make_block_owned("inserted-block", 3, 0, 20, 150, 170);
+    let merged = merge_incremental_blocks(&[], &[new_block], &[edit]);
+    assert_eq!(
+        merged.len(),
+        1,
+        "block ID at byte 150 inside 200-byte insertion must be included (marky-g0dn)"
     );
 }

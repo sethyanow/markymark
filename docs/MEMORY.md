@@ -171,6 +171,20 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 - MCP handlers that accept any URI kind must use `realm.get_any_document()` and branch on `AnyDocumentIndex`; `get_document()` silently rejects structured docs (marky-kvr)
 - For edit-delta math on `u32`/`usize` positions, use explicit saturating add/sub with signed deltas to prevent wraparound (marky-v8y)
 
+### Incremental Merge: Two Coordinate Spaces
+
+`*_affected_by_edits()` operates in **pre-edit** coordinate space (uses `old_end_byte`). The merge loop calls it for BOTH old entries (correct) and new entries (wrong for large insertions). New entries exist in **post-edit** space. For insertions >100 bytes, new entries deeper than `old_end_byte + 100` are silently dropped (marky-g0dn, 2026-02-19).
+
+Fix pattern: in the new-entry loop, OR in `range_within_new_end_window()` which checks `new_end_byte` instead. No duplicates guaranteed: a kept-old entry at pre-edit byte X > `old_end_byte+100` adjusts to post-edit `X+delta`, and `X+delta > new_end_byte+100` by substitution, so the new-path check never fires for it.
+
+```rust
+// In each merge_incremental_* function, new-entry filter:
+if entry_affected_by_edits(new_entry, pending_edits)
+    || pending_edits.iter().any(|edit| {
+        range_within_new_end_window(new_entry.start_byte, new_entry.end_byte, edit, 100)
+    })
+```
+
 ### Testing
 - Safe file splits: (1) module dir, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit
 - Use `assert_eq!` not `>=` — `>=` masked a closing-tag rename bug
