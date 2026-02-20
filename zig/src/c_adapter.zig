@@ -994,6 +994,8 @@ test {
     _ = @import("kernels/formats/toml_scan.zig");
     _ = @import("kernels/formats/yaml_scan.zig");
     _ = @import("kernels/formats/json_keys.zig");
+    // Document engine (stateful composite scan with blob serialization)
+    _ = @import("engine/document.zig");
 }
 
 test "marky_version returns expected version" {
