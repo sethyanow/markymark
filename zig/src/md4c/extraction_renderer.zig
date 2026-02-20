@@ -507,18 +507,23 @@ pub fn extractFromMarkdown(
     // Callbacks cannot return errors through the C vtable, so failures are tracked
     // via the oom flag and converted to an error here.
     if (ext.oom) {
-        ext.deinit();
         return error.OutOfMemory;
     }
 
-    // Transfer ownership: take slices from ArrayLists, free temporary buffers
+    // Transfer ownership: take slices from ArrayLists, free temporary buffers.
+    // On failure, errdefer ext.deinit() (line 496) handles cleanup since
+    // ext.headings still owns its items.
     const headings = ext.headings.toOwnedSlice(allocator) catch {
-        ext.deinit();
         return error.OutOfMemory;
     };
-    const links = ext.links.toOwnedSlice(allocator) catch {
+    // After toOwnedSlice succeeds, ext.headings is empty — the heading structs
+    // (including their .text allocations) are now in the local `headings` slice.
+    // This errdefer ensures they're freed if links.toOwnedSlice fails below.
+    errdefer {
+        for (headings) |h| allocator.free(h.text);
         allocator.free(headings);
-        ext.deinit();
+    }
+    const links = ext.links.toOwnedSlice(allocator) catch {
         return error.OutOfMemory;
     };
 
@@ -959,4 +964,49 @@ test "processLeafBlock multi-line setext heading merges lines correctly" {
 
     try testing.expectEqual(@as(usize, 1), result.headings.len);
     try testing.expectEqualStrings("Multi Line Heading", result.headings[0].text);
+}
+
+// --- marky-gmny: OOM-loop double-free and leak regression ---
+
+test "marky-gmny: extractFromMarkdown OOM loop — no double-free or leak" {
+    // Exercises every OOM failure point in extractFromMarkdown by iterating
+    // fail_index from 0..N. At each index, exactly one allocation fails.
+    // GPA detects double-free (fills freed memory with 0xaa → segfault).
+    // GPA leak check (.check() returning .leak) detects missing frees.
+    //
+    // Uses a document with both headings and links so that the partially-
+    // transferred-headings path (links.toOwnedSlice fails after headings
+    // transferred) is exercised at some fail_index values.
+    const input = "# Heading One\n\n[Link Text](https://example.com)\n\n## Heading Two\n";
+
+    var fail_index: usize = 0;
+    // Upper bound: enough to cover all allocation sites. If we get 5
+    // consecutive successes, all failure points have been covered.
+    var consecutive_successes: usize = 0;
+    while (consecutive_successes < 5) : (fail_index += 1) {
+        // Safety valve: prevent infinite loop if something is very wrong
+        if (fail_index > 200) break;
+
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        var failing = std.testing.FailingAllocator.init(gpa.allocator(), .{ .fail_index = fail_index });
+
+        const result = extractFromMarkdown(input, failing.allocator());
+        if (result) |*ok| {
+            // Success path: must have valid data, free it
+            var r = ok.*;
+            r.deinit();
+            consecutive_successes += 1;
+        } else |err| {
+            // Error path: must be OutOfMemory, nothing else
+            try testing.expectEqual(error.OutOfMemory, err);
+            consecutive_successes = 0;
+        }
+
+        // GPA leak check: .ok means no leaks, .leak means memory leaked
+        const check = gpa.deinit();
+        try testing.expect(check == .ok);
+    }
+
+    // Verify we actually tested multiple failure points (not just index 0)
+    try testing.expect(fail_index > 5);
 }
