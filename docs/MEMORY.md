@@ -214,25 +214,40 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 
 ---
 
-## Performance Optimization Roadmap (Epic marky-77i)
+## Performance Optimization Roadmap
 
-### Current State (2026-02-19)
+### Completed (marky-77i CLOSED, superseded by Epic H)
 
-**Completed:**
 - **F: Debounce** (marky-7dq, DONE) — 75ms async cancellation in LSP `did_change`
-- **G: md4c streaming parser** (marky-0mr, DONE) — Vendored Bun's Zig md4c port. `Md4cScanBackend` → `from_scan()` bypasses tree-sitter AST entirely. 2.8x pipeline speedup at 50KB over tree-sitter.
-
-**Superseded:**
-- **D: Vendor tree-sitter-md** (marky-0jz) — target achieved by Option G. Not yet closed.
-
-**Completed:**
+- **G: md4c streaming parser** (marky-0mr) — Vendored Bun's Zig md4c port. 2.8x pipeline speedup at 50KB.
 - **H: Zig Document Engine** (marky-io3h, DONE) — see below. Tagged `marky-io3h-complete`.
+- **D: Vendor tree-sitter-md** (marky-0jz, CLOSED) — superseded by Option G.
 
-**Deferred:**
-- **E: Lazy AST** (marky-syx, P3) — deferred. Tree-sitter remains only for MCP batch and hover/goto-def. Value reduced now that engine pipeline handles the LSP indexing hot path.
+### Deferred (Low ROI after Epic H)
 
-**Follow-up:**
-- **RealmIndex string interning** (marky-6qri, P4) — `.to_string()` per heading/tag/block in `add_document`. String interner or `Arc<str>` for large vaults. Blocked on marky-io3h (blob text pool enables efficient interning).
+- **E: Lazy AST** (marky-syx, P3) — value reduced. Tree-sitter only for MCP batch + hover/goto-def.
+- **Engine incremental diffing** — investigated, low ROI. Zig reparse ~2.5ms at 50KB, not bottleneck.
+- **Zero-copy blob borrowing** — investigated, not worth it. Breaks DocumentIndex lifetime model for ~1-2ms.
+- **Edit range support in engine.update()** — premature without incremental diffing.
+
+### Next: RealmIndex v2 (marky-n7wx)
+
+Investigation revealed the real post-Epic-H bottleneck is **RealmIndex cross-doc indexing**, not
+the engine pipeline. On every 75ms edit: remove_document allocates N+B+T Strings for HashMap
+key lookups, add_document allocates ~52 Strings for a 50-heading doc, find_uri_by_stem is O(D).
+
+Epic marky-n7wx addresses this in 4 layers:
+1. **String interning** (marky-2yzz) — lasso Rodeo interner, Spur-keyed HashMaps. Eliminates
+   remove-path String allocations entirely. SRE-reviewed, ready to implement.
+2. **Stem index** — O(1) wiki link resolution via Spur-keyed HashMap.
+3. **Incremental cross-doc updates** — diff old vs new headings, patch only changes.
+4. **Lazy cold indexes** — tag_to_docs, key_path_to_docs built on first query, not every edit.
+
+Key design decisions (SRE review, 2026-02-19):
+- **Rodeo not ThreadedRodeo** — RealmIndex is single-threaded, simpler API.
+- **Don't intern URIs** — unique per document, no dedup benefit.
+- **ResolvedHeading keeps String fields** — resolve Spur→&str at query boundary (cold path).
+- **key_path_to_docs stays String** — structured doc paths have low repetition.
 
 ### Baseline Benchmarks (2026-02-19, marky-jpot)
 
@@ -259,14 +274,11 @@ to Rust. Replaces N+4 FFI calls with exactly 2 (update + get_blob). Tagged `mark
 
 **Architecture:** Zig `DocumentEngine` with create/update/getBlob/destroy lifecycle.
 Lazy blob serialization. Blob format: 64B header (magic 0x4D4B5343) + packed struct
-arrays + contiguous text pool.
+arrays + contiguous text pool. Rust `DocumentIndex::from_blob()` / `from_blob_with_xml_tags()`
+copies text from blob pool into arena. Net -2,839 lines (incremental module deleted).
 
-**Rust side:** `DocumentIndex::from_blob()` / `from_blob_with_xml_tags()` copies text
-from blob pool into arena. Replaced `from_scan()` + incremental module in LSP hot path.
-Net -2,839 lines.
-
-**Performance:** Not yet benchmarked against `marky-io3h-complete` tag. Expected ~4ms
-at 50KB (engine ~2.5ms + from_blob ~1.5ms) vs previous 9.4ms from_scan baseline.
+**Performance:** Not yet benchmarked post-integration (marky-8d08). Expected ~4ms at 50KB
+vs previous 9.4ms from_scan baseline.
 
 **Key decisions:**
 - Stateful (not stateless) — enables slug caching, lazy blob, future incremental
@@ -274,18 +286,4 @@ at 50KB (engine ~2.5ms + from_blob ~1.5ms) vs previous 9.4ms from_scan baseline.
 - from_ast()/from_scan() retained for MCP batch and backward compat
 - Tree-sitter stays separate for lazy AST (hover/goto-def)
 
-**Tasks complete:**
-- **Task 1** (marky-6jzs, DONE) — Zig DocumentEngine struct + blob serialization.
-  SRE-refined with 18+ TDD test cases, allocator strategy, slug dedup, 5 edge case mitigations.
-- **Task 2** (marky-atsp, DONE) — FFI exports (C ABI) + Rust DocumentEngine wrapper + ScanBlob.
-- **marky-0mr.9** (DONE) — P0-P2 md4c parser fixes required before Task 3 could proceed.
-- **Task 3** (marky-2n4u, DONE) — `DocumentIndex::from_blob()` constructor + BlobError enum.
-  `markymark-index/src/document/from_blob.rs`. 15 tests (engine-backed + rejection). All 1042 tests pass.
-  Key implementation notes: `pub(crate)` on build_toc/build_outline to enable sibling module access;
-  `dep:markymark-kernels` added to `zig-kernels` feature so tests use real DocumentEngine;
-  checked arithmetic for pool offsets; `matches!()` for Result assertions (DocumentIndex: !PartialEq).
-
-- **Task 4** (marky-n78f, DONE) — LSP integration. Replaced incremental module with engine pipeline.
-  Deleted `incremental/` (~2,100 lines incl. tests), removed tree-sitter Parser from ServerState.
-  Key constraint discovered: XML tags need supplementary extraction (`extract_xml_tags_from_text()`)
-  because md4c treats HTML as pass-through. All tests pass. Tag: `marky-io3h-complete`.
+Tasks: 6jzs (engine+blob), atsp (FFI+wrapper), 0mr.9 (parser fixes), 2n4u (from_blob), n78f (LSP integration). All done.
