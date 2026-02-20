@@ -147,43 +147,67 @@ impl ServerState {
         if let Some(engine_mutex) = self.engines.get(uri_str) {
             // Engine exists — update it. The mutex is uncontested here because
             // build_markdown_index_via_engine takes &mut self.
-            let mut engine = engine_mutex.lock().expect("engine mutex poisoned");
+            let mut engine = match engine_mutex.lock() {
+                Ok(guard) => guard,
+                Err(_poisoned) => {
+                    log::warn!(
+                        target: "markymark_lsp",
+                        "engine mutex poisoned for {}, falling back to from_scan",
+                        uri_str
+                    );
+                    return DocumentIndex::from_scan(text, &Md4cScanBackend);
+                }
+            };
             match engine.update(text) {
                 Ok(()) => match engine.get_blob() {
-                    Ok(blob) => match DocumentIndex::from_blob_with_xml_tags(blob.data(), xml_tags) {
+                    Ok(blob) => match DocumentIndex::from_blob_with_xml_tags(blob.data(), xml_tags)
+                    {
                         Ok(index) => return index,
-                        Err(e) => eprintln!(
-                            "markymark-lsp: from_blob failed for {uri_str}: {e:?}, falling back to from_scan"
+                        Err(e) => log::warn!(
+                            target: "markymark_lsp",
+                            "from_blob failed for {}: {:?}, falling back to from_scan",
+                            uri_str, e
                         ),
                     },
-                    Err(e) => eprintln!(
-                        "markymark-lsp: get_blob failed for {uri_str}: {e:?}, falling back to from_scan"
+                    Err(e) => log::warn!(
+                        target: "markymark_lsp",
+                        "get_blob failed for {}: {:?}, falling back to from_scan",
+                        uri_str, e
                     ),
                 },
-                Err(e) => eprintln!(
-                    "markymark-lsp: engine update failed for {uri_str}: {e:?}, falling back to from_scan"
+                Err(e) => log::warn!(
+                    target: "markymark_lsp",
+                    "engine update failed for {}: {:?}, falling back to from_scan",
+                    uri_str, e
                 ),
             }
         } else {
             // No engine yet — create one
             match DocumentEngine::new(text) {
                 Ok(engine) => match engine.get_blob() {
-                    Ok(blob) => match DocumentIndex::from_blob_with_xml_tags(blob.data(), xml_tags) {
+                    Ok(blob) => match DocumentIndex::from_blob_with_xml_tags(blob.data(), xml_tags)
+                    {
                         Ok(index) => {
                             self.engines
                                 .insert(uri_str.to_string(), std::sync::Mutex::new(engine));
                             return index;
                         }
-                        Err(e) => eprintln!(
-                            "markymark-lsp: from_blob failed (new engine) for {uri_str}: {e:?}, falling back to from_scan"
+                        Err(e) => log::warn!(
+                            target: "markymark_lsp",
+                            "from_blob failed (new engine) for {}: {:?}, falling back to from_scan",
+                            uri_str, e
                         ),
                     },
-                    Err(e) => eprintln!(
-                        "markymark-lsp: get_blob failed (new engine) for {uri_str}: {e:?}, falling back to from_scan"
+                    Err(e) => log::warn!(
+                        target: "markymark_lsp",
+                        "get_blob failed (new engine) for {}: {:?}, falling back to from_scan",
+                        uri_str, e
                     ),
                 },
-                Err(e) => eprintln!(
-                    "markymark-lsp: engine create failed for {uri_str}: {e:?}, falling back to from_scan"
+                Err(e) => log::warn!(
+                    target: "markymark_lsp",
+                    "engine create failed for {}: {:?}, falling back to from_scan",
+                    uri_str, e
                 ),
             }
         }
