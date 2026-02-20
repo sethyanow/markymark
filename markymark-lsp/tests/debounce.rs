@@ -91,6 +91,67 @@ async fn test_debounce_defers_reparse_until_pause() {
     }
 }
 
+/// Closing a document while a debounce is pending must cancel the debounce.
+///
+/// Without the fix, the stale debounce task fires after did_close and re-applies
+/// buffered changes to a document that may have been re-opened with fresh content.
+///
+/// RED: Without did_close cancellation, the stale debounce fires, applies
+/// "# Stale Change" over the freshly opened "# Fresh Open".
+#[tokio::test]
+async fn test_did_close_cancels_pending_debounce() {
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+    let (uri, doc_uri) = doc_uri();
+
+    // Open with initial content.
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "markdown".to_string(),
+                version: 0,
+                text: "# Original".to_string(),
+            },
+        })
+        .await;
+
+    // Fire a change — this starts the debounce timer and buffers the change.
+    backend
+        .did_change(full_change(uri.clone(), 1, "# Stale Change"))
+        .await;
+
+    // Close the document immediately while debounce is still pending.
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+        })
+        .await;
+
+    // Re-open with fresh content (typical editor open-after-close).
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "markdown".to_string(),
+                version: 0,
+                text: "# Fresh Open".to_string(),
+            },
+        })
+        .await;
+
+    // Wait well past the debounce delay.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // State must reflect the fresh open, NOT the stale buffered change.
+    let state = backend.state().read().await;
+    assert_eq!(
+        state.get_document_text(&doc_uri),
+        Some("# Fresh Open"),
+        "stale debounce must be cancelled by did_close; fresh content must persist"
+    );
+}
+
 /// A single did_change with no following changes must eventually apply.
 #[tokio::test]
 async fn test_single_change_applies_after_debounce() {
