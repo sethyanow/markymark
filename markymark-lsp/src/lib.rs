@@ -14,6 +14,7 @@
 
 pub mod convert;
 pub mod diagnostics;
+mod helpers;
 pub mod server;
 pub mod state;
 mod symbols;
