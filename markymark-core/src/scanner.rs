@@ -236,11 +236,7 @@ impl ScanBackend for Md4cScanBackend {
                 extraction
                     .headings
                     .into_iter()
-                    .map(|h| HeadingResult {
-                        text: h.text,
-                        offset: h.source_offset,
-                        level: h.level,
-                    })
+                    .map(map_md4c_heading)
                     .collect()
             })
             .map_err(|e| ScanError::InternalError(e.to_string()))
@@ -248,22 +244,7 @@ impl ScanBackend for Md4cScanBackend {
 
     fn scan_links(&self, text: &str) -> Result<Vec<LinkResult>, ScanError> {
         markymark_kernels::md4c::extract_md4c(text)
-            .map(|extraction| {
-                extraction
-                    .links
-                    .into_iter()
-                    .map(|l| LinkResult {
-                        offset: l.source_offset,
-                        text: l.text,
-                        target: l.target,
-                        link_type: if l.is_wiki {
-                            ScanLinkType::Wiki
-                        } else {
-                            ScanLinkType::Markdown
-                        },
-                    })
-                    .collect()
-            })
+            .map(|extraction| extraction.links.into_iter().map(map_md4c_link).collect())
             .map_err(|e| ScanError::InternalError(e.to_string()))
     }
 
@@ -305,28 +286,36 @@ impl ScanBackend for Md4cScanBackend {
                 headings: extraction
                     .headings
                     .into_iter()
-                    .map(|h| HeadingResult {
-                        text: h.text,
-                        offset: h.source_offset,
-                        level: h.level,
-                    })
+                    .map(map_md4c_heading)
                     .collect(),
-                links: extraction
-                    .links
-                    .into_iter()
-                    .map(|l| LinkResult {
-                        offset: l.source_offset,
-                        text: l.text,
-                        target: l.target,
-                        link_type: if l.is_wiki {
-                            ScanLinkType::Wiki
-                        } else {
-                            ScanLinkType::Markdown
-                        },
-                    })
-                    .collect(),
+                links: extraction.links.into_iter().map(map_md4c_link).collect(),
             })
             .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+}
+
+#[cfg(feature = "zig-kernels")]
+#[inline]
+fn map_md4c_heading(h: markymark_kernels::md4c::Md4cHeading) -> HeadingResult {
+    HeadingResult {
+        text: h.text,
+        offset: h.source_offset,
+        level: h.level,
+    }
+}
+
+#[cfg(feature = "zig-kernels")]
+#[inline]
+fn map_md4c_link(l: markymark_kernels::md4c::Md4cLink) -> LinkResult {
+    LinkResult {
+        offset: l.source_offset,
+        text: l.text,
+        target: l.target,
+        link_type: if l.is_wiki {
+            ScanLinkType::Wiki
+        } else {
+            ScanLinkType::Markdown
+        },
     }
 }
 
