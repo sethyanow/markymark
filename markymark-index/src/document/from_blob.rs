@@ -66,6 +66,30 @@ pub enum BlobError {
     InvalidUtf8,
 }
 
+impl std::fmt::Display for BlobError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TooSmall => write!(f, "blob too small (minimum 64 bytes required for header)"),
+            Self::InvalidMagic => {
+                write!(f, "invalid blob magic (expected MKSC / 0x4D4B5343)")
+            }
+            Self::UnsupportedVersion => {
+                write!(f, "unsupported blob version (only version 1 is supported)")
+            }
+            Self::SizeMismatch => write!(
+                f,
+                "blob size mismatch (header total_blob_size differs from actual or computed size)"
+            ),
+            Self::TextPoolOutOfBounds => {
+                write!(f, "text pool offset + length exceeds text pool bounds")
+            }
+            Self::InvalidUtf8 => write!(f, "text pool contains invalid UTF-8 bytes"),
+        }
+    }
+}
+
+impl std::error::Error for BlobError {}
+
 // ---------------------------------------------------------------------------
 // Low-level byte readers — alignment-safe, little-endian
 // ---------------------------------------------------------------------------
@@ -1198,6 +1222,63 @@ mod tests {
         assert!(
             index.block_by_id("id-two").is_some(),
             "expected block id 'id-two'"
+        );
+    }
+
+    #[test]
+    fn test_blob_error_display_messages() {
+        // Each variant must produce a non-empty, distinct human-readable message.
+        let cases: &[(BlobError, &str)] = &[
+            (BlobError::TooSmall, "64 bytes"),
+            (BlobError::InvalidMagic, "MKSC"),
+            (BlobError::UnsupportedVersion, "version 1"),
+            (BlobError::SizeMismatch, "size mismatch"),
+            (BlobError::TextPoolOutOfBounds, "text pool"),
+            (BlobError::InvalidUtf8, "UTF-8"),
+        ];
+        for (err, expected_substr) in cases {
+            let msg = format!("{}", err);
+            assert!(
+                msg.contains(expected_substr),
+                "Display for {err:?} = {msg:?}; expected to contain {expected_substr:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_blob_error_is_std_error() {
+        // BlobError must be usable as Box<dyn std::error::Error>.
+        fn accepts_error(_: &dyn std::error::Error) {}
+        accepts_error(&BlobError::InvalidMagic);
+
+        // Must be usable with ? in Box<dyn Error> context.
+        fn returns_box_err() -> Result<(), Box<dyn std::error::Error>> {
+            let data: &[u8] = &[0u8; 4]; // too small
+            DocumentIndex::from_blob(data)?; // should propagate BlobError::TooSmall
+            Ok(())
+        }
+        assert!(returns_box_err().is_err());
+    }
+
+    #[test]
+    fn test_blob_error_display_all_variants_distinct() {
+        // All 6 variant messages must be distinct (catch copy-paste errors).
+        use std::collections::HashSet;
+        let messages: HashSet<String> = [
+            BlobError::TooSmall,
+            BlobError::InvalidMagic,
+            BlobError::UnsupportedVersion,
+            BlobError::SizeMismatch,
+            BlobError::TextPoolOutOfBounds,
+            BlobError::InvalidUtf8,
+        ]
+        .iter()
+        .map(|e| format!("{e}"))
+        .collect();
+        assert_eq!(
+            messages.len(),
+            6,
+            "All BlobError variants must have distinct Display messages"
         );
     }
 }
