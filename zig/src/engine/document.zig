@@ -279,8 +279,11 @@ fn parseAll(
         };
     }
 
-    // Headings and links are now owned by stored lists.
-    // Free extraction containers only (not the strings inside, since they're transferred).
+    // OWNERSHIP: The string data (h.text, l.text, l.target) from extraction_renderer's
+    // ExtractedHeading/ExtractedLink arrays has been moved into stored_headings_list and
+    // stored_links_list by the loops above (steps 4-5). Only the slice containers
+    // (extraction.headings, extraction.links) are freed here — NOT the string contents.
+    // Do not add allocator.free(h.text) or similar; the strings are now owned by stored lists.
     allocator.free(extraction.headings);
     allocator.free(extraction.links);
 
