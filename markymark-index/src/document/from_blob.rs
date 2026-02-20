@@ -26,7 +26,6 @@ use bumpalo::collections::Vec as BumpVec;
 use hashbrown::HashMap;
 use markymark_core::arena::{arena_alloc_str, DocumentArena};
 use markymark_core::prelude::*;
-use std::sync::Mutex;
 
 use super::{
     helpers, BlockEntry, BlockRefEntry, DocumentDependent, DocumentIndex, DocumentIndexCell,
@@ -493,10 +492,10 @@ impl DocumentIndex {
 
         // ── Build DocumentIndex via self_cell ────────────────────────
         let owner = DocumentOwner {
-            arena: Mutex::new(DocumentArena::new()),
+            arena: DocumentArena::new(),
         };
         let cell = DocumentIndexCell::new(owner, move |owner| {
-            let arena_ref = DocumentIndex::arena_ref(owner);
+            let arena_ref = owner.arena.bump();
 
             // --- Headings ---
             let mut headings_builder = BumpVec::new_in(arena_ref);
