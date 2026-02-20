@@ -202,10 +202,17 @@ fn parseAll(
     var stored_tags_list = std.ArrayListUnmanaged(StoredTag){};
     var stored_block_ids_list = std.ArrayListUnmanaged(StoredBlockId){};
 
-    // On error: free everything we've built
+    // Tracks whether h.text/l.text/l.target have been transferred from extraction into
+    // the stored lists (i.e., after extraction.headings/links slice containers are freed
+    // at line 289-290). Before transfer, extraction.deinit() in each catch block frees
+    // the strings. After transfer, the errdefer must free them via the stored lists.
+    var texts_transferred: bool = false;
+
+    // On error: free everything we've built. Pass texts_transferred so the free helpers
+    // know whether they own the string data (post-transfer) or extraction owns it (pre-transfer).
     errdefer {
-        freeStoredHeadingsList(allocator, &stored_headings_list);
-        freeStoredLinksList(allocator, &stored_links_list);
+        freeStoredHeadingsList(allocator, &stored_headings_list, texts_transferred);
+        freeStoredLinksList(allocator, &stored_links_list, texts_transferred);
         freeStoredTagsList(allocator, &stored_tags_list);
         freeStoredBlockIdsList(allocator, &stored_block_ids_list);
     }
@@ -257,17 +264,10 @@ fn parseAll(
     // 5. Process links: positions
     for (extraction.links) |l| {
         const start_pos = byteOffsetToPosition(line_starts, l.offset);
-        // End position depends on link syntax:
-        //   Wiki [[target]]         → offset + target_len + 4
-        //   Wiki [[target|alias]]   → offset + target_len + 1 + text_len + 4
-        //   Markdown [text](target) → offset + text_len + target_len + 4
-        const end_offset = if (l.is_wiki) blk: {
-            if (!std.mem.eql(u8, l.text, l.target))
-                break :blk l.offset +| @as(u32, @intCast(l.target.len)) +| 1 +| @as(u32, @intCast(l.text.len)) +| 4
-            else
-                break :blk l.offset +| @as(u32, @intCast(l.target.len)) +| 4;
-        } else l.offset +| @as(u32, @intCast(l.text.len)) +| @as(u32, @intCast(l.target.len)) +| 4;
-        const end_pos = byteOffsetToPosition(line_starts, end_offset);
+        // Use the accurate end_offset from the extraction renderer's scan cursor,
+        // which was advanced to the position past the link's closing character
+        // (past ']]' for wiki, past '>' for autolinks, past ')' or ']' for others).
+        const end_pos = byteOffsetToPosition(line_starts, l.end_offset);
         stored_links_list.append(allocator, .{
             .text = l.text,
             .target = l.target,
@@ -288,6 +288,8 @@ fn parseAll(
     // Do not add allocator.free(h.text) or similar; the strings are now owned by stored lists.
     allocator.free(extraction.headings);
     allocator.free(extraction.links);
+    // From this point, the errdefer must free string data from the stored lists directly.
+    texts_transferred = true;
 
     // 6. Scan tags (with fence filtering)
     if (text.len > 0) {
@@ -629,16 +631,25 @@ fn freeBlockIds(allocator: Allocator, block_ids: []StoredBlockId) void {
     if (block_ids.len > 0) allocator.free(block_ids);
 }
 
-fn freeStoredHeadingsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredHeading)) void {
+fn freeStoredHeadingsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredHeading), free_texts: bool) void {
     for (list.items) |h| {
+        // h.text was transferred from extraction; only free it when texts_transferred=true
+        // (i.e., after extraction.headings/links slice containers were freed at line 289-290).
+        if (free_texts) allocator.free(h.text);
         allocator.free(h.slug);
-        // Note: h.text ownership transferred from extraction, only free slug
     }
     list.deinit(allocator);
 }
 
-fn freeStoredLinksList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredLink)) void {
-    // link text/target ownership transferred from extraction
+fn freeStoredLinksList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredLink), free_texts: bool) void {
+    // l.text and l.target were transferred from extraction; free them only when
+    // texts_transferred=true (after extraction slice containers freed at line 289-290).
+    if (free_texts) {
+        for (list.items) |l| {
+            allocator.free(l.text);
+            allocator.free(l.target);
+        }
+    }
     list.deinit(allocator);
 }
 
@@ -997,6 +1008,47 @@ test "slugifyText truncated slug returns content not empty string" {
     const slug = slugifyText(long_text, &out);
     try testing.expectEqual(@as(usize, 512), slug.len);
     try testing.expectEqualStrings("a" ** 512, slug);
+}
+
+test "freeStoredHeadingsList with free_texts=true frees text strings" {
+    // Verify that freeStoredHeadingsList with free_texts=true frees both text and slug.
+    // This simulates the errdefer cleanup path after texts_transferred (Bug 1 fix):
+    // before the fix, errdefer only freed slugs, leaking h.text owned by stored lists.
+    const alloc = testing.allocator;
+    var list = std.ArrayListUnmanaged(StoredHeading){};
+    const text = try alloc.dupe(u8, "Hello World");
+    const slug = try alloc.dupe(u8, "hello-world");
+    try list.append(alloc, .{
+        .text = text,
+        .slug = slug,
+        .source_offset = 0,
+        .start = .{ .line = 0, .col = 0 },
+        .end = .{ .line = 0, .col = 10 },
+        .level = 1,
+    });
+    freeStoredHeadingsList(alloc, &list, true);
+    // testing.allocator (GPA) detects leaks: if text or slug aren't freed, test fails
+}
+
+test "freeStoredLinksList with free_texts=true frees text and target strings" {
+    // Verify that freeStoredLinksList with free_texts=true frees text and target.
+    // Before the fix, freeStoredLinksList freed nothing (link texts were always owned
+    // by extraction until line 289-290, but errdefer fires after that with no way to
+    // distinguish which allocations to free).
+    const alloc = testing.allocator;
+    var list = std.ArrayListUnmanaged(StoredLink){};
+    const text = try alloc.dupe(u8, "Click here");
+    const target = try alloc.dupe(u8, "https://example.com");
+    try list.append(alloc, .{
+        .text = text,
+        .target = target,
+        .source_offset = 0,
+        .start = .{ .line = 0, .col = 0 },
+        .end = .{ .line = 0, .col = 10 },
+        .is_wiki = false,
+    });
+    freeStoredLinksList(alloc, &list, true);
+    // testing.allocator (GPA) detects leaks: if text or target aren't freed, test fails
 }
 
 test "slugifyText truncated heading via DocumentEngine is non-empty" {
