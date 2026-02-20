@@ -255,7 +255,7 @@ fn parseAll(
             .end = end_pos,
             .level = h.level,
         }) catch {
-            allocator.free(slug);
+            // slug freed by errdefer allocator.free(slug) above
             extraction.deinit();
             return error.OutOfMemory;
         };
@@ -311,7 +311,7 @@ fn parseAll(
                 .source_offset = t.offset,
                 .start = pos,
             }) catch {
-                allocator.free(name);
+                // name freed by errdefer allocator.free(name) above
                 return error.OutOfMemory;
             };
         }
@@ -341,7 +341,7 @@ fn parseAll(
                 .start = pos,
                 .end = block_end_pos,
             }) catch {
-                allocator.free(id);
+                // id freed by errdefer allocator.free(id) above
                 return error.OutOfMemory;
             };
         }
@@ -355,10 +355,18 @@ fn parseAll(
         c_hash = content_hash_mod.content_hash(text.ptr, @intCast(text.len));
     }
 
-    // 9. Transfer ownership to output parameters
+    // 9. Transfer ownership to output parameters.
+    // Scoped errdefers protect each transferred slice: after toOwnedSlice
+    // empties the stored list, the top-level errdefer (lines 213-218) runs on
+    // an empty list (no-op). The scoped errdefer handles the actual cleanup if
+    // a later toOwnedSlice fails.
     out_headings.* = stored_headings_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
+    errdefer freeHeadings(allocator, out_headings.*);
     out_links.* = stored_links_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
+    errdefer freeLinks(allocator, out_links.*);
     out_tags.* = stored_tags_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
+    errdefer freeTags(allocator, out_tags.*);
+    // No errdefer for block_ids: nothing allocates after this point.
     out_block_ids.* = stored_block_ids_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
     out_line_starts.* = line_starts;
     out_token_estimate.* = token_est;
@@ -1064,4 +1072,69 @@ test "slugifyText truncated heading via DocumentEngine is non-empty" {
     // Slug should be 512 'b' chars, not empty
     try testing.expectEqual(@as(usize, 512), engine.headings[0].slug.len);
     try testing.expectEqualStrings("b" ** 512, engine.headings[0].slug);
+}
+
+// --- marky-8nzt: toOwnedSlice cascade leak regression ---
+
+test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
+    // Exercises every OOM failure point in parseAll by iterating fail_index
+    // from 0..N. At each index, exactly one allocation fails.
+    // GPA detects leaks (.leak status) — verifies that scoped errdefers after
+    // each toOwnedSlice call correctly free transferred data when a later
+    // toOwnedSlice fails.
+    //
+    // Input has headings, links, tags, and block IDs so all four toOwnedSlice
+    // paths (lines 359-362) are exercised. The critical path: headings
+    // toOwnedSlice succeeds → links toOwnedSlice fails → errdefer must free
+    // out_headings (top-level errdefer runs on empty stored_headings_list,
+    // which is a no-op after toOwnedSlice consumed it).
+    const input = "# Heading One\n\n[Link Text](https://example.com)\n\n#tag1\n\nA paragraph ^block-one\n";
+
+    var fail_index: usize = 0;
+    var consecutive_successes: usize = 0;
+    while (consecutive_successes < 5) : (fail_index += 1) {
+        // Safety valve: prevent infinite loop if something is very wrong
+        if (fail_index > 300) break;
+
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        var failing = std.testing.FailingAllocator.init(gpa.allocator(), .{ .fail_index = fail_index });
+
+        var out_headings: []StoredHeading = &.{};
+        var out_links: []StoredLink = &.{};
+        var out_tags: []StoredTag = &.{};
+        var out_block_ids: []StoredBlockId = &.{};
+        var out_line_starts: []u32 = &.{};
+        var out_token_estimate: u32 = 0;
+        var out_content_hash: u64 = 0;
+
+        const result = parseAll(
+            failing.allocator(),
+            input,
+            &out_headings,
+            &out_links,
+            &out_tags,
+            &out_block_ids,
+            &out_line_starts,
+            &out_token_estimate,
+            &out_content_hash,
+        );
+
+        if (result) |_| {
+            // Success: free output slices manually (simulates caller cleanup)
+            freeHeadings(failing.allocator(), out_headings);
+            freeLinks(failing.allocator(), out_links);
+            freeTags(failing.allocator(), out_tags);
+            freeBlockIds(failing.allocator(), out_block_ids);
+            if (out_line_starts.len > 0) failing.allocator().free(out_line_starts);
+            consecutive_successes += 1;
+        } else |_| {
+            consecutive_successes = 0;
+        }
+
+        const check = gpa.deinit();
+        try testing.expect(check == .ok);
+    }
+
+    // Verify we actually tested multiple failure points (not just index 0)
+    try testing.expect(fail_index > 5);
 }
