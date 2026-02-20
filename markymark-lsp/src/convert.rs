@@ -76,3 +76,84 @@ pub(crate) fn utf16_offset_to_byte_offset(line: &str, utf16_offset: usize) -> us
     }
     line.len()
 }
+
+/// Convert an iterator of markymark diagnostics to a vec of LSP diagnostics.
+pub fn to_lsp_diagnostics(
+    diagnostics: impl IntoIterator<Item = crate::diagnostics::MarkyDiagnostic>,
+) -> Vec<ls_types::Diagnostic> {
+    use crate::diagnostics::DiagnosticSeverity;
+    diagnostics
+        .into_iter()
+        .map(|d| ls_types::Diagnostic {
+            range: to_lsp_range(d.range),
+            severity: Some(match d.severity {
+                DiagnosticSeverity::Error => ls_types::DiagnosticSeverity::ERROR,
+                DiagnosticSeverity::Warning => ls_types::DiagnosticSeverity::WARNING,
+            }),
+            source: Some("markymark".to_string()),
+            message: d.message,
+            ..Default::default()
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagnostics::{DiagnosticSeverity, MarkyDiagnostic};
+    use markymark_core::{Position, Range};
+
+    fn make_diagnostic(severity: DiagnosticSeverity, message: &str) -> MarkyDiagnostic {
+        MarkyDiagnostic {
+            range: Range::new(Position::new(0, 0), Position::new(0, 5)),
+            severity,
+            message: message.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_error_severity_maps_to_lsp_error() {
+        let result = to_lsp_diagnostics([make_diagnostic(DiagnosticSeverity::Error, "err")]);
+        assert_eq!(
+            result[0].severity,
+            Some(ls_types::DiagnosticSeverity::ERROR)
+        );
+    }
+
+    #[test]
+    fn test_warning_severity_maps_to_lsp_warning() {
+        let result = to_lsp_diagnostics([make_diagnostic(DiagnosticSeverity::Warning, "warn")]);
+        assert_eq!(
+            result[0].severity,
+            Some(ls_types::DiagnosticSeverity::WARNING)
+        );
+    }
+
+    #[test]
+    fn test_empty_iterator_returns_empty_vec() {
+        let result = to_lsp_diagnostics(Vec::<MarkyDiagnostic>::new());
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_source_field_is_markymark() {
+        let result = to_lsp_diagnostics([make_diagnostic(DiagnosticSeverity::Error, "x")]);
+        assert_eq!(result[0].source, Some("markymark".to_string()));
+    }
+
+    #[test]
+    fn test_message_and_range_preserved() {
+        let diag = MarkyDiagnostic {
+            range: Range::new(Position::new(3, 2), Position::new(3, 10)),
+            severity: DiagnosticSeverity::Error,
+            message: "test error".to_string(),
+        };
+        let result = to_lsp_diagnostics([diag]);
+        assert_eq!(result[0].message, "test error");
+        let expected_range = ls_types::Range::new(
+            ls_types::Position::new(3, 2),
+            ls_types::Position::new(3, 10),
+        );
+        assert_eq!(result[0].range, expected_range);
+    }
+}
