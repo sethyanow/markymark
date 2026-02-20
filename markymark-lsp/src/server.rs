@@ -8,9 +8,7 @@ use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::*;
 use tower_lsp_server::{Client, LanguageServer, LspService};
 
-use crate::state::{
-    DiagnosticSeverity as MarkyDiagSeverity, ServerState, StructuredKeyInfo, SymbolAtPosition,
-};
+use crate::state::{ServerState, StructuredKeyInfo, SymbolAtPosition};
 use markymark_core::{DocumentUri, Range as CoreRange};
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link, ResolvedTarget};
 use markymark_index::DocumentIndex;
@@ -86,19 +84,7 @@ impl Backend {
         };
         // Lock is dropped before the async client call (deadlock prevention)
 
-        let lsp_diagnostics: Vec<Diagnostic> = diagnostics
-            .into_iter()
-            .map(|d| Diagnostic {
-                range: crate::convert::to_lsp_range(d.range),
-                severity: Some(match d.severity {
-                    MarkyDiagSeverity::Error => DiagnosticSeverity::ERROR,
-                    MarkyDiagSeverity::Warning => DiagnosticSeverity::WARNING,
-                }),
-                source: Some("markymark".to_string()),
-                message: d.message,
-                ..Default::default()
-            })
-            .collect();
+        let lsp_diagnostics = crate::convert::to_lsp_diagnostics(diagnostics);
 
         self.client
             .publish_diagnostics(lsp_uri, lsp_diagnostics, None)
@@ -238,19 +224,7 @@ impl LanguageServer for Backend {
                 state_w.compute_diagnostics(&doc_uri_clone)
             };
 
-            let lsp_diagnostics: Vec<Diagnostic> = diagnostics
-                .into_iter()
-                .map(|d| Diagnostic {
-                    range: crate::convert::to_lsp_range(d.range),
-                    severity: Some(match d.severity {
-                        crate::state::DiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
-                        crate::state::DiagnosticSeverity::Warning => DiagnosticSeverity::WARNING,
-                    }),
-                    source: Some("markymark".to_string()),
-                    message: d.message,
-                    ..Default::default()
-                })
-                .collect();
+            let lsp_diagnostics = crate::convert::to_lsp_diagnostics(diagnostics);
 
             client
                 .publish_diagnostics(uri_str_clone, lsp_diagnostics, None)
