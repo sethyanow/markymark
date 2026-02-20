@@ -432,6 +432,9 @@ pub const HeadingIdTracker = struct {
         self.text_buf.deinit(allocator);
         var it = self.slug_counts.iterator();
         while (it.next()) |entry| {
+            // Keys were stored via allocator.dupe() which returns []const u8.
+            // @constCast is required because free() needs a mutable slice,
+            // but the data was originally allocated as mutable by the allocator.
             allocator.free(@constCast(entry.key_ptr.*));
         }
         self.slug_counts.deinit(allocator);

@@ -778,6 +778,7 @@ pub fn consumeRefDefsFromCurrentBlock(self: *Parser) void {
     // Merge lines into buffer for ref def parsing
     self.buffer.clearRetainingCapacity();
     for (items) |vline| {
+        // Skip consumed ref-def lines (beg > end sentinel) and out-of-bounds lines.
         if (vline.beg > vline.end or vline.end > self.size) continue;
         if (self.buffer.items.len > 0) {
             self.buffer.append(self.allocator, '\n') catch {};
@@ -795,25 +796,20 @@ pub fn consumeRefDefsFromCurrentBlock(self: *Parser) void {
         const norm_label = self.normalizeLabel(result.label);
         if (norm_label.len == 0) break;
 
-        // First definition wins
-        var already_exists = false;
-        for (self.ref_defs.items) |existing| {
-            if (std.mem.eql(u8, existing.label, norm_label)) {
-                already_exists = true;
-                break;
-            }
-        }
-        if (!already_exists) {
-            // Dupe label, dest, and title — label points into normalize_buf (reused),
-            // dest and title point into self.buffer (reused). All freed in Parser.deinit.
-            const label_dupe = self.allocator.dupe(u8, norm_label) catch return;
-            const dest_dupe = self.allocator.dupe(u8, result.dest) catch return;
-            const title_dupe = self.allocator.dupe(u8, result.title) catch return;
-            self.ref_defs.append(self.allocator, .{
-                .label = label_dupe,
-                .dest = dest_dupe,
-                .title = title_dupe,
-            }) catch return;
+        // Dupe all three upfront; free all if this is a duplicate (first-definition-wins
+        // per CommonMark §2.3). label points into normalize_buf (reused); dest/title
+        // point into self.buffer (reused). Freed in Parser.deinit via hashmap iterator.
+        const label_dupe = self.allocator.dupe(u8, norm_label) catch return;
+        const dest_dupe = self.allocator.dupe(u8, result.dest) catch return;
+        const title_dupe = self.allocator.dupe(u8, result.title) catch return;
+        const gop = self.ref_defs.getOrPut(self.allocator, label_dupe) catch return;
+        if (gop.found_existing) {
+            // First definition wins — free all three duplicates
+            self.allocator.free(label_dupe);
+            self.allocator.free(dest_dupe);
+            self.allocator.free(title_dupe);
+        } else {
+            gop.value_ptr.* = .{ .label = label_dupe, .dest = dest_dupe, .title = title_dupe };
         }
 
         var newlines: u32 = 0;

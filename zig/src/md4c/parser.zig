@@ -56,8 +56,9 @@ pub const Parser = struct {
     table_col_count: u32 = 0,
     table_alignments: [types.TABLE_MAXCOLCOUNT]Align = [_]Align{.default} ** types.TABLE_MAXCOLCOUNT,
 
-    // Ref defs
-    ref_defs: std.ArrayListUnmanaged(RefDef) = .{},
+    // Ref defs — keyed by normalized label for O(1) lookup.
+    // Key and value.label point to the same allocation; free via key only in deinit.
+    ref_defs: std.StringHashMapUnmanaged(RefDef) = .{},
 
     // Scratch buffer for normalizeLabel — reused across calls to avoid per-call leaks.
     normalize_buf: std.ArrayListUnmanaged(u8) = .{},
@@ -108,11 +109,13 @@ pub const Parser = struct {
         self.block_bytes.deinit(self.allocator);
         self.buffer.deinit(self.allocator);
         self.current_block_lines.deinit(self.allocator);
-        // Free duped ref_def contents (label, dest, title) before the list itself.
-        for (self.ref_defs.items) |rd| {
-            self.allocator.free(rd.label);
-            self.allocator.free(rd.dest);
-            self.allocator.free(rd.title);
+        // Free duped ref_def keys and values. Key and value.label point to the same
+        // allocation — free via key only to avoid double-free.
+        var ref_it = self.ref_defs.iterator();
+        while (ref_it.next()) |entry| {
+            self.allocator.free(@constCast(entry.key_ptr.*));
+            self.allocator.free(@constCast(entry.value_ptr.dest));
+            self.allocator.free(@constCast(entry.value_ptr.title));
         }
         self.ref_defs.deinit(self.allocator);
         self.normalize_buf.deinit(self.allocator);
