@@ -279,8 +279,9 @@ impl ServerState {
                         );
 
                         if bounds.end_before_start {
-                            eprintln!(
-                                "markymark-lsp: skipping invalid incremental edit for {} \
+                            log::warn!(
+                                target: "markymark_lsp",
+                                "skipping invalid incremental edit for {} \
                                  (old_end < start: start={}:{}, end={}:{})",
                                 uri.as_str(),
                                 start_line,
@@ -292,8 +293,9 @@ impl ServerState {
                         }
 
                         if bounds.start_clamped || bounds.end_clamped {
-                            eprintln!(
-                                "markymark-lsp: clamped incremental edit range for {} \
+                            log::warn!(
+                                target: "markymark_lsp",
+                                "clamped incremental edit range for {} \
                                  (start={start_line}:{start_character}, end={end_line}:{end_character}, text_len_bytes={})",
                                 uri.as_str(),
                                 text.len()

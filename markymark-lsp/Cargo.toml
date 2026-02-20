@@ -21,6 +21,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
+log = { workspace = true }
 
 [features]
 ## Expose test helpers on Backend (drain_pending, try_apply_drained) for

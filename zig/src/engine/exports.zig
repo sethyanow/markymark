@@ -113,7 +113,8 @@ fn resolveTextSlice(text: ?[*]const u8, len: u32) ?[]const u8 {
 const testing = std.testing;
 
 test "engine_create_and_destroy" {
-    const handle = marky_engine_create("# Hello\n", 9);
+    const text = "# Hello\n";
+    const handle = marky_engine_create(text.ptr, @intCast(text.len));
     try testing.expect(handle != null);
     marky_engine_destroy(handle);
 }
@@ -136,11 +137,13 @@ test "engine_destroy_null" {
 }
 
 test "engine_update_basic" {
-    const handle = marky_engine_create("# Old\n", 6);
+    const old_text = "# Old\n";
+    const handle = marky_engine_create(old_text.ptr, @intCast(old_text.len));
     try testing.expect(handle != null);
     defer marky_engine_destroy(handle);
 
-    const rc = marky_engine_update(handle, "# New\n## Sub\n", 13);
+    const new_text = "# New\n## Sub\n";
+    const rc = marky_engine_update(handle, new_text.ptr, @intCast(new_text.len));
     try testing.expectEqual(@as(i32, 0), rc);
 }
 
@@ -151,7 +154,8 @@ test "engine_update_null_handle" {
 }
 
 test "engine_update_null_text_nonzero_len" {
-    const handle = marky_engine_create("# Init\n", 7);
+    const init_text = "# Init\n";
+    const handle = marky_engine_create(init_text.ptr, @intCast(init_text.len));
     try testing.expect(handle != null);
     defer marky_engine_destroy(handle);
 
@@ -223,7 +227,8 @@ test "engine_get_blob_caching" {
 }
 
 test "engine_lifecycle" {
-    const handle = marky_engine_create("# Start\n", 8);
+    const start_text = "# Start\n";
+    const handle = marky_engine_create(start_text.ptr, @intCast(start_text.len));
     try testing.expect(handle != null);
     defer marky_engine_destroy(handle);
 
