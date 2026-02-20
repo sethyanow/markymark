@@ -428,9 +428,9 @@ Three additional findings from cursor and codex reviews, SRE-refined:
 
 ## PR #41 Code Review Triage (2026-02-20)
 
-SRE-level assessment of findings from CodeRabbit (6 inline + 1 outside-diff + 7 nitpicks),
-Semgrep/GHAS (22 comments = 11 blocks × 2 rules), and Copilot (0 comments, clean pass).
-Consolidated into 5 tracks after dismissing 3 findings.
+SRE-level assessment of all findings from CodeRabbit (3 review rounds, 14 inline + 1
+outside-diff + 13 nitpicks), Semgrep/GHAS (22 comments = 11 blocks × 2 rules), and
+Copilot (0 comments, clean pass). Consolidated into 8 tracks: 5 closed, 3 open.
 
 **Dismissed:** (3 items)
 - **did_open generation ordering (server.rs:157-176)** — INVALID. `next_generation` starts
@@ -441,17 +441,40 @@ Consolidated into 5 tracks after dismissing 3 findings.
   nosemgrep coverage. GHAS still flags because it may not honor inline nosemgrep in diff view.
   Platform limitation, not a code issue.
 
-**Accepted:** (5 beads created)
-- **marky-0rl6 (P1):** ExtractionRenderer scan_cursor corrupts heading offsets on nested elements.
-  Shared mutable scan_cursor between findHeadingOffset/findLinkOffset causes heading offset
-  to be garbage when link closes before heading block. Fix: split into heading_scan_cursor
-  and link_scan_cursor. Test gap: "link inside heading" test (line 697) doesn't assert offsets.
-- **marky-c44x (P2):** Debounce flush calls apply_document_changes per batch, causing N full
-  reparses. Flatten into single call. Safe because changes are already sequential.
-- **marky-pk33 (P3):** FFI safety hardening — exports.zig u32 intCast guard + blob.zig
-  writeStruct/readStruct fallibility.
-- **marky-i873 (P4):** Vendored autolinks.zig — boolean check, doc comment, debug assertion.
-- **marky-4atp (P4):** Code quality — test lengths, eprintln→tracing, glob import.
+**Accepted — Round 1:** (5 beads, ALL CLOSED)
+- **marky-0rl6 (P1, CLOSED):** ExtractionRenderer scan_cursor split into heading/link cursors.
+- **marky-c44x (P2, CLOSED):** Debounce flush flattened to single apply_document_changes call.
+- **marky-pk33 (P3, CLOSED):** FFI safety — exports.zig u32 intCast guard + blob.zig
+  writeStruct/readStruct made fallible with error.OutOfRange.
+- **marky-i873 (P4, CLOSED):** autolinks.zig — boolean check, doc comment, debug assertion.
+- **marky-4atp (P4, CLOSED):** Code quality — test .len, eprintln→log::warn!, glob import.
+
+### Round 2/3 Findings (CodeRabbit, 2026-02-20 post-fix)
+
+CodeRabbit re-reviewed after the round-1 fixes (commits b1e7cd3–b6ec6a4) and posted 8
+additional inline comments + 6 nitpicks. Validated against code, consolidated into 3 tracks.
+
+**Dismissed — Round 2/3:** (2 items)
+- **writeStruct/readStruct UB (blob.zig:212-226)** — already fixed by marky-pk33. Now return
+  error.OutOfRange with runtime bounds checks. CodeRabbit commented on stale code state.
+- **@intCast overflow in serializeState (document.zig:491-497)** — physically impossible.
+  u32::MAX array elements requires 400GB+ RAM for headings alone. Pure theoretical defense.
+  Tracked in marky-wdnc (P4) as optional guard.
+
+**Accepted — Round 2/3:** (3 beads created)
+- **marky-lzd5 (P2):** ExtractionRenderer offset scan hardening — 4 sub-issues:
+  (F1) ATX heading fence tracking uses `in_fence = !in_fence` without matching char/length.
+  Backtick fence incorrectly closed by tilde line. (F2) Same bug in link scan.
+  (F3) Setext heading scan has NO fence tracking — matches `---`/`===` inside code blocks.
+  (F4) Inline link URL scan stops at first `)`, truncating URLs with parens (e.g. Wikipedia).
+  All are offset-only — md4c extraction correct, but LSP hover/goto-def ranges wrong.
+- **marky-nwoz (P3):** LSP state/mod.rs robustness — 2 sub-issues:
+  (G1) `engine_mutex.lock().expect()` panics on poisoned mutex. Unreachable today (&mut self),
+  but a panic in from_blob during lock scope would poison it. Replace with match + fallback.
+  (G2) 6 remaining eprintln! calls in build_markdown_index_via_engine → log::warn!.
+- **marky-wdnc (P4):** Zig engine doc/guard nitpick bundle — exports.zig -5 doc,
+  readHeader/writeHeader precondition docs, 256 fence limit named constant, optional
+  serializeState @intCast overflow guards.
 
 ---
 
