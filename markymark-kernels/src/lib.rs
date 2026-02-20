@@ -15,6 +15,7 @@
 //! - [`md4c`] — md4c single-pass extraction (headings, links, wiki links)
 
 pub mod embed;
+pub mod engine;
 pub mod hash;
 pub mod index_serde;
 pub mod md4c;
