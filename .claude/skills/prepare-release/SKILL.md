@@ -412,6 +412,6 @@ If something goes wrong at any phase:
 
 ## Related
 
-- [RELEASING.md](../../RELEASING.md) — full release documentation including crates.io publishing
-- [MEMORY.md Release Process](../../docs/MEMORY.md) — version locations and known pitfalls
-- [cliff.toml](../../cliff.toml) — git-cliff changelog configuration
+- [RELEASING.md](../../../RELEASING.md) — full release documentation including crates.io publishing
+- [MEMORY.md Release Process](../../../docs/MEMORY.md) — version locations and known pitfalls
+- [cliff.toml](../../../cliff.toml) — git-cliff changelog configuration

@@ -77,10 +77,11 @@ This project uses **bd** (beads) for issue tracking. Run `bd ready` to find avai
 
 ## Project Overview
 
-markymark is a Rust workspace producing a Markdown LSP + MCP server. Six crates:
+markymark is a Rust workspace producing a Markdown LSP + MCP server. Seven crates:
 
 | Crate | Role |
 |-------|------|
+| `markymark-kernels` | Zig SIMD kernels (FFI) |
 | `markymark-core` | Core types and abstractions |
 | `markymark-parser` | Tree-sitter based markdown parser |
 | `markymark-index` | Document indexing and symbol resolution |
@@ -113,7 +114,7 @@ cargo run -- --mcp /path/to/workspace
 
 # Release preparation (guided workflow)
 # Use the prepare-release skill: /prepare-release
-# See markymark-plugin/skills/prepare-release/SKILL.md
+# See .claude/skills/prepare-release/SKILL.md
 ```
 
 ## Code Navigation (LSP-first)

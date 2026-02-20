@@ -199,6 +199,16 @@ CLAUDE.md says not to use `save_memory` for markymark — the API is unreliable.
 Sole persistent memory store is `docs/MEMORY.md`. Update it directly via Edit tool,
 then commit. Never use save_memory as a substitute.
 
+### Dev workflow skill placed in plugin directory (fail-skill-location)
+The `prepare-release` skill was placed in `markymark-plugin/skills/` (ships to users)
+instead of `.claude/skills/` (repo-level, dev-only). Plugin skills are user-facing features
+(like `markdown-check`). Dev workflow skills belong in `.claude/skills/`. Caught in review.
+
+### CLAUDE.md crate table stale after adding markymark-kernels (fail-stale-crate-table)
+CLAUDE.md "Project Overview" said "Six crates" and omitted `markymark-kernels`. Stale since
+the kernels crate was added. Lesson: when adding a crate to the workspace, update CLAUDE.md
+crate table in the same PR. Now fixed (Seven crates, kernels included).
+
 ---
 
 ## Key Patterns
@@ -292,7 +302,7 @@ then commit. Never use save_memory as a substitute.
 
 - **Tag format:** `vMAJOR.MINOR.PATCH` on `main` branch only
 - **Publish order:** kernels → core → parser → index → lsp/mcp (parallel) → cli
-- **Skill:** See `prepare-release` skill (`markymark-plugin/skills/prepare-release/`) for
+- **Skill:** See `prepare-release` skill (`.claude/skills/prepare-release/`) for
   guided release workflow with human checkpoints
 
 ---
