@@ -195,7 +195,11 @@ pub fn validateBlob(data: []const u8) BlobError!ScanBlobHeader {
     return header;
 }
 
-/// Read header from raw bytes (alignment-safe).
+/// Read header from raw bytes (alignment-safe bytewise copy).
+///
+/// Precondition: `data.len >= @sizeOf(ScanBlobHeader)` (64 bytes).
+/// Panics via Zig slice bounds check on undersized input.
+/// Callers should use `validateBlob()` first, which enforces the minimum size.
 pub fn readHeader(data: []const u8) ScanBlobHeader {
     var header: ScanBlobHeader = undefined;
     const dst: [*]u8 = @ptrCast(&header);
@@ -203,7 +207,10 @@ pub fn readHeader(data: []const u8) ScanBlobHeader {
     return header;
 }
 
-/// Write header to raw bytes (alignment-safe).
+/// Write header to raw bytes (alignment-safe bytewise copy).
+///
+/// Precondition: `data.len >= @sizeOf(ScanBlobHeader)` (64 bytes).
+/// Panics via Zig slice bounds check on undersized input.
 pub fn writeHeader(data: []u8, header: ScanBlobHeader) void {
     const src: [*]const u8 = @ptrCast(&header);
     @memcpy(data[0..@sizeOf(ScanBlobHeader)], src[0..@sizeOf(ScanBlobHeader)]);
