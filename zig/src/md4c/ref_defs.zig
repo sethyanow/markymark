@@ -65,10 +65,7 @@ pub fn lookupRefDef(self: *Parser, raw_label: []const u8) ?RefDef {
     if (raw_label.len == 0) return null;
     const normalized = self.normalizeLabel(raw_label);
     if (normalized.len == 0) return null; // whitespace-only labels are invalid
-    for (self.ref_defs.items) |rd| {
-        if (std.mem.eql(u8, rd.label, normalized)) return rd;
-    }
-    return null;
+    return self.ref_defs.get(normalized);
 }
 
 /// Try to parse a link reference definition from merged paragraph text at position `pos`.
@@ -297,24 +294,20 @@ pub fn buildRefDefHashtable(self: *Parser) error{OutOfMemory}!void {
             // Normalize and store the ref def (first definition wins)
             const norm_label = self.normalizeLabel(result.label);
             if (norm_label.len == 0) break; // whitespace-only labels are invalid
-            var already_exists = false;
-            for (self.ref_defs.items) |existing| {
-                if (std.mem.eql(u8, existing.label, norm_label)) {
-                    already_exists = true;
-                    break;
-                }
-            }
-            if (!already_exists) {
-                // Dupe label, dest, and title — label points into normalize_buf (reused),
-                // dest and title point into self.buffer (reused). All freed in Parser.deinit.
-                const label_dupe = self.allocator.dupe(u8, norm_label) catch return error.OutOfMemory;
-                const dest_dupe = self.allocator.dupe(u8, result.dest) catch return error.OutOfMemory;
-                const title_dupe = self.allocator.dupe(u8, result.title) catch return error.OutOfMemory;
-                try self.ref_defs.append(self.allocator, .{
-                    .label = label_dupe,
-                    .dest = dest_dupe,
-                    .title = title_dupe,
-                });
+            // Dupe all three upfront; free all if this is a duplicate (first-definition-wins
+            // per CommonMark §2.3). label points into normalize_buf (reused); dest/title
+            // point into self.buffer (reused). Freed in Parser.deinit via hashmap iterator.
+            const label_dupe = self.allocator.dupe(u8, norm_label) catch return error.OutOfMemory;
+            const dest_dupe = self.allocator.dupe(u8, result.dest) catch return error.OutOfMemory;
+            const title_dupe = self.allocator.dupe(u8, result.title) catch return error.OutOfMemory;
+            const gop = self.ref_defs.getOrPut(self.allocator, label_dupe) catch return error.OutOfMemory;
+            if (gop.found_existing) {
+                // First definition wins — free all three duplicates
+                self.allocator.free(label_dupe);
+                self.allocator.free(dest_dupe);
+                self.allocator.free(title_dupe);
+            } else {
+                gop.value_ptr.* = .{ .label = label_dupe, .dest = dest_dupe, .title = title_dupe };
             }
 
             // Count how many newlines were consumed to track lines
@@ -340,8 +333,8 @@ pub fn buildRefDefHashtable(self: *Parser) error{OutOfMemory}!void {
                 const line_base: [*]VerbatimLine = @ptrCast(@alignCast(bytes.ptr + hdr_off + @sizeOf(BlockHeader)));
                 var i: u32 = 0;
                 while (i < lines_consumed) : (i += 1) {
-                    line_base[i].beg = 1;
-                    line_base[i].end = 0;
+                    line_base[i].beg = types.CONSUMED_LINE_BEG;
+                    line_base[i].end = types.CONSUMED_LINE_END;
                 }
             }
         }
@@ -386,4 +379,37 @@ test "normalizeLabel does not leak on lookup-only path" {
     const html = try root.renderToHtml(input, allocator);
     defer allocator.free(html);
     try testing.expect(html.len > 0);
+}
+
+test "hashmap lookup: 50+ ref defs, last one resolvable" {
+    // Verifies that O(1) hashmap lookup works correctly with many entries.
+    const allocator = testing.allocator;
+    // Build input with 55 ref defs; use the last one in a link.
+    var buf: std.ArrayListUnmanaged(u8) = .{};
+    defer buf.deinit(allocator);
+    try buf.appendSlice(allocator, "[link][ref55]\n\n");
+    for (1..56) |i| {
+        const line = try std.fmt.allocPrint(allocator, "[ref{d}]: https://example.com/{d}\n", .{ i, i });
+        defer allocator.free(line);
+        try buf.appendSlice(allocator, line);
+    }
+    const html = try root.renderToHtml(buf.items, allocator);
+    defer allocator.free(html);
+    // ref55 resolves to https://example.com/55
+    try testing.expect(std.mem.indexOf(u8, html, "example.com/55") != null);
+}
+
+test "hashmap lookup: duplicate labels use first definition" {
+    // Verifies first-definition-wins semantics per CommonMark §2.3.
+    const allocator = testing.allocator;
+    const input =
+        \\[link][ref]
+        \\
+        \\[ref]: https://first.example.com
+        \\[ref]: https://second.example.com
+    ;
+    const html = try root.renderToHtml(input, allocator);
+    defer allocator.free(html);
+    try testing.expect(std.mem.indexOf(u8, html, "first.example.com") != null);
+    try testing.expect(std.mem.indexOf(u8, html, "second.example.com") == null);
 }

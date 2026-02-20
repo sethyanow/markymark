@@ -106,7 +106,8 @@ pub fn processTableRow(self: *Parser, vline: VerbatimLine, is_header: bool, col_
             if (std.mem.indexOf(u8, cell_content, "\\|") != null) {
                 var buf: std.ArrayListUnmanaged(u8) = .{};
                 defer buf.deinit(self.allocator);
-                const unescaped = if (buf.ensureTotalCapacity(self.allocator, cell_content.len)) |_| blk: {
+                const unescaped = blk: {
+                    buf.ensureTotalCapacity(self.allocator, cell_content.len) catch break :blk cell_content;
                     var ci: usize = 0;
                     while (ci < cell_content.len) {
                         if (cell_content[ci] == '\\' and ci + 1 < cell_content.len and cell_content[ci + 1] == '|') {
@@ -118,7 +119,7 @@ pub fn processTableRow(self: *Parser, vline: VerbatimLine, is_header: bool, col_
                         }
                     }
                     break :blk buf.items;
-                } else |_| cell_content;
+                };
                 try self.processInlineContent(unescaped, vline.beg + @as(OFF, @intCast(cell_beg)));
             } else {
                 try self.processInlineContent(cell_content, vline.beg + @as(OFF, @intCast(cell_beg)));
