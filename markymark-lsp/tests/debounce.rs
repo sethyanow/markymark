@@ -4,7 +4,7 @@
 //! reparse fires, not one per keystroke.
 
 use markymark_core::DocumentUri;
-use markymark_lsp::server::create_service;
+use markymark_lsp::server::{create_service, DEBOUNCE_MS};
 use std::str::FromStr;
 use std::time::Duration;
 use tower_lsp_server::ls_types::*;
@@ -79,7 +79,7 @@ async fn test_debounce_defers_reparse_until_pause() {
     }
 
     // Wait longer than the debounce delay (75 ms), then check final state.
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    tokio::time::sleep(Duration::from_millis(DEBOUNCE_MS * 5)).await;
 
     {
         let state = backend.state().read().await;
@@ -141,7 +141,7 @@ async fn test_did_close_cancels_pending_debounce() {
         .await;
 
     // Wait well past the debounce delay.
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    tokio::time::sleep(Duration::from_millis(DEBOUNCE_MS * 5)).await;
 
     // State must reflect the fresh open, NOT the stale buffered change.
     let state = backend.state().read().await;
@@ -149,6 +149,95 @@ async fn test_did_close_cancels_pending_debounce() {
         state.get_document_text(&doc_uri),
         Some("# Fresh Open"),
         "stale debounce must be cancelled by did_close; fresh content must persist"
+    );
+}
+
+/// Closing a document while a debounce is pending must cancel the task;
+/// the document must be absent from the index afterwards (not updated with stale change).
+///
+/// T2-9: close-during-debounce should cancel pending task and leave index unchanged.
+#[tokio::test]
+async fn test_close_during_debounce_index_unchanged() {
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+    let (uri, doc_uri) = doc_uri();
+
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "markdown".to_string(),
+                version: 0,
+                text: "# Original".to_string(),
+            },
+        })
+        .await;
+
+    // Fire a change — starts the debounce timer.
+    backend
+        .did_change(full_change(uri.clone(), 1, "# Stale Change"))
+        .await;
+
+    // Close immediately while debounce is still pending.
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+        })
+        .await;
+
+    // Wait well past the debounce delay.
+    tokio::time::sleep(Duration::from_millis(DEBOUNCE_MS * 5)).await;
+
+    // Document must be absent: close removed it and the debounce was cancelled,
+    // so the stale change was never applied.
+    let state = backend.state().read().await;
+    assert_eq!(
+        state.get_document_text(&doc_uri),
+        None,
+        "closed document must not appear in index even if a debounce was pending"
+    );
+}
+
+/// A did_change with an empty content_changes list must be a no-op:
+/// no debounce is scheduled and the document state is unchanged.
+///
+/// T3-1: empty change batch path.
+#[tokio::test]
+async fn test_empty_change_batch_is_noop() {
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+    let (uri, doc_uri) = doc_uri();
+
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "markdown".to_string(),
+                version: 0,
+                text: "# Stable".to_string(),
+            },
+        })
+        .await;
+
+    // Send a did_change with no content changes.
+    backend
+        .did_change(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 1,
+            },
+            content_changes: vec![],
+        })
+        .await;
+
+    // Wait past the debounce window — no task should have been scheduled.
+    tokio::time::sleep(Duration::from_millis(DEBOUNCE_MS * 5)).await;
+
+    let state = backend.state().read().await;
+    assert_eq!(
+        state.get_document_text(&doc_uri),
+        Some("# Stable"),
+        "empty change batch must be ignored; document state must remain unchanged"
     );
 }
 
@@ -175,7 +264,7 @@ async fn test_single_change_applies_after_debounce() {
         .await;
 
     // Wait for debounce.
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    tokio::time::sleep(Duration::from_millis(DEBOUNCE_MS * 5)).await;
 
     let state = backend.state().read().await;
     assert_eq!(

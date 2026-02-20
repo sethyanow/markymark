@@ -19,7 +19,7 @@ use crate::symbols::{key_entries_to_symbols, outline_children_to_symbols, xml_ta
 use std::collections::HashMap;
 
 /// Debounce delay in milliseconds: only the final pause after typing triggers a reparse.
-const DEBOUNCE_MS: u64 = 75;
+pub const DEBOUNCE_MS: u64 = 75;
 
 /// State shared between the LSP handler and spawned debounce tasks.
 ///
