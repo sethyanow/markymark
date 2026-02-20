@@ -300,6 +300,10 @@ pub const ExtractionRenderer = struct {
         if (self.heading_is_setext) {
             // Setext: find a line followed by === (level 1) or --- (level 2).
             // Return offset of the text line start.
+            // Track fenced code blocks to avoid matching underlines inside them.
+            var in_fence_s = false;
+            var fence_char_s: u8 = 0;
+            var fence_len_s: u32 = 0;
             while (pos < src.len) {
                 // Find the start of a text line
                 const line_start = pos;
@@ -308,6 +312,33 @@ pub const ExtractionRenderer = struct {
                 const line_end = pos;
                 // Skip newline
                 if (pos < src.len) pos += 1;
+
+                // Detect fence open/close at this line
+                {
+                    var fp = line_start;
+                    var sp: u32 = 0;
+                    while (fp < line_end and src[fp] == ' ' and sp < 3) { fp += 1; sp += 1; }
+                    if (fp < line_end and (src[fp] == '`' or src[fp] == '~')) {
+                        const fc = src[fp];
+                        var flen: u32 = 0;
+                        while (fp + flen < line_end and src[fp + flen] == fc) : (flen += 1) {}
+                        if (flen >= 3) {
+                            if (!in_fence_s) {
+                                in_fence_s = true;
+                                fence_char_s = fc;
+                                fence_len_s = flen;
+                            } else if (fc == fence_char_s and flen >= fence_len_s) {
+                                in_fence_s = false;
+                                fence_char_s = 0;
+                                fence_len_s = 0;
+                            }
+                            continue; // skip fence lines
+                        }
+                    }
+                }
+
+                // If inside a fence, skip this line entirely
+                if (in_fence_s) continue;
 
                 // Check if NEXT line is the underline
                 if (pos < src.len) {
@@ -342,6 +373,8 @@ pub const ExtractionRenderer = struct {
             // ATX: '#' must appear at line start (0-3 leading spaces + optional '>' blockquote).
             // Scan line-by-line; track code fences to skip false '#' matches inside fenced blocks.
             var in_fence = false;
+            var fence_char: u8 = 0;
+            var fence_len: u32 = 0;
             while (pos < src.len) {
                 const line_start = pos;
                 var line_end = pos;
@@ -357,7 +390,16 @@ pub const ExtractionRenderer = struct {
                     var flen: u32 = 0;
                     while (fp + flen < line_end and src[fp + flen] == fc) : (flen += 1) {}
                     if (flen >= 3) {
-                        in_fence = !in_fence;
+                        if (!in_fence) {
+                            in_fence = true;
+                            fence_char = fc;
+                            fence_len = flen;
+                        } else if (fc == fence_char and flen >= fence_len) {
+                            in_fence = false;
+                            fence_char = 0;
+                            fence_len = 0;
+                        }
+                        // else: different char or shorter fence — stay in fence
                         pos = next_line;
                         continue;
                     }
@@ -431,6 +473,8 @@ pub const ExtractionRenderer = struct {
         } else {
             // Search for '[' (inline or reference link), skipping fenced code blocks.
             var in_fence = false;
+            var fence_char: u8 = 0;
+            var fence_len: u32 = 0;
             while (pos < src.len) {
                 // Detect fence at line start: 0-3 spaces then 3+ backticks or tildes.
                 if (pos == 0 or src[pos - 1] == '\n') {
@@ -442,7 +486,16 @@ pub const ExtractionRenderer = struct {
                         var flen: u32 = 0;
                         while (fp + flen < src.len and src[fp + flen] == fc) : (flen += 1) {}
                         if (flen >= 3) {
-                            in_fence = !in_fence;
+                            if (!in_fence) {
+                                in_fence = true;
+                                fence_char = fc;
+                                fence_len = flen;
+                            } else if (fc == fence_char and flen >= fence_len) {
+                                in_fence = false;
+                                fence_char = 0;
+                                fence_len = 0;
+                            }
+                            // else: different char or shorter fence — stay in fence
                             while (pos < src.len and src[pos] != '\n') : (pos += 1) {}
                             if (pos < src.len) pos += 1;
                             continue;
@@ -463,11 +516,21 @@ pub const ExtractionRenderer = struct {
                         if (src[end] == ']') bracket_depth -= 1;
                         end += 1;
                     }
-                    // Skip past (url) if present
+                    // Skip past (url) if present, tracking paren depth for URLs like
+                    // https://en.wikipedia.org/wiki/Foo_(bar) and handling backslash escapes.
                     if (end < src.len and src[end] == '(') {
                         end += 1;
-                        while (end < src.len and src[end] != ')') : (end += 1) {}
-                        if (end < src.len) end += 1;
+                        var paren_depth: u32 = 1;
+                        while (end < src.len and paren_depth > 0) {
+                            if (src[end] == '\\' and end + 1 < src.len) {
+                                end += 2; // skip escaped character
+                                continue;
+                            }
+                            if (src[end] == '(') paren_depth += 1;
+                            if (src[end] == ')') paren_depth -= 1;
+                            if (paren_depth > 0) end += 1;
+                        }
+                        if (paren_depth == 0) end += 1; // skip final ')'
                     } else if (end < src.len and src[end] == '[') {
                         // Reference link [text][ref]
                         end += 1;
@@ -1049,4 +1112,120 @@ test "marky-gmny: extractFromMarkdown OOM loop — no double-free or leak" {
 
     // Verify we actually tested multiple failure points (not just index 0)
     try testing.expect(fail_index > 5);
+}
+
+// --- marky-lzd5: offset scan hardening tests ---
+
+test "lzd5-F1: backtick fence not closed by tilde line — ATX heading" {
+    // ``` opens fence, ~~~ should NOT close it (different char), then ``` closes it.
+    // # Real Heading should get correct offset.
+    // "```\n# fake\n~~~\n# also fake\n```\n\n# Real Heading\n"
+    // bytes: "```\n"(4) "# fake\n"(7) "~~~\n"(4) "# also fake\n"(12) "```\n"(4) "\n"(1) = 32
+    const input = "```\n# fake\n~~~\n# also fake\n```\n\n# Real Heading\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqualStrings("Real Heading", result.headings[0].text);
+    try testing.expectEqual(@as(u32, 32), result.headings[0].offset);
+    try testing.expect(input[result.headings[0].offset] == '#');
+}
+
+test "lzd5-F2: tilde fence not closed by backtick line — ATX heading" {
+    // ~~~ opens fence, ``` should NOT close it (different char), then ~~~ closes it.
+    // "~~~\n# fake\n```\n# also fake\n~~~\n\n# Real Heading\n"
+    // bytes: "~~~\n"(4) "# fake\n"(7) "```\n"(4) "# also fake\n"(12) "~~~\n"(4) "\n"(1) = 32
+    const input = "~~~\n# fake\n```\n# also fake\n~~~\n\n# Real Heading\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqualStrings("Real Heading", result.headings[0].text);
+    try testing.expectEqual(@as(u32, 32), result.headings[0].offset);
+    try testing.expect(input[result.headings[0].offset] == '#');
+}
+
+test "lzd5-F3: 4-backtick fence not closed by 3-backtick line" {
+    // ```` opens fence (4 chars), ``` should NOT close it (shorter), then ```` closes it.
+    // "````\n# fake\n```\n# also fake\n````\n\n# Real Heading\n"
+    // bytes: "````\n"(5) "# fake\n"(7) "```\n"(4) "# also fake\n"(12) "````\n"(5) "\n"(1) = 34
+    const input = "````\n# fake\n```\n# also fake\n````\n\n# Real Heading\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqualStrings("Real Heading", result.headings[0].text);
+    try testing.expectEqual(@as(u32, 34), result.headings[0].offset);
+    try testing.expect(input[result.headings[0].offset] == '#');
+}
+
+test "lzd5-F3b: setext heading (level 2) after code block containing --- line" {
+    // Code block contains "---" which should NOT be treated as setext underline.
+    // After code block, real setext heading (level 2, ---) should get correct offset.
+    // "```\nfake\n---\nfake\n```\n\nReal Heading\n---\n"
+    // bytes: "```\n"(4) "fake\n"(5) "---\n"(4) "fake\n"(5) "```\n"(4) "\n"(1) = 23
+    // "Real Heading" starts at 23
+    const input = "```\nfake\n---\nfake\n```\n\nReal Heading\n---\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqualStrings("Real Heading", result.headings[0].text);
+    try testing.expectEqual(@as(u32, 23), result.headings[0].offset);
+    try testing.expect(input[result.headings[0].offset] == 'R');
+}
+
+test "lzd5-F4a: link with parenthesized URL (Wikipedia style)" {
+    // [link](https://en.wikipedia.org/wiki/Foo_(bar))
+    // The URL contains (bar) — naive ) scan truncates.
+    const input = "[link](https://en.wikipedia.org/wiki/Foo_(bar))";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.links.len);
+    try testing.expectEqualStrings("link", result.links[0].text);
+    // end_offset should cover the entire construct including (bar))
+    try testing.expectEqual(@as(u32, 47), result.links[0].end_offset);
+}
+
+test "lzd5-F4b: link with nested parentheses in URL" {
+    // [link](url(a(b)))
+    // 0123456789012345678
+    // len = 17
+    const input = "[link](url(a(b)))";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.links.len);
+    try testing.expectEqualStrings("link", result.links[0].text);
+    try testing.expectEqual(@as(u32, 17), result.links[0].end_offset);
+}
+
+test "lzd5-F4c: link with escaped parentheses in URL" {
+    // [link](url\(not-paren\))
+    // Escaped parens should not be counted. end_offset covers everything.
+    // [  l  i  n  k  ]  (  u  r  l  \  (  n  o  t  -  p  a  r  e  n  \  )  )
+    // 0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23
+    // len = 24
+    const input = "[link](url\\(not-paren\\))";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.links.len);
+    try testing.expectEqualStrings("link", result.links[0].text);
+    try testing.expectEqual(@as(u32, 24), result.links[0].end_offset);
+}
+
+test "lzd5-F2b: backtick fence not closed by tilde line — link scan" {
+    // Same as F1 but for links: ``` fence should not be closed by ~~~
+    // "```\n[fake](url)\n~~~\n[also fake](url)\n```\n\n[real](url)\n"
+    // bytes: "```\n"(4) "[fake](url)\n"(12) "~~~\n"(4) "[also fake](url)\n"(17) "```\n"(4) "\n"(1) = 42
+    const input = "```\n[fake](url)\n~~~\n[also fake](url)\n```\n\n[real](url)\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.links.len);
+    try testing.expectEqualStrings("real", result.links[0].text);
+    try testing.expectEqual(@as(u32, 42), result.links[0].offset);
+    try testing.expect(input[result.links[0].offset] == '[');
 }
