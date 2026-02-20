@@ -160,6 +160,19 @@ Always read Zig build system docs first.
 Some hooks intercept Write when content contains this literal string. Use `Bash cat` heredoc
 with single-quoted delimiter (`'EOF'`) to bypass.
 
+### Agent used Grep/Read instead of LSP() for code navigation (fail-lsp-not-used)
+Repeated user correction: always use LSP tools first for Rust/Zig navigation.
+- `LSP documentSymbol` to explore file structure before reaching for Read
+- `LSP findReferences` to find usages instead of Grep
+- `LSP hover` for type/signature info instead of reading source
+- `LSP goToDefinition` to jump cross-file instead of Glob + Read
+Read/Grep only after LSP narrows the target or for non-code files.
+
+### Agent used claude-mem save_memory for this project (fail-save-memory-unreliable)
+CLAUDE.md says not to use `save_memory` for markymark — the API is unreliable.
+Sole persistent memory store is `docs/MEMORY.md`. Update it directly via Edit tool,
+then commit. Never use save_memory as a substitute.
+
 ---
 
 ## Key Patterns
