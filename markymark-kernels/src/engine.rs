@@ -67,10 +67,12 @@ impl<'a> ScanBlob<'a> {
 ///
 /// # Thread Safety
 ///
-/// [`DocumentEngine`] implements `Send` and `Sync` via unsafe impls. The
-/// underlying Zig heap allocation has no thread-local state, so ownership
-/// transfer is safe. Concurrent reads (`get_blob`) are safe; mutation
-/// (`update`) requires `&mut self`. Wrap in `RwLock` for shared concurrent access.
+/// [`DocumentEngine`] implements `Send` via an unsafe impl; it intentionally
+/// does **not** implement `Sync`. The underlying Zig heap allocation has no
+/// thread-local state, so transferring ownership of a `DocumentEngine`
+/// between threads is safe, but sharing `&DocumentEngine` across threads is
+/// not. For concurrent use, wrap the engine in synchronization primitives
+/// such as `Arc<RwLock<DocumentEngine>>` and share that wrapper instead.
 pub struct DocumentEngine {
     handle: *mut std::ffi::c_void,
 }
@@ -109,7 +111,10 @@ impl DocumentEngine {
         };
 
         if handle.is_null() {
-            return Err(KernelError::InternalError(-3));
+            // marky_engine_create returns null for any failure (invalid input,
+            // OOM, or parse error) without a specific error code. Use 0 as a
+            // neutral code rather than overloading -3 (OOM).
+            return Err(KernelError::InternalError(0));
         }
 
         Ok(Self { handle })
