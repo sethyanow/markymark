@@ -314,3 +314,34 @@ vs previous 9.4ms from_scan baseline.
 - Tree-sitter stays separate for lazy AST (hover/goto-def)
 
 Tasks: 6jzs (engine+blob), atsp (FFI+wrapper), 0mr.9 (parser fixes), 2n4u (from_blob), n78f (LSP integration). All done.
+
+---
+
+## PR #40 Code Review Triage (2026-02-20)
+
+SRE-level assessment of 8 findings from Codex + CodeRabbit. Consolidated into 7 tracks,
+4 valid, 1 already known, 2 dismissed.
+
+### Dismissed Findings
+
+- **Fixed buffer caps (tags 1024, block-ids 1024, fences 256)** — intentional performance
+  tradeoff. Engine path uses stack allocation for LSP hot path. Cap is 16× the Rust path's
+  practical max (~512 via call_scan_ffi retry). No document realistically exceeds these.
+  Architectural asymmetry between paths is deliberate: Rust path (call_scan_ffi → C adapter
+  → `-2` retry) is dynamic; Zig engine path (direct scan_tags call) is fixed stack.
+- **u32 truncation in extract_md4c and call_scan_ffi** — `text.len() as u32` at two sites
+  (md4c.rs:114, scan.rs:283). Theoretical only — 4GB markdown files don't exist. Not UB on
+  truncation (reads fewer bytes, not more). One-liner `u32::try_from` guard available if
+  desired but not worth tracking.
+- **Debounce edit loss (server.rs)** — INVALID finding. Task removes its own abort handle
+  before draining pending_changes, so subsequent did_change can't abort it. Generation
+  counter handles close/reopen races. Design is correct.
+
+### Valid Findings (beads created)
+
+- **marky-5vnt (P3):** Slug truncation returns empty + processLeafBlock silent catch {}.
+  slugifyText returns "" on rc==-2 (truncated) instead of out[0..512]. processLeafBlock
+  has residual catch {} not fixed by marky-0mr.6 (which only fixed collectEmphasisDelimiters).
+- **marky-9m7o (P4):** parseAll errdefer leaks text on late-stage OOM (after ownership
+  transfer at line 289-290, freeStoredHeadingsList only frees slugs not texts). Also link
+  end_offset heuristic is wrong for reference links and titled links (cosmetic LSP ranges).
