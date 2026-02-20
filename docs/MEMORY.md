@@ -261,8 +261,13 @@ Replaces `from_scan()` in LSP hot path. ~850 lines of Rust incremental code dele
   SRE-refined with 18+ TDD test cases, allocator strategy, slug dedup, 5 edge case mitigations.
 - **Task 2** (marky-atsp, DONE) — FFI exports (C ABI) + Rust DocumentEngine wrapper + ScanBlob.
 - **marky-0mr.9** (DONE) — P0-P2 md4c parser fixes required before Task 3 could proceed.
+- **Task 3** (marky-2n4u, DONE) — `DocumentIndex::from_blob()` constructor + BlobError enum.
+  `markymark-index/src/document/from_blob.rs`. 15 tests (engine-backed + rejection). All 1042 tests pass.
+  Key implementation notes: `pub(crate)` on build_toc/build_outline to enable sibling module access;
+  `dep:markymark-kernels` added to `zig-kernels` feature so tests use real DocumentEngine;
+  checked arithmetic for pool offsets; `matches!()` for Result assertions (DocumentIndex: !PartialEq).
 
-**Next: Task 3** (marky-2n4u, unblocked) — `DocumentIndex::from_blob()` constructor.
-- 15 TDD tests, BlobError enum, header validation, text pool bounds checking, parity vs from_scan.
-- **Known parity gap (v1):** Zig engine sets `end = start` for all entries — parity test skips end positions.
-- Blob magic: `0x4D4B5343` ("MKSC"), version 1, little-endian.
+**Next: Task 4** — LSP integration replacing current scan dispatch with engine.update() + from_blob() pipeline.
+- Needs `DocumentEngine` instance per document in LSP state.
+- Replaces `ScanBackend` dispatch + incremental logic in `markymark-lsp/src/state/`.
+- ~850 lines of Rust incremental indexing code deletable on completion.
