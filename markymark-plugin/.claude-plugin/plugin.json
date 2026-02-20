@@ -1,6 +1,6 @@
 {
   "name": "markymark",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "High-performance Markdown language server with LSP and MCP support. Provides go-to-definition, find-references, hover, completion, rename, diagnostics, and document symbols for Markdown files including wiki links, XML tags, and cross-document references.",
   "author": {
     "name": "Seth Yanow"
