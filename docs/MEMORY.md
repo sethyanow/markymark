@@ -43,6 +43,19 @@ the start of each call, and have callers that persist the result `dupe()` it.
 Also: if a struct stores duped slices, its deinit must free them individually before
 freeing the container list (marky-i3fl).
 
+### Zig test pointer tricks for >4GB fake slices (2026-02-19)
+
+To test early-return guards that fire before data is accessed (e.g. size checks
+before `@intCast(text.len)`), construct a fake huge slice using a many-pointer:
+```zig
+var sentinel: u8 = 0;
+const p: [*]const u8 = @ptrCast(&sentinel);  // [*] has no tracked length
+const fake: []const u8 = p[0..huge_len];      // valid fat pointer; never dereference
+```
+`[*]const u8` slicing has no bounds check. The function must return before
+touching slice data or the test will crash. Using `@as([*]const u8, ptr)` is NOT
+valid in Zig 0.15 — use type-annotated variable form instead (marky-0mr.5).
+
 ### FFI serialization: validate math, pointers, and alignment (2026-02-17/18)
 
 For mmap-friendly binary formats, treat header counts and C pointers as untrusted input.
