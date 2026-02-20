@@ -28,6 +28,9 @@ struct DebounceState {
     pending_changes: HashMap<DocumentUri, Vec<Vec<crate::state::DocumentChange>>>,
     /// Active debounce abort handles, keyed by document URI.
     debounce_handles: HashMap<DocumentUri, tokio::task::AbortHandle>,
+    /// Monotonic generation counter per document URI, incremented on open and close.
+    /// Used to detect stale batches after close/reopen sequences (marky-aemm).
+    document_generations: HashMap<DocumentUri, u64>,
 }
 
 impl DebounceState {
@@ -35,6 +38,7 @@ impl DebounceState {
         Self {
             pending_changes: HashMap::new(),
             debounce_handles: HashMap::new(),
+            document_generations: HashMap::new(),
         }
     }
 }
@@ -147,6 +151,15 @@ impl LanguageServer for Backend {
                 let mut state = self.state.write().await;
                 state.open_document(doc_uri.clone(), params.text_document.text);
             }
+            // Bump generation so any in-flight debounce task from a prior session
+            // on this URI detects the mismatch and discards its stale batch (marky-aemm).
+            {
+                let mut deb = self.debounce.lock().unwrap();
+                deb.document_generations
+                    .entry(doc_uri.clone())
+                    .and_modify(|g| *g += 1)
+                    .or_insert(1);
+            }
             self.publish_diagnostics_for(uri_str, &doc_uri).await;
         }
     }
@@ -198,14 +211,22 @@ impl LanguageServer for Backend {
         let join_handle = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(DEBOUNCE_MS)).await;
 
-            // Atomically remove self from handles and drain pending batches (T1-1, T2-4).
+            // Atomically remove self from handles, drain pending batches, and capture
+            // the current generation (T1-1, T2-4, marky-aemm).
             // If pending is absent the document was closed while we were sleeping;
             // abort fires at the next await — return early to avoid stale work (T2-8).
-            let batches = {
+            let (batches, captured_gen) = {
                 let mut deb = debounce.lock().unwrap();
                 deb.debounce_handles.remove(&doc_uri_clone);
                 match deb.pending_changes.remove(&doc_uri_clone) {
-                    Some(batches) => batches,
+                    Some(batches) => {
+                        let gen = deb
+                            .document_generations
+                            .get(&doc_uri_clone)
+                            .copied()
+                            .unwrap_or(0);
+                        (batches, gen)
+                    }
                     None => return,
                 }
             };
@@ -216,8 +237,29 @@ impl LanguageServer for Backend {
 
             // Apply all accumulated change batches and compute diagnostics in a single
             // write lock scope, eliminating the write→read lock ordering (T2-2).
+            // The generation check MUST be after acquiring state.write() — if placed
+            // before, a close/reopen can slip between the check and the apply.
+            // Since did_close bumps generation under the DebounceState mutex (not the
+            // state lock), a concurrent close will have bumped the generation even while
+            // we hold state.write() (marky-aemm).
             let diagnostics = {
                 let mut state_w = state.write().await;
+
+                // Check generation counter: if a close/reopen happened between drain
+                // and now, the generation will have changed and we discard the stale
+                // batches (marky-aemm).
+                {
+                    let deb = debounce.lock().unwrap();
+                    let current_gen = deb
+                        .document_generations
+                        .get(&doc_uri_clone)
+                        .copied()
+                        .unwrap_or(0);
+                    if current_gen != captured_gen {
+                        return;
+                    }
+                }
+
                 for batch in batches {
                     state_w.apply_document_changes(&doc_uri_clone, batch);
                 }
@@ -242,13 +284,21 @@ impl LanguageServer for Backend {
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri_str = params.text_document.uri;
         if let Ok(doc_uri) = crate::convert::from_lsp_uri(&uri_str) {
-            // Cancel any pending debounce and clear buffered changes before closing (T2-8).
+            // Cancel any pending debounce, clear buffered changes, and bump generation
+            // before closing (T2-8, marky-aemm).
             {
                 let mut deb = self.debounce.lock().unwrap();
                 if let Some(handle) = deb.debounce_handles.remove(&doc_uri) {
                     handle.abort();
                 }
                 deb.pending_changes.remove(&doc_uri);
+                // Bump generation so any in-flight debounce task that already drained
+                // detects the mismatch and discards its stale batch (marky-aemm).
+                // Do NOT remove the entry — the debounce task needs to see the bump.
+                deb.document_generations
+                    .entry(doc_uri.clone())
+                    .and_modify(|g| *g += 1)
+                    .or_insert(1);
             }
             {
                 let mut state = self.state.write().await;
@@ -923,4 +973,47 @@ fn structured_key_hover_markdown(info: &StructuredKeyInfo) -> String {
     lines.push(format!("**Depth:** {}", info.depth));
     lines.push(format!("**Format:** {:?}", info.document_kind));
     lines.join("\n\n")
+}
+
+#[cfg(any(test, feature = "test-helpers"))]
+impl Backend {
+    /// Drain pending changes for a URI and return the batches with the captured generation.
+    ///
+    /// Simulates the debounce task's drain step without relying on tokio sleep timing.
+    /// Also removes the abort handle (as the real debounce task does).
+    pub fn drain_pending(
+        &self,
+        uri: &DocumentUri,
+    ) -> Option<(Vec<Vec<crate::state::DocumentChange>>, u64)> {
+        let mut deb = self.debounce.lock().unwrap();
+        deb.debounce_handles.remove(uri);
+        deb.pending_changes.remove(uri).map(|batches| {
+            let gen = deb.document_generations.get(uri).copied().unwrap_or(0);
+            (batches, gen)
+        })
+    }
+
+    /// Try to apply previously drained changes, checking the generation counter.
+    ///
+    /// Returns `true` if applied (generation matched), `false` if discarded (mismatch).
+    /// Mirrors the generation check in the real debounce task for deterministic testing.
+    pub async fn try_apply_drained(
+        &self,
+        uri: &DocumentUri,
+        batches: Vec<Vec<crate::state::DocumentChange>>,
+        captured_gen: u64,
+    ) -> bool {
+        let mut state_w = self.state.write().await;
+        {
+            let deb = self.debounce.lock().unwrap();
+            let current_gen = deb.document_generations.get(uri).copied().unwrap_or(0);
+            if current_gen != captured_gen {
+                return false;
+            }
+        }
+        for batch in batches {
+            state_w.apply_document_changes(uri, batch);
+        }
+        true
+    }
 }
