@@ -267,7 +267,11 @@ Replaces `from_scan()` in LSP hot path. ~850 lines of Rust incremental code dele
   `dep:markymark-kernels` added to `zig-kernels` feature so tests use real DocumentEngine;
   checked arithmetic for pool offsets; `matches!()` for Result assertions (DocumentIndex: !PartialEq).
 
-**Next: Task 4** — LSP integration replacing current scan dispatch with engine.update() + from_blob() pipeline.
-- Needs `DocumentEngine` instance per document in LSP state.
-- Replaces `ScanBackend` dispatch + incremental logic in `markymark-lsp/src/state/`.
-- ~850 lines of Rust incremental indexing code deletable on completion.
+- **Task 4** (marky-n78f, DONE) — LSP integration replacing incremental scan with engine pipeline.
+  `markymark-lsp/src/state/mod.rs`: ServerState now uses per-document `DocumentEngine` instances.
+  `build_markdown_index_via_engine()` calls engine.update() + get_blob() + from_blob_with_xml_tags().
+  Deleted entire `incremental/` module (~850 lines). Tree-sitter `Parser` and `MarkdownTree` removed from state.
+  XML tags: engine/blob path doesn't extract them (md4c treats HTML as pass-through), so
+  `extract_xml_tags_from_text()` runs the markymark-parser single-pass tag scanner as supplement.
+  Added `from_blob_with_xml_tags()` to accept supplementary XML tags alongside blob data.
+  All E2E tests pass. All workspace tests pass. Clippy clean.

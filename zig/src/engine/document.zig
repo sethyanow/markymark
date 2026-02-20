@@ -233,6 +233,9 @@ fn parseAll(
         errdefer allocator.free(slug);
 
         const start_pos = byteOffsetToPosition(line_starts, h.offset);
+        // End position: past "## text" = offset + level + space + text_len
+        const end_offset = h.offset +| @as(u32, h.level) +| 1 +| @as(u32, @intCast(h.text.len));
+        const end_pos = byteOffsetToPosition(line_starts, end_offset);
 
         // Transfer text ownership from extraction to stored heading
         stored_headings_list.append(allocator, .{
@@ -240,7 +243,7 @@ fn parseAll(
             .slug = slug,
             .source_offset = h.offset,
             .start = start_pos,
-            .end = start_pos, // Same as start for v1
+            .end = end_pos,
             .level = h.level,
         }) catch {
             allocator.free(slug);
@@ -252,12 +255,23 @@ fn parseAll(
     // 5. Process links: positions
     for (extraction.links) |l| {
         const start_pos = byteOffsetToPosition(line_starts, l.offset);
+        // End position depends on link syntax:
+        //   Wiki [[target]]         → offset + target_len + 4
+        //   Wiki [[target|alias]]   → offset + target_len + 1 + text_len + 4
+        //   Markdown [text](target) → offset + text_len + target_len + 4
+        const end_offset = if (l.is_wiki) blk: {
+            if (!std.mem.eql(u8, l.text, l.target))
+                break :blk l.offset +| @as(u32, @intCast(l.target.len)) +| 1 +| @as(u32, @intCast(l.text.len)) +| 4
+            else
+                break :blk l.offset +| @as(u32, @intCast(l.target.len)) +| 4;
+        } else l.offset +| @as(u32, @intCast(l.text.len)) +| @as(u32, @intCast(l.target.len)) +| 4;
+        const end_pos = byteOffsetToPosition(line_starts, end_offset);
         stored_links_list.append(allocator, .{
             .text = l.text,
             .target = l.target,
             .source_offset = l.offset,
             .start = start_pos,
-            .end = start_pos,
+            .end = end_pos,
             .is_wiki = l.is_wiki,
         }) catch {
             extraction.deinit();
@@ -311,11 +325,14 @@ fn parseAll(
                 return error.OutOfMemory;
             errdefer allocator.free(id);
             const pos = byteOffsetToPosition(line_starts, b.offset);
+            // End position: past "^block-id" = offset + 1 (^) + id_length
+            const block_end_offset = b.offset +| 1 +| @as(u32, b.length);
+            const block_end_pos = byteOffsetToPosition(line_starts, block_end_offset);
             stored_block_ids_list.append(allocator, .{
                 .id = id,
                 .source_offset = b.offset,
                 .start = pos,
-                .end = pos,
+                .end = block_end_pos,
             }) catch {
                 allocator.free(id);
                 return error.OutOfMemory;

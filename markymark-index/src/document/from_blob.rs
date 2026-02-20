@@ -20,12 +20,6 @@
 //! [u8          × text_pool_size] (contiguous text pool)
 //! ```
 //!
-//! # Known parity gaps (v1)
-//!
-//! End positions differ from [`from_scan`]: the Zig engine stores `end = start`
-//! for all entries. Only heading text/slug/level, link targets/aliases/anchors,
-//! tag names, and block IDs are guaranteed to match [`from_scan`] exactly.
-//!
 //! [`from_scan`]: super::DocumentIndex::from_scan
 
 use bumpalo::collections::Vec as BumpVec;
@@ -37,7 +31,7 @@ use std::sync::Mutex;
 use super::{
     helpers, BlockEntry, BlockRefEntry, DocumentDependent, DocumentIndex, DocumentIndexCell,
     DocumentOwner, FrontmatterEntry, HeadingEntry, MarkdownLinkEntry, PropertyEntry, TagEntry,
-    WikiLinkEntry, XmlTagEntry,
+    WikiLinkEntry, XmlTagEntry, XmlTagOwned,
 };
 
 // ---------------------------------------------------------------------------
@@ -217,6 +211,43 @@ fn pool_str(text_pool: &[u8], off: u32, len: u32) -> Result<&str, BlobError> {
 }
 
 // ---------------------------------------------------------------------------
+// XML tag extraction from raw text (standalone, no tree-sitter needed)
+// ---------------------------------------------------------------------------
+
+/// Extract XML/HTML tags from raw markdown text as owned data.
+///
+/// This uses the single-pass stack-based tokenizer from `markymark_parser`
+/// (which does NOT require tree-sitter). Code fences are skipped, and tags
+/// with attributes, self-closing tags, and unclosed tags are all handled.
+///
+/// Used by the engine pipeline (from_blob) to supplement the blob with XML
+/// tags that the Zig engine does not extract.
+pub fn extract_xml_tags_from_text(source: &str) -> Vec<XmlTagOwned> {
+    let arena = bumpalo::Bump::new();
+    let tags = markymark_parser::extract_xml_tags(&[], source, &arena);
+    tags.into_iter()
+        .map(|xt| {
+            let mut attributes: Vec<(String, String)> = xt
+                .attributes()
+                .iter()
+                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+                .collect();
+            attributes.sort_by(|a, b| a.0.cmp(&b.0));
+            let (start_byte, end_byte) = xt.byte_range();
+            XmlTagOwned {
+                tag_name: xt.tag_name().to_string(),
+                attributes,
+                is_self_closing: xt.is_self_closing(),
+                is_unclosed: xt.is_unclosed(),
+                range: xt.range(),
+                start_byte,
+                end_byte,
+            }
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
 // DocumentIndex::from_blob
 // ---------------------------------------------------------------------------
 
@@ -225,6 +256,9 @@ impl DocumentIndex {
     ///
     /// Produces a [`DocumentIndex`] equivalent to [`from_scan`] for the same
     /// input text. The blob is the output of `DocumentEngine::get_blob()`.
+    ///
+    /// XML tags are not extracted by the Zig engine; use
+    /// [`from_blob_with_xml_tags`] to include them.
     ///
     /// # Errors
     ///
@@ -237,7 +271,22 @@ impl DocumentIndex {
     /// - [`BlobError::InvalidUtf8`] — text pool contains invalid UTF-8
     ///
     /// [`from_scan`]: DocumentIndex::from_scan
+    /// [`from_blob_with_xml_tags`]: DocumentIndex::from_blob_with_xml_tags
     pub fn from_blob(data: &[u8]) -> Result<Self, BlobError> {
+        Self::from_blob_with_xml_tags(data, Vec::new())
+    }
+
+    /// Build a document index from a Zig engine binary blob with XML tags.
+    ///
+    /// Identical to [`from_blob`] but also populates the XML tag entries from
+    /// the provided owned data. Use [`extract_xml_tags_from_text`] to obtain
+    /// the XML tags from the source text.
+    ///
+    /// [`from_blob`]: DocumentIndex::from_blob
+    pub fn from_blob_with_xml_tags(
+        data: &[u8],
+        xml_tags_in: Vec<XmlTagOwned>,
+    ) -> Result<Self, BlobError> {
         let header = validate_blob(data)?;
         let offsets = compute_offsets(&header);
         let text_pool =
@@ -258,6 +307,7 @@ impl DocumentIndex {
         struct WikiData {
             target: String,
             alias: Option<String>,
+            heading: Option<String>,
             source_offset: u32,
             text_len: u32,   // display/alias text length (for end_byte)
             target_len: u32, // page name length (for end_byte)
@@ -354,16 +404,23 @@ impl DocumentIndex {
             let target = pool_str(text_pool, target_off, target_len)?;
 
             if is_wiki != 0 {
-                // Wiki link: text is the display/alias, target is the page name.
-                // Alias is present only when text ≠ target (matching from_scan).
-                let alias = if text != target {
+                // Wiki link: text is the display/alias, target may contain
+                // a heading anchor (e.g. "page#heading"). Split on '#'.
+                let (page, heading) = if let Some(hash_pos) = target.find('#') {
+                    (&target[..hash_pos], Some(target[hash_pos + 1..].to_owned()))
+                } else {
+                    (target, None)
+                };
+                // Alias is present only when text ≠ page (matching from_scan).
+                let alias = if text != page {
                     Some(text.to_owned())
                 } else {
                     None
                 };
                 wiki_owned.push(WikiData {
                     alias,
-                    target: target.to_owned(),
+                    heading,
+                    target: page.to_owned(),
                     source_offset,
                     text_len,
                     target_len,
@@ -481,10 +538,11 @@ impl DocumentIndex {
                 } else {
                     start_byte + wl.target_len as usize + 4
                 };
+                let heading = wl.heading.as_deref().map(|h| arena_alloc_str(arena_ref, h));
                 wiki_builder.push(WikiLinkEntry {
                     target,
                     alias,
-                    heading: None,
+                    heading,
                     range: Range::new(start_pos, end_pos),
                     start_byte,
                     end_byte,
@@ -545,8 +603,25 @@ impl DocumentIndex {
                 );
             }
 
-            // Fields not provided by the blob path — same as from_scan.
-            let xml_tags = BumpVec::<XmlTagEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            // --- XML Tags (from supplementary extraction, not in blob) ---
+            let mut xt_builder = BumpVec::new_in(arena_ref);
+            for xt in &xml_tags_in {
+                let tag_name = arena_alloc_str(arena_ref, &xt.tag_name);
+                let mut attributes = hashbrown::HashMap::new();
+                for (k, v) in &xt.attributes {
+                    attributes.insert(arena_alloc_str(arena_ref, k), arena_alloc_str(arena_ref, v));
+                }
+                xt_builder.push(XmlTagEntry {
+                    tag_name,
+                    attributes,
+                    is_self_closing: xt.is_self_closing,
+                    is_unclosed: xt.is_unclosed,
+                    range: xt.range,
+                    start_byte: xt.start_byte,
+                    end_byte: xt.end_byte,
+                });
+            }
+            let xml_tags = xt_builder.into_bump_slice();
             let frontmatter = BumpVec::<FrontmatterEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let aliases = BumpVec::<&str>::new_in(arena_ref).into_bump_slice();
             let properties = BumpVec::<PropertyEntry<'_>>::new_in(arena_ref).into_bump_slice();
@@ -757,7 +832,10 @@ mod tests {
 
     #[test]
     fn test_from_blob_parity_with_from_scan() {
-        use markymark_core::scanner::ZigScanBackend;
+        // Compare blob (DocumentEngine/md4c) vs from_scan with Md4cScanBackend.
+        // Both use md4c extraction so offsets are identical.
+        // ZigScanBackend uses SIMD scanner with different offset conventions.
+        use markymark_core::scanner::Md4cScanBackend;
 
         let text =
             "# Main Heading\n\n## Sub Heading\n\n[[Wiki Link]]\n[[Page|Alias]]\n[md](url.md#sec)\n#tag1 #tag2\ncontent ^block1\n";
@@ -766,11 +844,11 @@ mod tests {
         let blob = blob_for(text);
         let blob_idx = DocumentIndex::from_blob(&blob).expect("from_blob failed");
 
-        // Build via scan path
-        let backend = ZigScanBackend;
+        // Build via md4c scan path (same extraction as DocumentEngine)
+        let backend = Md4cScanBackend;
         let scan_idx = DocumentIndex::from_scan(text, &backend);
 
-        // Headings: text, slug, level must match exactly
+        // Headings: text, slug, level, range must match exactly
         let blob_headings = blob_idx.headings();
         let scan_headings = scan_idx.headings();
         assert_eq!(blob_headings.len(), scan_headings.len(), "heading count");
@@ -778,18 +856,20 @@ mod tests {
             assert_eq!(b.text, s.text, "heading text");
             assert_eq!(b.slug, s.slug, "heading slug");
             assert_eq!(b.level, s.level, "heading level");
+            assert_eq!(b.range, s.range, "heading range for '{}'", b.text);
         }
 
-        // Wiki links: target and alias must match
+        // Wiki links: target, alias, range must match
         let blob_wl = blob_idx.wiki_links();
         let scan_wl = scan_idx.wiki_links();
         assert_eq!(blob_wl.len(), scan_wl.len(), "wiki link count");
         for (b, s) in blob_wl.iter().zip(scan_wl.iter()) {
             assert_eq!(b.target, s.target, "wiki link target");
             assert_eq!(b.alias, s.alias, "wiki link alias");
+            assert_eq!(b.range, s.range, "wiki link range for '{}'", b.target);
         }
 
-        // Markdown links: text, url, anchor must match
+        // Markdown links: text, url, anchor, range must match
         let blob_ml = blob_idx.markdown_links();
         let scan_ml = scan_idx.markdown_links();
         assert_eq!(blob_ml.len(), scan_ml.len(), "markdown link count");
@@ -797,6 +877,7 @@ mod tests {
             assert_eq!(b.text, s.text, "markdown link text");
             assert_eq!(b.url, s.url, "markdown link url");
             assert_eq!(b.anchor, s.anchor, "markdown link anchor");
+            assert_eq!(b.range, s.range, "markdown link range for '{}'", b.text);
         }
 
         // Tags: names must match (order may differ — use set comparison)
@@ -874,5 +955,62 @@ mod tests {
         assert_eq!(toc[0].depth, 0);
         assert_eq!(toc[1].depth, 1);
         assert_eq!(toc[2].depth, 1);
+    }
+
+    // ── XML tag supplementary tests (test 16–17) ─────────────────────────
+
+    #[test]
+    fn test_from_blob_with_xml_tags() {
+        let text = "# Heading\n\n<agent>content</agent>\n\n<goal>win</goal>\n";
+        let blob = blob_for(text);
+        let xml_tags = super::extract_xml_tags_from_text(text);
+
+        assert!(xml_tags.len() >= 2, "should extract agent and goal tags");
+
+        let index =
+            DocumentIndex::from_blob_with_xml_tags(&blob, xml_tags).expect("from_blob failed");
+
+        // Headings still work
+        assert_eq!(index.headings().len(), 1);
+        assert_eq!(index.headings()[0].text, "Heading");
+
+        // XML tags are populated
+        assert!(
+            !index.xml_tags().is_empty(),
+            "xml_tags should not be empty when provided"
+        );
+        let tag_names: Vec<&str> = index.xml_tags().iter().map(|xt| xt.tag_name).collect();
+        assert!(
+            tag_names.contains(&"agent"),
+            "should include 'agent'; got: {:?}",
+            tag_names
+        );
+        assert!(
+            tag_names.contains(&"goal"),
+            "should include 'goal'; got: {:?}",
+            tag_names
+        );
+    }
+
+    #[test]
+    fn test_extract_xml_tags_from_text_basic() {
+        let text = "<agent>hello</agent>\n<goal>win</goal>\n<routing>path</routing>\n";
+        let tags = super::extract_xml_tags_from_text(text);
+        let names: Vec<&str> = tags.iter().map(|t| t.tag_name.as_str()).collect();
+        assert!(
+            names.contains(&"agent"),
+            "should find agent; got: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"goal"),
+            "should find goal; got: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"routing"),
+            "should find routing; got: {:?}",
+            names
+        );
     }
 }
