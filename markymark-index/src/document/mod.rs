@@ -3,11 +3,17 @@
 mod helpers;
 mod types;
 
+#[cfg(feature = "zig-kernels")]
+mod from_blob;
+
 #[cfg(test)]
 mod tests;
 
 pub use helpers::slugify;
 pub use types::*;
+
+#[cfg(feature = "zig-kernels")]
+pub use from_blob::BlobError;
 
 use bumpalo::collections::Vec as BumpVec;
 use bumpalo::Bump;
