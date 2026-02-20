@@ -499,7 +499,7 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
     };
     blob.writeHeader(buf, header);
 
-    const offsets = blob.computeSectionOffsets(header);
+    const offsets = blob.computeSectionOffsets(header) orelse return error.OutOfMemory;
 
     // Write headings and build text pool
     var pool_off: u32 = 0;
@@ -778,7 +778,7 @@ test "test_blob_text_pool" {
 
     const blob_data = try engine.getBlob();
     const header = blob.readHeader(blob_data);
-    const offsets = blob.computeSectionOffsets(header);
+    const offsets = blob.computeSectionOffsets(header).?;
 
     // Read the heading from the blob
     const bh = blob.readStruct(blob.BlobHeading, blob_data, offsets.headings);
@@ -969,7 +969,7 @@ test "blob line_starts roundtrip" {
 
     const blob_data = try engine.getBlob();
     const header = blob.readHeader(blob_data);
-    const offsets = blob.computeSectionOffsets(header);
+    const offsets = blob.computeSectionOffsets(header).?;
 
     // Read line_starts from blob
     for (0..header.line_count) |i| {

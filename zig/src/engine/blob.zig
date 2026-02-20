@@ -127,23 +127,21 @@ pub const SectionOffsets = struct {
     text_pool: u32,
 };
 
-/// Compute byte offset of each section within a validated blob.
+/// Compute byte offset of each section within a blob.
 ///
-/// PRECONDITION: `header` must come from a validated blob (via `validateBlob`
-/// or `computeBlobSize`). Section counts that overflow u32 arithmetic are
-/// undefined behaviour. Call `computeBlobSize()` first to validate.
-pub fn computeSectionOffsets(header: ScanBlobHeader) SectionOffsets {
-    // Debug-mode guard: verify the header counts don't overflow u32 arithmetic.
-    if (std.debug.runtime_safety) {
-        std.debug.assert(computeBlobSize(
-            header.heading_count,
-            header.link_count,
-            header.tag_count,
-            header.block_id_count,
-            header.line_count,
-            header.text_pool_size,
-        ) != null);
-    }
+/// Returns null if the header counts would overflow u32 arithmetic (defense-in-depth
+/// for release builds where the debug assertion in the old signature was stripped).
+/// Callers with validated headers should use `.?` or `orelse unreachable`; production
+/// code should propagate the error with `orelse return error.OutOfMemory`.
+pub fn computeSectionOffsets(header: ScanBlobHeader) ?SectionOffsets {
+    if (computeBlobSize(
+        header.heading_count,
+        header.link_count,
+        header.tag_count,
+        header.block_id_count,
+        header.line_count,
+        header.text_pool_size,
+    ) == null) return null;
     const base: u32 = @sizeOf(ScanBlobHeader);
     const headings = base;
     const links = headings + header.heading_count * @sizeOf(BlobHeading);
@@ -297,7 +295,7 @@ test "computeSectionOffsets correct for known counts" {
         .line_count = 4,
         .text_pool_size = 20,
     };
-    const offsets = computeSectionOffsets(header);
+    const offsets = computeSectionOffsets(header).?;
     try testing.expectEqual(@as(u32, 64), offsets.headings);
     try testing.expectEqual(@as(u32, 64 + 2 * 40), offsets.links);
     try testing.expectEqual(@as(u32, 64 + 2 * 40 + 1 * 40), offsets.tags);
