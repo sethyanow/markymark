@@ -4,30 +4,13 @@
 //! These tests validate that `SearchSymbols` correctly returns both markdown
 //! heading candidates and structured-document key-path candidates.
 
-use std::fs;
-use std::path::PathBuf;
+mod common;
 
+use std::fs;
+
+use common::TempWorkspace;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_mcp::RuntimeEngine;
-
-struct TempWorkspace {
-    _dir: tempfile::TempDir,
-    root: PathBuf,
-}
-
-impl TempWorkspace {
-    fn new(name: &str) -> Self {
-        let dir = tempfile::Builder::new()
-            .prefix(&format!("markymark-search-symbols-{name}-"))
-            .tempdir()
-            .expect("secure temporary workspace directory should be created");
-        let root = dir.path().to_path_buf();
-        Self { _dir: dir, root }
-    }
-    fn root(&self) -> PathBuf {
-        self.root.clone()
-    }
-}
 
 /// Returns the matched symbol names from a `CoreOperationResult::Symbols` result.
 fn symbol_names(result: CoreOperationResult) -> Vec<String> {
@@ -127,7 +110,11 @@ fn search_symbols_mixes_headings_and_key_paths() {
     let has_key_path = names.iter().any(|n| n.contains("api_"));
 
     assert!(
-        has_heading || has_key_path,
-        "expected at least one heading or key-path result for 'api', got: {names:?}"
+        has_heading,
+        "expected a heading result (API Reference or API Guide) for 'api', got: {names:?}"
+    );
+    assert!(
+        has_key_path,
+        "expected a key-path result (api_*) for 'api', got: {names:?}"
     );
 }

@@ -245,6 +245,11 @@ pub const BLOCK_SETEXT_HEADER: u32 = 0x08;
 pub const BLOCK_FENCED_CODE: u32 = 0x10;
 pub const BLOCK_REF_DEF_ONLY: u32 = 0x20;
 
+/// Sentinel values marking a VerbatimLine as consumed by ref def parsing.
+/// When beg > end, the line is skipped during processLeafBlock and buildRefDefHashtable.
+pub const CONSUMED_LINE_BEG: u32 = 1;
+pub const CONSUMED_LINE_END: u32 = 0;
+
 /// Block descriptor stored in block_bytes buffer.
 pub const Block = struct {
     type: BlockType,

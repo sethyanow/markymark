@@ -143,3 +143,52 @@ test "md4c smoke: wiki link passthrough" {
     // Should not crash; content is rendered as text within a paragraph
     try std.testing.expect(html.len > 0);
 }
+
+// Regression test for T3-3: Parser.init casts text.len via @intCast(OFF) — silent
+// truncation for >4GB input in ReleaseFast builds. Both public entry points must
+// validate len before the cast and return InputTooLarge.
+//
+// The fake slice uses a valid stack address; the function must return before
+// dereferencing any element (size check precedes skipUtf8Bom).
+test "renderToHtml: rejects input > 4GB with InputTooLarge" {
+    const huge_len: usize = @as(usize, std.math.maxInt(u32)) + 1;
+    var sentinel: u8 = 0;
+    // [*]const u8 has no tracked length — slicing to huge_len creates a valid
+    // fat pointer. We must not access elements beyond &sentinel[0].
+    const p: [*]const u8 = @ptrCast(&sentinel);
+    const fake: []const u8 = p[0..huge_len];
+    // Before fix: @intCast panics in Debug or silently truncates in ReleaseFast.
+    // After fix: returns error.InputTooLarge before touching data.
+    try std.testing.expectError(error.InputTooLarge, renderToHtml(fake, std.testing.allocator));
+}
+
+test "renderWithRenderer: rejects input > 4GB with InputTooLarge" {
+    const huge_len: usize = @as(usize, std.math.maxInt(u32)) + 1;
+    var sentinel: u8 = 0;
+    const p: [*]const u8 = @ptrCast(&sentinel);
+    const fake: []const u8 = p[0..huge_len];
+    // Renderer is never called because the size check fires first.
+    const noop_vtable = types.Renderer.VTable{
+        .enterBlock = struct {
+            fn f(_: *anyopaque, _: types.BlockType, _: u32, _: u32) types.CallbackError!void {}
+        }.f,
+        .leaveBlock = struct {
+            fn f(_: *anyopaque, _: types.BlockType, _: u32) types.CallbackError!void {}
+        }.f,
+        .enterSpan = struct {
+            fn f(_: *anyopaque, _: types.SpanType, _: types.SpanDetail) types.CallbackError!void {}
+        }.f,
+        .leaveSpan = struct {
+            fn f(_: *anyopaque, _: types.SpanType) types.CallbackError!void {}
+        }.f,
+        .text = struct {
+            fn f(_: *anyopaque, _: types.TextType, _: []const u8) types.CallbackError!void {}
+        }.f,
+    };
+    var dummy: u8 = 0;
+    const noop_rend = types.Renderer{ .ptr = &dummy, .vtable = &noop_vtable };
+    try std.testing.expectError(
+        error.InputTooLarge,
+        renderWithRenderer(fake, std.testing.allocator, .{}, noop_rend),
+    );
+}

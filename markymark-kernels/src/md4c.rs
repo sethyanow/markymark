@@ -150,8 +150,11 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         for h in c_headings {
             let text_start = h.text_offset as usize;
             let text_end = text_start + h.text_length as usize;
+            // T2-11: Propagate invalid UTF-8 as an error rather than silently
+            // falling back to "". Zig packing always produces valid UTF-8 (the
+            // source is a &str), so this fires only if the blob is corrupted.
             let text = std::str::from_utf8(&blob[text_start..text_end])
-                .unwrap_or("")
+                .map_err(|_| KernelError::InternalError(-100))?
                 .to_owned();
             headings.push(Md4cHeading {
                 text,
@@ -172,11 +175,12 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
             let text_end = text_start + l.text_length as usize;
             let target_start = l.target_offset as usize;
             let target_end = target_start + l.target_length as usize;
+            // T2-11: Propagate invalid UTF-8 as an error rather than silently falling back.
             let text = std::str::from_utf8(&blob[text_start..text_end])
-                .unwrap_or("")
+                .map_err(|_| KernelError::InternalError(-100))?
                 .to_owned();
             let target = std::str::from_utf8(&blob[target_start..target_end])
-                .unwrap_or("")
+                .map_err(|_| KernelError::InternalError(-100))?
                 .to_owned();
             links.push(Md4cLink {
                 text,
@@ -262,5 +266,68 @@ mod tests {
         assert_eq!(std::mem::size_of::<CMd4cHeading>(), 16);
         assert_eq!(std::mem::size_of::<CMd4cLink>(), 24);
         assert_eq!(std::mem::size_of::<CMd4cResult>(), 40);
+    }
+
+    /// Regression test for T2-11: silent `.unwrap_or("")` masked data corruption.
+    ///
+    /// If the blob contains invalid UTF-8 (e.g. due to Zig packing bugs), the
+    /// old code silently returned an empty string. The fixed code returns
+    /// `KernelError::InternalError(-100)` so callers can detect corruption.
+    #[test]
+    fn test_invalid_utf8_in_heading_blob_returns_error() {
+        // 0xFF 0xFE is invalid UTF-8.
+        let blob = [0xFF_u8, 0xFE, b'!'];
+        let heading = CMd4cHeading {
+            source_offset: 0,
+            text_offset: 0,
+            text_length: 3,
+            level: 1,
+            _padding: [0, 0, 0],
+        };
+        let out = CMd4cResult {
+            headings: &heading as *const _ as *mut _,
+            links: std::ptr::null_mut(),
+            text_blob: blob.as_ptr(),
+            headings_count: 1,
+            links_count: 0,
+            text_blob_len: 3,
+            _padding: 0,
+        };
+        // Before fix: returns Ok(headings[0].text == "") — silent data loss.
+        // After fix: returns Err(KernelError::InternalError(-100)).
+        let result = convert_result(&out);
+        assert!(
+            result.is_err(),
+            "invalid UTF-8 in blob must return Err, not silently produce empty string"
+        );
+    }
+
+    /// Regression test for T2-11: invalid UTF-8 in link target blob.
+    #[test]
+    fn test_invalid_utf8_in_link_blob_returns_error() {
+        let blob = [b'o', b'k', 0xFF_u8]; // "ok" text, invalid target
+        let link = CMd4cLink {
+            source_offset: 0,
+            text_offset: 0,
+            target_offset: 2,
+            text_length: 2,
+            target_length: 1,
+            is_wiki: 0,
+            _padding: [0, 0, 0],
+        };
+        let out = CMd4cResult {
+            headings: std::ptr::null_mut(),
+            links: &link as *const _ as *mut _,
+            text_blob: blob.as_ptr(),
+            headings_count: 0,
+            links_count: 1,
+            text_blob_len: 3,
+            _padding: 0,
+        };
+        let result = convert_result(&out);
+        assert!(
+            result.is_err(),
+            "invalid UTF-8 in link target blob must return Err"
+        );
     }
 }

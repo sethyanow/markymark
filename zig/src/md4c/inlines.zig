@@ -31,6 +31,7 @@ pub fn processLeafBlock(self: *Parser, block_lines: []const VerbatimLine, trim_t
     self.buffer.clearRetainingCapacity();
 
     for (block_lines) |vline| {
+        // Skip consumed ref-def lines (beg > end sentinel) and out-of-bounds lines.
         if (vline.beg > vline.end or vline.end > self.size) continue;
 
         if (self.buffer.items.len > 0) {

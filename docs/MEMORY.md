@@ -57,6 +57,19 @@ From PR#39 code review (marky-0mr.4/.6/.9) — patterns that recur in md4c Zig p
 - **`>= N` vs `> N-1`**: use the form that most directly names the index being accessed
   (e.g. `beg > 1` for `content[beg - 2]`)
 
+### Zig test pointer tricks for >4GB fake slices (2026-02-19)
+
+To test early-return guards that fire before data is accessed (e.g. size checks
+before `@intCast(text.len)`), construct a fake huge slice using a many-pointer:
+```zig
+var sentinel: u8 = 0;
+const p: [*]const u8 = @ptrCast(&sentinel);  // [*] has no tracked length
+const fake: []const u8 = p[0..huge_len];      // valid fat pointer; never dereference
+```
+`[*]const u8` slicing has no bounds check. The function must return before
+touching slice data or the test will crash. Using `@as([*]const u8, ptr)` is NOT
+valid in Zig 0.15 — use type-annotated variable form instead (marky-0mr.5).
+
 ### FFI serialization: validate math, pointers, and alignment (2026-02-17/18)
 
 For mmap-friendly binary formats, treat header counts and C pointers as untrusted input.
@@ -200,6 +213,20 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 - LSP character offsets from clients are untrusted — always bounds-check (`if offset > line.len()`) before byte-slicing (marky-xpk, marky-u46)
 - MCP handlers that accept any URI kind must use `realm.get_any_document()` and branch on `AnyDocumentIndex`; `get_document()` silently rejects structured docs (marky-kvr)
 - For edit-delta math on `u32`/`usize` positions, use explicit saturating add/sub with signed deltas to prevent wraparound (marky-v8y)
+
+### Incremental Merge: Two Coordinate Spaces
+
+`*_affected_by_edits()` operates in **pre-edit** coordinate space (uses `old_end_byte`). The merge loop calls it for BOTH old entries (correct) and new entries (wrong for large insertions). New entries exist in **post-edit** space. For insertions >100 bytes, new entries deeper than `old_end_byte + 100` are silently dropped (marky-g0dn, 2026-02-19).
+
+Fix pattern: in the new-entry loop, OR in `range_within_new_end_window()` which checks `new_end_byte` instead. No duplicates guaranteed: a kept-old entry at pre-edit byte X > `old_end_byte+100` adjusts to post-edit `X+delta`, and `X+delta > new_end_byte+100` by substitution, so the new-path check never fires for it.
+
+```rust
+// In each merge_incremental_* function, new-entry filter:
+if entry_affected_by_edits(new_entry, pending_edits)
+    || pending_edits.iter().any(|edit| {
+        range_within_new_end_window(new_entry.start_byte, new_entry.end_byte, edit, 100)
+    })
+```
 
 ### Testing
 - Safe file splits: (1) module dir, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit
