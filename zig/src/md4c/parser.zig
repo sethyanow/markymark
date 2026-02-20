@@ -83,7 +83,7 @@ pub const Parser = struct {
     pub const MAX_EMPH_MATCHES = inlines_mod.MAX_EMPH_MATCHES;
     pub const RefDef = ref_defs_mod.RefDef;
 
-    pub const Error = types.CallbackError || error{StackOverflow};
+    pub const Error = types.CallbackError || error{ StackOverflow, InputTooLarge };
 
     fn init(allocator: Allocator, text: []const u8, flags: Flags, rend: Renderer) Parser {
         const size: OFF = @intCast(text.len);
@@ -242,6 +242,8 @@ pub const Parser = struct {
 // ========================================
 
 pub fn renderToHtml(text: []const u8, allocator: Allocator, flags: Flags, render_opts: root.RenderOptions) Parser.Error![]u8 {
+    // T3-3: OFF is u32 — reject >4GB input before @intCast in Parser.init.
+    if (text.len > std.math.maxInt(u32)) return error.InputTooLarge;
     // Skip UTF-8 BOM
     const input = helpers.skipUtf8Bom(text);
 
@@ -262,6 +264,8 @@ pub fn renderToHtml(text: []const u8, allocator: Allocator, flags: Flags, render
 /// autolink_headings) so they are not silently dropped by the API.
 pub fn renderWithRenderer(text: []const u8, allocator: Allocator, flags: Flags, render_options: root.RenderOptions, rend: Renderer) Parser.Error!void {
     _ = render_options; // Available for renderer implementations; parse layer does not use these.
+    // T3-3: OFF is u32 — reject >4GB input before @intCast in Parser.init.
+    if (text.len > std.math.maxInt(u32)) return error.InputTooLarge;
     const input = helpers.skipUtf8Bom(text);
 
     var p = Parser.init(allocator, input, flags, rend);
