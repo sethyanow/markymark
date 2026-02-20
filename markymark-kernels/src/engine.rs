@@ -82,13 +82,12 @@ pub struct DocumentEngine {
 // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage
 unsafe impl Send for DocumentEngine {}
 
-// SAFETY: Shared access (`&self`) only calls `get_blob`, which reads cached
-// state (no interior mutation on cache hit). The `RwLock` in the runtime
-// ensures no reader overlaps with a writer.
-//
-// WARNING: This `Sync` impl is only safe under external read-write locking.
-// nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage
-unsafe impl Sync for DocumentEngine {}
+// SAFETY: `Sync` is intentionally NOT implemented. `get_blob(&self)` crosses
+// the FFI boundary into Zig's `DocumentEngine.getBlob`, which writes
+// `self.cached_blob` on a cache miss. Two threads sharing `&DocumentEngine`
+// could therefore race on that mutation, which is undefined behaviour.
+// Callers that need shared access must use `Mutex<DocumentEngine>` or
+// `RwLock<DocumentEngine>` — the surrounding `ServerState` already does this.
 
 impl DocumentEngine {
     /// Create a new document engine from markdown text.
@@ -258,11 +257,12 @@ mod tests {
     }
 
     #[test]
-    fn test_engine_is_send_and_sync() {
+    fn test_engine_is_send_not_sync() {
+        // DocumentEngine is Send (ownership transfer across threads is safe)
+        // but deliberately NOT Sync (get_blob mutates Zig-side cached_blob,
+        // so concurrent &self access would race — marky-1n9q).
         fn assert_send<T: Send>() {}
-        fn assert_sync<T: Sync>() {}
         assert_send::<DocumentEngine>();
-        assert_sync::<DocumentEngine>();
     }
 
     #[test]

@@ -104,8 +104,12 @@ pub struct ServerState {
     /// The realm index for cross-document lookups.
     realm: RealmIndex,
     /// Per-document stateful Zig document engines (keyed by URI string).
+    /// Wrapped in `Mutex` so `ServerState: Sync` is derived soundly.
+    /// `DocumentEngine` is `Send` but not `Sync` (get_blob mutates Zig-side
+    /// cached state), so we gate shared access through a mutex even though
+    /// all call-sites already hold `&mut self` and the mutex is uncontested.
     /// INVARIANT: all maps use `uri.as_str().to_string()` as the key.
-    engines: HashMap<String, DocumentEngine>,
+    engines: HashMap<String, std::sync::Mutex<DocumentEngine>>,
 }
 
 impl Default for ServerState {
@@ -140,8 +144,10 @@ impl ServerState {
         // markymark-parser single-pass tag scanner as a supplement.
         let xml_tags = extract_xml_tags_from_text(text);
 
-        if let Some(engine) = self.engines.get_mut(uri_str) {
-            // Engine exists — update it
+        if let Some(engine_mutex) = self.engines.get(uri_str) {
+            // Engine exists — update it. The mutex is uncontested here because
+            // build_markdown_index_via_engine takes &mut self.
+            let mut engine = engine_mutex.lock().expect("engine mutex poisoned");
             match engine.update(text) {
                 Ok(()) => match engine.get_blob() {
                     Ok(blob) => match DocumentIndex::from_blob_with_xml_tags(blob.data(), xml_tags) {
@@ -164,7 +170,8 @@ impl ServerState {
                 Ok(engine) => match engine.get_blob() {
                     Ok(blob) => match DocumentIndex::from_blob_with_xml_tags(blob.data(), xml_tags) {
                         Ok(index) => {
-                            self.engines.insert(uri_str.to_string(), engine);
+                            self.engines
+                                .insert(uri_str.to_string(), std::sync::Mutex::new(engine));
                             return index;
                         }
                         Err(e) => eprintln!(
