@@ -154,7 +154,7 @@ test "test_blob_text_pool" {
     const offsets = blob.computeSectionOffsets(header).?;
 
     // Read the heading from the blob
-    const bh = blob.readStruct(blob.BlobHeading, blob_data, offsets.headings);
+    const bh = try blob.readStruct(blob.BlobHeading, blob_data, offsets.headings);
     try testing.expectEqual(@as(u8, 1), bh.level);
 
     // Verify text pool contains "Hello"

@@ -535,7 +535,7 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
             .end_col = h.end.col,
             .level = h.level,
         };
-        blob.writeStruct(blob.BlobHeading, buf, offsets.headings + i * @sizeOf(blob.BlobHeading), bh);
+        try blob.writeStruct(blob.BlobHeading, buf, offsets.headings + i * @sizeOf(blob.BlobHeading), bh);
 
         // Write text to text pool
         @memcpy(buf[offsets.text_pool + pool_off ..][0..h.text.len], h.text);
@@ -558,7 +558,7 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
             .end_col = l.end.col,
             .is_wiki = if (l.is_wiki) 1 else 0,
         };
-        blob.writeStruct(blob.BlobLink, buf, offsets.links + i * @sizeOf(blob.BlobLink), bl);
+        try blob.writeStruct(blob.BlobLink, buf, offsets.links + i * @sizeOf(blob.BlobLink), bl);
 
         @memcpy(buf[offsets.text_pool + pool_off ..][0..l.text.len], l.text);
         pool_off += @intCast(l.text.len);
@@ -575,7 +575,7 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
             .start_line = t.start.line,
             .start_col = t.start.col,
         };
-        blob.writeStruct(blob.BlobTag, buf, offsets.tags + i * @sizeOf(blob.BlobTag), bt);
+        try blob.writeStruct(blob.BlobTag, buf, offsets.tags + i * @sizeOf(blob.BlobTag), bt);
 
         @memcpy(buf[offsets.text_pool + pool_off ..][0..t.name.len], t.name);
         pool_off += @intCast(t.name.len);
@@ -592,7 +592,7 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
             .end_line = b.end.line,
             .end_col = b.end.col,
         };
-        blob.writeStruct(blob.BlobBlockId, buf, offsets.block_ids + i * @sizeOf(blob.BlobBlockId), bb);
+        try blob.writeStruct(blob.BlobBlockId, buf, offsets.block_ids + i * @sizeOf(blob.BlobBlockId), bb);
 
         @memcpy(buf[offsets.text_pool + pool_off ..][0..b.id.len], b.id);
         pool_off += @intCast(b.id.len);
