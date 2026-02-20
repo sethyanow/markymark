@@ -197,7 +197,7 @@ pub fn findPermissiveAutolink(content: []const u8, pos: usize, allow_emph: bool)
         while (beg > 0) {
             if (helpers.isAlphaNum(content[beg - 1])) {
                 beg -= 1;
-            } else if (beg >= 2 and helpers.isAlphaNum(content[beg - 2]) and
+            } else if (beg > 1 and helpers.isAlphaNum(content[beg - 2]) and
                 isInSet(content[beg - 1], ".-_+") and helpers.isAlphaNum(content[beg]))
             {
                 beg -= 1;
