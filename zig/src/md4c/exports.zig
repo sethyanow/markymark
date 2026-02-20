@@ -58,7 +58,8 @@ comptime {
 
 /// Extract headings and links from markdown text in a single pass.
 ///
-/// Returns: 0=success, -1=null pointer, -3=parse error, -4=out of memory.
+/// Returns: 0=success, -1=null pointer, -3=parse error, -4=out of memory,
+///          -5=overflow (total extracted text exceeds u32 limit).
 /// On success, `out` is populated with Zig-allocated arrays that MUST be
 /// freed by calling `marky_md4c_free`.
 export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i32 {
@@ -80,6 +81,7 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
     var result = extractFromMarkdown(input, ffi_allocator) catch |err| {
         return switch (err) {
             error.OutOfMemory => @as(i32, -4),
+            error.InputTooLarge => @as(i32, -5),
             else => @as(i32, -3),
         };
     };
@@ -95,6 +97,14 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
     for (result.links) |l| {
         blob_size += l.text.len;
         blob_size += l.target.len;
+    }
+
+    // T1-3: blob_offset is u32 — guard against wrapping for documents whose total
+    // extracted text exceeds 4 GiB. blob_size is usize (full-width), so this check
+    // is safe on all targets.
+    if (blob_size > std.math.maxInt(u32)) {
+        result.deinit();
+        return -5;
     }
 
     // Allocate text blob (skip if nothing to pack)
@@ -134,6 +144,8 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
     for (result.headings, 0..) |h, i| {
         const text_len: u32 = @intCast(h.text.len);
         if (blob) |b| {
+            // T3-2: Defensive bounds invariant — blob_size guard ensures this holds.
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, text_len) <= b.len);
             @memcpy(b[blob_offset..][0..text_len], h.text);
         }
         c_headings.?[i] = .{
@@ -150,12 +162,16 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
         const text_len: u32 = @intCast(l.text.len);
         const target_len: u32 = @intCast(l.target.len);
         if (blob) |b| {
+            // T3-2: Defensive bounds invariant — blob_size guard ensures this holds.
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, text_len) <= b.len);
             @memcpy(b[blob_offset..][0..text_len], l.text);
         }
         const text_off = blob_offset;
         blob_offset += text_len;
 
         if (blob) |b| {
+            // T3-2: Defensive bounds invariant — blob_size guard ensures this holds.
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, target_len) <= b.len);
             @memcpy(b[blob_offset..][0..target_len], l.target);
         }
         const target_off = blob_offset;

@@ -1,11 +1,10 @@
 //! MCP tool handler for `get-diagnostics`.
 
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult, DiagnosticSeverity};
-use markymark_core::DocumentUri;
 use rmcp::{model::CallToolResult, ErrorData as McpError};
 use serde_json::json;
 
-use super::{tool_error, tool_error_from_core, unexpected_result_error};
+use super::{parse_file_uri, tool_error, tool_error_from_core, unexpected_result_error};
 use crate::dto::{
     DiagnosticItemDto, FileDiagnosticsDto, GetDiagnosticsRequest, GetDiagnosticsResponse, RangeDto,
 };
@@ -15,11 +14,11 @@ pub(crate) fn handle_get_diagnostics(
     engine: &dyn CoreEngine,
     request: GetDiagnosticsRequest,
 ) -> Result<CallToolResult, McpError> {
-    // Resolve the optional URI parameter
+    // Resolve the optional URI parameter (enforce file:// scheme like other tools)
     let uri = match request.uri.as_deref() {
-        Some(s) => match DocumentUri::new(s) {
+        Some(s) => match parse_file_uri(s) {
             Ok(u) => Some(u),
-            Err(e) => return Ok(tool_error("invalid_uri", e.to_string())),
+            Err(err) => return Ok(tool_error(&err.code, err.message)),
         },
         None => None,
     };
