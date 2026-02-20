@@ -59,7 +59,8 @@ pub const ExtractionRenderer = struct {
     headings: std.ArrayListUnmanaged(ExtractedHeading) = .{},
     links: std.ArrayListUnmanaged(ExtractedLink) = .{},
 
-    scan_cursor: u32 = 0,
+    heading_scan_cursor: u32 = 0,
+    link_scan_cursor: u32 = 0,
 
     // heading accumulation state
     in_heading: bool = false,
@@ -276,7 +277,7 @@ pub const ExtractionRenderer = struct {
         };
 
         const offset = self.findLinkOffset();
-        const end_offset: u32 = self.scan_cursor;
+        const end_offset: u32 = self.link_scan_cursor;
         self.links.append(self.allocator, .{
             .text = owned_text,
             .target = owned_target,
@@ -294,7 +295,7 @@ pub const ExtractionRenderer = struct {
 
     fn findHeadingOffset(self: *ExtractionRenderer) u32 {
         const src = self.src_text;
-        var pos: u32 = self.scan_cursor;
+        var pos: u32 = self.heading_scan_cursor;
 
         if (self.heading_is_setext) {
             // Setext: find a line followed by === (level 1) or --- (level 2).
@@ -329,7 +330,7 @@ pub const ExtractionRenderer = struct {
                                 // Only if the text line is non-empty
                                 if (line_end > line_start) {
                                     // Advance cursor past the underline
-                                    self.scan_cursor = @intCast(@min(trailing + 1, src.len));
+                                    self.heading_scan_cursor = @intCast(@min(trailing + 1, src.len));
                                     return @intCast(line_start);
                                 }
                             }
@@ -379,7 +380,7 @@ pub const ExtractionRenderer = struct {
                         if (hash_count == self.heading_level and
                             (p >= line_end or src[p] == ' ' or src[p] == '\t'))
                         {
-                            self.scan_cursor = next_line;
+                            self.heading_scan_cursor = next_line;
                             return @intCast(hash_start);
                         }
                     }
@@ -390,12 +391,12 @@ pub const ExtractionRenderer = struct {
         }
 
         // Fallback: use current cursor
-        return self.scan_cursor;
+        return self.heading_scan_cursor;
     }
 
     fn findLinkOffset(self: *ExtractionRenderer) u32 {
         const src = self.src_text;
-        var pos: u32 = self.scan_cursor;
+        var pos: u32 = self.link_scan_cursor;
 
         if (self.link_is_wiki) {
             // Search for '[['
@@ -410,7 +411,7 @@ pub const ExtractionRenderer = struct {
                         }
                         end += 1;
                     }
-                    self.scan_cursor = @intCast(end);
+                    self.link_scan_cursor = @intCast(end);
                     return @intCast(pos);
                 }
                 pos += 1;
@@ -422,7 +423,7 @@ pub const ExtractionRenderer = struct {
                     var end = pos + 1;
                     while (end < src.len and src[end] != '>') : (end += 1) {}
                     if (end < src.len) end += 1; // past '>'
-                    self.scan_cursor = @intCast(end);
+                    self.link_scan_cursor = @intCast(end);
                     return @intCast(pos);
                 }
                 pos += 1;
@@ -473,7 +474,7 @@ pub const ExtractionRenderer = struct {
                         while (end < src.len and src[end] != ']') : (end += 1) {}
                         if (end < src.len) end += 1;
                     }
-                    self.scan_cursor = @intCast(end);
+                    self.link_scan_cursor = @intCast(end);
                     return @intCast(pos);
                 }
                 pos += 1;
@@ -481,7 +482,7 @@ pub const ExtractionRenderer = struct {
         }
 
         // Fallback
-        return self.scan_cursor;
+        return self.link_scan_cursor;
     }
 };
 
@@ -703,6 +704,45 @@ test "link inside heading" {
     try testing.expectEqualStrings("See here", result.headings[0].text);
     try testing.expectEqual(@as(usize, 1), result.links.len);
     try testing.expectEqualStrings("here", result.links[0].text);
+}
+
+test "link inside heading has correct offsets" {
+    // Regression: shared scan_cursor caused heading offset to be corrupted when
+    // finalizeLink (called first) advanced the cursor past the link syntax.
+    // "# See [here](url)\n": '#' at byte 0, '[' at byte 6, end of [here](url) at byte 17.
+    const input = "# See [here](url)\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqual(@as(u32, 0), result.headings[0].offset); // '#' is at byte 0
+    try testing.expectEqual(@as(usize, 1), result.links.len);
+    try testing.expectEqual(@as(u32, 6), result.links[0].offset); // '[' is at byte 6
+    try testing.expectEqual(@as(u32, 17), result.links[0].end_offset); // past ')' at byte 16
+}
+
+test "wiki link inside heading has correct offsets" {
+    // "# See [[target]]\n": '#' at byte 0, '[[' at byte 6, past ']]' at byte 17.
+    const input = "# See [[target]]\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqual(@as(u32, 0), result.headings[0].offset);
+    try testing.expectEqual(@as(usize, 1), result.links.len);
+    try testing.expectEqual(@as(u32, 6), result.links[0].offset);
+}
+
+test "autolink inside heading has correct offsets" {
+    // "# See <https://x.com>\n": '#' at byte 0, '<' at byte 6.
+    const input = "# See <https://x.com>\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqual(@as(u32, 0), result.headings[0].offset);
+    try testing.expectEqual(@as(usize, 1), result.links.len);
+    try testing.expectEqual(@as(u32, 6), result.links[0].offset);
 }
 
 // --- Wiki link tests ---
