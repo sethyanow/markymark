@@ -252,6 +252,11 @@ pub fn findPermissiveAutolink(content: []const u8, pos: usize, allow_emph: bool)
 }
 
 /// GFM post-processing: trim trailing unbalanced `)` and entity-like suffixes from autolink URLs.
+///
+/// INVARIANT: `end >= beg + 3` for all callers (URL path: scheme length ≥ 3 plus "//";
+/// WWW path: "www." prefix ensures `end >= beg + 4`). The `j = end - 2` subtraction
+/// at line 264 is safe and cannot underflow under these constraints.
+/// Do not call this function with `end < beg + 3` — that precondition is not checked at runtime.
 fn postProcessAutolinkEnd(content: []const u8, beg: usize, end_in: usize) usize {
     var end = end_in;
 

@@ -424,13 +424,21 @@ fn bench_md4c_vs_tree_sitter(c: &mut Criterion) {
 
     // One-time correctness assertion: md4c heading count must match tree-sitter
     // on the same document (runs before benchmarks, not in the hot path).
+    // Both sides use fail-fast error handling so a silent 0 can't mask a parse failure.
     {
         let check_doc = generate_markdown_doc(10_240);
-        let ts_count = count_tree_sitter_headings(&check_doc, &mut parser);
+        let ts_count = match parser.parse(&check_doc) {
+            Ok(ast) => ast
+                .root_elements()
+                .iter()
+                .filter(|e| e.as_heading().is_some())
+                .count(),
+            Err(err) => panic!("tree-sitter parity check failed: {err}"),
+        };
         let md4c_count = md4c_backend
             .scan_headings(&check_doc)
-            .map(|v| v.len())
-            .unwrap_or(0);
+            .expect("md4c parity check failed")
+            .len();
         assert_eq!(
             ts_count, md4c_count,
             "md4c heading count ({md4c_count}) != tree-sitter heading count ({ts_count}) on 10KB doc"
