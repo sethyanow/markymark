@@ -1,6 +1,10 @@
 // Vendored from https://github.com/oven-sh/bun (MIT License)
 // Original: src/md/autolinks.zig at commit 6a8f33e7b1 (bun-v1.3.9)
-// Modifications: Stripped Bun-specific dependencies for standalone compilation.
+// Modifications:
+//   - Stripped Bun-specific dependencies for standalone compilation.
+//   - D1: use != 0 instead of arithmetic > 0 for EmphDelim count checks (lines 31, 49).
+//   - D2: added min_components = 0 doc note to scanUrlComponent.
+//   - D3: added std.debug.assert precondition guard in postProcessAutolinkEnd.
 
 pub fn isListBullet(c: u8) bool {
     return c == '-' or c == '+' or c == '*';
@@ -28,7 +32,7 @@ pub fn isEmphBoundaryResolved(content: []const u8, al: std.meta.Child(AutolinkRe
                 var found_resolved = false;
                 for (resolved) |d| {
                     if (d.pos <= al.beg - 1 and al.beg - 1 < d.pos + d.count and
-                        (d.open_count + d.close_count > 0))
+                        (d.open_count != 0 or d.close_count != 0))
                     {
                         found_resolved = true;
                         break;
@@ -46,7 +50,7 @@ pub fn isEmphBoundaryResolved(content: []const u8, al: std.meta.Child(AutolinkRe
                 var found_resolved = false;
                 for (resolved) |d| {
                     if (d.pos <= al.end and al.end < d.pos + d.count and
-                        (d.open_count + d.close_count > 0))
+                        (d.open_count != 0 or d.close_count != 0))
                     {
                         found_resolved = true;
                         break;
@@ -60,6 +64,11 @@ pub fn isEmphBoundaryResolved(content: []const u8, al: std.meta.Child(AutolinkRe
 }
 
 /// Scan a URL component (host, path, query, or fragment) following md4c's URL_MAP.
+///
+/// `min_components = 0` signals that the component is optional: if the expected
+/// `start_char` is absent the function returns `ok = true` with `end = start`,
+/// allowing callers to handle optional URL segments (query `?`, fragment `#`) without
+/// treating their absence as a parse failure.
 pub fn scanUrlComponent(
     content: []const u8,
     start: usize,
@@ -256,8 +265,9 @@ pub fn findPermissiveAutolink(content: []const u8, pos: usize, allow_emph: bool)
 /// INVARIANT: `end >= beg + 3` for all callers (URL path: scheme length ≥ 3 plus "//";
 /// WWW path: "www." prefix ensures `end >= beg + 4`). The `j = end - 2` subtraction
 /// at line 264 is safe and cannot underflow under these constraints.
-/// Do not call this function with `end < beg + 3` — that precondition is not checked at runtime.
+/// Do not call this function with `end < beg + 3` — enforced by debug assertion.
 fn postProcessAutolinkEnd(content: []const u8, beg: usize, end_in: usize) usize {
+    std.debug.assert(end_in >= beg + 3); // callers guarantee scheme/prefix ≥ 3 bytes before end
     var end = end_in;
 
     // Trim trailing entity-like suffixes.
