@@ -410,8 +410,10 @@ impl DocumentIndex {
                 } else {
                     (target, None)
                 };
-                // Alias is present only when text ≠ page (matching from_scan).
-                let alias = if text != page {
+                // Alias is present only when text ≠ full target (before anchor strip).
+                // Comparing against `page` (anchor-stripped) was wrong: [[p#h|p]] would
+                // see text="p" == page="p" and produce alias=None. marky-d7hh.
+                let alias = if text != target {
                     Some(text.to_owned())
                 } else {
                     None
@@ -715,6 +717,69 @@ mod tests {
         assert_eq!(index.wiki_links().len(), 1);
         assert_eq!(index.wiki_links()[0].target, "target");
         assert_eq!(index.wiki_links()[0].alias, Some("display"));
+    }
+
+    /// Generic wiki link with heading — verify both target and heading are extracted.
+    #[test]
+    fn test_from_blob_wiki_link_with_heading() {
+        let blob = blob_for("[[page#heading]]\n");
+        let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+        assert_eq!(index.wiki_links().len(), 1);
+        let wl = &index.wiki_links()[0];
+        assert_eq!(wl.target, "page");
+        assert_eq!(wl.heading, Some("heading"));
+    }
+
+    /// marky-d7hh: [[page#heading|page]] — alias text matches the page part.
+    /// from_blob was comparing text != page (anchor-stripped), so "page" == "page"
+    /// incorrectly produced alias=None. Fix: compare text != target (full target).
+    #[test]
+    fn test_from_blob_wiki_link_with_heading_and_matching_alias() {
+        let blob = blob_for("[[page#heading|page]]\n");
+        let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+        assert_eq!(index.wiki_links().len(), 1);
+        let wl = &index.wiki_links()[0];
+        assert_eq!(
+            wl.target, "page",
+            "target should be page-only (anchor stripped)"
+        );
+        assert_eq!(
+            wl.heading,
+            Some("heading"),
+            "heading field should be populated"
+        );
+        assert_eq!(
+            wl.alias,
+            Some("page"),
+            "alias should be Some when text differs from full target"
+        );
+    }
+
+    /// marky-d7hh: [[page#heading|other]] — alias text differs from both page and full target.
+    /// This case was already correct before the fix; regression guard.
+    #[test]
+    fn test_from_blob_wiki_link_with_heading_and_different_alias() {
+        let blob = blob_for("[[page#heading|other]]\n");
+        let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+        assert_eq!(index.wiki_links().len(), 1);
+        let wl = &index.wiki_links()[0];
+        assert_eq!(wl.target, "page");
+        assert_eq!(wl.heading, Some("heading"));
+        assert_eq!(wl.alias, Some("other"));
+    }
+
+    /// marky-d7hh: [[page#heading]] — no alias, anchor only.
+    /// from_blob was comparing text="page#heading" != page="page" → alias=Some("page#heading").
+    /// Fix: text="page#heading" != target="page#heading" → False → alias=None.
+    #[test]
+    fn test_from_blob_wiki_link_with_heading_no_alias() {
+        let blob = blob_for("[[page#heading]]\n");
+        let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+        assert_eq!(index.wiki_links().len(), 1);
+        let wl = &index.wiki_links()[0];
+        assert_eq!(wl.target, "page");
+        assert_eq!(wl.heading, Some("heading"));
+        assert_eq!(wl.alias, None, "no pipe separator means no alias");
     }
 
     #[test]
