@@ -429,6 +429,19 @@ impl MarkymarkMcp {
     ) -> Result<CallToolResult, McpError> {
         tools::graph::handle_graph_analysis(&*self.engine, params.0)
     }
+
+    /// Compute diagnostics (broken links, duplicate headings, unclosed XML tags) for a file or
+    /// all files in a realm.
+    #[tool(
+        name = "get-diagnostics",
+        description = "Get diagnostics (broken links, duplicate headings, unclosed XML tags) for a specific file or all files in a realm. Returns per-file diagnostic lists with location, severity, and message."
+    )]
+    pub async fn get_diagnostics_tool(
+        &self,
+        params: Parameters<GetDiagnosticsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::diagnostics::handle_get_diagnostics(&*self.engine, params.0)
+    }
 }
 
 /// Run markymark MCP over stdio using the provided shared core engine.

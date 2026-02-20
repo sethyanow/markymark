@@ -208,6 +208,10 @@ impl CoreEngine for MockEngine {
                 broken_links: vec![],
                 clusters: None,
             },
+            (_, CoreOperation::GetDiagnostics { realm, .. }) => CoreOperationResult::Diagnostics {
+                realm: realm.unwrap_or_else(|| "default".to_string()),
+                items: vec![],
+            },
         }
     }
 }
@@ -957,4 +961,22 @@ async fn graph_analysis_tool_propagates_core_error() {
     assert_eq!(result.is_error, Some(true));
     let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
     assert_eq!(payload.error.code, "core_error");
+}
+
+#[tokio::test]
+async fn get_diagnostics_tool_rejects_non_file_uri() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .get_diagnostics_tool(Parameters(GetDiagnosticsRequest {
+            uri: Some("https://example.com/notes.md".to_string()),
+            realm: None,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "non_file_uri");
 }
