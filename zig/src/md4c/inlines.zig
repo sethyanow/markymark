@@ -35,9 +35,9 @@ pub fn processLeafBlock(self: *Parser, block_lines: []const VerbatimLine, trim_t
         if (vline.beg > vline.end or vline.end > self.size) continue;
 
         if (self.buffer.items.len > 0) {
-            self.buffer.append(self.allocator, '\n') catch {};
+            try self.buffer.append(self.allocator, '\n');
         }
-        self.buffer.appendSlice(self.allocator, self.text[vline.beg..vline.end]) catch {};
+        try self.buffer.appendSlice(self.allocator, self.text[vline.beg..vline.end]);
     }
 
     var merged = self.buffer.items;

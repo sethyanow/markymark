@@ -900,3 +900,16 @@ test "T1-4: OOM from parser is propagated as error.OutOfMemory" {
     const result = extractFromMarkdown(input, failing.allocator());
     try testing.expectError(error.OutOfMemory, result);
 }
+
+test "processLeafBlock multi-line setext heading merges lines correctly" {
+    // Setext headings have 2+ block_lines: the text line(s) and the underline.
+    // processLeafBlock merges them with '\n' via buffer.append/appendSlice.
+    // Previously, catch {} silently swallowed OOM on those appends; now try propagates.
+    // This test verifies correct behavior on the success path (no OOM).
+    const input = "Multi Line Heading\n==================\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqualStrings("Multi Line Heading", result.headings[0].text);
+}

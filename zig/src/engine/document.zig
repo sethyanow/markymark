@@ -399,7 +399,9 @@ fn slugifyText(text: []const u8, out: *[512]u8) []const u8 {
     if (rc >= 0) {
         return out[0..@intCast(rc)];
     }
-    // Truncated (-2) or error: return what we have
+    // Truncated (-2): buffer contains 512 valid slug bytes — return them.
+    if (rc == -2) return out[0..];
+    // True error (-1): return empty.
     return "";
 }
 
@@ -984,4 +986,30 @@ test "blob line_starts roundtrip" {
         const ls = std.mem.readInt(u32, blob_data[offset..][0..4], .little);
         try testing.expectEqual(engine.line_starts[i], ls);
     }
+}
+
+test "slugifyText truncated slug returns content not empty string" {
+    // When heading text produces >512 slug bytes, slugify() returns -2 (truncated).
+    // The output buffer holds 512 valid bytes. Fix: return out[0..512], not "".
+    // This test verifies the fix: a 513-char heading gets a 512-byte slug, not "".
+    var out: [512]u8 = undefined;
+    const long_text = "a" ** 513; // 513 'a' chars → slugify returns -2, buffer has 512 'a' chars
+    const slug = slugifyText(long_text, &out);
+    try testing.expectEqual(@as(usize, 512), slug.len);
+    try testing.expectEqualStrings("a" ** 512, slug);
+}
+
+test "slugifyText truncated heading via DocumentEngine is non-empty" {
+    // Integration: DocumentEngine.create with a >512-char heading text should
+    // produce a non-empty slug (not "" from silently discarding truncated output).
+    const prefix = "# ";
+    const heading_text = "b" ** 513;
+    const input = prefix ++ heading_text ++ "\n";
+    var engine = try DocumentEngine.create(input, testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 1), engine.headings.len);
+    // Slug should be 512 'b' chars, not empty
+    try testing.expectEqual(@as(usize, 512), engine.headings[0].slug.len);
+    try testing.expectEqualStrings("b" ** 512, engine.headings[0].slug);
 }
