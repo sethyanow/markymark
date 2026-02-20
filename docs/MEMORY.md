@@ -315,3 +315,45 @@ Tree-sitter is the wall — extractors are 3% of cost, not 60% as originally ass
 Option G (md4c) achieved **2.8x** at 50KB, **3.2x** at 100KB. Extraction allocation
 overhead prevents reaching raw parse speed. Remaining path to 10x: F (debounce) for UX
 improvement + arena allocator in ExtractionRenderer for throughput recovery.
+
+### Option H: Zig Document Engine (marky-io3h, DESIGNED 2026-02-19)
+
+Stateful Zig engine that owns per-document parse state and serves a flat binary blob
+to Rust. Eliminates FFI overhead and Rust incremental indexing code.
+
+**Problem solved:** Quadruple text copy in current pipeline. Text is copied: (1) per-element
+strings during md4c parse, (2) consolidated into text_blob for FFI, (3) Rust converts
+blob slices to owned Strings, (4) Rust copies Strings into bumpalo arena. Plus N+4 FFI
+calls per document (N = heading count for slugify). At 50KB: Zig parse 2.1ms, FFI
+overhead 2.6ms, Rust from_scan 4.7ms = 9.4ms total.
+
+**Architecture:** Zig `DocumentEngine` struct with create/update/getBlob/destroy lifecycle
+(same pattern as EmbeddingIndex and LinkGraph). On update: full md4c reparse + SIMD
+tag/block scans + line_starts + slugify + positions. Lazy blob serialization (only on
+getBlob). Blob format: 64-byte header (magic 0x4D4B5343, version, counts, offsets) +
+packed BlobHeading(40B)/BlobLink(40B)/BlobTag(24B)/BlobBlockId(28B) arrays +
+line_starts + contiguous text pool.
+
+**Rust side:** New `DocumentIndex::from_blob()` copies text pool strings into arena, builds
+HashMap + TOC/Outline. Replaces from_scan() in LSP hot path. ~850 lines of Rust
+incremental indexing code becomes deletable.
+
+**Expected performance:** ~4ms total at 50KB (Zig engine ~2.5ms + Rust from_blob ~1.5ms)
+vs current 9.4ms. Combined with 2.8x over tree-sitter baseline: ~6.5x total improvement.
+
+**Key decisions:**
+- Stateful engine (not stateless scan) — enables slug caching, lazy blob, future incremental
+- Full md4c reparse always (md4c doesn't support incremental) — fast enough with debounce
+- from_blob() uses arena (copy once from blob) — zero-copy DocumentIndex deferred
+- Existing from_ast()/from_scan() paths retained for MCP batch and backward compat
+- Tree-sitter stays separate for lazy AST (hover/goto-def)
+
+**Task status:** marky-6jzs (Task 1: Zig DocumentEngine + blob format) created and SRE-refined.
+
+### Decision: marky-0jz (Option D) superseded by md4c (2026-02-19)
+
+marky-0jz (vendor tree-sitter-md, selective inline skip) targeted the same hot path that
+md4c now owns. Its ~2.8x optimization target is already achieved by Option G. Tree-sitter
+is only used for lazy AST (on-demand, not per-keystroke), so optimizing its incremental
+parsing has negligible value. marky-syx (Option E: lazy AST) dependency on 0jz should be
+removed when beads are updated. **Not yet closed** — waiting for user to finish testing.
