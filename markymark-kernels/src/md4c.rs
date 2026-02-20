@@ -129,6 +129,19 @@ pub fn extract_md4c(text: &str) -> Result<Md4cExtraction, KernelError> {
     }
 }
 
+/// Validate and slice blob[start..start+len], returning InternalError(-101) on
+/// overflow or out-of-bounds rather than panicking.
+///
+/// Error codes:
+///   -100  invalid UTF-8 in blob (existing convention)
+///   -101  blob slice out-of-bounds or start+len overflow (marky-ta07)
+fn safe_blob_slice(blob: &[u8], start: usize, len: usize) -> Result<&[u8], KernelError> {
+    let end = start
+        .checked_add(len)
+        .ok_or(KernelError::InternalError(-101))?;
+    blob.get(start..end).ok_or(KernelError::InternalError(-101))
+}
+
 /// Convert C ABI result to owned Rust types.
 fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
     let blob = if out.text_blob_len > 0 && !out.text_blob.is_null() {
@@ -149,13 +162,14 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
             unsafe { std::slice::from_raw_parts(out.headings, out.headings_count as usize) };
         for h in c_headings {
             let text_start = h.text_offset as usize;
-            let text_end = text_start + h.text_length as usize;
             // T2-11: Propagate invalid UTF-8 as an error rather than silently
             // falling back to "". Zig packing always produces valid UTF-8 (the
             // source is a &str), so this fires only if the blob is corrupted.
-            let text = std::str::from_utf8(&blob[text_start..text_end])
-                .map_err(|_| KernelError::InternalError(-100))?
-                .to_owned();
+            // marky-ta07: bounds-check before slicing to avoid OOB panic on bad FFI offsets.
+            let text =
+                std::str::from_utf8(safe_blob_slice(blob, text_start, h.text_length as usize)?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned();
             headings.push(Md4cHeading {
                 text,
                 source_offset: h.source_offset,
@@ -172,16 +186,20 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         let c_links = unsafe { std::slice::from_raw_parts(out.links, out.links_count as usize) };
         for l in c_links {
             let text_start = l.text_offset as usize;
-            let text_end = text_start + l.text_length as usize;
             let target_start = l.target_offset as usize;
-            let target_end = target_start + l.target_length as usize;
             // T2-11: Propagate invalid UTF-8 as an error rather than silently falling back.
-            let text = std::str::from_utf8(&blob[text_start..text_end])
-                .map_err(|_| KernelError::InternalError(-100))?
-                .to_owned();
-            let target = std::str::from_utf8(&blob[target_start..target_end])
-                .map_err(|_| KernelError::InternalError(-100))?
-                .to_owned();
+            // marky-ta07: bounds-check before slicing to avoid OOB panic on bad FFI offsets.
+            let text =
+                std::str::from_utf8(safe_blob_slice(blob, text_start, l.text_length as usize)?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned();
+            let target = std::str::from_utf8(safe_blob_slice(
+                blob,
+                target_start,
+                l.target_length as usize,
+            )?)
+            .map_err(|_| KernelError::InternalError(-100))?
+            .to_owned();
             links.push(Md4cLink {
                 text,
                 target,
@@ -328,6 +346,92 @@ mod tests {
         assert!(
             result.is_err(),
             "invalid UTF-8 in link target blob must return Err"
+        );
+    }
+
+    /// Regression test for marky-ta07: heading text_offset beyond blob end must
+    /// return KernelError, not panic with OOB slice.
+    #[test]
+    fn test_oob_heading_offset_returns_error() {
+        let blob = [b'h', b'i']; // 2-byte blob
+        let heading = CMd4cHeading {
+            source_offset: 0,
+            text_offset: 5, // past end of 2-byte blob
+            text_length: 3,
+            level: 1,
+            _padding: [0, 0, 0],
+        };
+        let out = CMd4cResult {
+            headings: &heading as *const _ as *mut _,
+            links: std::ptr::null_mut(),
+            text_blob: blob.as_ptr(),
+            headings_count: 1,
+            links_count: 0,
+            text_blob_len: blob.len() as u32,
+            _padding: 0,
+        };
+        let result = convert_result(&out);
+        assert!(
+            matches!(result, Err(KernelError::InternalError(-101))),
+            "OOB heading offset must return InternalError(-101), got: {result:?}"
+        );
+    }
+
+    /// Regression test for marky-ta07: link target_offset beyond blob end must
+    /// return KernelError, not panic with OOB slice.
+    #[test]
+    fn test_oob_link_offset_returns_error() {
+        let blob = [b'o', b'k']; // 2-byte blob
+        let link = CMd4cLink {
+            source_offset: 0,
+            text_offset: 0,
+            target_offset: 10, // past end of 2-byte blob
+            text_length: 2,
+            target_length: 3,
+            is_wiki: 0,
+            _padding: [0, 0, 0],
+        };
+        let out = CMd4cResult {
+            headings: std::ptr::null_mut(),
+            links: &link as *const _ as *mut _,
+            text_blob: blob.as_ptr(),
+            headings_count: 0,
+            links_count: 1,
+            text_blob_len: blob.len() as u32,
+            _padding: 0,
+        };
+        let result = convert_result(&out);
+        assert!(
+            matches!(result, Err(KernelError::InternalError(-101))),
+            "OOB link target offset must return InternalError(-101), got: {result:?}"
+        );
+    }
+
+    /// Regression test for marky-ta07: offset + length that overflows usize must
+    /// return KernelError, not panic or wrap.
+    #[test]
+    fn test_overflow_offset_returns_error() {
+        let blob = [b'x'; 4];
+        let heading = CMd4cHeading {
+            source_offset: 0,
+            text_offset: u32::MAX, // usize::MAX addition would overflow
+            text_length: 1,
+            level: 1,
+            _padding: [0, 0, 0],
+        };
+        let out = CMd4cResult {
+            headings: &heading as *const _ as *mut _,
+            links: std::ptr::null_mut(),
+            text_blob: blob.as_ptr(),
+            headings_count: 1,
+            links_count: 0,
+            text_blob_len: blob.len() as u32,
+            _padding: 0,
+        };
+        let result = convert_result(&out);
+        assert!(
+            matches!(result, Err(KernelError::InternalError(-101))),
+            "overflow offset must return InternalError(-101), got: {result:?}"
         );
     }
 }
