@@ -3,14 +3,21 @@
 mod helpers;
 mod types;
 
+#[cfg(feature = "zig-kernels")]
+mod from_blob;
+
 #[cfg(test)]
 mod tests;
 
 pub use helpers::slugify;
 pub use types::*;
 
+#[cfg(feature = "zig-kernels")]
+pub use from_blob::extract_xml_tags_from_text;
+#[cfg(feature = "zig-kernels")]
+pub use from_blob::BlobError;
+
 use bumpalo::collections::Vec as BumpVec;
-use bumpalo::Bump;
 use hashbrown::HashMap;
 use markymark_core::arena::{arena_alloc_str, DocumentArena};
 use markymark_core::prelude::*;
@@ -18,7 +25,6 @@ use markymark_parser::Ast;
 use self_cell::self_cell;
 use std::collections::HashMap as StdHashMap;
 use std::fmt;
-use std::sync::Mutex;
 
 #[cfg(feature = "zig-kernels")]
 use markymark_core::scanner::{ScanBackend, ScanLinkType};
@@ -30,7 +36,7 @@ use markymark_core::scanner::{ScanBackend, ScanLinkType};
 ///
 #[derive(Debug)]
 struct DocumentOwner {
-    arena: Mutex<DocumentArena>,
+    arena: DocumentArena,
 }
 
 #[derive(Debug)]
@@ -67,37 +73,40 @@ self_cell!(
 /// tied to an owned `DocumentArena`. Public accessors return references bound
 /// to `&self`, preventing lifetime escape in safe code.
 ///
-/// # Why `Mutex<DocumentArena>`
+/// # `Sync` implementation
 ///
-/// `Bump: !Sync` makes `DocumentArena: !Sync`, which prevents `DocumentIndex`
-/// from implementing `Send + Sync`. tower-lsp requires `Send + 'static` for
-/// async handlers that store state in `RwLock<ServerState>`. Wrapping the arena
-/// in `Mutex` preserves `Send + Sync` compatibility while retaining arena-backed
-/// allocation behavior.
+/// `Bump: !Sync` (due to internal `Cell`) makes `DocumentArena: !Sync` and
+/// therefore `DocumentIndexCell: !Sync` via auto-trait propagation. However,
+/// tower-lsp requires `Send + Sync` for `RwLock<ServerState>`.
+///
+/// We provide `unsafe impl Sync` because the arena is only mutated during
+/// the `self_cell` builder closure (single-threaded construction). After
+/// construction, all access is read-only via `borrow_dependent()`. No public
+/// API exposes `&Bump` or `&DocumentArena`. See the safety comment on the
+/// `Sync` impl below.
+///
+/// **Invariant**: Do NOT add post-construction mutation of the arena.
 pub struct DocumentIndex {
     cell: DocumentIndexCell,
 }
 
+// SAFETY: `DocumentArena` wraps `bumpalo::Bump` which is `Send + !Sync`.
+// `Bump` is `!Sync` because its allocation pointer uses `Cell` (interior
+// mutability). However, after `DocumentIndexCell::new()` completes:
+//
+// 1. No code path calls `Bump::alloc()` — all allocations happen inside the
+//    builder closure during construction (single-threaded, synchronous).
+// 2. All public accessors use `borrow_dependent()` returning immutable
+//    references to arena-backed slices (`&[HeadingEntry]`, `&str`, etc.).
+// 3. `DocumentOwner` is private — no external code can reach `&Bump`.
+// 4. `borrow_owner()` is never called outside construction code.
+//
+// Therefore sharing `&DocumentIndex` across threads is safe: the `Cell`
+// inside `Bump` is effectively frozen after construction.
+// nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage
+unsafe impl Sync for DocumentIndex {}
+
 impl DocumentIndex {
-    #[inline]
-    fn arena_ref(owner: &DocumentOwner) -> &Bump {
-        let arena_guard = owner
-            .arena
-            .lock()
-            .expect("DocumentIndex arena mutex should not be poisoned");
-        let arena_ptr: *const DocumentArena = &*arena_guard as *const DocumentArena;
-        drop(arena_guard);
-
-        // SAFETY:
-        // 1) `DocumentOwner.arena` is initialized exactly once before
-        //    `DocumentIndexCell::try_new` and remains owned by the cell owner.
-        // 2) The `DocumentArena` is never moved and is treated as immutable
-        //    after construction; dependent values only borrow from it.
-        // 3) `arena_ref` is only used during `from_ast` construction while
-        //    building the dependent. It must not be used after construction.
-        unsafe { (*arena_ptr).bump() }
-    }
-
     /// Build a document index from a parsed AST.
     ///
     /// Extracts owned intermediate records, moves the parser arena into this
@@ -363,10 +372,10 @@ impl DocumentIndex {
             .collect();
 
         let owner = DocumentOwner {
-            arena: Mutex::new(ast.into_arena()),
+            arena: ast.into_arena(),
         };
         let cell = DocumentIndexCell::new(owner, move |owner| {
-            let arena_ref = Self::arena_ref(owner);
+            let arena_ref = owner.arena.bump();
 
             let mut headings_builder = BumpVec::new_in(arena_ref);
             let mut slug_to_heading = HashMap::new();
@@ -548,17 +557,24 @@ impl DocumentIndex {
         // Pre-compute line starts for byte-offset → Position conversion
         let line_starts = helpers::byte_offset_line_starts(text);
 
-        // Collect owned data from scan backend before entering self_cell closure
-        let scan_headings = backend.scan_headings(text).unwrap_or_default();
-        let scan_links = backend.scan_links(text).unwrap_or_default();
+        // Collect owned data from scan backend before entering self_cell closure.
+        // Fall back to independent scans if scan_all fails so that headings
+        // and links are never both silently dropped due to one-sided error.
+        let (scan_headings, scan_links) = match backend.scan_all(text) {
+            Ok(result) => (result.headings, result.links),
+            Err(_) => (
+                backend.scan_headings(text).unwrap_or_default(),
+                backend.scan_links(text).unwrap_or_default(),
+            ),
+        };
         let scan_tags = backend.scan_tags(text).unwrap_or_default();
         let scan_blocks = backend.scan_block_ids(text).unwrap_or_default();
 
         let owner = DocumentOwner {
-            arena: Mutex::new(DocumentArena::new()),
+            arena: DocumentArena::new(),
         };
         let cell = DocumentIndexCell::new(owner, move |owner| {
-            let arena_ref = Self::arena_ref(owner);
+            let arena_ref = owner.arena.bump();
 
             // --- Headings ---
             let mut headings_builder = BumpVec::new_in(arena_ref);

@@ -38,43 +38,61 @@ version = "0.1.0"
 All crates inherit via `version.workspace = true`. To bump:
 
 1. Edit `version` in `Cargo.toml` (root, under `[workspace.package]`)
-2. Commit: `git commit -m "chore: bump version to X.Y.Z"`
+2. Edit `version` in `markymark-plugin/.claude-plugin/plugin.json` (not auto-derived)
+3. Run `cargo build` to regenerate `Cargo.lock` (7 internal crate entries change)
+4. Commit all three files together: `Cargo.toml`, `plugin.json`, `Cargo.lock`
 
 ## crates.io Publishing
 
-Crates must be published in dependency order. Each crate depends on the ones before it.
+Crates must be published in dependency order (regular deps only; dev/build deps don't affect publish order).
 
-**Publish order:**
+**Publish order** (derived from `cargo metadata`):
 
 ```bash
-# 1. Core (no internal deps)
+# 1. Kernels (no regular internal deps)
+cargo publish -p markymark-kernels
+
+# 2. Core (depends on kernels)
 cargo publish -p markymark-core
 
-# 2. Parser (depends on core)
+# 3. Parser (depends on core)
 cargo publish -p markymark-parser
 
-# 3. Index (depends on core, parser)
+# 4. Index (depends on core, kernels, parser)
 cargo publish -p markymark-index
 
-# 4. LSP (depends on core, parser, index)
+# 5. LSP (depends on core, index, kernels, parser) — parallel with MCP
 cargo publish -p markymark-lsp
 
-# 5. MCP (depends on core, parser, index)
+# 6. MCP (depends on core, index, kernels, parser) — parallel with LSP
 cargo publish -p markymark-mcp
 
-# 6. CLI (depends on core, lsp, mcp)
+# 7. CLI (depends on core, lsp, mcp)
 cargo publish -p markymark-cli
 ```
 
-**Important**: Wait for each crate to appear on crates.io before publishing the next. The crates.io index can lag by a few seconds — retry if you get a "not found" error for a dependency.
+**Important**: Wait for each crate to appear on crates.io before publishing the next. The crates.io index can lag by a few seconds — retry if you get a "not found" error for a dependency. LSP and MCP can be published in parallel since neither depends on the other.
+
+**Re-derive publish order** before each release (crate deps may change):
+
+```bash
+cargo metadata --format-version 1 --no-deps | python3 -c "
+import json, sys
+meta = json.load(sys.stdin)
+for p in sorted(meta['packages'], key=lambda x: x['name']):
+    if not p['name'].startswith('markymark'): continue
+    deps = [d['name'] for d in p['dependencies']
+            if d['name'].startswith('markymark') and d.get('kind') is None]
+    print(f\"{p['name']}: {deps if deps else '(none)'}\")"
+```
 
 **Dry run** (validates metadata only — inter-crate deps will fail until published):
 
 ```bash
-cargo publish -p markymark-core --dry-run
+cargo publish -p markymark-kernels --dry-run
 ```
 
-Only `markymark-core` will pass a dry-run locally because the other crates reference path dependencies that aren't on crates.io yet. This is expected.
+Only `markymark-kernels` will pass a dry-run locally because other crates reference path dependencies that aren't on crates.io yet. This is expected.
 
 ## Git Tagging and GitHub Release
 
@@ -117,7 +135,7 @@ After the GitHub Release is created:
 After publishing, verify everything landed correctly:
 
 ```bash
-# crates.io — check all 6 crates
+# crates.io — check all 7 crates
 open https://crates.io/crates/markymark-core
 open https://crates.io/crates/markymark-cli
 

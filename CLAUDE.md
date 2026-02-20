@@ -77,10 +77,11 @@ This project uses **bd** (beads) for issue tracking. Run `bd ready` to find avai
 
 ## Project Overview
 
-markymark is a Rust workspace producing a Markdown LSP + MCP server. Six crates:
+markymark is a Rust workspace producing a Markdown LSP + MCP server. Seven crates:
 
 | Crate | Role |
 |-------|------|
+| `markymark-kernels` | Zig SIMD kernels (FFI) |
 | `markymark-core` | Core types and abstractions |
 | `markymark-parser` | Tree-sitter based markdown parser |
 | `markymark-index` | Document indexing and symbol resolution |
@@ -110,6 +111,10 @@ cargo run -- --lsp
 
 # Run MCP
 cargo run -- --mcp /path/to/workspace
+
+# Release preparation (guided workflow)
+# Use the prepare-release skill: /prepare-release
+# See .claude/skills/prepare-release/SKILL.md
 ```
 
 ## Code Navigation (LSP-first)
@@ -161,6 +166,7 @@ has caused real bugs, wasted work, or merge conflicts.
 | 5 | **Never squash merge** | Preserve full git history always. Squash merges destroy context, make bisect harder, and lose the narrative of how work evolved. |
 | 6 | **Exclude generated artifacts from metric input corpora** | If a test/benchmark writes a report file, exclude it from the input corpus used to compute the same metrics. Prevents self-referential drift. |
 | 7 | **NEVER merge PRs** | Agent must never run `gh pr merge` or equivalent. The human merges all PRs. Agent prepares PRs, pushes branches, but stops there. |
+| 8 | **Commit Cargo.lock with version bumps** | After editing `Cargo.toml` workspace version, run `cargo build` to regenerate `Cargo.lock`, then commit both together. Forgetting this caused a fixup commit during v0.4.2 (324f744). Use the `prepare-release` skill to avoid this. |
 
 ## Landing the Plane (Session Completion)
 
