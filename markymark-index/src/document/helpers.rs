@@ -55,7 +55,7 @@ pub(super) fn dedup_slug(base: &str, used: &mut StdHashMap<String, usize>) -> St
 }
 
 /// Build flat TOC entries with depth calculation.
-pub(super) fn build_toc<'arena>(
+pub(crate) fn build_toc<'arena>(
     arena: &'arena Bump,
     headings: &[HeadingEntry<'arena>],
 ) -> &'arena [TocEntry<'arena>] {
@@ -115,7 +115,7 @@ fn freeze_outline<'arena>(arena: &'arena Bump, node: TempOutline<'arena>) -> Out
 }
 
 /// Build outline tree from heading entries.
-pub(super) fn build_outline<'arena>(
+pub(crate) fn build_outline<'arena>(
     arena: &'arena Bump,
     headings: &[HeadingEntry<'arena>],
 ) -> OutlineNode<'arena> {

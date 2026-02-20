@@ -35,9 +35,9 @@ pub fn processLeafBlock(self: *Parser, block_lines: []const VerbatimLine, trim_t
         if (vline.beg > vline.end or vline.end > self.size) continue;
 
         if (self.buffer.items.len > 0) {
-            self.buffer.append(self.allocator, '\n') catch {};
+            try self.buffer.append(self.allocator, '\n');
         }
-        self.buffer.appendSlice(self.allocator, self.text[vline.beg..vline.end]) catch {};
+        try self.buffer.appendSlice(self.allocator, self.text[vline.beg..vline.end]);
     }
 
     var merged = self.buffer.items;
@@ -57,7 +57,7 @@ pub fn processInlineContent(self: *Parser, content: []const u8, base_off: OFF) P
     defer self.recursion_depth -= 1;
 
     // Phase 1: Collect and resolve emphasis delimiters
-    self.collectEmphasisDelimiters(content);
+    try self.collectEmphasisDelimiters(content);
     self.resolveEmphasisDelimiters();
 
     // Copy resolved delimiters locally (recursive calls may modify emph_delims)
@@ -416,7 +416,7 @@ pub fn canCloseEmphasis(emph_char: u8, content: []const u8, run_start: usize, ru
 }
 
 /// Collect emphasis delimiter runs from content, skipping code spans and HTML tags.
-pub fn collectEmphasisDelimiters(self: *Parser, content: []const u8) void {
+pub fn collectEmphasisDelimiters(self: *Parser, content: []const u8) Parser.Error!void {
     self.emph_delims.clearRetainingCapacity();
     var i: usize = 0;
     while (i < content.len) {
@@ -474,14 +474,14 @@ pub fn collectEmphasisDelimiters(self: *Parser, content: []const u8) void {
             const run_start = i;
             while (i < content.len and content[i] == c) i += 1;
             const count = i - run_start;
-            self.emph_delims.append(self.allocator, .{
+            try self.emph_delims.append(self.allocator, .{
                 .pos = run_start,
                 .count = count,
                 .emph_char = c,
                 .can_open = canOpenEmphasis(c, content, run_start, i),
                 .can_close = canCloseEmphasis(c, content, run_start, i),
                 .remaining = count,
-            }) catch {};
+            });
             continue;
         }
         // Strikethrough delimiter (1 or 2 tildes only)
@@ -490,14 +490,14 @@ pub fn collectEmphasisDelimiters(self: *Parser, content: []const u8) void {
             while (i < content.len and content[i] == '~') i += 1;
             const count = i - run_start;
             if (count == 1 or count == 2) {
-                self.emph_delims.append(self.allocator, .{
+                try self.emph_delims.append(self.allocator, .{
                     .pos = run_start,
                     .count = count,
                     .emph_char = '~',
                     .can_open = canOpenEmphasis('~', content, run_start, i),
                     .can_close = canCloseEmphasis('~', content, run_start, i),
                     .remaining = count,
-                }) catch {};
+                });
             }
             continue;
         }

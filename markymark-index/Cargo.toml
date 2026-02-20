@@ -11,8 +11,8 @@ categories = ["development-tools", "text-processing"]
 
 [features]
 bench-internals = []
-zig-kernels = ["markymark-core/zig-kernels"]
-embeddings = ["zig-kernels", "dep:markymark-kernels"]
+zig-kernels = ["markymark-core/zig-kernels", "dep:markymark-kernels"]
+embeddings = ["zig-kernels"]
 
 [dependencies]
 markymark-core = { version = "0.4.0", path = "../markymark-core" }
@@ -36,6 +36,10 @@ libc = "0.2.182"
 [[bin]]
 name = "bench_roi_report"
 required-features = ["bench-internals"]
+
+[[bin]]
+name = "gen_golden_blob"
+required-features = ["zig-kernels"]
 
 [[bench]]
 name = "memory"

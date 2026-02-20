@@ -193,7 +193,7 @@ pub fn isHtmlBlockEndCondition(self: *const Parser, off: OFF, block_type: u8) bo
 }
 
 pub fn matchHtmlTag(self: *const Parser, off: OFF, tag: []const u8) bool {
-    if (off + 1 + tag.len >= self.size) return false;
+    if (off + 1 + tag.len > self.size) return false;
     const start = off + 1;
     // Allow optional / for closing tags
     var pos = start;

@@ -28,6 +28,7 @@ pub const ExtractedLink = struct {
     text: []const u8, // owned
     target: []const u8, // owned
     offset: u32,
+    end_offset: u32, // byte offset past the link's closing character
     is_wiki: bool,
 };
 
@@ -275,10 +276,12 @@ pub const ExtractionRenderer = struct {
         };
 
         const offset = self.findLinkOffset();
+        const end_offset: u32 = self.scan_cursor;
         self.links.append(self.allocator, .{
             .text = owned_text,
             .target = owned_target,
             .offset = offset,
+            .end_offset = end_offset,
             .is_wiki = self.link_is_wiki,
         }) catch {
             self.oom = true;
@@ -899,4 +902,61 @@ test "T1-4: OOM from parser is propagated as error.OutOfMemory" {
     const input = "# Hello World\n";
     const result = extractFromMarkdown(input, failing.allocator());
     try testing.expectError(error.OutOfMemory, result);
+}
+
+// --- end_offset accuracy for all link syntaxes ---
+
+test "extract inline link end_offset" {
+    // [Hello](world) = 14 chars; scan_cursor lands past ')'
+    const input = "[Hello](world)";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+    try testing.expectEqual(@as(usize, 1), result.links.len);
+    try testing.expectEqual(@as(u32, 0), result.links[0].offset);
+    try testing.expectEqual(@as(u32, 14), result.links[0].end_offset);
+}
+
+test "extract reference link end_offset" {
+    // [Hello][ref] = 12 chars; scan_cursor lands past second ']'
+    // Previously the heuristic used text_len+target_len+4, giving a large wrong value
+    // because target gets resolved to the full URL, not "ref".
+    const input = "[Hello][ref]\n\n[ref]: https://example.com\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+    try testing.expectEqual(@as(usize, 1), result.links.len);
+    try testing.expectEqual(@as(u32, 0), result.links[0].offset);
+    try testing.expectEqual(@as(u32, 12), result.links[0].end_offset);
+}
+
+test "extract autolink end_offset" {
+    // <https://example.com> = 21 chars; scan_cursor lands past '>'
+    const input = "<https://example.com>";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+    try testing.expectEqual(@as(usize, 1), result.links.len);
+    try testing.expectEqual(@as(u32, 0), result.links[0].offset);
+    try testing.expectEqual(@as(u32, 21), result.links[0].end_offset);
+}
+
+test "extract wiki link end_offset" {
+    // [[target]] = 10 chars; scan_cursor lands past ']]'
+    const input = "[[target]]";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+    try testing.expectEqual(@as(usize, 1), result.links.len);
+    try testing.expectEqual(@as(u32, 0), result.links[0].offset);
+    try testing.expectEqual(@as(u32, 10), result.links[0].end_offset);
+}
+
+test "processLeafBlock multi-line setext heading merges lines correctly" {
+    // Setext headings have 2+ block_lines: the text line(s) and the underline.
+    // processLeafBlock merges them with '\n' via buffer.append/appendSlice.
+    // Previously, catch {} silently swallowed OOM on those appends; now try propagates.
+    // This test verifies correct behavior on the success path (no OOM).
+    const input = "Multi Line Heading\n==================\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqualStrings("Multi Line Heading", result.headings[0].text);
 }

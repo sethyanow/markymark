@@ -449,6 +449,8 @@ pub const HtmlRenderer = struct {
             // Opening tag (not self-closing)
             if (isDisallowedTag(content)) {
                 // Check if NOT self-closing (doesn't end with "/>")
+                // Need at least 3 bytes for a tag that could end with "/>"
+                if (content.len < 3) return;
                 if (content[content.len - 2] != '/' or content[content.len - 1] != '>') {
                     self.tag_filter_raw_depth += 1;
                 }

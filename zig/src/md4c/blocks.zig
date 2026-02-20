@@ -189,7 +189,7 @@ pub fn analyzeLine(self: *Parser, off_start: OFF, p_end: *OFF, pivot_line: *cons
                     const align_mask_: usize = @alignOf(BlockHeader) - 1;
                     const top_off = (self.block_bytes.items.len - @sizeOf(BlockHeader) + align_mask_) & ~align_mask_;
                     if (top_off + @sizeOf(BlockHeader) <= self.block_bytes.items.len) {
-                        const top_hdr: *const BlockHeader = @ptrCast(@alignCast(self.block_bytes.items.ptr + (self.block_bytes.items.len - @sizeOf(BlockHeader))));
+                        const top_hdr: *const BlockHeader = @ptrCast(@alignCast(self.block_bytes.items.ptr + top_off));
                         if (top_hdr.block_type == .li) {
                             self.last_list_item_starts_with_two_blank_lines = true;
                         }
@@ -206,12 +206,16 @@ pub fn analyzeLine(self: *Parser, off_start: OFF, p_end: *OFF, pivot_line: *cons
                     n_brothers + n_children == 0 and self.current_block == null and
                     self.block_bytes.items.len > @sizeOf(BlockHeader))
                 {
-                    const top_hdr: *const BlockHeader = @ptrCast(@alignCast(self.block_bytes.items.ptr + (self.block_bytes.items.len - @sizeOf(BlockHeader))));
-                    if (top_hdr.block_type == .li) {
-                        n_parents -= 1;
-                        line.indent = total_indent;
-                        if (n_parents > 0)
-                            line.indent -= @min(line.indent, self.containers.items[n_parents - 1].contents_indent);
+                    const align_mask_: usize = @alignOf(BlockHeader) - 1;
+                    const top_off = (self.block_bytes.items.len - @sizeOf(BlockHeader) + align_mask_) & ~align_mask_;
+                    if (top_off + @sizeOf(BlockHeader) <= self.block_bytes.items.len) {
+                        const top_hdr: *const BlockHeader = @ptrCast(@alignCast(self.block_bytes.items.ptr + top_off));
+                        if (top_hdr.block_type == .li) {
+                            n_parents -= 1;
+                            line.indent = total_indent;
+                            if (n_parents > 0)
+                                line.indent -= @min(line.indent, self.containers.items[n_parents - 1].contents_indent);
+                        }
                     }
                 }
                 self.last_list_item_starts_with_two_blank_lines = false;
@@ -781,9 +785,9 @@ pub fn consumeRefDefsFromCurrentBlock(self: *Parser) void {
         // Skip consumed ref-def lines (beg > end sentinel) and out-of-bounds lines.
         if (vline.beg > vline.end or vline.end > self.size) continue;
         if (self.buffer.items.len > 0) {
-            self.buffer.append(self.allocator, '\n') catch {};
+            self.buffer.append(self.allocator, '\n') catch return;
         }
-        self.buffer.appendSlice(self.allocator, self.text[vline.beg..vline.end]) catch {};
+        self.buffer.appendSlice(self.allocator, self.text[vline.beg..vline.end]) catch return;
     }
 
     const merged = self.buffer.items;
@@ -796,13 +800,25 @@ pub fn consumeRefDefsFromCurrentBlock(self: *Parser) void {
         const norm_label = self.normalizeLabel(result.label);
         if (norm_label.len == 0) break;
 
-        // Dupe all three upfront; free all if this is a duplicate (first-definition-wins
-        // per CommonMark §2.3). label points into normalize_buf (reused); dest/title
-        // point into self.buffer (reused). Freed in Parser.deinit via hashmap iterator.
+        // Dupe label, dest, and title — label points into normalize_buf (reused);
+        // dest/title point into self.buffer (reused). Freed in Parser.deinit via
+        // hashmap iterator. First-definition-wins per CommonMark §2.3.
         const label_dupe = self.allocator.dupe(u8, norm_label) catch return;
-        const dest_dupe = self.allocator.dupe(u8, result.dest) catch return;
-        const title_dupe = self.allocator.dupe(u8, result.title) catch return;
-        const gop = self.ref_defs.getOrPut(self.allocator, label_dupe) catch return;
+        const dest_dupe = self.allocator.dupe(u8, result.dest) catch {
+            self.allocator.free(label_dupe);
+            return;
+        };
+        const title_dupe = self.allocator.dupe(u8, result.title) catch {
+            self.allocator.free(label_dupe);
+            self.allocator.free(dest_dupe);
+            return;
+        };
+        const gop = self.ref_defs.getOrPut(self.allocator, label_dupe) catch {
+            self.allocator.free(label_dupe);
+            self.allocator.free(dest_dupe);
+            self.allocator.free(title_dupe);
+            return;
+        };
         if (gop.found_existing) {
             // First definition wins — free all three duplicates
             self.allocator.free(label_dupe);

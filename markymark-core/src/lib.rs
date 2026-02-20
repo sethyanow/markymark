@@ -167,7 +167,7 @@ pub mod prelude {
     pub use crate::embeddings::{EmbedError, EmbeddingProvider};
     #[cfg(feature = "zig-kernels")]
     pub use crate::scanner::ZigScanBackend;
-    pub use crate::scanner::{ScanBackend, ScanError};
+    pub use crate::scanner::{ScanAllResult, ScanBackend, ScanError};
     pub use crate::structured::{DocumentKind, KeyEntry, StructuredAst, ValueKind};
     pub use crate::{CoreError, CoreResult, DocumentUri, Position, Range};
 }

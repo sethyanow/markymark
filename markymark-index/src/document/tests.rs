@@ -12,6 +12,16 @@ fn build_index(source: &str) -> DocumentIndex {
     DocumentIndex::from_ast(ast)
 }
 
+/// Compile-time assertion: DocumentIndex must be Send + Sync for tower-lsp
+/// (RwLock<ServerState> requires Send + Sync on all contained types).
+///
+/// If this test fails to compile, the arena wrapper strategy has regressed.
+#[test]
+fn document_index_is_send_and_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<DocumentIndex>();
+}
+
 #[test]
 fn heading_entry_uses_arena_lifetime() {
     let arena = Bump::new();
@@ -723,6 +733,79 @@ fn test_xml_tag_override_reuses_when_provided() {
     let xts = index.xml_tags();
     assert_eq!(xts.len(), 1);
     assert_eq!(xts[0].tag_name, "injected-tag");
+}
+
+// ---------------------------------------------------------------------------
+// scan_all fallback regression tests (marky-h0lp)
+// ---------------------------------------------------------------------------
+
+/// When scan_all fails, from_scan must fall back to independent scan_headings /
+/// scan_links calls so partial data is not silently dropped.
+#[cfg(feature = "zig-kernels")]
+mod scan_all_fallback_tests {
+    use super::*;
+    use markymark_core::scanner::{
+        BlockIdResult, HeadingResult, LinkResult, ScanAllResult, ScanBackend, ScanError,
+        ScanLinkType, TagResult,
+    };
+
+    /// Mock backend: scan_all always errors; individual scans always succeed.
+    struct FailingScanAllBackend;
+
+    impl ScanBackend for FailingScanAllBackend {
+        fn scan_headings(&self, _text: &str) -> Result<Vec<HeadingResult>, ScanError> {
+            Ok(vec![HeadingResult {
+                text: "Heading".to_string(),
+                offset: 0,
+                level: 1,
+            }])
+        }
+
+        fn scan_links(&self, _text: &str) -> Result<Vec<LinkResult>, ScanError> {
+            Ok(vec![LinkResult {
+                offset: 10,
+                text: "click".to_string(),
+                target: "https://example.com".to_string(),
+                link_type: ScanLinkType::Markdown,
+            }])
+        }
+
+        fn scan_tags(&self, _text: &str) -> Result<Vec<TagResult>, ScanError> {
+            Ok(vec![])
+        }
+
+        fn scan_block_ids(&self, _text: &str) -> Result<Vec<BlockIdResult>, ScanError> {
+            Ok(vec![])
+        }
+
+        fn estimate_tokens(&self, _text: &str) -> Result<u32, ScanError> {
+            Ok(0)
+        }
+
+        fn scan_all(&self, _text: &str) -> Result<ScanAllResult, ScanError> {
+            Err(ScanError::InternalError(
+                "scan_all deliberately fails".to_string(),
+            ))
+        }
+    }
+
+    /// Regression for marky-h0lp: scan_all failure must not silently drop
+    /// headings and links that are available via independent fallback scans.
+    #[test]
+    fn test_from_scan_uses_fallback_when_scan_all_fails() {
+        let backend = FailingScanAllBackend;
+        let index = DocumentIndex::from_scan("# Heading\n[click](https://example.com)\n", &backend);
+        assert_eq!(
+            index.headings().len(),
+            1,
+            "headings must survive via fallback scan_headings when scan_all fails"
+        );
+        assert_eq!(
+            index.markdown_links().len(),
+            1,
+            "links must survive via fallback scan_links when scan_all fails"
+        );
+    }
 }
 
 /// All five overrides provided — verify each extractor uses the override, not re-extraction.
