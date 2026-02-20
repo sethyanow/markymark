@@ -58,6 +58,7 @@ export fn marky_engine_update(handle: ?*anyopaque, text: ?[*]const u8, text_len:
 ///   0  — success (blob_ptr and blob_len set)
 ///  -1  — invalid input (null handle or null output pointers)
 ///  -3  — allocation failure (out of memory during serialization)
+///  -4  — parse failure (md4c error during serialization)
 export fn marky_engine_get_blob(
     handle: ?*anyopaque,
     blob_ptr: ?*[*]const u8,
