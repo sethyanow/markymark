@@ -134,4 +134,43 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
+
+    // ── md4c ExtractionRenderer benchmark ──────────────────────────────
+    // Run: zig build bench-md4c
+    const md4c_bench_er_mod = b.createModule(.{
+        .root_source_file = b.path("src/md4c/extraction_renderer.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    const md4c_bench_mod = b.createModule(.{
+        .root_source_file = b.path("bench/md4c_bench.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    md4c_bench_mod.addImport("extraction_renderer", md4c_bench_er_mod);
+    const md4c_bench_exe = b.addExecutable(.{
+        .name = "md4c_bench",
+        .root_module = md4c_bench_mod,
+    });
+    const md4c_bench_install = b.addInstallArtifact(md4c_bench_exe, .{});
+    const run_md4c_bench = b.addRunArtifact(md4c_bench_exe);
+    run_md4c_bench.step.dependOn(&md4c_bench_install.step);
+    const md4c_bench_step = b.step("bench-md4c", "Run md4c ExtractionRenderer benchmark (pure Zig, no FFI)");
+    md4c_bench_step.dependOn(&run_md4c_bench.step);
+    // ────────────────────────────────────────────────────────────────────
+
+    // ── md4c parser tests ────────────────────────────────────────────────
+    // Vendored Zig md4c parser (from Bun). Linked into libmarky_kernels.a
+    // via c_adapter.zig comptime import of md4c/exports.zig.
+    const md4c_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/md4c/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const md4c_tests = b.addTest(.{
+        .root_module = md4c_test_mod,
+    });
+    const run_md4c_tests = b.addRunArtifact(md4c_tests);
+    test_step.dependOn(&run_md4c_tests.step);
+    // ────────────────────────────────────────────────────────────────────
 }

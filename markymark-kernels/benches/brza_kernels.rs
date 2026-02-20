@@ -1,7 +1,7 @@
 //! BRZA benchmark suite for SIMD kernels vs baseline implementations.
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use markymark_core::scanner::ZigScanBackend;
+use markymark_core::scanner::{Md4cScanBackend, ScanBackend, ZigScanBackend};
 use markymark_index::DocumentIndex;
 use markymark_kernels::{embed::EmbeddingIndex, scan, tokens};
 use markymark_parser::Parser;
@@ -414,6 +414,81 @@ fn bench_bulk_reindex(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_md4c_vs_tree_sitter(c: &mut Criterion) {
+    let mut group = c.benchmark_group("md4c_vs_tree_sitter");
+    group.warm_up_time(Duration::from_secs(1));
+    group.measurement_time(Duration::from_secs(4));
+
+    let mut parser = Parser::new().expect("parser initialization should succeed");
+    let md4c_backend = Md4cScanBackend;
+
+    // One-time correctness assertion: md4c heading count must match tree-sitter
+    // on the same document (runs before benchmarks, not in the hot path).
+    {
+        let check_doc = generate_markdown_doc(10_240);
+        let ts_count = count_tree_sitter_headings(&check_doc, &mut parser);
+        let md4c_count = md4c_backend
+            .scan_headings(&check_doc)
+            .map(|v| v.len())
+            .unwrap_or(0);
+        assert_eq!(
+            ts_count, md4c_count,
+            "md4c heading count ({md4c_count}) != tree-sitter heading count ({ts_count}) on 10KB doc"
+        );
+    }
+
+    for (label, bytes) in [
+        ("1kb", 1_024usize),
+        ("10kb", 10_240),
+        ("50kb", 51_200),
+        ("100kb", 102_400),
+    ] {
+        let doc = generate_markdown_doc(bytes);
+        group.sample_size(if bytes >= 50_000 {
+            sample_size(12)
+        } else {
+            sample_size(20)
+        });
+        group.throughput(Throughput::Bytes(doc.len() as u64));
+
+        // md4c scan backend → from_scan (full index build via FFI)
+        group.bench_with_input(BenchmarkId::new("md4c_from_scan", label), &doc, |b, doc| {
+            b.iter(|| {
+                let idx = DocumentIndex::from_scan(black_box(doc), &md4c_backend);
+                black_box(idx.headings().len())
+            });
+        });
+
+        // tree-sitter → from_ast (full index build via parse + extract)
+        group.bench_with_input(
+            BenchmarkId::new("tree_sitter_from_ast", label),
+            &doc,
+            |b, doc| {
+                b.iter(|| {
+                    let ast = parser.parse(black_box(doc)).expect("parse");
+                    let idx = DocumentIndex::from_ast(ast);
+                    black_box(idx.headings().len())
+                });
+            },
+        );
+
+        // md4c raw FFI extraction only (no index build, just parse + extract)
+        group.bench_with_input(
+            BenchmarkId::new("md4c_extract_only", label),
+            &doc,
+            |b, doc| {
+                b.iter(|| {
+                    let extraction =
+                        markymark_kernels::md4c::extract_md4c(black_box(doc)).expect("md4c");
+                    black_box(extraction.headings.len() + extraction.links.len())
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_heading_scan_vs_tree_sitter,
@@ -421,6 +496,7 @@ criterion_group!(
     bench_embedding_search,
     bench_content_hash_vs_md5,
     bench_fuzzy_match_batch,
-    bench_bulk_reindex
+    bench_bulk_reindex,
+    bench_md4c_vs_tree_sitter
 );
 criterion_main!(benches);
