@@ -26,6 +26,32 @@ Known issue: XML tag false positives in code blocks (marky-8la).
 
 (none currently)
 
+### Zig errdefer + explicit deinit = double-free pattern (2026-02-20, marky-gmny)
+
+When a function has `errdefer obj.deinit()` at the top, **never** call `obj.deinit()`
+explicitly on error paths — the errdefer fires on `return error.*` and double-frees.
+
+For partially-transferred ownership (e.g. `headings.toOwnedSlice()` succeeded but
+`links.toOwnedSlice()` failed), use a **scoped errdefer** immediately after the
+successful transfer to clean up the transferred data:
+
+```zig
+const headings = ext.headings.toOwnedSlice(alloc) catch return error.OutOfMemory;
+errdefer {
+    for (headings) |h| alloc.free(h.text);
+    alloc.free(headings);
+}
+const links = ext.links.toOwnedSlice(alloc) catch return error.OutOfMemory;
+```
+
+Also: `allocator.free(slice)` only frees the backing array, NOT owned strings inside
+each element. Always iterate and free inner allocations first.
+
+**OOM-loop testing pattern:** iterate `FailingAllocator` `fail_index` from 0..N with
+GPA backing. GPA fills freed memory with `0xaa` — double-free segfaults at
+`0xaaaaaaaaaaaaaaaa`. GPA `.deinit()` returning `.leak` catches missing frees. Use
+5 consecutive successes as termination condition.
+
 ---
 
 ## Lessons Learned
@@ -313,7 +339,6 @@ vs previous 9.4ms from_scan baseline.
 - from_ast()/from_scan() retained for MCP batch and backward compat
 - Tree-sitter stays separate for lazy AST (hover/goto-def)
 
-<<<<<<< HEAD
 Tasks: 6jzs (engine+blob), atsp (FFI+wrapper), 0mr.9 (parser fixes), 2n4u (from_blob), n78f (LSP integration). All done.
 
 ---
@@ -346,9 +371,6 @@ SRE-level assessment of 8 findings from Codex + CodeRabbit. Consolidated into 7 
 - **marky-9m7o (P4):** parseAll errdefer leaks text on late-stage OOM (after ownership
   transfer at line 289-290, freeStoredHeadingsList only frees slugs not texts). Also link
   end_offset heuristic is wrong for reference links and titled links (cosmetic LSP ranges).
-=======
-**Task 1:** marky-6jzs — Zig DocumentEngine struct + blob serialization. SRE-refined with
-18+ TDD test cases, allocator strategy, slug dedup algorithm, 5 edge case mitigations.
 
 ---
 
@@ -382,4 +404,3 @@ SRE-level assessment of 8 findings from Codex + CodeRabbit. Consolidated into 7 
 
 First task: **marky-wvqy** — scaffold Starlight site with navigation structure (SRE-refined).
 Subsequent tasks created iteratively via executing-plans.
->>>>>>> b37214b (docs(memory): marky-y1gm)
