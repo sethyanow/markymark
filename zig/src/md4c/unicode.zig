@@ -42,7 +42,7 @@ fn unicodeBsearch(codepoint: u21, map: []const MapEntry) ?usize {
         var pivot_end: usize = pivot_beg;
 
         // If pivot points at a range-start entry, the range-end is the next entry.
-        if (map[pivot_end] & range_start_flag != 0)
+        if (map[pivot_end] & range_start_flag != 0 and pivot_end + 1 < map.len)
             pivot_end += 1;
         // If pivot points at a range-end entry, the range-start is the previous entry.
         if (map[pivot_beg] & range_end_flag != 0) {
