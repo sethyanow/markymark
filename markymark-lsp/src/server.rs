@@ -1,6 +1,7 @@
 //! LSP server: LanguageServer trait implementation using tower-lsp-server.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tokio::sync::RwLock;
 use tower_lsp_server::jsonrpc::Result;
@@ -17,12 +18,19 @@ use markymark_index::DocumentIndex;
 use crate::symbols::{key_entries_to_symbols, outline_children_to_symbols, xml_tags_to_symbols};
 use std::collections::HashMap;
 
+/// Debounce delay in milliseconds: only the final pause after typing triggers a reparse.
+const DEBOUNCE_MS: u64 = 75;
+
 /// The LSP server backend.
 pub struct Backend {
     /// The tower-lsp client for sending notifications.
     client: Client,
     /// Shared server state behind a read-write lock.
     state: Arc<RwLock<ServerState>>,
+    /// Pending change batches buffered during a debounce window, keyed by document URI.
+    pending_changes: Arc<Mutex<HashMap<DocumentUri, Vec<Vec<crate::state::DocumentChange>>>>>,
+    /// Active debounce abort handles, keyed by document URI.
+    debounce_handles: Arc<Mutex<HashMap<DocumentUri, tokio::task::AbortHandle>>>,
 }
 
 impl Backend {
@@ -31,6 +39,8 @@ impl Backend {
         Self {
             client,
             state: Arc::new(RwLock::new(ServerState::new())),
+            pending_changes: Arc::new(Mutex::new(HashMap::new())),
+            debounce_handles: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -39,6 +49,8 @@ impl Backend {
         Self {
             client,
             state: Arc::new(RwLock::new(state)),
+            pending_changes: Arc::new(Mutex::new(HashMap::new())),
+            debounce_handles: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -139,29 +151,107 @@ impl LanguageServer for Backend {
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri_str = params.text_document.uri;
-        if let Ok(doc_uri) = crate::convert::from_lsp_uri(&uri_str) {
-            let changes: Vec<crate::state::DocumentChange> = params
-                .content_changes
+        let Ok(doc_uri) = crate::convert::from_lsp_uri(&uri_str) else {
+            return;
+        };
+
+        let changes: Vec<crate::state::DocumentChange> = params
+            .content_changes
+            .into_iter()
+            .map(|change| match change.range {
+                Some(range) => crate::state::DocumentChange::Incremental {
+                    start_line: range.start.line,
+                    start_character: range.start.character,
+                    end_line: range.end.line,
+                    end_character: range.end.character,
+                    text: change.text,
+                },
+                None => crate::state::DocumentChange::Full(change.text),
+            })
+            .collect();
+
+        if changes.is_empty() {
+            return;
+        }
+
+        // Buffer this change batch.
+        {
+            let mut pending = self.pending_changes.lock().unwrap();
+            pending.entry(doc_uri.clone()).or_default().push(changes);
+        }
+
+        // Cancel any existing debounce task for this document.
+        {
+            let mut handles = self.debounce_handles.lock().unwrap();
+            if let Some(handle) = handles.remove(&doc_uri) {
+                handle.abort();
+            }
+        }
+
+        // Spawn debounce task.
+        let state = Arc::clone(&self.state);
+        let client = self.client.clone();
+        let pending_changes = Arc::clone(&self.pending_changes);
+        let debounce_handles = Arc::clone(&self.debounce_handles);
+        let uri_str_clone = uri_str.clone();
+        let doc_uri_clone = doc_uri.clone();
+
+        let join_handle = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(DEBOUNCE_MS)).await;
+
+            // Remove self from handles (not aborted).
+            {
+                let mut handles = debounce_handles.lock().unwrap();
+                handles.remove(&doc_uri_clone);
+            }
+
+            // Drain pending batches.
+            let batches = {
+                let mut pending = pending_changes.lock().unwrap();
+                pending.remove(&doc_uri_clone).unwrap_or_default()
+            };
+
+            if batches.is_empty() {
+                return;
+            }
+
+            // Apply all accumulated change batches in order.
+            {
+                let mut state_w = state.write().await;
+                for batch in batches {
+                    state_w.apply_document_changes(&doc_uri_clone, batch);
+                }
+            }
+
+            // Compute diagnostics (separate read lock after write lock is dropped).
+            let diagnostics = {
+                let state_r = state.read().await;
+                state_r.compute_diagnostics(&doc_uri_clone)
+            };
+
+            let lsp_diagnostics: Vec<Diagnostic> = diagnostics
                 .into_iter()
-                .map(|change| match change.range {
-                    Some(range) => crate::state::DocumentChange::Incremental {
-                        start_line: range.start.line,
-                        start_character: range.start.character,
-                        end_line: range.end.line,
-                        end_character: range.end.character,
-                        text: change.text,
-                    },
-                    None => crate::state::DocumentChange::Full(change.text),
+                .map(|d| Diagnostic {
+                    range: crate::convert::to_lsp_range(d.range),
+                    severity: Some(match d.severity {
+                        crate::state::DiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
+                        crate::state::DiagnosticSeverity::Warning => DiagnosticSeverity::WARNING,
+                    }),
+                    source: Some("markymark".to_string()),
+                    message: d.message,
+                    ..Default::default()
                 })
                 .collect();
 
-            if !changes.is_empty() {
-                {
-                    let mut state = self.state.write().await;
-                    state.apply_document_changes(&doc_uri, changes);
-                }
-                self.publish_diagnostics_for(uri_str, &doc_uri).await;
-            }
+            client
+                .publish_diagnostics(uri_str_clone, lsp_diagnostics, None)
+                .await;
+        });
+
+        // Store abort handle.
+        {
+            let mut handles = self.debounce_handles.lock().unwrap();
+            handles.insert(doc_uri, join_handle.abort_handle());
         }
     }
 

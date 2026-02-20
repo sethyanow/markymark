@@ -195,6 +195,91 @@ impl ScanBackend for ZigScanBackend {
 }
 
 // ---------------------------------------------------------------------------
+// Md4cScanBackend implementation (behind zig-kernels feature)
+// ---------------------------------------------------------------------------
+
+/// md4c-based scan backend using single-pass streaming extraction.
+///
+/// Uses the Zig md4c ExtractionRenderer via FFI for heading and link
+/// extraction. Delegates tags, block IDs, and token estimation to the
+/// same Zig SIMD kernels used by [`ZigScanBackend`].
+#[cfg(feature = "zig-kernels")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Md4cScanBackend;
+
+#[cfg(feature = "zig-kernels")]
+impl ScanBackend for Md4cScanBackend {
+    fn scan_headings(&self, text: &str) -> Result<Vec<HeadingResult>, ScanError> {
+        markymark_kernels::md4c::extract_md4c(text)
+            .map(|extraction| {
+                extraction
+                    .headings
+                    .into_iter()
+                    .map(|h| HeadingResult {
+                        text: h.text,
+                        offset: h.source_offset,
+                        level: h.level,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
+    fn scan_links(&self, text: &str) -> Result<Vec<LinkResult>, ScanError> {
+        markymark_kernels::md4c::extract_md4c(text)
+            .map(|extraction| {
+                extraction
+                    .links
+                    .into_iter()
+                    .map(|l| LinkResult {
+                        offset: l.source_offset,
+                        text: l.text,
+                        target: l.target,
+                        link_type: if l.is_wiki {
+                            ScanLinkType::Wiki
+                        } else {
+                            ScanLinkType::Markdown
+                        },
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
+    fn scan_tags(&self, text: &str) -> Result<Vec<TagResult>, ScanError> {
+        markymark_kernels::scan::scan_tags(text)
+            .map(|results| {
+                results
+                    .into_iter()
+                    .map(|t| TagResult {
+                        name: t.name,
+                        offset: t.offset,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
+    fn scan_block_ids(&self, text: &str) -> Result<Vec<BlockIdResult>, ScanError> {
+        markymark_kernels::scan::scan_block_ids(text)
+            .map(|results| {
+                results
+                    .into_iter()
+                    .map(|b| BlockIdResult {
+                        id: b.id,
+                        offset: b.offset,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
+    fn estimate_tokens(&self, text: &str) -> Result<u32, ScanError> {
+        Ok(markymark_kernels::tokens::estimate_tokens(text))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -303,5 +388,75 @@ mod tests {
             offset: 10,
         };
         assert_eq!(b.id, "my-block");
+    }
+
+    // --- Md4cScanBackend tests (feature-gated) ---
+
+    #[cfg(feature = "zig-kernels")]
+    mod md4c_tests {
+        use super::super::*;
+
+        #[test]
+        fn test_md4c_scan_backend_send_sync() {
+            fn assert_send_sync<T: Send + Sync>() {}
+            assert_send_sync::<Md4cScanBackend>();
+        }
+
+        #[test]
+        fn test_md4c_scan_backend_trait_object() {
+            let backend: Box<dyn ScanBackend> = Box::new(Md4cScanBackend);
+            let result = backend.scan_headings("# Hello");
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_md4c_scan_headings_basic() {
+            let backend = Md4cScanBackend;
+            let results = backend.scan_headings("# Hello\n").unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].text, "Hello");
+            assert_eq!(results[0].level, 1);
+            assert_eq!(results[0].offset, 0);
+        }
+
+        #[test]
+        fn test_md4c_scan_links_markdown() {
+            let backend = Md4cScanBackend;
+            let results = backend
+                .scan_links("[click](https://example.com)\n")
+                .unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].text, "click");
+            assert_eq!(results[0].target, "https://example.com");
+            assert_eq!(results[0].link_type, ScanLinkType::Markdown);
+        }
+
+        #[test]
+        fn test_md4c_scan_links_wiki() {
+            let backend = Md4cScanBackend;
+            let results = backend.scan_links("[[Target]]\n").unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].link_type, ScanLinkType::Wiki);
+            assert_eq!(results[0].target, "Target");
+        }
+
+        #[test]
+        fn test_md4c_scan_empty_input() {
+            let backend = Md4cScanBackend;
+            assert!(backend.scan_headings("").unwrap().is_empty());
+            assert!(backend.scan_links("").unwrap().is_empty());
+            assert!(backend.scan_tags("").unwrap().is_empty());
+            assert!(backend.scan_block_ids("").unwrap().is_empty());
+            assert_eq!(backend.estimate_tokens("").unwrap(), 0);
+        }
+
+        #[test]
+        fn test_md4c_scan_entity_decoded() {
+            // md4c ExtractionRenderer decodes HTML entities to UTF-8 (marky-yfh7)
+            let backend = Md4cScanBackend;
+            let results = backend.scan_headings("# Hello &amp; World\n").unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].text, "Hello & World");
+        }
     }
 }
