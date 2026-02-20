@@ -292,20 +292,18 @@ fn postProcessAutolinkEnd(content: []const u8, beg: usize, end_in: usize) usize 
         }
     }
 
-    // Trim trailing unbalanced `)`: count all ( and ) in the URL.
-    // If closing > opening, remove trailing ) until balanced.
-    while (end > beg and content[end - 1] == ')') {
-        var open: i32 = 0;
-        var close: i32 = 0;
-        for (content[beg..end]) |ch| {
-            if (ch == '(') open += 1;
-            if (ch == ')') close += 1;
-        }
-        if (close > open) {
-            end -= 1;
-        } else {
-            break;
-        }
+    // Trim trailing unbalanced `)`: count parens once, decrement as we trim.
+    // O(n) total instead of O(n²) with per-iteration rescanning.
+    // `open` is stable — we only remove `)` characters, never `(`.
+    var open: i32 = 0;
+    var close: i32 = 0;
+    for (content[beg..end]) |ch| {
+        if (ch == '(') open += 1;
+        if (ch == ')') close += 1;
+    }
+    while (end > beg and content[end - 1] == ')' and close > open) {
+        close -= 1;
+        end -= 1;
     }
 
     return end;
@@ -317,3 +315,51 @@ const std = @import("std");
 
 const Parser = parser_mod.Parser;
 const EmphDelim = Parser.EmphDelim;
+
+// ── postProcessAutolinkEnd unit tests ────────────────────────────────────────
+
+test "postProcessAutolinkEnd: balanced parens not trimmed (Wikipedia-style)" {
+    // GFM: https://en.wikipedia.org/wiki/Perl_(programming_language) should
+    // NOT have the final ) trimmed because the parens are balanced (1 open, 1 close).
+    const prefix = "See ";
+    const url = "https://en.wikipedia.org/wiki/Perl_(programming_language)";
+    const content = prefix ++ url ++ " here";
+    const beg: usize = prefix.len;
+    const end_in: usize = prefix.len + url.len;
+    const result = postProcessAutolinkEnd(content, beg, end_in);
+    try std.testing.expectEqual(end_in, result);
+}
+
+test "postProcessAutolinkEnd: two trailing unbalanced parens trimmed" {
+    // URL with two extra ) at the end: https://example.com/foo)) — no open parens,
+    // two close parens → both should be trimmed.
+    const prefix = "See ";
+    const url = "https://example.com/foo))";
+    const content = prefix ++ url ++ " here";
+    const beg: usize = prefix.len;
+    const end_in: usize = prefix.len + url.len;
+    const result = postProcessAutolinkEnd(content, beg, end_in);
+    try std.testing.expectEqual(end_in - 2, result);
+}
+
+test "postProcessAutolinkEnd: one unbalanced paren trimmed" {
+    // https://example.com/foo(bar)) — one open, two close → trim exactly one )
+    const prefix = "See ";
+    const url = "https://example.com/foo(bar))";
+    const content = prefix ++ url ++ " end";
+    const beg: usize = prefix.len;
+    const end_in: usize = prefix.len + url.len;
+    const result = postProcessAutolinkEnd(content, beg, end_in);
+    try std.testing.expectEqual(end_in - 1, result);
+}
+
+test "postProcessAutolinkEnd: no trailing paren, no trimming" {
+    // Plain URL with no trailing ) — paren trimming loop never fires.
+    const prefix = "See ";
+    const url = "https://example.com/path";
+    const content = prefix ++ url ++ " done";
+    const beg: usize = prefix.len;
+    const end_in: usize = prefix.len + url.len;
+    const result = postProcessAutolinkEnd(content, beg, end_in);
+    try std.testing.expectEqual(end_in, result);
+}
