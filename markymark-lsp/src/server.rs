@@ -28,9 +28,15 @@ struct DebounceState {
     pending_changes: HashMap<DocumentUri, Vec<Vec<crate::state::DocumentChange>>>,
     /// Active debounce abort handles, keyed by document URI.
     debounce_handles: HashMap<DocumentUri, tokio::task::AbortHandle>,
-    /// Monotonic generation counter per document URI, incremented on open and close.
-    /// Used to detect stale batches after close/reopen sequences (marky-aemm).
+    /// Generation token per document URI (globally unique per allocation).
+    /// Inserted on open, removed on close. Used to detect stale batches
+    /// after close/reopen sequences (marky-aemm). Entries are cleaned up
+    /// on close to prevent unbounded growth (marky-jwsk).
     document_generations: HashMap<DocumentUri, u64>,
+    /// Next generation value to allocate. Monotonically increasing, never resets.
+    /// Ensures each open gets a globally unique generation value, making it safe
+    /// to remove entries on close without collision risk on reopen (marky-jwsk).
+    next_generation: u64,
 }
 
 impl DebounceState {
@@ -39,6 +45,7 @@ impl DebounceState {
             pending_changes: HashMap::new(),
             debounce_handles: HashMap::new(),
             document_generations: HashMap::new(),
+            next_generation: 1,
         }
     }
 }
@@ -151,14 +158,15 @@ impl LanguageServer for Backend {
                 let mut state = self.state.write().await;
                 state.open_document(doc_uri.clone(), params.text_document.text);
             }
-            // Bump generation so any in-flight debounce task from a prior session
-            // on this URI detects the mismatch and discards its stale batch (marky-aemm).
+            // Assign a globally unique generation so any in-flight debounce task
+            // from a prior session detects the mismatch and discards its stale
+            // batch (marky-aemm). Globally unique values make it safe to remove
+            // entries on close without collision risk on reopen (marky-jwsk).
             {
                 let mut deb = self.debounce.lock().unwrap();
-                deb.document_generations
-                    .entry(doc_uri.clone())
-                    .and_modify(|g| *g += 1)
-                    .or_insert(1);
+                let gen = deb.next_generation;
+                deb.next_generation += 1;
+                deb.document_generations.insert(doc_uri.clone(), gen);
             }
             self.publish_diagnostics_for(uri_str, &doc_uri).await;
         }
@@ -292,13 +300,11 @@ impl LanguageServer for Backend {
                     handle.abort();
                 }
                 deb.pending_changes.remove(&doc_uri);
-                // Bump generation so any in-flight debounce task that already drained
-                // detects the mismatch and discards its stale batch (marky-aemm).
-                // Do NOT remove the entry — the debounce task needs to see the bump.
-                deb.document_generations
-                    .entry(doc_uri.clone())
-                    .and_modify(|g| *g += 1)
-                    .or_insert(1);
+                // Remove the generation entry: any in-flight debounce task that
+                // already drained will see absent (unwrap_or(0)) ≠ captured gen
+                // (≥1) and discard its stale batch (marky-aemm). On next open,
+                // a fresh globally-unique value is inserted (marky-jwsk).
+                deb.document_generations.remove(&doc_uri);
             }
             {
                 let mut state = self.state.write().await;
@@ -1015,5 +1021,11 @@ impl Backend {
             state_w.apply_document_changes(uri, batch);
         }
         true
+    }
+
+    /// Return the number of entries in the document_generations map (for testing).
+    pub fn document_generations_count(&self) -> usize {
+        let deb = self.debounce.lock().unwrap();
+        deb.document_generations.len()
     }
 }

@@ -355,3 +355,94 @@ async fn test_close_reopen_during_debounce_drain_window() {
         "fresh content must persist; stale batch must not overwrite it"
     );
 }
+
+/// Closing a document must clean up its generation entry to prevent unbounded
+/// growth of the document_generations HashMap (marky-jwsk).
+///
+/// RED: Without cleanup, each unique URI leaves a permanent entry after close.
+#[tokio::test]
+async fn test_close_cleans_up_generation_entries() {
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+
+    // Open and close 100 unique URIs.
+    for i in 0..100 {
+        let raw = format!("file:///test/cleanup_{i}.md");
+        let uri = Uri::from_str(&raw).unwrap();
+
+        backend
+            .did_open(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "markdown".to_string(),
+                    version: 0,
+                    text: format!("# Doc {i}"),
+                },
+            })
+            .await;
+
+        backend
+            .did_close(DidCloseTextDocumentParams {
+                text_document: TextDocumentIdentifier { uri },
+            })
+            .await;
+    }
+
+    // After closing all documents, generation entries should be cleaned up.
+    let gen_count = backend.document_generations_count();
+    assert_eq!(
+        gen_count, 0,
+        "document_generations should be empty after closing all documents, \
+         but has {gen_count} entries (unbounded growth bug)"
+    );
+}
+
+/// Generation entries for currently-open documents must be retained.
+#[tokio::test]
+async fn test_open_documents_retain_generation_entries() {
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+
+    // Open 5 documents.
+    for i in 0..5 {
+        let raw = format!("file:///test/retain_{i}.md");
+        let uri = Uri::from_str(&raw).unwrap();
+
+        backend
+            .did_open(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "markdown".to_string(),
+                    version: 0,
+                    text: format!("# Doc {i}"),
+                },
+            })
+            .await;
+    }
+
+    // All 5 should have generation entries.
+    assert_eq!(
+        backend.document_generations_count(),
+        5,
+        "each open document should have a generation entry"
+    );
+
+    // Close 3 of them.
+    for i in 0..3 {
+        let raw = format!("file:///test/retain_{i}.md");
+        let uri = Uri::from_str(&raw).unwrap();
+
+        backend
+            .did_close(DidCloseTextDocumentParams {
+                text_document: TextDocumentIdentifier { uri },
+            })
+            .await;
+    }
+
+    // Only 2 should remain.
+    assert_eq!(
+        backend.document_generations_count(),
+        2,
+        "only open documents should retain generation entries"
+    );
+}
