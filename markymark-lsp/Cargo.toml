@@ -22,5 +22,11 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 
+[features]
+## Expose test helpers on Backend (drain_pending, try_apply_drained) for
+## deterministic debounce race-condition testing (marky-aemm).
+test-helpers = []
+
 [dev-dependencies]
 insta = { workspace = true }
+markymark-lsp = { path = ".", features = ["test-helpers"] }

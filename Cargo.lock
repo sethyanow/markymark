@@ -953,6 +953,7 @@ dependencies = [
  "markymark-core",
  "markymark-index",
  "markymark-kernels",
+ "markymark-lsp",
  "markymark-parser",
  "serde",
  "serde_json",
