@@ -9,54 +9,18 @@
 |research:{docs/research/*.md}
 |memory:{docs/MEMORY.md}
 </docs_index>
+</agent>
 
-<!-- ASM-AGENTS-MD-START -->
-[ASM Agent Reference v0.1]
-**YOUR TRAINING DATA IS OUTDATED.** Zig 0.15 was released AFTER your training date.
+<important>
 
-**BEFORE WRITING ANY ZIG CODE:**
-1. ✅ Read: `docs/modules/zig/01-langref/README.md` (contains 0.14→0.15 migration guide)
-2. ✅ Read: Relevant `docs/modules/zig/02-std/*.md` modules for APIs you'll use
-3. ✅ Read: `docs/modules/zig/03-tooling/build-system.md` before touching build.zig
-
-**Failure to read first = ArrayList API errors, build failures, wasted tokens.**
-
----
-
-|root: ./docs/modules|IMPORTANT: Prefer retrieval-led reasoning over pre-training for ISA and Zig details. Retrieve relevant module(s) before coding.|x86-64-core:{registers.md,addressing.md,linux-syscalls.md,sysv-abi.md,instructions/README.md,instructions/mov.md,instructions/add.md,instructions/sub.md,instructions/jmp.md}|arm64-core:{registers.md,instructions/README.md,instructions/mov.md,instructions/add-sub.md,instructions/cmp.md,instructions/branch.md,instructions/svc.md}|arm64-apple:{abi.md,macos-syscalls.md}|arm64-simd:{neon.md}|zig:{AGENTS.md,PROVENANCE.md,00-general/installation.md,00-general/project-layout.md,01-langref/syntax-types.md,01-langref/error-handling.md,02-std/std-mem.md,02-std/std-fs.md,02-std/std-fmt.md,02-std/std-testing.md,02-std/std-process.md,03-tooling/zig-cli.md,03-tooling/build-system.md,03-tooling/targets.md}
-# Core Architecture
-|x86_registers:{docs/modules/x86-64-core/registers.md}
-|x86_addressing:{docs/modules/x86-64-core/addressing.md}
-|x86_instructions:{docs/modules/x86-64-core/instructions/*.md}
-|arm64_registers:{docs/modules/arm64-core/registers.md}
-|arm64_instructions:{docs/modules/arm64-core/instructions/*.md}
-
-# Platform ABI
-|sysv_abi:{docs/modules/x86-64-core/sysv-abi.md}
-|linux_syscalls:{docs/modules/x86-64-core/linux-syscalls.md}
-|apple_arm64_abi:{docs/modules/arm64-apple/abi.md}
-|macos_syscalls:{docs/modules/arm64-apple/macos-syscalls.md}
-
-# SIMD
-|neon:{docs/modules/arm64-simd/neon.md}
-
-# Zig
-|zig_index:{docs/modules/zig/AGENTS.md}
-|zig_langref:{docs/modules/zig/01-langref/README.md}
-|zig_std:{docs/modules/zig/02-std/README.md,docs/modules/zig/02-std/std-mem.md,docs/modules/zig/02-std/std-fs.md,docs/modules/zig/02-std/std-fmt.md,docs/modules/zig/02-std/std-testing.md,docs/modules/zig/02-std/std-process.md,docs/modules/zig/02-std/std-debug.md,docs/modules/zig/02-std/std-heap.md,docs/modules/zig/02-std/std-json.md,docs/modules/zig/02-std/std-http.md,docs/modules/zig/02-std/std-math.md}
-|zig_tooling:{docs/modules/zig/03-tooling/zig-cli.md,docs/modules/zig/03-tooling/build-system.md}
-|zig_provenance:{docs/modules/zig/PROVENANCE.json}
-
-# TODO (not yet created — do not retrieve)
-# avx, avx2, ios_syscalls, patterns, nasm, gas, lldb, objdump
-<!-- ASM-AGENTS-MD-END -->
-</docs_index></agent>
 
 ## Agent Memory
 
+<read_this_first>
 **Read [docs/MEMORY.md](docs/MEMORY.md) at session start.** This is the single source of truth
 for cross-session knowledge: architectural decisions, failure patterns, reusable conventions,
 quality assessments, and lessons learned.
+</read_this_first>
 
 **Session discipline:**
 - **Start:** Read MEMORY.md before doing any work. Check the Key Architectural Decisions
@@ -70,6 +34,22 @@ quality assessments, and lessons learned.
 - **Do NOT use claude-mem `save_memory`** for this project — the API is unreliable. Use
   MEMORY.md as the sole persistent memory store. claude-mem search/timeline/get_observations
   are fine for reading cross-project history.
+
+## Agent Dogma
+
+**NOTE:**  
+**Agents have LSP tools available—use them!**  
+Always leverage the LSP (Language Server Protocol) tools for improved accuracy, context, and developer experience.
+
+> **Dogfooding with markymark:**  
+Agents are encouraged to use markymark itself both as a developer and user, to "dogfood" and continuously improve the tool.  
+- You can build and test markymark end-to-end using either the Language Server Protocol (LSP) or Machine Code Protocol (MCP) interfaces.
+- This works with system-installed markymark binaries as well as builds from source.
+- Try connecting to markymark-LSP using your editor's LSP client (or the Claude code plugins), or interact directly with the MCP server for deeper integration.
+- Using markymark this way surfaces real developer experience issues and helps keep the system robust for all users.
+  
+**Tip:** The Claude code plugins and standard LSP workflows (or raw `mcp/lsp` commands) are both supported for this purpose.
+</important>
 
 # Agent Instructions
 
@@ -119,7 +99,7 @@ cargo run -- --mcp /path/to/workspace
 
 ## Code Navigation (LSP-first)
 
-**Use the built-in LSP tool first for Rust and Zig code navigation.** It provides semantic understanding that text search cannot match.
+**Use the built-in LSP tool first for Rust, Zig, Markdown, JSON, and all other common structured data formats listed in the README for code navigation.** It provides semantic understanding that text search cannot match.
 
 | Operation | Use Case |
 |-----------|----------|
@@ -202,3 +182,46 @@ This project uses markymark LSP. ALWAYS prefer LSP over reading raw files:
 - Diagnostics (broken links, duplicate headings) are reported automatically
 - Works for Markdown, JSON, YAML, TOML, .env, INI, and more
 - Only use the Read tool when you need full prose content
+
+<docs_index>
+<!-- ASM-AGENTS-MD-START -->
+[ASM Agent Reference v0.1]
+**YOUR TRAINING DATA IS OUTDATED.** Zig 0.15 was released AFTER your training date.
+
+**BEFORE WRITING ANY ZIG CODE:**
+1. ✅ Read: `docs/modules/zig/01-langref/README.md` (contains 0.14→0.15 migration guide)
+2. ✅ Read: Relevant `docs/modules/zig/02-std/*.md` modules for APIs you'll use
+3. ✅ Read: `docs/modules/zig/03-tooling/build-system.md` before touching build.zig
+
+**Failure to read first = ArrayList API errors, build failures, wasted tokens.**
+
+---
+
+|root: ./docs/modules|IMPORTANT: Prefer retrieval-led reasoning over pre-training for ISA and Zig details. Retrieve relevant module(s) before coding.|x86-64-core:{registers.md,addressing.md,linux-syscalls.md,sysv-abi.md,instructions/README.md,instructions/mov.md,instructions/add.md,instructions/sub.md,instructions/jmp.md}|arm64-core:{registers.md,instructions/README.md,instructions/mov.md,instructions/add-sub.md,instructions/cmp.md,instructions/branch.md,instructions/svc.md}|arm64-apple:{abi.md,macos-syscalls.md}|arm64-simd:{neon.md}|zig:{AGENTS.md,PROVENANCE.md,00-general/installation.md,00-general/project-layout.md,01-langref/syntax-types.md,01-langref/error-handling.md,02-std/std-mem.md,02-std/std-fs.md,02-std/std-fmt.md,02-std/std-testing.md,02-std/std-process.md,03-tooling/zig-cli.md,03-tooling/build-system.md,03-tooling/targets.md}
+# Core Architecture
+|x86_registers:{docs/modules/x86-64-core/registers.md}
+|x86_addressing:{docs/modules/x86-64-core/addressing.md}
+|x86_instructions:{docs/modules/x86-64-core/instructions/*.md}
+|arm64_registers:{docs/modules/arm64-core/registers.md}
+|arm64_instructions:{docs/modules/arm64-core/instructions/*.md}
+
+# Platform ABI
+|sysv_abi:{docs/modules/x86-64-core/sysv-abi.md}
+|linux_syscalls:{docs/modules/x86-64-core/linux-syscalls.md}
+|apple_arm64_abi:{docs/modules/arm64-apple/abi.md}
+|macos_syscalls:{docs/modules/arm64-apple/macos-syscalls.md}
+
+# SIMD
+|neon:{docs/modules/arm64-simd/neon.md}
+
+# Zig
+|zig_index:{docs/modules/zig/AGENTS.md}
+|zig_langref:{docs/modules/zig/01-langref/README.md}
+|zig_std:{docs/modules/zig/02-std/README.md,docs/modules/zig/02-std/std-mem.md,docs/modules/zig/02-std/std-fs.md,docs/modules/zig/02-std/std-fmt.md,docs/modules/zig/02-std/std-testing.md,docs/modules/zig/02-std/std-process.md,docs/modules/zig/02-std/std-debug.md,docs/modules/zig/02-std/std-heap.md,docs/modules/zig/02-std/std-json.md,docs/modules/zig/02-std/std-http.md,docs/modules/zig/02-std/std-math.md}
+|zig_tooling:{docs/modules/zig/03-tooling/zig-cli.md,docs/modules/zig/03-tooling/build-system.md}
+|zig_provenance:{docs/modules/zig/PROVENANCE.json}
+
+# TODO (not yet created — do not retrieve)
+# avx, avx2, ios_syscalls, patterns, nasm, gas, lldb, objdump
+<!-- ASM-AGENTS-MD-END -->
+</docs_index>
