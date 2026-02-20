@@ -127,7 +127,23 @@ pub const SectionOffsets = struct {
     text_pool: u32,
 };
 
+/// Compute byte offset of each section within a validated blob.
+///
+/// PRECONDITION: `header` must come from a validated blob (via `validateBlob`
+/// or `computeBlobSize`). Section counts that overflow u32 arithmetic are
+/// undefined behaviour. Call `computeBlobSize()` first to validate.
 pub fn computeSectionOffsets(header: ScanBlobHeader) SectionOffsets {
+    // Debug-mode guard: verify the header counts don't overflow u32 arithmetic.
+    if (std.debug.runtime_safety) {
+        std.debug.assert(computeBlobSize(
+            header.heading_count,
+            header.link_count,
+            header.tag_count,
+            header.block_id_count,
+            header.line_count,
+            header.text_pool_size,
+        ) != null);
+    }
     const base: u32 = @sizeOf(ScanBlobHeader);
     const headings = base;
     const links = headings + header.heading_count * @sizeOf(BlobHeading);
@@ -197,12 +213,14 @@ pub fn writeHeader(data: []u8, header: ScanBlobHeader) void {
 
 /// Write a struct into the blob buffer at a given byte offset.
 pub fn writeStruct(comptime T: type, buf: []u8, offset: usize, value: T) void {
+    std.debug.assert(offset + @sizeOf(T) <= buf.len); // bounds check (debug only)
     const src: [*]const u8 = @ptrCast(&value);
     @memcpy(buf[offset..][0..@sizeOf(T)], src[0..@sizeOf(T)]);
 }
 
 /// Read a struct from the blob buffer at a given byte offset.
 pub fn readStruct(comptime T: type, buf: []const u8, offset: usize) T {
+    std.debug.assert(offset + @sizeOf(T) <= buf.len); // bounds check (debug only)
     var result: T = undefined;
     const dst: [*]u8 = @ptrCast(&result);
     @memcpy(dst[0..@sizeOf(T)], buf[offset..][0..@sizeOf(T)]);
