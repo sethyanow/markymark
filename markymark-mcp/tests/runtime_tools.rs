@@ -1,8 +1,9 @@
-use std::fs;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+mod common;
 
+use std::fs;
+use std::sync::Arc;
+
+use common::TempWorkspace;
 use markymark_mcp::{
     MarkymarkMcp, OutlineRequest, OutlineResponse, RuntimeEngine, SearchSymbolsRequest,
     SearchSymbolsResponse,
@@ -10,35 +11,6 @@ use markymark_mcp::{
 #[cfg(feature = "semantic-search")]
 use markymark_mcp::{SemanticSearchRequest, SemanticSearchResponse};
 use rmcp::handler::server::wrapper::Parameters;
-
-struct TempWorkspace {
-    root: PathBuf,
-}
-
-impl TempWorkspace {
-    fn new(name: &str) -> Self {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock should be after unix epoch")
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!(
-            "markymark-mcp-runtime-tools-{name}-{}-{nanos}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&root).expect("temporary workspace directory should be created");
-        Self { root }
-    }
-
-    fn root(&self) -> PathBuf {
-        self.root.clone()
-    }
-}
-
-impl Drop for TempWorkspace {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.root);
-    }
-}
 
 #[tokio::test]
 async fn mcp_tools_return_real_indexed_data() {

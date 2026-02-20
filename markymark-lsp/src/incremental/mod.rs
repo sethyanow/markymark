@@ -152,6 +152,26 @@ pub fn range_within_neighbor_window(
         && end_byte.saturating_add(window_bytes) >= edit.start_byte
 }
 
+/// Returns true if the byte range falls within `window_bytes` of the edit's *new* end.
+///
+/// Used by merge functions when filtering **new** entries (post-edit coordinate space).
+/// Complements `range_within_neighbor_window` for large insertions: when more than
+/// `window_bytes` bytes are inserted, new entries deep inside the inserted text have
+/// post-edit offsets beyond `old_end_byte + window_bytes` and would otherwise be
+/// silently dropped. Checking against `new_end_byte` instead catches them.
+///
+/// No-op for deletions and same-length replacements where `new_end_byte <= old_end_byte`;
+/// in those cases the old-end check already provides full coverage.
+pub fn range_within_new_end_window(
+    start_byte: usize,
+    end_byte: usize,
+    edit: &InputEdit,
+    window_bytes: usize,
+) -> bool {
+    start_byte <= edit.new_end_byte.saturating_add(window_bytes)
+        && end_byte.saturating_add(window_bytes) >= edit.start_byte
+}
+
 /// Returns true if the range starts at or after the edit's old end position.
 /// Used to identify entries that need position adjustment (but not re-extraction).
 ///
