@@ -271,9 +271,9 @@ impl LanguageServer for Backend {
                     }
                 }
 
-                for batch in batches {
-                    state_w.apply_document_changes(&doc_uri_clone, batch);
-                }
+                let all_changes: Vec<crate::state::DocumentChange> =
+                    batches.into_iter().flatten().collect();
+                state_w.apply_document_changes(&doc_uri_clone, all_changes);
                 state_w.compute_diagnostics(&doc_uri_clone)
             };
 
@@ -921,9 +921,9 @@ impl Backend {
                 return false;
             }
         }
-        for batch in batches {
-            state_w.apply_document_changes(uri, batch);
-        }
+        let all_changes: Vec<crate::state::DocumentChange> =
+            batches.into_iter().flatten().collect();
+        state_w.apply_document_changes(uri, all_changes);
         true
     }
 
