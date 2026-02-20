@@ -43,6 +43,19 @@ the start of each call, and have callers that persist the result `dupe()` it.
 Also: if a struct stores duped slices, its deinit must free them individually before
 freeing the container list (marky-i3fl).
 
+### Zig md4c error-handling and bounds patterns (2026-02-19)
+
+From PR#39 code review (marky-0mr.4/.6/.9) — patterns that recur in md4c Zig port:
+- **Silent `catch {}`** for buffer appends hides allocation failures → use `try`
+- **Pointer arithmetic on `BlockHeader`**: always compute alignment offset explicitly,
+  never assume `+ @sizeOf(...)` lands on the right boundary; add bounds guard via `if`
+- **Bounds before increment**: `pivot_end += 1` in binary search without checking
+  `pivot_end + 1 < map.len` is latent OOB on degenerate fold tables
+- **Dead code from dual-return**: when two consecutive branches both `return false`,
+  the redundant one is unreachable — remove it rather than leave a code-smell
+- **`>= N` vs `> N-1`**: use the form that most directly names the index being accessed
+  (e.g. `beg > 1` for `content[beg - 2]`)
+
 ### FFI serialization: validate math, pointers, and alignment (2026-02-17/18)
 
 For mmap-friendly binary formats, treat header counts and C pointers as untrusted input.
@@ -243,5 +256,13 @@ Replaces `from_scan()` in LSP hot path. ~850 lines of Rust incremental code dele
 - from_ast()/from_scan() retained for MCP batch and backward compat
 - Tree-sitter stays separate for lazy AST (hover/goto-def)
 
-**Task 1:** marky-6jzs — Zig DocumentEngine struct + blob serialization. SRE-refined with
-18+ TDD test cases, allocator strategy, slug dedup algorithm, 5 edge case mitigations.
+**Tasks complete:**
+- **Task 1** (marky-6jzs, DONE) — Zig DocumentEngine struct + blob serialization.
+  SRE-refined with 18+ TDD test cases, allocator strategy, slug dedup, 5 edge case mitigations.
+- **Task 2** (marky-atsp, DONE) — FFI exports (C ABI) + Rust DocumentEngine wrapper + ScanBlob.
+- **marky-0mr.9** (DONE) — P0-P2 md4c parser fixes required before Task 3 could proceed.
+
+**Next: Task 3** (marky-2n4u, unblocked) — `DocumentIndex::from_blob()` constructor.
+- 15 TDD tests, BlobError enum, header validation, text pool bounds checking, parity vs from_scan.
+- **Known parity gap (v1):** Zig engine sets `end = start` for all entries — parity test skips end positions.
+- Blob magic: `0x4D4B5343` ("MKSC"), version 1, little-endian.
