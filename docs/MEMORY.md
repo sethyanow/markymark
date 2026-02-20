@@ -12,7 +12,7 @@ Completed work details live in git history, not here.
 
 ### Crate Structure
 
-Six-crate workspace (core, parser, index, lsp, mcp, cli) is well-partitioned.
+Seven-crate workspace (core, parser, index, lsp, mcp, cli, kernels) is well-partitioned.
 Arena allocation (bumpalo) lives in parser layer, not crossing into transport (lsp/mcp).
 This keeps Send/Sync constraints manageable.
 
@@ -297,13 +297,24 @@ crate table in the same PR. Now fixed (Seven crates, kernels included).
 3. **Publish order staleness** — RELEASING.md publish order drifted when `markymark-kernels`
    was added. Always re-derive from `cargo metadata` before publishing. See RELEASING.md
    for the derivation command.
+4. **Inter-crate dependency versions** — Each crate's `Cargo.toml` has explicit `version = "X.Y.Z"`
+   on its internal dependencies (e.g. `markymark-core = { version = "0.5.0", path = "..." }`).
+   These must be bumped alongside the workspace version. Forgetting them causes `cargo build`
+   to fail with "failed to select a version for the requirement". Historical precedent: v0.5.0
+   initial build failed until all 5 crate Cargo.toml files were updated.
+5. **Worktree prevents main checkout** — In a git worktree setup, `git checkout main` fails
+   because main is checked out in another worktree. Tagging must be done from the main worktree
+   by the human. The prepare-release skill Phase 4 is human-owned for this reason.
 
 ### Conventions
 
 - **Tag format:** `vMAJOR.MINOR.PATCH` on `main` branch only
 - **Publish order:** kernels → core → parser → index → lsp/mcp (parallel) → cli
 - **Skill:** See `prepare-release` skill (`.claude/skills/prepare-release/`) for
-  guided release workflow with human checkpoints
+  guided 5-phase release workflow with human checkpoints
+- **Release notes:** Auto-generated git-cliff notes are replaced in Phase 5 with
+  curated narrative notes (grouped by theme, not flat commit list). Agent drafts,
+  human approves, then published via `gh release edit`.
 
 ---
 
@@ -499,10 +510,21 @@ no scan_code_spans(). All three DocumentIndex construction paths need code span 
 
 - **Tier 1 only for first pass** — backtick inline code spans, no confidence scoring
 - **kind field is Optional** — Tier 1 can't determine struct/fn/trait from backtick text
-- **fgl8 (extract.rs split) decoupled** — not blocking Tier 1
-- **Zig layer consolidation explored** — sink all extraction to Zig over time, extract.rs
-  becomes compatibility shim. Aligns with Option H trajectory.
-- **Refinement blocker:** marky-bt3e must complete before ix3 implementation starts
+- **All 3 construction paths required for Tier 1** — from_scan (Zig FFI), from_blob (blob v2),
+  from_ast (extract.rs regex). No silent gaps where some paths lack code spans.
+- **fgl8 is prerequisite for from_ast** — extract.rs at 862 lines must split before adding
+  regex code span extraction. Decoupled from Zig-side work (can proceed in parallel).
+- **Zig consolidation committed in ix3** — all 11 markdown-content extractors migrate from
+  extract.rs regex to Zig ExtractionRenderer. Only frontmatter stays in Rust. Three phases:
+  A (code spans all paths), B (extractor migration), C (extract.rs becomes shim).
+- **Blob v2 reserves generously** — header v2 adds code_span_count plus reserved slots for
+  all Phase B extraction types. No v3 bump needed within ix3 scope.
+- **from_blob backward-compatible** — must read both v1 (no code spans) and v2 blobs.
+- **FFI path is md4c/exports.zig** — CMd4cResult extended with code_spans pointer and count.
+  NOT engine/exports.zig (that's the Document Engine lifecycle only).
+- **Separate code_scan_cursor** — per marky-0rl6 lesson, never share mutable scan cursors
+  between extraction types. Code spans get their own cursor.
+- **bt3e refinement complete** — ix3 epic updated, first task marky-pdyo SRE-refined and ready.
 
 ---
 

@@ -1,11 +1,11 @@
 ---
 name: prepare-release
-description: Prepare a markymark release — version bump, quality gates, PR, and tag with human checkpoints
+description: Prepare a markymark release — version bump, quality gates, PR, tag, and release notes with human checkpoints
 ---
 
 # prepare-release
 
-Prepare a markymark release through a conversational 4-phase workflow with human checkpoints between each phase. The agent automates tedious parts (commit classification, version bumping, Cargo.lock regeneration) while the human makes all decisions (version number, PR approval, merge).
+Prepare a markymark release through a conversational 5-phase workflow with human checkpoints between each phase. The agent automates tedious parts (commit classification, version bumping, Cargo.lock regeneration, release notes) while the human makes all decisions (version number, PR approval, merge, tagging).
 
 ## When to Use
 
@@ -13,7 +13,7 @@ Use this skill when:
 - You are preparing a new release of markymark
 - You need to bump the version across all workspace crates
 - You want to create a release PR from `dev` to `main`
-- You need to tag a release after a PR is merged
+- You need to refine release notes after a tag is pushed
 
 ## Prerequisites
 
@@ -129,15 +129,21 @@ command -v git-cliff && echo "git-cliff available" || echo "git-cliff not instal
    version = "A.B.C"
    ```
 
-2. **Edit `markymark-plugin/.claude-plugin/plugin.json`** version field:
+2. **Edit all inter-crate dependency versions** in each crate's `Cargo.toml`:
+   - Search for `markymark-` dependencies with `version = "OLD"` across all crate `Cargo.toml` files
+   - Update each to `version = "A.B.C"` while preserving `path`, `optional`, and `features` attributes
+   - Affected files: `markymark-index/Cargo.toml`, `markymark-parser/Cargo.toml`, `markymark-lsp/Cargo.toml`, `markymark-cli/Cargo.toml`, `markymark-mcp/Cargo.toml`
+   - Use `grep` to find all instances: `grep -rn 'markymark-.*version = "' */Cargo.toml`
+
+3. **Edit `markymark-plugin/.claude-plugin/plugin.json`** version field:
    - Change ONLY the `"version"` value. Do not reformat, reorder keys, or modify other fields.
 
-3. **Validate plugin.json syntax:**
+4. **Validate plugin.json syntax:**
    ```bash
    python3 -c "import json; json.load(open('markymark-plugin/.claude-plugin/plugin.json')); print('plugin.json: valid')"
    ```
 
-4. **Cross-file version assertion** (both files must match):
+5. **Cross-file version assertion** (all files must match):
    ```bash
    CARGO_VER=$(cargo metadata --format-version 1 --no-deps | python3 -c "
    import json, sys
@@ -153,7 +159,7 @@ command -v git-cliff && echo "git-cliff available" || echo "git-cliff not instal
    [ "$CARGO_VER" = "$PLUGIN_VER" ] && echo "Versions match" || echo "ERROR: Version mismatch!"
    ```
 
-5. **Rebuild to regenerate Cargo.lock:**
+7. **Rebuild to regenerate Cargo.lock:**
    ```bash
    cargo build
    ```
@@ -164,7 +170,7 @@ command -v git-cliff && echo "git-cliff available" || echo "git-cliff not instal
    - If unrelated to version change: fix the root cause first (separate commit), then retry
    - If caused by the version change itself (unlikely): revert edits with `git checkout -- Cargo.toml markymark-plugin/.claude-plugin/plugin.json`
 
-6. **Validate Cargo.lock regeneration** (dynamic, not hardcoded):
+8. **Validate Cargo.lock regeneration** (dynamic, not hardcoded):
    ```bash
    cargo metadata --format-version 1 --no-deps | python3 -c "
    import json, sys
@@ -180,7 +186,7 @@ command -v git-cliff && echo "git-cliff available" || echo "git-cliff not instal
    ```
    If Cargo.lock is unchanged after a version bump, something went wrong.
 
-7. **Run full quality gates** (all must pass before committing):
+9. **Run full quality gates** (all must pass before committing):
    ```bash
    # Format check
    cargo fmt --all -- --check
@@ -207,7 +213,7 @@ command -v git-cliff && echo "git-cliff available" || echo "git-cliff not instal
    - **NEVER** commit the version bump with failing gates.
    - **NEVER** amend a previous commit to include fixes. Always create new commits.
 
-8. **Validate RELEASING.md publish order** against current cargo metadata:
+10. **Validate RELEASING.md publish order** against current cargo metadata:
    ```bash
    cargo metadata --format-version 1 --no-deps | python3 -c "
    import json, sys
@@ -220,10 +226,11 @@ command -v git-cliff && echo "git-cliff available" || echo "git-cliff not instal
    ```
    Compare the output against the publish order listed in RELEASING.md. If they differ, update RELEASING.md as part of this commit.
 
-9. **Commit ALL version-bumped files in one commit:**
+11. **Commit ALL version-bumped files in one commit:**
    ```bash
    git add Cargo.toml Cargo.lock markymark-plugin/.claude-plugin/plugin.json
-   # Also add RELEASING.md if it was updated in step 8
+   git add markymark-*/Cargo.toml  # inter-crate dependency versions
+   # Also add RELEASING.md if it was updated in step 10
    git commit -m "$(cat <<'EOF'
    chore(release): bump version to A.B.C
    EOF
@@ -233,7 +240,7 @@ command -v git-cliff && echo "git-cliff available" || echo "git-cliff not instal
 
    **If pre-commit hooks fail:** The commit did NOT happen. Fix the issue, re-stage, and create a NEW commit attempt. Do NOT use `--amend`.
 
-10. **Push to remote immediately** (prevents race conditions):
+12. **Push to remote immediately** (prevents race conditions):
     ```bash
     git push origin dev
     ```
@@ -312,63 +319,117 @@ PR: [URL]
 Base: main <- dev
 Title: Release vA.B.C
 
-The PR is ready for your review. Please merge it when satisfied.
-After you merge, tell me and I'll tag the release.
+The PR is ready for your review. Please:
+1. Merge it when satisfied
+2. Tag the release: `git tag vA.B.C && git push origin vA.B.C`
+3. Tell me when the tag is pushed — I'll refine the release notes
 ```
 
 ---
 
-## Phase 4: Tag
+## Phase 4: Tag (Human-Owned)
 
 **Goal:** Tag the release on `main` after the human has merged the PR.
 
+**This phase is performed by the human**, not the agent. The agent cannot checkout `main` in a worktree environment (where `main` is checked out in a different worktree). The human tags from their main worktree or bare repo.
+
+### Human performs these steps
+
+```bash
+# From the main worktree (or any checkout of main):
+git checkout main
+git pull origin main
+git tag vA.B.C
+git push origin vA.B.C
+```
+
+### STOP: Wait for human to confirm the tag is pushed.
+
+The agent verifies the tag exists:
+```bash
+git fetch --tags
+git log --oneline -1 vA.B.C
+```
+
+---
+
+## Phase 5: Release Notes Refinement
+
+**Goal:** Replace the auto-generated git-cliff release notes with a curated, narrative version.
+
+The CI release workflow (triggered by the tag push) creates a GitHub Release with auto-generated notes from git-cliff. These are a raw commit dump with internal issue IDs and no narrative structure. This phase replaces them with human-quality release notes.
+
 ### Steps
 
-1. **Switch to main and pull** (tag MUST be on main, not dev):
+1. **Read the auto-generated release notes:**
    ```bash
-   git fetch origin
-   git checkout main
-   git pull origin main
+   gh release view vA.B.C --json body --jq '.body'
    ```
 
-2. **Verify the version bump commit is present:**
+2. **Fetch PR review comments** for additional context (Copilot summary, CodeRabbit findings):
    ```bash
-   git log --oneline -5
+   gh api repos/sethyanow/markymark/pulls/PR_NUMBER/reviews --jq '.[].body'
    ```
-   Confirm the version bump commit (or merge commit containing it) is visible.
 
-3. **Create and push the tag:**
+3. **Draft curated release notes** following this structure:
+
+   ```markdown
+   ## vA.B.C — [Release Title: 2-4 word theme]
+
+   [1-2 paragraph narrative describing the major theme of this release.
+   What changed architecturally? What's the user-visible impact?]
+
+   ### Highlights
+   - **[Theme 1]** — [1-2 sentence summary with architectural context]
+   - **[Theme 2]** — [1-2 sentence summary]
+
+   ### New Features
+   - [Feature description] ([commit](link))
+
+   ### [Thematic Bug Fix Groups]
+   Group fixes by theme (Soundness, FFI, LSP, Parser, etc.) rather than
+   listing them flat. Each group gets a heading like:
+   - "Soundness & Memory Safety"
+   - "FFI Hardening"
+   - "LSP Fixes"
+   - "Parser Fixes"
+
+   ### Testing
+   - [Notable test additions]
+
+   ### Refactoring
+   - [Notable structural changes]
+
+   ### Infrastructure
+   - [Build/release/CI changes]
+
+   **Full diff:** [vPREV...vA.B.C](https://github.com/sethyanow/markymark/compare/vPREV...vA.B.C)
+   **Release PR:** [#N](https://github.com/sethyanow/markymark/pull/N)
+   ```
+
+   **Writing guidelines:**
+   - Lead with a narrative intro explaining the architectural story
+   - Group by theme, not by flat commit type
+   - Include commit links for traceability
+   - Strip internal noise: memory curation commits, merge commits, version bump commits
+   - Do NOT include previous release content (git-cliff sometimes includes it)
+   - Keep internal issue IDs (marky-xxxx) out of user-facing notes
+
+4. **Present draft to human for approval** before publishing.
+
+### STOP: Wait for human to approve release notes.
+
+5. **Publish the curated notes:**
    ```bash
-   git tag vA.B.C
-   git push origin vA.B.C
+   gh release edit vA.B.C --notes "$(cat <<'ENDOFNOTES'
+   [approved release notes content]
+   ENDOFNOTES
+   )"
    ```
 
-4. **Verify the tag:**
+6. **Verify the update:**
    ```bash
-   git log --oneline -1 vA.B.C
-   ```
-   This should show the merge commit on main.
-
-5. **Switch back to dev:**
-   ```bash
-   git checkout dev
-   git pull origin dev
-   ```
-
-6. **Present completion:**
-   ```
-   ## Release Tagged
-
-   Tag: vA.B.C
-   Branch: main (correct)
-   Release CI: Triggered by tag push
-
-   The release workflow will:
-   1. Build binaries for 5 targets
-   2. Package the Claude Code plugin archive
-   3. Create a GitHub Release with artifacts
-
-   Monitor at: https://github.com/sethyanow/markymark/actions
+   gh release view vA.B.C --json name,tagName --jq '"\(.name) — \(.tagName)"'
    ```
 
 ---
@@ -379,10 +440,11 @@ If something goes wrong at any phase:
 
 | Phase | Rollback |
 |-------|----------|
-| Phase 2 (before commit) | `git checkout -- Cargo.toml Cargo.lock markymark-plugin/.claude-plugin/plugin.json` |
+| Phase 2 (before commit) | `git checkout -- Cargo.toml Cargo.lock markymark-plugin/.claude-plugin/plugin.json markymark-*/Cargo.toml` |
 | Phase 2 (after commit, before push) | `git reset HEAD~1` (undoes commit, keeps changes staged) |
 | Phase 3 (PR created) | Close the PR via `gh pr close [number]` |
 | Phase 4 (tag pushed) | `git tag -d vA.B.C && git push origin :refs/tags/vA.B.C` (delete local and remote tag) |
+| Phase 5 (notes published) | Re-run `gh release edit vA.B.C --notes "..."` with corrected content |
 
 ---
 
