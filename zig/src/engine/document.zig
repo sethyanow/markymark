@@ -190,8 +190,10 @@ fn parseAll(
     out_content_hash: *u64,
 ) DocumentEngine.Error!void {
     // 1. md4c extraction (headings + links)
-    var extraction = extraction_renderer.extractFromMarkdown(text, allocator) catch
-        return error.ParseFailed;
+    var extraction = extraction_renderer.extractFromMarkdown(text, allocator) catch |e| return switch (e) {
+        error.OutOfMemory => error.OutOfMemory,
+        error.StackOverflow, error.InputTooLarge => error.ParseFailed,
+    };
 
     // We'll build stored versions and then free the extraction result.
     // On error, free both extraction and any partial stored results.
@@ -213,7 +215,7 @@ fn parseAll(
         extraction.deinit();
         return error.OutOfMemory;
     };
-    errdefer allocator.free(line_starts);
+    errdefer if (line_starts.len > 0) allocator.free(line_starts);
 
     // 3. Build fence map for tag/block filtering
     var fence_buf: [256]fence_map_mod.FenceRange = undefined;
@@ -455,22 +457,24 @@ fn inFenceRange(ranges: []const fence_map_mod.FenceRange, pos: u32) bool {
 // ── Blob serialization ──────────────────────────────────────────────
 
 fn serializeState(engine: *const DocumentEngine) ![]u8 {
-    // Compute text pool size
-    var text_pool_size: u32 = 0;
+    // Compute text pool size in u64 to avoid u32 wrap-before-check (C6).
+    var text_pool_size: u64 = 0;
     for (engine.headings) |h| {
-        text_pool_size += @intCast(h.text.len);
-        text_pool_size += @intCast(h.slug.len);
+        text_pool_size += h.text.len;
+        text_pool_size += h.slug.len;
     }
     for (engine.links) |l| {
-        text_pool_size += @intCast(l.text.len);
-        text_pool_size += @intCast(l.target.len);
+        text_pool_size += l.text.len;
+        text_pool_size += l.target.len;
     }
     for (engine.tags) |t| {
-        text_pool_size += @intCast(t.name.len);
+        text_pool_size += t.name.len;
     }
     for (engine.block_ids) |b| {
-        text_pool_size += @intCast(b.id.len);
+        text_pool_size += b.id.len;
     }
+    if (text_pool_size > std.math.maxInt(u32)) return error.OutOfMemory;
+    const text_pool_u32: u32 = @intCast(text_pool_size);
 
     const total_size = blob.computeBlobSize(
         @intCast(engine.headings.len),
@@ -478,7 +482,7 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
         @intCast(engine.tags.len),
         @intCast(engine.block_ids.len),
         @intCast(engine.line_starts.len),
-        text_pool_size,
+        text_pool_u32,
     ) orelse return error.OutOfMemory;
 
     // Allocate blob
@@ -496,7 +500,7 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
         .tag_count = @intCast(engine.tags.len),
         .block_id_count = @intCast(engine.block_ids.len),
         .line_count = @intCast(engine.line_starts.len),
-        .text_pool_size = text_pool_size,
+        .text_pool_size = text_pool_u32,
         .token_estimate = engine.token_estimate,
         .total_blob_size = total_size,
     };
