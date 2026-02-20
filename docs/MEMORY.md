@@ -28,7 +28,8 @@ Known issue: XML tag false positives in code blocks (marky-8la).
   MutexGuard lifetime via raw pointer, then dereferences `&Bump` (interior mutability via Cell)
   without the guard held. Technically UB under Rust aliasing rules. Single-threaded in practice
   (only called during `from_ast` construction). Fix: restructure self_cell builder or replace
-  Mutex with UnsafeCell + safety proof. The `from_blob()` path (Option H) avoids this entirely.
+  Mutex with UnsafeCell + safety proof. Note: the LSP hot path now uses `from_blob()` which
+  avoids this entirely; `arena_ref` is only hit by MCP/batch `from_ast()` callers.
 
 ---
 
@@ -92,12 +93,17 @@ CLAUDE.md "Document Intelligence" section for the full LSP vs MCP decision tree.
 - **self_cell owner/dependent for Ast internals on stable Rust** (dec-051).
 - **Parameterize SymbolAtPosition over lifetime instead of 'static** (dec-049). LSP state clones index entries; 'static caused borrow escape errors.
 
-### Incremental Indexing (Phase 3)
+### ~~Incremental Indexing (Phase 3)~~ — SUPERSEDED by Epic H (marky-io3h)
 
-- **LSP-layer orchestration, not index-layer diffing** (dec-phase3-001). Leverages existing InputEdit data.
+The tree-sitter incremental indexing architecture (5 extractors, byte-range merge, LSP-layer
+orchestration) was deleted in Task 4 (marky-n78f, tag `marky-io3h-complete`). Replaced by
+Zig DocumentEngine pipeline: full md4c reparse on every edit, blob serialization, `from_blob()`
+in Rust. Net -2,839 lines. The decisions below are historical context only.
+
+- **LSP-layer orchestration, not index-layer diffing** (dec-phase3-001).
 - **Byte-range granularity using InputEdit ranges** (dec-phase3-002).
-- **All 5 independent extractors get incremental** (dec-phase3-003): wiki_links, blocks, tags, markdown_links, xml_tags.
-- **Headings/TOC/outline always full rebuild** (dec-phase3-004). O(headings), cheap.
+- **All 5 independent extractors get incremental** (dec-phase3-003).
+- **Headings/TOC/outline always full rebuild** (dec-phase3-004).
 - **Markdown incremental only, JSON/YAML/TOML always full rebuild** (dec-phase3-006).
 - **Wiki-link merge: range intersection + neighbor window + tail-boundary guard** (marky-77x).
 
@@ -176,6 +182,17 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 - **Path-relative without filesystem access**: Component-stack normalization (pop on `..`, skip `.`/empty) instead of `std::fs::canonicalize`. `canonicalize` requires path to exist on disk.
 - **Stem-only is the fallback, not the primary**: Path-relative resolution wins when URL contains `/`. Stem-only fires when path-relative misses.
 
+### Engine Pipeline (Epic H)
+
+- **XML tags require supplementary extraction** — md4c treats HTML as pass-through, so the
+  engine blob never contains XML tags. LSP calls `extract_xml_tags_from_text()` (markymark-parser
+  single-pass scanner) and passes results to `from_blob_with_xml_tags()`. Any future blob-missing
+  feature needs the same supplement pattern.
+- **End positions computed in Zig** — heading, link, and block-id end positions are calculated
+  during document construction in `zig/src/engine/document.zig`, avoiding double-computation in Rust.
+- **Engine lifecycle: create → update → get_blob → from_blob → destroy** — per-document
+  `DocumentEngine` in `ServerState.engines` HashMap. Same URI key as `documents` and `realm`.
+
 ### LSP/MCP
 - **Diagnostic logic lives in `markymark-index/src/diagnostics.rs`** (marky-6i9). Shared `compute_diagnostics(index, realm, uri)` used by both LSP and MCP.
 - **Adding a new CoreOperation follows a 5-stop pattern**: (1) types in `core/engine.rs`, (2) compute logic in `index/`, (3) engine handler in `mcp/src/engine/{op}.rs`, (4) DTO + tool handler in `mcp/src/tools/{op}.rs`, (5) `#[tool]` wiring in `lib.rs`.
@@ -208,9 +225,11 @@ with single-quoted delimiter (`'EOF'`) to bypass.
 **Superseded:**
 - **D: Vendor tree-sitter-md** (marky-0jz) — target achieved by Option G. Not yet closed.
 
-**Active:**
-- **H: Zig Document Engine** (marky-io3h) — see below. Task 1 (marky-6jzs) ready.
-- **E: Lazy AST** (marky-syx, P3) — deferred. Depends on marky-v8g (TreeSitterScanBackend). Value reduced now that md4c handles the indexing hot path.
+**Completed:**
+- **H: Zig Document Engine** (marky-io3h, DONE) — see below. Tagged `marky-io3h-complete`.
+
+**Deferred:**
+- **E: Lazy AST** (marky-syx, P3) — deferred. Tree-sitter remains only for MCP batch and hover/goto-def. Value reduced now that engine pipeline handles the LSP indexing hot path.
 
 **Follow-up:**
 - **RealmIndex string interning** (marky-6qri, P4) — `.to_string()` per heading/tag/block in `add_document`. String interner or `Arc<str>` for large vaults. Blocked on marky-io3h (blob text pool enables efficient interning).
@@ -233,22 +252,21 @@ This is the exact bottleneck Option H eliminates.
 Throughput drops at scale due to per-element allocation density: 53 MB/s (10KB) → 23 MB/s
 (50KB) → 10 MB/s (100KB). Parser is fast; bottleneck is N allocations in ExtractionRenderer.
 
-### Option H: Zig Document Engine (marky-io3h)
+### Option H: Zig Document Engine (marky-io3h) — COMPLETE
 
 Stateful Zig engine that owns per-document parse state and serves a flat binary blob
-to Rust. Replaces N+4 FFI calls with exactly 2 (update + get_blob).
+to Rust. Replaces N+4 FFI calls with exactly 2 (update + get_blob). Tagged `marky-io3h-complete`.
 
-**Problem:** Quadruple text copy: (1) per-element strings during md4c parse, (2) into
-text_blob for FFI, (3) Rust converts to owned Strings, (4) copies into bumpalo arena.
+**Architecture:** Zig `DocumentEngine` with create/update/getBlob/destroy lifecycle.
+Lazy blob serialization. Blob format: 64B header (magic 0x4D4B5343) + packed struct
+arrays + contiguous text pool.
 
-**Architecture:** Zig `DocumentEngine` with create/update/getBlob/destroy lifecycle
-(same pattern as EmbeddingIndex and LinkGraph). Lazy blob serialization. Blob format:
-64B header (magic 0x4D4B5343) + packed struct arrays + contiguous text pool.
+**Rust side:** `DocumentIndex::from_blob()` / `from_blob_with_xml_tags()` copies text
+from blob pool into arena. Replaced `from_scan()` + incremental module in LSP hot path.
+Net -2,839 lines.
 
-**Rust side:** New `DocumentIndex::from_blob()` copies text from blob pool into arena.
-Replaces `from_scan()` in LSP hot path. ~850 lines of Rust incremental code deletable.
-
-**Expected:** ~4ms at 50KB (engine ~2.5ms + from_blob ~1.5ms) vs current 9.4ms.
+**Performance:** Not yet benchmarked against `marky-io3h-complete` tag. Expected ~4ms
+at 50KB (engine ~2.5ms + from_blob ~1.5ms) vs previous 9.4ms from_scan baseline.
 
 **Key decisions:**
 - Stateful (not stateless) — enables slug caching, lazy blob, future incremental
@@ -267,11 +285,7 @@ Replaces `from_scan()` in LSP hot path. ~850 lines of Rust incremental code dele
   `dep:markymark-kernels` added to `zig-kernels` feature so tests use real DocumentEngine;
   checked arithmetic for pool offsets; `matches!()` for Result assertions (DocumentIndex: !PartialEq).
 
-- **Task 4** (marky-n78f, DONE) — LSP integration replacing incremental scan with engine pipeline.
-  `markymark-lsp/src/state/mod.rs`: ServerState now uses per-document `DocumentEngine` instances.
-  `build_markdown_index_via_engine()` calls engine.update() + get_blob() + from_blob_with_xml_tags().
-  Deleted entire `incremental/` module (~850 lines). Tree-sitter `Parser` and `MarkdownTree` removed from state.
-  XML tags: engine/blob path doesn't extract them (md4c treats HTML as pass-through), so
-  `extract_xml_tags_from_text()` runs the markymark-parser single-pass tag scanner as supplement.
-  Added `from_blob_with_xml_tags()` to accept supplementary XML tags alongside blob data.
-  All E2E tests pass. All workspace tests pass. Clippy clean.
+- **Task 4** (marky-n78f, DONE) — LSP integration. Replaced incremental module with engine pipeline.
+  Deleted `incremental/` (~2,100 lines incl. tests), removed tree-sitter Parser from ServerState.
+  Key constraint discovered: XML tags need supplementary extraction (`extract_xml_tags_from_text()`)
+  because md4c treats HTML as pass-through. All tests pass. Tag: `marky-io3h-complete`.
