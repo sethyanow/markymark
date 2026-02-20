@@ -556,11 +556,16 @@ impl DocumentIndex {
         // Pre-compute line starts for byte-offset → Position conversion
         let line_starts = helpers::byte_offset_line_starts(text);
 
-        // Collect owned data from scan backend before entering self_cell closure
-        let ScanAllResult {
-            headings: scan_headings,
-            links: scan_links,
-        } = backend.scan_all(text).unwrap_or_default();
+        // Collect owned data from scan backend before entering self_cell closure.
+        // Fall back to independent scans if scan_all fails so that headings
+        // and links are never both silently dropped due to one-sided error.
+        let (scan_headings, scan_links) = match backend.scan_all(text) {
+            Ok(result) => (result.headings, result.links),
+            Err(_) => (
+                backend.scan_headings(text).unwrap_or_default(),
+                backend.scan_links(text).unwrap_or_default(),
+            ),
+        };
         let scan_tags = backend.scan_tags(text).unwrap_or_default();
         let scan_blocks = backend.scan_block_ids(text).unwrap_or_default();
 
