@@ -25,7 +25,7 @@
 use bumpalo::collections::Vec as BumpVec;
 use hashbrown::HashMap;
 use markymark_core::arena::{arena_alloc_str, DocumentArena};
-use markymark_core::prelude::*;
+use markymark_core::{Position, Range};
 
 use super::{
     helpers, BlockEntry, BlockRefEntry, DocumentDependent, DocumentIndex, DocumentIndexCell,
