@@ -363,3 +363,134 @@ fn test_document_lookup_by_uri() {
         "nonexistent URI should return None"
     );
 }
+
+// ---------------------------------------------------------------------------
+// String interning regression tests (marky-2yzz)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_interned_slug_dedup_cross_doc() {
+    // Two documents with identical heading slugs should share the same
+    // interned key internally. Verify both are accessible via lookup.
+    let mut realm = RealmIndex::new();
+
+    let uri_a = uri("intern-a.md");
+    let uri_b = uri("intern-b.md");
+    realm.add_document(uri_a.clone(), index_from("# Intro\n\nDoc A"));
+    realm.add_document(uri_b.clone(), index_from("# Intro\n\nDoc B"));
+
+    let results = realm.lookup_heading("intro");
+    assert_eq!(
+        results.len(),
+        2,
+        "both docs should contribute to slug 'intro'"
+    );
+
+    let uris: Vec<&str> = results.iter().map(|(u, _)| u.as_str()).collect();
+    assert!(uris.contains(&uri_a.as_str()));
+    assert!(uris.contains(&uri_b.as_str()));
+}
+
+#[test]
+fn test_remove_then_readd_same_content() {
+    // Interner retains old Spur values; re-adding same content must work.
+    let mut realm = RealmIndex::new();
+    let doc_uri = uri("cycle.md");
+
+    let content = "# Overview\n\nContent #cycling ^block-cycle";
+
+    realm.add_document(doc_uri.clone(), index_from(content));
+    assert_eq!(realm.lookup_heading("overview").len(), 1);
+    assert!(realm.lookup_block("block-cycle").is_some());
+
+    realm.remove_document(&doc_uri);
+    assert!(realm.lookup_heading("overview").is_empty());
+    assert!(realm.lookup_block("block-cycle").is_none());
+
+    // Re-add same content
+    realm.add_document(doc_uri.clone(), index_from(content));
+    assert_eq!(realm.lookup_heading("overview").len(), 1);
+    assert!(realm.lookup_block("block-cycle").is_some());
+    let has_tag = realm.tag_counts().iter().any(|(n, _)| n == "cycling");
+    assert!(has_tag, "tag should be present after re-add");
+}
+
+#[test]
+fn test_cross_doc_same_slug_remove_first() {
+    // Two docs with same slug. Remove first. Verify only second remains.
+    let mut realm = RealmIndex::new();
+
+    let uri_a = uri("cross-a.md");
+    let uri_b = uri("cross-b.md");
+    realm.add_document(uri_a.clone(), index_from("# Overview\n\nDoc A"));
+    realm.add_document(uri_b.clone(), index_from("# Overview\n\nDoc B"));
+
+    assert_eq!(realm.lookup_heading("overview").len(), 2);
+
+    realm.remove_document(&uri_a);
+
+    let results = realm.lookup_heading("overview");
+    assert_eq!(results.len(), 1, "only doc B's heading should remain");
+    assert_eq!(results[0].0.as_str(), uri_b.as_str());
+}
+
+#[test]
+fn test_lookup_heading_returns_correct_strings() {
+    // Verify returned ResolvedHeading has correct text and slug Strings
+    // (not corrupted by interning).
+    let mut realm = RealmIndex::new();
+    let doc_uri = uri("strings.md");
+    realm.add_document(doc_uri.clone(), index_from("# Hello World\n\nContent"));
+
+    let results = realm.lookup_heading("hello-world");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].1.text, "Hello World");
+    assert_eq!(results[0].1.slug, "hello-world");
+    assert_eq!(results[0].1.level, 1);
+}
+
+#[test]
+fn test_tag_counts_after_interning() {
+    // Two docs with overlapping tags. Verify counts are correct.
+    let mut realm = RealmIndex::new();
+
+    realm.add_document(uri("tag-a.md"), index_from("Content #alpha #beta here"));
+    realm.add_document(uri("tag-b.md"), index_from("More #beta #gamma content"));
+
+    let counts = realm.tag_counts();
+    let alpha = counts.iter().find(|(n, _)| n == "alpha");
+    let beta = counts.iter().find(|(n, _)| n == "beta");
+    let gamma = counts.iter().find(|(n, _)| n == "gamma");
+
+    assert_eq!(alpha.unwrap().1, 1, "alpha in 1 doc");
+    assert_eq!(beta.unwrap().1, 2, "beta in 2 docs");
+    assert_eq!(gamma.unwrap().1, 1, "gamma in 1 doc");
+}
+
+#[test]
+fn test_block_lookup_returns_correct_id() {
+    let mut realm = RealmIndex::new();
+    realm.add_document(uri("block-id.md"), index_from("Paragraph ^my-block"));
+
+    let result = realm.lookup_block("my-block");
+    assert!(result.is_some());
+    let (_uri, block) = result.unwrap();
+    assert_eq!(block.id, "my-block");
+}
+
+#[test]
+fn test_remove_document_clears_cross_doc_maps() {
+    // After removing the only doc, all cross-doc maps should be empty.
+    let mut realm = RealmIndex::new();
+    let doc_uri = uri("solo.md");
+    realm.add_document(
+        doc_uri.clone(),
+        index_from("# Heading\n\nContent #tag ^block-id"),
+    );
+
+    realm.remove_document(&doc_uri);
+
+    assert!(realm.lookup_heading("heading").is_empty());
+    assert!(realm.lookup_block("block-id").is_none());
+    assert!(realm.tag_counts().is_empty());
+}

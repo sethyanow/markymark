@@ -31,6 +31,19 @@ pub struct ResolvedBlock {
     pub range: Range,
 }
 
+/// Owned copy of code span data for cross-document lookups.
+#[derive(Debug, Clone)]
+pub struct ResolvedCodeSpan {
+    /// The code span text content.
+    pub text: String,
+    /// Source range.
+    pub range: Range,
+    /// Byte offset of span start.
+    pub start_byte: usize,
+    /// Byte offset of span end.
+    pub end_byte: usize,
+}
+
 /// Either a markdown or structured document index.
 pub enum AnyDocumentIndex {
     /// Markdown document indexed from tree-sitter AST.
