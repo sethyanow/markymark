@@ -209,6 +209,15 @@ CLAUDE.md "Project Overview" said "Six crates" and omitted `markymark-kernels`. 
 the kernels crate was added. Lesson: when adding a crate to the workspace, update CLAUDE.md
 crate table in the same PR. Now fixed (Seven crates, kernels included).
 
+### docs/modules and docs/zig_agent_docs are symlinks to forge repo (info-docs-symlinks)
+`docs/modules` → `../../../forge/docs/modules/` and `docs/zig_agent_docs` →
+`../../../forge/docs/zig_agent_docs` are **symlinks** to the forge repo. The `ASM-AGENTS-MD`
+docs_index block in CLAUDE.md references paths under `docs/modules/` — these resolve via
+symlink when forge is present. `git ls-files` and `find -type f` from the worktree root
+won't find them (symlinks not tracked). Use absolute path to forge or `ls -la docs/` to
+verify. 40 `.md` files exist at the target. CodeRabbit flagged these as "non-existent" —
+false positive due to not following symlinks (2026-02-20).
+
 ---
 
 ## Key Patterns
