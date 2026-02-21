@@ -590,3 +590,92 @@ async fn test_hover_on_json_object_key() {
         markdown
     );
 }
+
+// =======================================================================
+// Code span hover tests
+// =======================================================================
+
+#[tokio::test]
+async fn test_hover_on_code_span() {
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+
+    let uri: Uri = "file:///ws/api.md".parse().unwrap();
+    {
+        let mut state = backend.state().write().await;
+        let core_uri = DocumentUri::new("file:///ws/api.md").unwrap();
+        // Line 0: "# API"
+        // Line 1: ""
+        // Line 2: "Use `HashMap` for lookups."
+        //          01234567890123
+        //              ^--- backtick at col 4, text "HashMap" at cols 5-11, closing backtick at col 12
+        state.open_document(
+            core_uri,
+            "# API\n\nUse `HashMap` for lookups.\n".to_string(),
+        );
+    }
+
+    // Hover on "HashMap" text (line 2, col 7 — inside the code span)
+    let params = HoverParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position::new(2, 7),
+        },
+        work_done_progress_params: Default::default(),
+    };
+
+    let result = backend.hover(params).await.unwrap();
+    assert!(
+        result.is_some(),
+        "hover on code span should return hover info"
+    );
+    let markdown = extract_hover_markdown(result.unwrap());
+    assert!(
+        markdown.contains("HashMap"),
+        "hover should mention code span text; got: {}",
+        markdown
+    );
+    assert!(
+        markdown.contains("inline code span"),
+        "hover should identify as code span; got: {}",
+        markdown
+    );
+}
+
+#[tokio::test]
+async fn test_hover_on_code_span_shows_cross_doc_refs() {
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+
+    {
+        let mut state = backend.state().write().await;
+        state.open_document(
+            DocumentUri::new("file:///ws/a.md").unwrap(),
+            "# Doc A\n\nUse `Option` here.\n".to_string(),
+        );
+        state.open_document(
+            DocumentUri::new("file:///ws/b.md").unwrap(),
+            "# Doc B\n\nAlso `Option` there.\n".to_string(),
+        );
+    }
+
+    // Hover on "Option" in doc A (line 2, col 7)
+    let params = HoverParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier {
+                uri: "file:///ws/a.md".parse().unwrap(),
+            },
+            position: Position::new(2, 7),
+        },
+        work_done_progress_params: Default::default(),
+    };
+
+    let result = backend.hover(params).await.unwrap();
+    assert!(result.is_some(), "hover should return info");
+    let markdown = extract_hover_markdown(result.unwrap());
+    assert!(
+        markdown.contains("Referenced in 2 documents"),
+        "should show cross-doc reference count; got: {}",
+        markdown
+    );
+}

@@ -118,3 +118,9 @@ fn search_symbols_mixes_headings_and_key_paths() {
         "expected a key-path result (api_*) for 'api', got: {names:?}"
     );
 }
+
+// ── code span candidate tests ───────────────────────────────────────────────
+// NOTE: Code span unit tests are in markymark-mcp/src/engine/search.rs #[cfg(test)]
+// because the MCP batch indexing path (from_workspace_roots) uses from_ast, which
+// does not extract code spans. The from_scan path (used by LSP) does. Unit tests
+// construct a RealmIndex with from_scan to verify code span candidates directly.

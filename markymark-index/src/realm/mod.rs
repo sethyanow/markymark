@@ -39,8 +39,6 @@ pub struct RealmIndex {
     /// Tag name → URIs of docs containing it.
     tag_to_docs: HashMap<Spur, Vec<DocumentUri>>,
     /// Code span text → (uri, code span) for cross-doc code span lookups.
-    /// Empty until ix3 Phase A-3 wires code spans into RealmIndex.
-    #[allow(dead_code)]
     code_span_to_docs: HashMap<Spur, Vec<(DocumentUri, ResolvedCodeSpan)>>,
     /// Key path → URIs of structured docs containing it.
     key_path_to_docs: HashMap<String, Vec<DocumentUri>>,
@@ -125,6 +123,23 @@ impl RealmIndex {
                     .entry(tag_spur)
                     .or_default()
                     .push(uri.clone());
+            }
+        }
+
+        // Populate cross-doc code span index (Spur-keyed, dedup by text per document).
+        let mut seen_code_spans = HashMap::new();
+        for cs in index.code_spans() {
+            if seen_code_spans.insert(cs.text, ()).is_none() {
+                let text_spur = self.interner.get_or_intern(cs.text);
+                self.code_span_to_docs.entry(text_spur).or_default().push((
+                    uri.clone(),
+                    ResolvedCodeSpan {
+                        text: cs.text.to_string(),
+                        range: cs.range,
+                        start_byte: cs.start_byte,
+                        end_byte: cs.end_byte,
+                    },
+                ));
             }
         }
 
@@ -223,6 +238,20 @@ impl RealmIndex {
                         }
                     }
                 }
+
+                let mut seen_cs = std::collections::HashSet::new();
+                for cs in md_idx.code_spans() {
+                    if seen_cs.insert(cs.text) {
+                        if let Some(spur) = self.interner.get(cs.text) {
+                            if let Some(entries) = self.code_span_to_docs.get_mut(&spur) {
+                                entries.retain(|(u, _)| u.as_str() != key);
+                                if entries.is_empty() {
+                                    self.code_span_to_docs.remove(&spur);
+                                }
+                            }
+                        }
+                    }
+                }
             }
             AnyDocumentIndex::Structured(st_idx) => {
                 let root_paths: Vec<String> =
@@ -294,6 +323,15 @@ impl RealmIndex {
             .get(id)
             .and_then(|spur| self.block_to_location.get(&spur))
             .and_then(|entries| entries.first().cloned())
+    }
+
+    /// Look up documents containing a code span by text across all markdown documents.
+    pub fn lookup_code_span(&self, text: &str) -> Vec<(DocumentUri, ResolvedCodeSpan)> {
+        self.interner
+            .get(text)
+            .and_then(|spur| self.code_span_to_docs.get(&spur))
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Get tag usage counts across all markdown documents.

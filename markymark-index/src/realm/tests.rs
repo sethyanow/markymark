@@ -1,12 +1,25 @@
 use super::helpers::{detect_journal_date, resolve_relative_path};
 use super::*;
-use crate::document::DocumentIndex;
+use crate::document::{CodeSpanOwned, DocumentIndex, IncrementalOverrides};
 use markymark_core::structured::{DocumentKind, KeyEntry, StructuredAst};
 use std::path::PathBuf;
 
 fn make_md_index(source: &str) -> DocumentIndex {
     let ast = markymark_parser::parse(source).unwrap();
     DocumentIndex::from_ast(ast)
+}
+
+/// Build a markdown index with injected code span overrides.
+/// from_ast doesn't extract code spans natively — this injects them via overrides.
+fn make_md_index_with_code_spans(source: &str, code_spans: Vec<CodeSpanOwned>) -> DocumentIndex {
+    let ast = markymark_parser::parse(source).unwrap();
+    DocumentIndex::from_ast_with_overrides_opt(
+        ast,
+        IncrementalOverrides {
+            code_spans: Some(code_spans),
+            ..Default::default()
+        },
+    )
 }
 
 fn uri(name: &str) -> DocumentUri {
@@ -379,5 +392,102 @@ fn test_realm_remove_journal_doc_cleans_up_date_index() {
         results.is_empty(),
         "after removal, lookup should return empty — got {} docs",
         results.len()
+    );
+}
+
+// ── Code span cross-doc index tests ──────────────────────────────────────
+
+fn code_span(text: &str) -> CodeSpanOwned {
+    CodeSpanOwned {
+        text: text.to_string(),
+        range: Range::new(
+            markymark_core::Position::new(0, 0),
+            markymark_core::Position::new(0, 0),
+        ),
+        start_byte: 0,
+        end_byte: text.len(),
+    }
+}
+
+#[test]
+fn test_add_document_populates_code_spans() {
+    let mut realm = RealmIndex::new();
+    let u = uri("test.md");
+    let index = make_md_index_with_code_spans("# Intro\n", vec![code_span("HashMap")]);
+    realm.add_document(u.clone(), index);
+
+    let results = realm.lookup_code_span("HashMap");
+    assert_eq!(results.len(), 1, "expected 1 code span entry");
+    assert_eq!(results[0].0, u);
+    assert_eq!(results[0].1.text, "HashMap");
+}
+
+#[test]
+fn test_remove_document_cleans_code_spans() {
+    let mut realm = RealmIndex::new();
+    let u = uri("test.md");
+    let index = make_md_index_with_code_spans("# Intro\n", vec![code_span("Vec")]);
+    realm.add_document(u.clone(), index);
+    assert_eq!(realm.lookup_code_span("Vec").len(), 1);
+
+    realm.remove_document(&u);
+    assert!(
+        realm.lookup_code_span("Vec").is_empty(),
+        "code span should be cleaned up after removal"
+    );
+}
+
+#[test]
+fn test_code_span_dedup_per_document() {
+    // Same text 3x in one doc → only 1 entry per doc in cross-doc index.
+    let mut realm = RealmIndex::new();
+    let u = uri("test.md");
+    let index = make_md_index_with_code_spans(
+        "# Intro\n",
+        vec![
+            code_span("Result"),
+            code_span("Result"),
+            code_span("Result"),
+        ],
+    );
+    realm.add_document(u.clone(), index);
+
+    let results = realm.lookup_code_span("Result");
+    assert_eq!(
+        results.len(),
+        1,
+        "same text 3x in one doc should produce 1 entry, got {}",
+        results.len()
+    );
+}
+
+#[test]
+fn test_code_span_cross_doc() {
+    // Two docs with same code span text → both appear in lookup.
+    let mut realm = RealmIndex::new();
+    let u1 = uri("a.md");
+    let u2 = uri("b.md");
+    realm.add_document(
+        u1.clone(),
+        make_md_index_with_code_spans("# A\n", vec![code_span("Option")]),
+    );
+    realm.add_document(
+        u2.clone(),
+        make_md_index_with_code_spans("# B\n", vec![code_span("Option")]),
+    );
+
+    let results = realm.lookup_code_span("Option");
+    assert_eq!(results.len(), 2, "expected 2 docs, got {}", results.len());
+    let uris: Vec<_> = results.iter().map(|(u, _)| u.clone()).collect();
+    assert!(uris.contains(&u1));
+    assert!(uris.contains(&u2));
+}
+
+#[test]
+fn test_lookup_code_span_not_found() {
+    let realm = RealmIndex::new();
+    assert!(
+        realm.lookup_code_span("NonExistent").is_empty(),
+        "empty realm should return no results"
     );
 }

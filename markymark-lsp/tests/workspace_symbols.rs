@@ -435,6 +435,58 @@ async fn test_workspace_symbol_includes_xml_tags() {
     );
 }
 
+// =======================================================================
+// Code span workspace symbol tests
+// =======================================================================
+
+#[tokio::test]
+async fn test_workspace_symbol_includes_code_spans() {
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+
+    {
+        let mut state = backend.state().write().await;
+        state.open_document(
+            DocumentUri::new("file:///ws/api.md").unwrap(),
+            "# API Guide\n\nUse `HashMap` for lookups.\n".to_string(),
+        );
+    }
+
+    let result = backend.symbol(make_params("HashMap")).await.unwrap();
+    assert!(result.is_some(), "query 'HashMap' should match code span");
+
+    let names = symbol_names(result.as_ref().unwrap());
+    assert!(
+        names.iter().any(|n| n.contains("HashMap")),
+        "should include code span 'HashMap' in results; got: {:?}",
+        names
+    );
+}
+
+#[tokio::test]
+async fn test_workspace_symbol_code_spans_in_empty_query() {
+    let (service, _socket) = create_service();
+    let backend = service.inner();
+
+    {
+        let mut state = backend.state().write().await;
+        state.open_document(
+            DocumentUri::new("file:///ws/types.md").unwrap(),
+            "# Types\n\nThe `Vec` type is useful.\n".to_string(),
+        );
+    }
+
+    let result = backend.symbol(make_params("")).await.unwrap();
+    assert!(result.is_some(), "empty query should return all symbols");
+
+    let names = symbol_names(result.as_ref().unwrap());
+    assert!(
+        names.iter().any(|n| n.contains("Vec")),
+        "empty query should include code spans; got: {:?}",
+        names
+    );
+}
+
 #[tokio::test]
 async fn test_workspace_symbol_xml_tags_in_empty_query() {
     let (service, _socket) = create_service();
