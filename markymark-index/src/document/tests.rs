@@ -670,6 +670,7 @@ fn test_tag_no_incremental_opt_always_full_rebuild() {
         tags: None,
         markdown_links: None,
         xml_tags: None,
+        code_spans: None,
     };
     let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
     let tags = index.tags();
@@ -699,6 +700,7 @@ fn test_markdown_link_override_reuses_when_provided() {
         tags: None,
         markdown_links: Some(vec![override_link]),
         xml_tags: None,
+        code_spans: None,
     };
     let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
     let mls = index.markdown_links();
@@ -728,6 +730,7 @@ fn test_xml_tag_override_reuses_when_provided() {
         tags: None,
         markdown_links: None,
         xml_tags: Some(vec![override_tag]),
+        code_spans: None,
     };
     let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
     let xts = index.xml_tags();
@@ -847,6 +850,7 @@ fn test_incremental_overrides_all_five() {
             start_byte: 0,
             end_byte: 10,
         }]),
+        code_spans: None,
     };
     let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
     assert_eq!(index.wiki_links().len(), 1);

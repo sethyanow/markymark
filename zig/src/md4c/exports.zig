@@ -40,18 +40,29 @@ comptime {
     std.debug.assert(@sizeOf(CMd4cLink) == 24);
 }
 
+pub const CMd4cCodeSpan = extern struct {
+    source_offset: u32, // byte offset of opening backtick in source
+    end_offset: u32, // byte offset past closing backtick in source
+    text_offset: u32, // offset into text_blob for decoded text
+    text_length: u32, // length in text_blob
+};
+comptime {
+    std.debug.assert(@sizeOf(CMd4cCodeSpan) == 16);
+}
+
 // Pointers grouped first, then u32 counts — avoids internal padding on 64-bit.
 pub const CMd4cResult = extern struct {
     headings: ?[*]CMd4cHeading, // Zig-allocated array, freed by marky_md4c_free
     links: ?[*]CMd4cLink, // Zig-allocated array, freed by marky_md4c_free
+    code_spans: ?[*]CMd4cCodeSpan, // Zig-allocated array, freed by marky_md4c_free
     text_blob: ?[*]const u8, // concatenated decoded texts, freed by marky_md4c_free
     headings_count: u32,
     links_count: u32,
+    code_spans_count: u32,
     text_blob_len: u32,
-    _padding: u32, // explicit padding to 40 bytes (8-byte alignment)
 };
 comptime {
-    std.debug.assert(@sizeOf(CMd4cResult) == 40);
+    std.debug.assert(@sizeOf(CMd4cResult) == 48);
 }
 
 // ── C ABI Functions ──────────────────────────────────────────────────
@@ -88,6 +99,7 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
 
     const heading_count = result.headings.len;
     const link_count = result.links.len;
+    const code_span_count = result.code_spans.len;
 
     // Calculate text blob size
     var blob_size: usize = 0;
@@ -97,6 +109,9 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
     for (result.links) |l| {
         blob_size += l.text.len;
         blob_size += l.target.len;
+    }
+    for (result.code_spans) |cs| {
+        blob_size += cs.text.len;
     }
 
     // T1-3: blob_offset is u32 — guard against wrapping for documents whose total
@@ -130,6 +145,18 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
     var c_links: ?[]CMd4cLink = null;
     if (link_count > 0) {
         c_links = ffi_allocator.alloc(CMd4cLink, link_count) catch {
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate code span array
+    var c_code_spans: ?[]CMd4cCodeSpan = null;
+    if (code_span_count > 0) {
+        c_code_spans = ffi_allocator.alloc(CMd4cCodeSpan, code_span_count) catch {
+            if (c_links) |l| ffi_allocator.free(l);
             if (c_headings) |h| ffi_allocator.free(h);
             if (blob) |b| ffi_allocator.free(b);
             result.deinit();
@@ -188,6 +215,21 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
         };
     }
 
+    for (result.code_spans, 0..) |cs, i| {
+        const text_len: u32 = @intCast(cs.text.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, text_len) <= b.len);
+            @memcpy(b[blob_offset..][0..text_len], cs.text);
+        }
+        c_code_spans.?[i] = .{
+            .source_offset = cs.offset,
+            .end_offset = cs.end_offset,
+            .text_offset = blob_offset,
+            .text_length = text_len,
+        };
+        blob_offset += text_len;
+    }
+
     // Free ExtractionResult (owned strings — already copied to blob)
     result.deinit();
 
@@ -197,9 +239,10 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
         .headings_count = @intCast(heading_count),
         .links = if (c_links) |l| l.ptr else null,
         .links_count = @intCast(link_count),
+        .code_spans = if (c_code_spans) |cs| cs.ptr else null,
+        .code_spans_count = @intCast(code_span_count),
         .text_blob = blob_ptr,
         .text_blob_len = blob_offset,
-        ._padding = 0,
     };
 
     return 0;
@@ -220,6 +263,11 @@ export fn marky_md4c_free(result: ?*CMd4cResult) void {
     if (r.links) |links_ptr| {
         if (r.links_count > 0) {
             ffi_allocator.free(links_ptr[0..r.links_count]);
+        }
+    }
+    if (r.code_spans) |code_spans_ptr| {
+        if (r.code_spans_count > 0) {
+            ffi_allocator.free(code_spans_ptr[0..r.code_spans_count]);
         }
     }
     if (r.text_blob) |blob_ptr| {
@@ -342,4 +390,44 @@ test "md4c_extract: null text with zero len returns -1" {
     var result: CMd4cResult = undefined;
     const rc = marky_md4c_extract(null, 0, &result);
     try testing.expectEqual(@as(i32, -1), rc);
+}
+
+// --- Code span FFI tests (marky-pdyo) ---
+
+test "md4c_extract: code span text via blob" {
+    const input = "here is `hello` world\n";
+    var result: CMd4cResult = undefined;
+    const rc = marky_md4c_extract(input.ptr, input.len, &result);
+    defer marky_md4c_free(&result);
+    try testing.expectEqual(@as(i32, 0), rc);
+    try testing.expectEqual(@as(u32, 1), result.code_spans_count);
+    const blob = result.text_blob.?[0..result.text_blob_len];
+    const cs = result.code_spans.?[0];
+    try testing.expectEqualStrings("hello", blob[cs.text_offset..cs.text_offset + cs.text_length]);
+    try testing.expectEqual(@as(u32, 8), cs.source_offset);
+    try testing.expectEqual(@as(u32, 15), cs.end_offset);
+}
+
+test "md4c_extract: mixed document with code spans" {
+    const input = "# Title `code` [link](url)\n";
+    var result: CMd4cResult = undefined;
+    const rc = marky_md4c_extract(input.ptr, input.len, &result);
+    defer marky_md4c_free(&result);
+    try testing.expectEqual(@as(i32, 0), rc);
+    try testing.expectEqual(@as(u32, 1), result.headings_count);
+    try testing.expectEqual(@as(u32, 1), result.links_count);
+    try testing.expectEqual(@as(u32, 1), result.code_spans_count);
+    // All blob offsets should be valid
+    const blob = result.text_blob.?[0..result.text_blob_len];
+    const cs = result.code_spans.?[0];
+    try testing.expectEqualStrings("code", blob[cs.text_offset..cs.text_offset + cs.text_length]);
+}
+
+test "md4c_extract: no code spans" {
+    const input = "Just plain text with no backticks.\n";
+    var result: CMd4cResult = undefined;
+    const rc = marky_md4c_extract(input.ptr, input.len, &result);
+    defer marky_md4c_free(&result);
+    try testing.expectEqual(@as(i32, 0), rc);
+    try testing.expectEqual(@as(u32, 0), result.code_spans_count);
 }

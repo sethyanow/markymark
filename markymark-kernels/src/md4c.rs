@@ -33,20 +33,31 @@ struct CMd4cLink {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
+struct CMd4cCodeSpan {
+    source_offset: u32,
+    end_offset: u32,
+    text_offset: u32,
+    text_length: u32,
+}
+
+#[repr(C)]
 struct CMd4cResult {
     headings: *mut CMd4cHeading,
     links: *mut CMd4cLink,
+    code_spans: *mut CMd4cCodeSpan,
     text_blob: *const u8,
     headings_count: u32,
     links_count: u32,
+    code_spans_count: u32,
     text_blob_len: u32,
-    _padding: u32,
 }
 
 // Compile-time size assertions — must match Zig side
 const _: () = assert!(std::mem::size_of::<CMd4cHeading>() == 16);
 const _: () = assert!(std::mem::size_of::<CMd4cLink>() == 24);
-const _: () = assert!(std::mem::size_of::<CMd4cResult>() == 40);
+const _: () = assert!(std::mem::size_of::<CMd4cCodeSpan>() == 16);
+const _: () = assert!(std::mem::size_of::<CMd4cResult>() == 48);
 
 extern "C" {
     fn marky_md4c_extract(text: *const u8, len: u32, out: *mut CMd4cResult) -> i32;
@@ -81,11 +92,23 @@ pub struct Md4cLink {
     pub is_wiki: bool,
 }
 
+/// An inline code span extracted by the md4c single-pass parser.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Md4cCodeSpan {
+    /// The backtick-delimited text content.
+    pub text: String,
+    /// Byte offset in source of the opening backtick.
+    pub source_offset: u32,
+    /// Byte offset in source past the closing backtick.
+    pub end_offset: u32,
+}
+
 /// Results from md4c single-pass extraction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Md4cExtraction {
     pub headings: Vec<Md4cHeading>,
     pub links: Vec<Md4cLink>,
+    pub code_spans: Vec<Md4cCodeSpan>,
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +124,7 @@ pub fn extract_md4c(text: &str) -> Result<Md4cExtraction, KernelError> {
         return Ok(Md4cExtraction {
             headings: Vec::new(),
             links: Vec::new(),
+            code_spans: Vec::new(),
         });
     }
 
@@ -209,7 +233,32 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         }
     }
 
-    Ok(Md4cExtraction { headings, links })
+    let mut code_spans = Vec::with_capacity(out.code_spans_count as usize);
+    if out.code_spans_count > 0 && !out.code_spans.is_null() {
+        // SAFETY: code_spans pointer is valid for code_spans_count elements,
+        // allocated by Zig page_allocator.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let c_code_spans =
+            unsafe { std::slice::from_raw_parts(out.code_spans, out.code_spans_count as usize) };
+        for cs in c_code_spans {
+            let text_start = cs.text_offset as usize;
+            let text =
+                std::str::from_utf8(safe_blob_slice(blob, text_start, cs.text_length as usize)?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned();
+            code_spans.push(Md4cCodeSpan {
+                text,
+                source_offset: cs.source_offset,
+                end_offset: cs.end_offset,
+            });
+        }
+    }
+
+    Ok(Md4cExtraction {
+        headings,
+        links,
+        code_spans,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -283,7 +332,8 @@ mod tests {
     fn test_struct_sizes_match_zig() {
         assert_eq!(std::mem::size_of::<CMd4cHeading>(), 16);
         assert_eq!(std::mem::size_of::<CMd4cLink>(), 24);
-        assert_eq!(std::mem::size_of::<CMd4cResult>(), 40);
+        assert_eq!(std::mem::size_of::<CMd4cCodeSpan>(), 16);
+        assert_eq!(std::mem::size_of::<CMd4cResult>(), 48);
     }
 
     /// Regression test for T2-11: silent `.unwrap_or("")` masked data corruption.
@@ -308,8 +358,9 @@ mod tests {
             text_blob: blob.as_ptr(),
             headings_count: 1,
             links_count: 0,
+            code_spans: std::ptr::null_mut(),
             text_blob_len: 3,
-            _padding: 0,
+            code_spans_count: 0,
         };
         // Before fix: returns Ok(headings[0].text == "") — silent data loss.
         // After fix: returns Err(KernelError::InternalError(-100)).
@@ -339,8 +390,9 @@ mod tests {
             text_blob: blob.as_ptr(),
             headings_count: 0,
             links_count: 1,
+            code_spans: std::ptr::null_mut(),
             text_blob_len: 3,
-            _padding: 0,
+            code_spans_count: 0,
         };
         let result = convert_result(&out);
         assert!(
@@ -364,11 +416,12 @@ mod tests {
         let out = CMd4cResult {
             headings: &heading as *const _ as *mut _,
             links: std::ptr::null_mut(),
+            code_spans: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 1,
             links_count: 0,
+            code_spans_count: 0,
             text_blob_len: blob.len() as u32,
-            _padding: 0,
         };
         let result = convert_result(&out);
         assert!(
@@ -394,11 +447,12 @@ mod tests {
         let out = CMd4cResult {
             headings: std::ptr::null_mut(),
             links: &link as *const _ as *mut _,
+            code_spans: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 0,
             links_count: 1,
+            code_spans_count: 0,
             text_blob_len: blob.len() as u32,
-            _padding: 0,
         };
         let result = convert_result(&out);
         assert!(
@@ -422,16 +476,52 @@ mod tests {
         let out = CMd4cResult {
             headings: &heading as *const _ as *mut _,
             links: std::ptr::null_mut(),
+            code_spans: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 1,
             links_count: 0,
+            code_spans_count: 0,
             text_blob_len: blob.len() as u32,
-            _padding: 0,
         };
         let result = convert_result(&out);
         assert!(
             matches!(result, Err(KernelError::InternalError(-101))),
             "overflow offset must return InternalError(-101), got: {result:?}"
         );
+    }
+
+    // --- Code span tests (marky-pdyo) ---
+
+    #[test]
+    fn test_extract_code_span() {
+        let result = extract_md4c("here is `hello` world\n").unwrap();
+        assert_eq!(result.code_spans.len(), 1);
+        assert_eq!(result.code_spans[0].text, "hello");
+        assert_eq!(result.code_spans[0].source_offset, 8);
+        assert_eq!(result.code_spans[0].end_offset, 15);
+    }
+
+    #[test]
+    fn test_extract_code_span_mixed_document() {
+        let result = extract_md4c("# Title `code` [link](url)\n").unwrap();
+        assert_eq!(result.headings.len(), 1);
+        assert_eq!(result.links.len(), 1);
+        assert_eq!(result.code_spans.len(), 1);
+        assert_eq!(result.code_spans[0].text, "code");
+    }
+
+    #[test]
+    fn test_extract_no_code_spans() {
+        let result = extract_md4c("Just plain text.\n").unwrap();
+        assert!(result.code_spans.is_empty());
+    }
+
+    #[test]
+    fn test_extract_multiple_code_spans() {
+        let result = extract_md4c("`a` then `b`\n").unwrap();
+        assert_eq!(result.code_spans.len(), 2);
+        assert_eq!(result.code_spans[0].text, "a");
+        assert_eq!(result.code_spans[1].text, "b");
+        assert!(result.code_spans[1].source_offset > result.code_spans[0].source_offset);
     }
 }
