@@ -6,13 +6,15 @@
 
 mod helpers;
 mod types;
-pub use types::{AnyDocumentIndex, ResolvedBlock, ResolvedHeading};
+pub use types::{AnyDocumentIndex, ResolvedBlock, ResolvedCodeSpan, ResolvedHeading};
 
 use helpers::{detect_journal_date, resolve_relative_path};
 
 use std::collections::{BTreeMap, HashMap};
 #[cfg(feature = "embeddings")]
 use std::sync::Arc;
+
+use lasso::{Rodeo, Spur};
 
 use crate::document::DocumentIndex;
 #[cfg(feature = "embeddings")]
@@ -25,13 +27,21 @@ use markymark_core::DocumentUri;
 /// A multi-document index that aggregates document instances
 /// and provides global cross-document lookups using owned storage.
 pub struct RealmIndex {
+    /// String interner for cross-doc HashMap keys (slugs, tags, block IDs).
+    /// Grows monotonically; never deallocates. For a 10K-doc vault with ~500K
+    /// unique slugs/tags/blocks, interner holds ~10MB. Acceptable for LSP lifetime.
+    interner: Rodeo,
     docs: HashMap<String, (DocumentUri, AnyDocumentIndex)>,
     /// Slug → (uri, owned heading). Owned copies survive doc removal.
-    slug_to_headings: HashMap<String, Vec<(DocumentUri, ResolvedHeading)>>,
+    slug_to_headings: HashMap<Spur, Vec<(DocumentUri, ResolvedHeading)>>,
     /// Block id → list of (uri, block) in insertion order.
-    block_to_location: HashMap<String, Vec<(DocumentUri, ResolvedBlock)>>,
+    block_to_location: HashMap<Spur, Vec<(DocumentUri, ResolvedBlock)>>,
     /// Tag name → URIs of docs containing it.
-    tag_to_docs: HashMap<String, Vec<DocumentUri>>,
+    tag_to_docs: HashMap<Spur, Vec<DocumentUri>>,
+    /// Code span text → (uri, code span) for cross-doc code span lookups.
+    /// Empty until ix3 Phase A-3 wires code spans into RealmIndex.
+    #[allow(dead_code)]
+    code_span_to_docs: HashMap<Spur, Vec<(DocumentUri, ResolvedCodeSpan)>>,
     /// Key path → URIs of structured docs containing it.
     key_path_to_docs: HashMap<String, Vec<DocumentUri>>,
     /// Journal date → list of URIs for that date (BTreeMap enables range queries by month).
@@ -47,10 +57,12 @@ impl RealmIndex {
     /// Create an empty realm index.
     pub fn new() -> Self {
         Self {
+            interner: Rodeo::default(),
             docs: HashMap::new(),
             slug_to_headings: HashMap::new(),
             block_to_location: HashMap::new(),
             tag_to_docs: HashMap::new(),
+            code_span_to_docs: HashMap::new(),
             key_path_to_docs: HashMap::new(),
             date_to_docs: BTreeMap::new(),
             uri_to_date: HashMap::new(),
@@ -75,8 +87,9 @@ impl RealmIndex {
         // If replacing, clear old doc from cross-doc indexes first
         self.remove_from_cross_doc_indexes(&key);
 
-        // Populate cross-doc heading index (owned copies)
+        // Populate cross-doc heading index (Spur-keyed, zero allocation for HashMap key)
         for entry in index.headings() {
+            let slug_spur = self.interner.get_or_intern(entry.slug);
             let resolved = ResolvedHeading {
                 text: entry.text.to_string(),
                 slug: entry.slug.to_string(),
@@ -84,33 +97,32 @@ impl RealmIndex {
                 range: entry.range,
             };
             self.slug_to_headings
-                .entry(entry.slug.to_string())
+                .entry(slug_spur)
                 .or_default()
                 .push((uri.clone(), resolved));
         }
 
-        // Populate cross-doc block index (owned copies)
+        // Populate cross-doc block index (Spur-keyed)
         for id in index.block_ids() {
             if let Some(block) = index.block_by_id(id) {
-                self.block_to_location
-                    .entry(id.to_string())
-                    .or_default()
-                    .push((
-                        uri.clone(),
-                        ResolvedBlock {
-                            id: id.to_string(),
-                            range: block.range,
-                        },
-                    ));
+                let id_spur = self.interner.get_or_intern(id);
+                self.block_to_location.entry(id_spur).or_default().push((
+                    uri.clone(),
+                    ResolvedBlock {
+                        id: id.to_string(),
+                        range: block.range,
+                    },
+                ));
             }
         }
 
-        // Populate cross-doc tag index (owned copies)
+        // Populate cross-doc tag index (Spur-keyed)
         let mut seen_tags = HashMap::new();
         for tag in index.tags() {
             if seen_tags.insert(tag.name, ()).is_none() {
+                let tag_spur = self.interner.get_or_intern(tag.name);
                 self.tag_to_docs
-                    .entry(tag.name.to_string())
+                    .entry(tag_spur)
                     .or_default()
                     .push(uri.clone());
             }
@@ -175,45 +187,39 @@ impl RealmIndex {
 
         match index {
             AnyDocumentIndex::Markdown(md_idx) => {
-                let slugs: Vec<String> = md_idx
-                    .headings()
-                    .iter()
-                    .map(|h| h.slug.to_string())
-                    .collect();
-                let block_ids: Vec<String> = md_idx.block_ids().map(|id| id.to_string()).collect();
-                let tag_names: Vec<String> = {
-                    let mut seen = std::collections::HashSet::new();
-                    md_idx
-                        .tags()
-                        .iter()
-                        .filter(|t| seen.insert(t.name))
-                        .map(|t| t.name.to_string())
-                        .collect()
-                };
-
-                for slug in &slugs {
-                    if let Some(entries) = self.slug_to_headings.get_mut(slug) {
-                        entries.retain(|(u, _)| u.as_str() != key);
-                        if entries.is_empty() {
-                            self.slug_to_headings.remove(slug);
+                // Zero-allocation remove: Spur lookup is O(1), no String collection needed.
+                for entry in md_idx.headings() {
+                    if let Some(spur) = self.interner.get(entry.slug) {
+                        if let Some(entries) = self.slug_to_headings.get_mut(&spur) {
+                            entries.retain(|(u, _)| u.as_str() != key);
+                            if entries.is_empty() {
+                                self.slug_to_headings.remove(&spur);
+                            }
                         }
                     }
                 }
 
-                for id in &block_ids {
-                    if let Some(entries) = self.block_to_location.get_mut(id) {
-                        entries.retain(|(u, _)| u.as_str() != key);
-                        if entries.is_empty() {
-                            self.block_to_location.remove(id);
+                for id in md_idx.block_ids() {
+                    if let Some(spur) = self.interner.get(id) {
+                        if let Some(entries) = self.block_to_location.get_mut(&spur) {
+                            entries.retain(|(u, _)| u.as_str() != key);
+                            if entries.is_empty() {
+                                self.block_to_location.remove(&spur);
+                            }
                         }
                     }
                 }
 
-                for tag in &tag_names {
-                    if let Some(uris) = self.tag_to_docs.get_mut(tag) {
-                        uris.retain(|u| u.as_str() != key);
-                        if uris.is_empty() {
-                            self.tag_to_docs.remove(tag);
+                let mut seen_tags = std::collections::HashSet::new();
+                for tag in md_idx.tags() {
+                    if seen_tags.insert(tag.name) {
+                        if let Some(spur) = self.interner.get(tag.name) {
+                            if let Some(uris) = self.tag_to_docs.get_mut(&spur) {
+                                uris.retain(|u| u.as_str() != key);
+                                if uris.is_empty() {
+                                    self.tag_to_docs.remove(&spur);
+                                }
+                            }
                         }
                     }
                 }
@@ -275,13 +281,18 @@ impl RealmIndex {
 
     /// Look up a heading by slug across all markdown documents.
     pub fn lookup_heading(&self, slug: &str) -> Vec<(DocumentUri, ResolvedHeading)> {
-        self.slug_to_headings.get(slug).cloned().unwrap_or_default()
+        self.interner
+            .get(slug)
+            .and_then(|spur| self.slug_to_headings.get(&spur))
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Look up a block by ID across all documents.
     pub fn lookup_block(&self, id: &str) -> Option<(DocumentUri, ResolvedBlock)> {
-        self.block_to_location
+        self.interner
             .get(id)
+            .and_then(|spur| self.block_to_location.get(&spur))
             .and_then(|entries| entries.first().cloned())
     }
 
@@ -289,7 +300,7 @@ impl RealmIndex {
     pub fn tag_counts(&self) -> Vec<(String, usize)> {
         self.tag_to_docs
             .iter()
-            .map(|(name, uris)| (name.clone(), uris.len()))
+            .map(|(spur, uris)| (self.interner.resolve(spur).to_string(), uris.len()))
             .collect()
     }
 
