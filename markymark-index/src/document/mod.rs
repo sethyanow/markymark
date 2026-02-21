@@ -580,11 +580,12 @@ impl DocumentIndex {
         // Collect owned data from scan backend before entering self_cell closure.
         // Fall back to independent scans if scan_all fails so that headings
         // and links are never both silently dropped due to one-sided error.
-        let (scan_headings, scan_links) = match backend.scan_all(text) {
-            Ok(result) => (result.headings, result.links),
+        let (scan_headings, scan_links, scan_code_spans) = match backend.scan_all(text) {
+            Ok(result) => (result.headings, result.links, result.code_spans),
             Err(_) => (
                 backend.scan_headings(text).unwrap_or_default(),
                 backend.scan_links(text).unwrap_or_default(),
+                backend.scan_code_spans(text).unwrap_or_default(),
             ),
         };
         let scan_tags = backend.scan_tags(text).unwrap_or_default();
@@ -718,8 +719,22 @@ impl DocumentIndex {
             // XML tags: not supported by scan backend
             let xml_tags = BumpVec::<XmlTagEntry<'_>>::new_in(arena_ref).into_bump_slice();
 
-            // Code spans: not yet wired from scan backend (Phase A-2 step 7)
-            let code_spans = BumpVec::<CodeSpanEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            // --- Code spans ---
+            let mut cs_builder = BumpVec::new_in(arena_ref);
+            for cs in scan_code_spans {
+                let text = arena_alloc_str(arena_ref, &cs.text);
+                let pos = helpers::byte_offset_to_position(&line_starts, cs.offset);
+                let end_pos = helpers::byte_offset_to_position(&line_starts, cs.end_offset);
+                cs_builder.push(CodeSpanEntry {
+                    text,
+                    range: Range::new(pos, end_pos),
+                    start_byte: cs.offset as usize,
+                    end_byte: cs.end_offset as usize,
+                    language_hint: None,
+                    kind: None,
+                });
+            }
+            let code_spans = cs_builder.into_bump_slice();
 
             // Frontmatter/properties/block-refs: not available from scan backend
             let frontmatter = BumpVec::<FrontmatterEntry<'_>>::new_in(arena_ref).into_bump_slice();

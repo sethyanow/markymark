@@ -88,13 +88,26 @@ pub struct BlockIdResult {
     pub offset: u32,
 }
 
-/// Combined result from a single-pass scan of headings and links.
+/// An inline code span found by a scan backend (e.g. `` `hello` ``).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodeSpanResult {
+    /// The backtick-delimited text content (decoded).
+    pub text: String,
+    /// Byte offset of the opening backtick in the source text.
+    pub offset: u32,
+    /// Byte offset one past the closing backtick in the source text.
+    pub end_offset: u32,
+}
+
+/// Combined result from a single-pass scan of headings, links, and code spans.
 #[derive(Debug, Default)]
 pub struct ScanAllResult {
     /// Headings extracted from the document.
     pub headings: Vec<HeadingResult>,
     /// Links extracted from the document.
     pub links: Vec<LinkResult>,
+    /// Inline code spans extracted from the document.
+    pub code_spans: Vec<CodeSpanResult>,
 }
 
 // ---------------------------------------------------------------------------
@@ -121,15 +134,23 @@ pub trait ScanBackend: Send + Sync {
     /// Estimate the approximate BPE token count for the given text.
     fn estimate_tokens(&self, text: &str) -> Result<u32, ScanError>;
 
-    /// Scan text for headings and links in a single pass.
+    /// Scan text for inline code spans (`` `code` ``).
     ///
-    /// The default implementation calls [`scan_headings`] and [`scan_links`]
-    /// separately. Backends that parse once internally (e.g., [`Md4cScanBackend`])
-    /// should override this to avoid a second parse.
+    /// Default returns empty (backward compat for backends that don't extract).
+    fn scan_code_spans(&self, _text: &str) -> Result<Vec<CodeSpanResult>, ScanError> {
+        Ok(Vec::new())
+    }
+
+    /// Scan text for headings, links, and code spans in a single pass.
+    ///
+    /// The default implementation calls [`scan_headings`], [`scan_links`], and
+    /// [`scan_code_spans`] separately. Backends that parse once internally
+    /// (e.g., [`Md4cScanBackend`]) should override this to avoid multiple parses.
     fn scan_all(&self, text: &str) -> Result<ScanAllResult, ScanError> {
         Ok(ScanAllResult {
             headings: self.scan_headings(text)?,
             links: self.scan_links(text)?,
+            code_spans: self.scan_code_spans(text)?,
         })
     }
 }
@@ -280,6 +301,22 @@ impl ScanBackend for Md4cScanBackend {
         Ok(markymark_kernels::tokens::estimate_tokens(text))
     }
 
+    fn scan_code_spans(&self, text: &str) -> Result<Vec<CodeSpanResult>, ScanError> {
+        markymark_kernels::md4c::extract_md4c(text)
+            .map(|extraction| {
+                extraction
+                    .code_spans
+                    .into_iter()
+                    .map(|cs| CodeSpanResult {
+                        text: cs.text,
+                        offset: cs.source_offset,
+                        end_offset: cs.end_offset,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
     fn scan_all(&self, text: &str) -> Result<ScanAllResult, ScanError> {
         markymark_kernels::md4c::extract_md4c(text)
             .map(|extraction| ScanAllResult {
@@ -289,6 +326,15 @@ impl ScanBackend for Md4cScanBackend {
                     .map(map_md4c_heading)
                     .collect(),
                 links: extraction.links.into_iter().map(map_md4c_link).collect(),
+                code_spans: extraction
+                    .code_spans
+                    .into_iter()
+                    .map(|cs| CodeSpanResult {
+                        text: cs.text,
+                        offset: cs.source_offset,
+                        end_offset: cs.end_offset,
+                    })
+                    .collect(),
             })
             .map_err(|e| ScanError::InternalError(e.to_string()))
     }
