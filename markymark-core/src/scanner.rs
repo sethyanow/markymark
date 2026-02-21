@@ -602,5 +602,51 @@ mod tests {
             assert_eq!(all.headings, headings);
             assert_eq!(all.links, links);
         }
+
+        // ── Code span tests (marky-vsh2) ────────────────────────────────
+
+        #[test]
+        fn test_md4c_scan_code_spans() {
+            let backend = Md4cScanBackend;
+            let result = backend.scan_code_spans("Hello `world` end").unwrap();
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].text, "world");
+            assert_eq!(result[0].offset, 6);
+            assert_eq!(result[0].end_offset, 13);
+        }
+
+        #[test]
+        fn test_scan_all_includes_code_spans() {
+            let backend = Md4cScanBackend;
+            let text = "# Heading\n\n`code` and `more`\n";
+            let all = backend.scan_all(text).unwrap();
+            assert_eq!(all.code_spans.len(), 2);
+            assert_eq!(all.code_spans[0].text, "code");
+            assert_eq!(all.code_spans[1].text, "more");
+
+            // scan_all code_spans must match scan_code_spans
+            let separate = backend.scan_code_spans(text).unwrap();
+            assert_eq!(all.code_spans.len(), separate.len());
+            for (a, s) in all.code_spans.iter().zip(separate.iter()) {
+                assert_eq!(a.text, s.text);
+                assert_eq!(a.offset, s.offset);
+                assert_eq!(a.end_offset, s.end_offset);
+            }
+        }
+
+        #[test]
+        fn test_md4c_scan_code_spans_empty() {
+            let backend = Md4cScanBackend;
+            let result = backend.scan_code_spans("No code here").unwrap();
+            assert!(result.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_default_scan_code_spans_empty() {
+        // The default trait implementation returns an empty vec.
+        let backend = DummyScanBackend;
+        let result = backend.scan_code_spans("Hello `world` end").unwrap();
+        assert!(result.is_empty());
     }
 }
