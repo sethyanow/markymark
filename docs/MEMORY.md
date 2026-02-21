@@ -604,20 +604,28 @@ Phase A-1 (marky-pdyo, DONE) built the bottom half only:
 - DocumentIndex: no code_spans() accessor
 
 **Not yet wired (Phase A-3, not created):**
-- RealmIndex: no code_span cross-doc index
+- RealmIndex: code_span_to_docs field exists (Spur-keyed) but is always empty
 - LSP: workspaceSymbol/hover don't surface code spans
 - MCP: search-symbols doesn't include code spans
 
-### Execution Order (2026-02-20)
+### Execution Order (updated 2026-02-21)
 
-1. **ix3 A-2 (marky-vsh2)** — wire code spans through engine/blob/from_blob/ScanBackend/from_scan
-2. **n7wx Layer 1 (marky-2yzz)** — string interning (parallel with A-2, different files)
+1. ~~**ix3 A-2 (marky-vsh2)** — wire code spans through engine/blob/from_blob/ScanBackend/from_scan~~ DONE
+2. ~~**n7wx Layer 1 (marky-2yzz)** — string interning~~ DONE
 3. **ix3 A-3** — LSP/MCP surfaces + RealmIndex cross-doc index (benefits from interning)
 4. **ix3 Phase B** — migrate 11 extractors from Rust regex to Zig
 5. **n7wx Layers 2-4** — stem index, incremental updates, lazy cold indexes
 
 n7wx is orthogonal: RealmIndex stays Rust regardless. ix3 is the Zig-sink work.
-n7wx L1 design updated to include code_span_to_docs: HashMap<Spur, ...> from day one.
+
+### n7wx Layer 1 Complete (2026-02-21, marky-2yzz)
+
+lasso::Rodeo interner added to RealmIndex. Three cross-doc HashMaps (slug_to_headings,
+block_to_location, tag_to_docs) changed from String keys to Spur keys. code_span_to_docs
+added as Spur-keyed placeholder (empty until ix3 A-3). ResolvedCodeSpan type added to
+realm/types.rs. docs and key_path_to_docs remain String-keyed per design (URIs unique,
+key paths low repetition). 7 new regression tests added. Public API unchanged — callers
+pass `&str` to lookup methods, interner resolves internally.
 
 ---
 
