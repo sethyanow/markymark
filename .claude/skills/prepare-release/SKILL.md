@@ -368,7 +368,13 @@ The CI release workflow (triggered by the tag push) creates a GitHub Release wit
 
 2. **Fetch PR review comments** for additional context (Copilot summary, CodeRabbit findings):
    ```bash
-   gh api repos/sethyanow/markymark/pulls/PR_NUMBER/reviews --jq '.[].body'
+   # Look up the release PR number (dev -> main, most recent merged)
+   PR_NUMBER=$(gh pr list --base main --head dev --state merged --limit 1 --json number --jq '.[0].number')
+   if [ -z "$PR_NUMBER" ]; then
+     echo "Warning: No merged dev->main PR found. Skipping review comments."
+   else
+     gh api repos/sethyanow/markymark/pulls/$PR_NUMBER/reviews --jq '.[].body'
+   fi
    ```
 
 3. **Draft curated release notes** following this structure:
