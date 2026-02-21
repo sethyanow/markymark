@@ -498,6 +498,34 @@ additional inline comments + 6 nitpicks. Validated against code, consolidated in
 
 ---
 
+## PR #42 Code Review Triage (2026-02-20)
+
+Release v0.5.1 PR. Reviewers: Copilot (3 inline), CodeRabbit (2 inline + 1 outside-diff +
+1 nitpick). 7 findings total — 3 valid (all fixed immediately), 4 dismissed.
+
+**Dismissed:** (4 items)
+- **docs/semver.md hyphenation ("backward compatible")** — verbatim copy of official
+  SemVer 2.0.0 spec. Altering it would diverge from canonical source.
+- **docs/semver.md "prerelease" terminology** — describes the named capture group in the
+  spec's regex (group named `prerelease`), not a prose hyphenation choice.
+- **Step numbering duplicate** — CodeRabbit flagged same as Copilot; deduplicated.
+- **cargo-mcp vs raw cargo in quality gates** — release gate scripts intentionally use
+  raw cargo for explicit flags (`-D warnings`, `--all-targets`). cargo-mcp preference
+  applies to development navigation, not release automation.
+
+**Fixed — marky-lj58 (P2, CLOSED):** Three correctness gaps in prepare-release Phase 2,
+all triggered by inter-crate dep version bumping added in this release (commit 1ea2dba):
+- Step numbering: Phase 2 jumped 5→7. Renumbered 6–10 consecutively.
+- Assertion label: "Cross-file version assertion" only checks package versions; renamed to
+  "Cross-crate package version assertion" + note that dep version fields caught by cargo build.
+- Rollback command: `markymark-*/Cargo.toml` was missing from the git checkout revert.
+
+**Pattern recorded (info-verbatim-spec-docs):** `docs/semver.md` is the official SemVer
+2.0.0 spec verbatim. Style findings (hyphenation, terminology) on this file are always
+false positives — do not re-triage. Same pattern may apply to other verbatim spec files.
+
+---
+
 ## Cross-Language Symbol Bridging (Epic marky-ix3)
 
 ### Vision (2026-02-20): Universal Symbol Search for Agents
