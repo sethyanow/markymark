@@ -147,6 +147,7 @@ has caused real bugs, wasted work, or merge conflicts.
 | 6 | **Exclude generated artifacts from metric input corpora** | If a test/benchmark writes a report file, exclude it from the input corpus used to compute the same metrics. Prevents self-referential drift. |
 | 7 | **NEVER merge PRs** | Agent must never run `gh pr merge` or equivalent. The human merges all PRs. Agent prepares PRs, pushes branches, but stops there. |
 | 8 | **Commit Cargo.lock with version bumps** | After editing `Cargo.toml` workspace version, run `cargo build` to regenerate `Cargo.lock`, then commit both together. Forgetting this caused a fixup commit during v0.4.2 (324f744). Use the `prepare-release` skill to avoid this. |
+| 9 | **LSP-first: no unbounded Read on code files >100 lines** | Use `LSP documentSymbol` first, then `Read` with `offset`+`limit`. A PreToolUse hook warns on violations. Full-file reads on .rs/.zig waste 5-25k tokens per file. |
 
 ## Landing the Plane (Session Completion)
 
