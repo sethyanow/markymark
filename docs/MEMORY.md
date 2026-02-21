@@ -572,19 +572,52 @@ no scan_code_spans(). All three DocumentIndex construction paths need code span 
 - **kind field is Optional** — Tier 1 can't determine struct/fn/trait from backtick text
 - **All 3 construction paths required for Tier 1** — from_scan (Zig FFI), from_blob (blob v2),
   from_ast (extract.rs regex). No silent gaps where some paths lack code spans.
-- **fgl8 is prerequisite for from_ast** — extract.rs at 862 lines must split before adding
-  regex code span extraction. Decoupled from Zig-side work (can proceed in parallel).
+- **fgl8 deferred** — extract.rs at 862 lines, under 1000-line hard stop. Phase B will
+  progressively empty it anyway, making a pre-split busywork.
 - **Zig consolidation committed in ix3** — all 11 markdown-content extractors migrate from
   extract.rs regex to Zig ExtractionRenderer. Only frontmatter stays in Rust. Three phases:
   A (code spans all paths), B (extractor migration), C (extract.rs becomes shim).
-- **Blob v2 reserves generously** — header v2 adds code_span_count plus reserved slots for
-  all Phase B extraction types. No v3 bump needed within ix3 scope.
+- **No BLOB_VERSION bump for code spans** — use _reserved[0..3] as code_span_count. v1 blobs
+  have zeros there, so code_span_count==0 is naturally backward-compatible. Save v2 for Phase B.
 - **from_blob backward-compatible** — must read both v1 (no code spans) and v2 blobs.
 - **FFI path is md4c/exports.zig** — CMd4cResult extended with code_spans pointer and count.
   NOT engine/exports.zig (that's the Document Engine lifecycle only).
 - **Separate code_scan_cursor** — per marky-0rl6 lesson, never share mutable scan cursors
   between extraction types. Code spans get their own cursor.
 - **bt3e refinement complete** — ix3 epic updated, first task marky-pdyo SRE-refined and ready.
+
+### Pipeline Status (assessed 2026-02-20)
+
+Phase A-1 (marky-pdyo, DONE) built the bottom half only:
+- Zig ExtractionRenderer: captures code spans (enterSpan/leaveSpan .code)
+- FFI: CMd4cCodeSpan struct, CMd4cResult extended
+- Rust FFI types: Md4cCodeSpan, CodeSpanEntry, CodeSpanOwned, SymbolKind
+- IncrementalOverrides: has code_spans field
+
+**Not yet wired (Phase A-2, marky-vsh2):**
+- DocumentEngine/parseAll: does not extract code spans
+- Engine blob: does not serialize code spans (no BlobCodeSpan, no header field)
+- from_blob: cannot deserialize code spans
+- ScanBackend: no scan_code_spans() method
+- from_scan: does not wire code spans into DocumentDependent
+- DocumentDependent: no code_spans field
+- DocumentIndex: no code_spans() accessor
+
+**Not yet wired (Phase A-3, not created):**
+- RealmIndex: no code_span cross-doc index
+- LSP: workspaceSymbol/hover don't surface code spans
+- MCP: search-symbols doesn't include code spans
+
+### Execution Order (2026-02-20)
+
+1. **ix3 A-2 (marky-vsh2)** — wire code spans through engine/blob/from_blob/ScanBackend/from_scan
+2. **n7wx Layer 1 (marky-2yzz)** — string interning (parallel with A-2, different files)
+3. **ix3 A-3** — LSP/MCP surfaces + RealmIndex cross-doc index (benefits from interning)
+4. **ix3 Phase B** — migrate 11 extractors from Rust regex to Zig
+5. **n7wx Layers 2-4** — stem index, incremental updates, lazy cold indexes
+
+n7wx is orthogonal: RealmIndex stays Rust regardless. ix3 is the Zig-sink work.
+n7wx L1 design updated to include code_span_to_docs: HashMap<Spur, ...> from day one.
 
 ---
 
