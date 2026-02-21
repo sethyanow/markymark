@@ -612,11 +612,24 @@ Phase A-1 (marky-pdyo, DONE) built the bottom half only:
 
 1. ~~**ix3 A-2 (marky-vsh2)** — wire code spans through engine/blob/from_blob/ScanBackend/from_scan~~ DONE
 2. ~~**n7wx Layer 1 (marky-2yzz)** — string interning~~ DONE
-3. **ix3 A-3** — LSP/MCP surfaces + RealmIndex cross-doc index (benefits from interning)
+3. ~~**ix3 A-3 (marky-ix3.1)** — LSP/MCP surfaces + RealmIndex cross-doc index (benefits from interning)~~ DONE
 4. **ix3 Phase B** — migrate 11 extractors from Rust regex to Zig
 5. **n7wx Layers 2-4** — stem index, incremental updates, lazy cold indexes
 
 n7wx is orthogonal: RealmIndex stays Rust regardless. ix3 is the Zig-sink work.
+
+### Phase A-3 Complete (2026-02-21, marky-ix3.1)
+
+Code spans surfaced to end users via three channels:
+- **RealmIndex:** code_span_to_docs populated on add_document (Spur-keyed, dedup by text per doc),
+  cleaned on remove, lookup_code_span() method added.
+- **LSP workspaceSymbol:** code spans returned alongside headings/tags/xml_tags (SymbolKind::VARIABLE).
+- **LSP hover:** CodeSpan variant added to SymbolAtPosition. Shows cross-doc reference count.
+- **MCP search-symbols:** code span text added as fuzzy match candidates (per-doc dedup).
+
+Known gap: MCP batch indexing (from_workspace_roots → from_ast) doesn't extract code spans.
+Only LSP (from_blob) and from_scan paths populate code spans. Phase B will address from_ast
+via Zig consolidation.
 
 ### n7wx Layer 1 Complete (2026-02-21, marky-2yzz)
 
