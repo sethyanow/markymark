@@ -11,6 +11,7 @@ const DocumentEngine = doc.DocumentEngine;
 const StoredHeading = doc.StoredHeading;
 const StoredLink = doc.StoredLink;
 const StoredTag = doc.StoredTag;
+const StoredCodeSpan = doc.StoredCodeSpan;
 const StoredBlockId = doc.StoredBlockId;
 const computeLineStarts = doc.computeLineStarts;
 const byteOffsetToPosition = doc.byteOffsetToPosition;
@@ -18,6 +19,7 @@ const slugifyText = doc.slugifyText;
 const parseAll = doc.parseAll;
 const freeHeadings = doc.freeHeadings;
 const freeLinks = doc.freeLinks;
+const freeCodeSpans = doc.freeCodeSpans;
 const freeTags = doc.freeTags;
 const freeBlockIds = doc.freeBlockIds;
 const freeStoredHeadingsList = doc.freeStoredHeadingsList;
@@ -474,6 +476,7 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
 
         var out_headings: []StoredHeading = &.{};
         var out_links: []StoredLink = &.{};
+        var out_code_spans: []StoredCodeSpan = &.{};
         var out_tags: []StoredTag = &.{};
         var out_block_ids: []StoredBlockId = &.{};
         var out_line_starts: []u32 = &.{};
@@ -485,6 +488,7 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
             input,
             &out_headings,
             &out_links,
+            &out_code_spans,
             &out_tags,
             &out_block_ids,
             &out_line_starts,
@@ -496,6 +500,7 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
             // Success: free output slices manually (simulates caller cleanup)
             freeHeadings(failing.allocator(), out_headings);
             freeLinks(failing.allocator(), out_links);
+            freeCodeSpans(failing.allocator(), out_code_spans);
             freeTags(failing.allocator(), out_tags);
             freeBlockIds(failing.allocator(), out_block_ids);
             if (out_line_starts.len > 0) failing.allocator().free(out_line_starts);

@@ -55,6 +55,14 @@ pub const StoredTag = struct {
     start: Position,
 };
 
+pub const StoredCodeSpan = struct {
+    text: []const u8, // owned decoded text
+    source_offset: u32, // byte offset of opening backtick
+    end_offset: u32, // byte offset past closing backtick
+    start: Position, // line:col of opening backtick
+    end: Position, // line:col past closing backtick
+};
+
 pub const StoredBlockId = struct {
     id: []const u8, // owned
     source_offset: u32,
@@ -69,6 +77,7 @@ pub const DocumentEngine = struct {
 
     headings: []StoredHeading = &.{},
     links: []StoredLink = &.{},
+    code_spans: []StoredCodeSpan = &.{},
     tags: []StoredTag = &.{},
     block_ids: []StoredBlockId = &.{},
     line_starts: []u32 = &.{},
@@ -101,6 +110,7 @@ pub const DocumentEngine = struct {
         // This ensures old state is preserved on parse failure.
         var new_headings: []StoredHeading = &.{};
         var new_links: []StoredLink = &.{};
+        var new_code_spans: []StoredCodeSpan = &.{};
         var new_tags: []StoredTag = &.{};
         var new_block_ids: []StoredBlockId = &.{};
         var new_line_starts: []u32 = &.{};
@@ -112,6 +122,7 @@ pub const DocumentEngine = struct {
             text,
             &new_headings,
             &new_links,
+            &new_code_spans,
             &new_tags,
             &new_block_ids,
             &new_line_starts,
@@ -123,6 +134,7 @@ pub const DocumentEngine = struct {
         self.freeState();
         self.headings = new_headings;
         self.links = new_links;
+        self.code_spans = new_code_spans;
         self.tags = new_tags;
         self.block_ids = new_block_ids;
         self.line_starts = new_line_starts;
@@ -154,6 +166,7 @@ pub const DocumentEngine = struct {
             text,
             &self.headings,
             &self.links,
+            &self.code_spans,
             &self.tags,
             &self.block_ids,
             &self.line_starts,
@@ -167,6 +180,8 @@ pub const DocumentEngine = struct {
         self.headings = &.{};
         freeLinks(self.allocator, self.links);
         self.links = &.{};
+        freeCodeSpans(self.allocator, self.code_spans);
+        self.code_spans = &.{};
         freeTags(self.allocator, self.tags);
         self.tags = &.{};
         freeBlockIds(self.allocator, self.block_ids);
@@ -189,6 +204,7 @@ pub fn parseAll(
     text: []const u8,
     out_headings: *[]StoredHeading,
     out_links: *[]StoredLink,
+    out_code_spans: *[]StoredCodeSpan,
     out_tags: *[]StoredTag,
     out_block_ids: *[]StoredBlockId,
     out_line_starts: *[]u32,
@@ -205,13 +221,14 @@ pub fn parseAll(
     // On error, free both extraction and any partial stored results.
     var stored_headings_list = std.ArrayListUnmanaged(StoredHeading){};
     var stored_links_list = std.ArrayListUnmanaged(StoredLink){};
+    var stored_code_spans_list = std.ArrayListUnmanaged(StoredCodeSpan){};
     var stored_tags_list = std.ArrayListUnmanaged(StoredTag){};
     var stored_block_ids_list = std.ArrayListUnmanaged(StoredBlockId){};
 
-    // Tracks whether h.text/l.text/l.target have been transferred from extraction into
-    // the stored lists (i.e., after extraction.headings/links slice containers are freed
-    // at line 289-290). Before transfer, extraction.deinit() in each catch block frees
-    // the strings. After transfer, the errdefer must free them via the stored lists.
+    // Tracks whether h.text/l.text/l.target/cs.text have been transferred from extraction
+    // into the stored lists (i.e., after extraction.headings/links/code_spans slice containers
+    // are freed). Before transfer, extraction.deinit() in each catch block frees the strings.
+    // After transfer, the errdefer must free them via the stored lists.
     var texts_transferred: bool = false;
 
     // On error: free everything we've built. Pass texts_transferred so the free helpers
@@ -219,6 +236,7 @@ pub fn parseAll(
     errdefer {
         freeStoredHeadingsList(allocator, &stored_headings_list, texts_transferred);
         freeStoredLinksList(allocator, &stored_links_list, texts_transferred);
+        freeStoredCodeSpansList(allocator, &stored_code_spans_list, texts_transferred);
         freeStoredTagsList(allocator, &stored_tags_list);
         freeStoredBlockIdsList(allocator, &stored_block_ids_list);
     }
@@ -287,13 +305,29 @@ pub fn parseAll(
         };
     }
 
-    // OWNERSHIP: The string data (h.text, l.text, l.target) from extraction_renderer's
-    // ExtractedHeading/ExtractedLink arrays has been moved into stored_headings_list and
-    // stored_links_list by the loops above (steps 4-5). Only the slice containers
-    // (extraction.headings, extraction.links) are freed here — NOT the string contents.
-    // Do not add allocator.free(h.text) or similar; the strings are now owned by stored lists.
+    // 5b. Process code spans: positions
+    for (extraction.code_spans) |cs| {
+        const start_pos = byteOffsetToPosition(line_starts, cs.offset);
+        const end_pos = byteOffsetToPosition(line_starts, cs.end_offset);
+        stored_code_spans_list.append(allocator, .{
+            .text = cs.text,
+            .source_offset = cs.offset,
+            .end_offset = cs.end_offset,
+            .start = start_pos,
+            .end = end_pos,
+        }) catch {
+            extraction.deinit();
+            return error.OutOfMemory;
+        };
+    }
+
+    // OWNERSHIP: The string data (h.text, l.text, l.target, cs.text) from extraction_renderer's
+    // ExtractedHeading/ExtractedLink/ExtractedCodeSpan arrays has been moved into the stored lists
+    // by the loops above (steps 4-5b). Only the slice containers are freed here — NOT the string
+    // contents. The strings are now owned by stored lists.
     allocator.free(extraction.headings);
     allocator.free(extraction.links);
+    allocator.free(extraction.code_spans);
     // From this point, the errdefer must free string data from the stored lists directly.
     texts_transferred = true;
 
@@ -370,6 +404,8 @@ pub fn parseAll(
     errdefer freeHeadings(allocator, out_headings.*);
     out_links.* = stored_links_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
     errdefer freeLinks(allocator, out_links.*);
+    out_code_spans.* = stored_code_spans_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
+    errdefer freeCodeSpans(allocator, out_code_spans.*);
     out_tags.* = stored_tags_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
     errdefer freeTags(allocator, out_tags.*);
     // No errdefer for block_ids: nothing allocates after this point.
@@ -642,6 +678,13 @@ pub fn freeLinks(allocator: Allocator, links: []StoredLink) void {
     if (links.len > 0) allocator.free(links);
 }
 
+pub fn freeCodeSpans(allocator: Allocator, code_spans: []StoredCodeSpan) void {
+    for (code_spans) |cs| {
+        allocator.free(cs.text);
+    }
+    if (code_spans.len > 0) allocator.free(code_spans);
+}
+
 pub fn freeTags(allocator: Allocator, tags: []StoredTag) void {
     for (tags) |t| {
         allocator.free(t.name);
@@ -673,6 +716,16 @@ pub fn freeStoredLinksList(allocator: Allocator, list: *std.ArrayListUnmanaged(S
         for (list.items) |l| {
             allocator.free(l.text);
             allocator.free(l.target);
+        }
+    }
+    list.deinit(allocator);
+}
+
+fn freeStoredCodeSpansList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredCodeSpan), free_texts: bool) void {
+    // cs.text was transferred from extraction; free only when texts_transferred=true.
+    if (free_texts) {
+        for (list.items) |cs| {
+            allocator.free(cs.text);
         }
     }
     list.deinit(allocator);
