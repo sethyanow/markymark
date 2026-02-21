@@ -1348,4 +1348,97 @@ mod tests {
             "All BlobError variants must have distinct Display messages"
         );
     }
+
+    // ── Code span tests (marky-vsh2) ────────────────────────────────────
+
+    #[test]
+    fn test_from_blob_code_spans_basic() {
+        let blob = blob_for("Hello `world` end");
+        let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+        let cs = index.code_spans();
+        assert_eq!(cs.len(), 1);
+        assert_eq!(cs[0].text, "world");
+        assert_eq!(cs[0].start_byte, 6); // offset of opening backtick
+        assert_eq!(cs[0].end_byte, 13); // past closing backtick
+    }
+
+    #[test]
+    fn test_from_blob_code_spans_multiple() {
+        let blob = blob_for("`a` and `b`");
+        let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+        let cs = index.code_spans();
+        assert_eq!(cs.len(), 2);
+        assert_eq!(cs[0].text, "a");
+        assert_eq!(cs[1].text, "b");
+        assert!(cs[1].start_byte > cs[0].start_byte);
+    }
+
+    #[test]
+    fn test_from_blob_code_spans_empty() {
+        let blob = blob_for("No code here");
+        let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+        assert!(index.code_spans().is_empty());
+    }
+
+    #[test]
+    fn test_from_blob_code_spans_in_heading() {
+        let blob = blob_for("# Title `code` end");
+        let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+        assert_eq!(index.headings().len(), 1);
+        let cs = index.code_spans();
+        assert_eq!(cs.len(), 1);
+        assert_eq!(cs[0].text, "code");
+    }
+
+    #[test]
+    fn test_from_blob_code_spans_backward_compat() {
+        // A v1 blob (code_span_count=0) should still parse with empty code_spans.
+        // The blob_for helper uses the current engine which now sets code_span_count.
+        // To test backward compat, use a document with no code spans.
+        let blob = blob_for("# Just a heading\n\nSome text.");
+        let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+        assert!(index.code_spans().is_empty());
+        assert_eq!(index.headings().len(), 1);
+    }
+
+    #[test]
+    fn test_from_blob_code_span_positions() {
+        let blob = blob_for("line1\n`code`\nline3");
+        let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+        let cs = index.code_spans();
+        assert_eq!(cs.len(), 1);
+        assert_eq!(cs[0].text, "code");
+        // Code span is on line 1 (0-indexed), col 0
+        assert_eq!(cs[0].range.start.line, 1);
+        assert_eq!(cs[0].range.start.character, 0);
+    }
+
+    #[test]
+    fn test_from_blob_code_span_parity_with_from_scan() {
+        use markymark_core::scanner::Md4cScanBackend;
+
+        let text = "# Heading\n\nSome `code` and `more code` here.\n\n[link](url)";
+        let blob = blob_for(text);
+        let blob_index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+
+        let backend = Md4cScanBackend;
+        let scan_index = DocumentIndex::from_scan(text, &backend);
+
+        let blob_cs = blob_index.code_spans();
+        let scan_cs = scan_index.code_spans();
+        assert_eq!(blob_cs.len(), scan_cs.len(), "code span count mismatch");
+        for (b, s) in blob_cs.iter().zip(scan_cs.iter()) {
+            assert_eq!(b.text, s.text, "code span text mismatch");
+            assert_eq!(b.start_byte, s.start_byte, "start_byte mismatch");
+            assert_eq!(b.end_byte, s.end_byte, "end_byte mismatch");
+            assert_eq!(
+                b.range.start.line, s.range.start.line,
+                "start line mismatch"
+            );
+            assert_eq!(
+                b.range.start.character, s.range.start.character,
+                "start col mismatch"
+            );
+        }
+    }
 }

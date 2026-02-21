@@ -516,3 +516,91 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
     // Verify we actually tested multiple failure points (not just index 0)
     try testing.expect(fail_index > 5);
 }
+
+// ── Code span tests ───────────────────────────────────────────────
+
+test "engine extracts code spans from backtick text" {
+    const engine = try DocumentEngine.create("Hello `world` end", testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 1), engine.code_spans.len);
+    try testing.expectEqualStrings("world", engine.code_spans[0].text);
+    try testing.expectEqual(@as(u32, 6), engine.code_spans[0].source_offset);
+    // end_offset past closing backtick: 6 + 1 + 5 + 1 = 13
+    try testing.expectEqual(@as(u32, 13), engine.code_spans[0].end_offset);
+}
+
+test "engine extracts multiple code spans" {
+    const engine = try DocumentEngine.create("`a` and `b`", testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 2), engine.code_spans.len);
+    try testing.expectEqualStrings("a", engine.code_spans[0].text);
+    try testing.expectEqualStrings("b", engine.code_spans[1].text);
+    // Second code span offset must be greater than first
+    try testing.expect(engine.code_spans[1].source_offset > engine.code_spans[0].source_offset);
+}
+
+test "engine no code spans in plain text" {
+    const engine = try DocumentEngine.create("No code here", testing.allocator);
+    defer engine.destroy();
+    try testing.expectEqual(@as(usize, 0), engine.code_spans.len);
+}
+
+test "engine code span inside heading" {
+    const engine = try DocumentEngine.create("# Title `code` end", testing.allocator);
+    defer engine.destroy();
+
+    // Both heading and code span should be present
+    try testing.expectEqual(@as(usize, 1), engine.headings.len);
+    try testing.expectEqual(@as(usize, 1), engine.code_spans.len);
+    try testing.expectEqualStrings("code", engine.code_spans[0].text);
+}
+
+test "engine code span positions are correct" {
+    const engine = try DocumentEngine.create("line1\n`code`\nline3", testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 1), engine.code_spans.len);
+    // Code span is on line 1 (0-indexed), col 0
+    try testing.expectEqual(@as(u32, 1), engine.code_spans[0].start.line);
+    try testing.expectEqual(@as(u32, 0), engine.code_spans[0].start.col);
+}
+
+test "engine code span blob roundtrip" {
+    const engine = try DocumentEngine.create("Hello `world` end", testing.allocator);
+    defer engine.destroy();
+
+    const blob_data = try engine.getBlob();
+    // Validate the blob has code_span_count in header
+    const header = blob.readHeader(blob_data);
+    try testing.expectEqual(@as(u32, 1), header.code_span_count);
+    try testing.expectEqual(@as(u32, 0), header.heading_count);
+
+    // Verify blob validates successfully
+    const validated = try blob.validateBlob(blob_data);
+    try testing.expectEqual(@as(u32, 1), validated.code_span_count);
+}
+
+test "engine code span blob roundtrip empty" {
+    const engine = try DocumentEngine.create("No code here", testing.allocator);
+    defer engine.destroy();
+
+    const blob_data = try engine.getBlob();
+    const header = blob.readHeader(blob_data);
+    try testing.expectEqual(@as(u32, 0), header.code_span_count);
+}
+
+test "engine update preserves code spans" {
+    const engine = try DocumentEngine.create("`a`", testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 1), engine.code_spans.len);
+    try testing.expectEqualStrings("a", engine.code_spans[0].text);
+
+    // Update with new content
+    try engine.update("`b` and `c`");
+    try testing.expectEqual(@as(usize, 2), engine.code_spans.len);
+    try testing.expectEqualStrings("b", engine.code_spans[0].text);
+    try testing.expectEqualStrings("c", engine.code_spans[1].text);
+}
