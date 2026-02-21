@@ -657,6 +657,24 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
         pool_off += @intCast(b.id.len);
     }
 
+    // Write code spans
+    for (engine.code_spans, 0..) |cs, i| {
+        const bcs = blob.BlobCodeSpan{
+            .text_off = pool_off,
+            .text_len = @intCast(cs.text.len),
+            .source_offset = cs.source_offset,
+            .end_offset = cs.end_offset,
+            .start_line = cs.start.line,
+            .start_col = cs.start.col,
+            .end_line = cs.end.line,
+            .end_col = cs.end.col,
+        };
+        try blob.writeStruct(blob.BlobCodeSpan, buf, offsets.code_spans + i * @sizeOf(blob.BlobCodeSpan), bcs);
+
+        @memcpy(buf[offsets.text_pool + pool_off ..][0..cs.text.len], cs.text);
+        pool_off += @intCast(cs.text.len);
+    }
+
     // Write line_starts
     for (engine.line_starts, 0..) |ls, i| {
         const offset = offsets.line_starts + @as(u32, @intCast(i)) * @sizeOf(u32);
