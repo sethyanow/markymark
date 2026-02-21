@@ -98,6 +98,29 @@ Checked arithmetic avoids overflow panics; null-pointer guards prevent SIGSEGV. 
 padding bytes explicitly for deterministic output. Any `init()` accepting arbitrary
 `[]const u8` must also validate alignment before `@alignCast` (marky-5rq).
 
+### Code span extraction via ExtractionRenderer (2026-02-20, marky-pdyo)
+
+Phase A-1 of ix3 added inline code span extraction to the Zig ExtractionRenderer.
+Key design decisions and patterns:
+
+- **Separate cursor**: `code_scan_cursor` is independent from `heading_scan_cursor` and
+  `link_scan_cursor` (per marky-0rl6 lesson — shared cursors corrupt offsets).
+- **Dual accumulation**: When `in_code_span` and `in_heading` are both true (e.g.
+  `# Title \`code\``), `text()` appends to BOTH buffers. Heading text includes code
+  span content, code span is extracted independently.
+- **Backtick run matching**: `findCodeSpanOffset()` scans for matching backtick runs
+  (1, 2, or 3 backticks). Double-backtick spans like ` ``code`` ` work correctly
+  because the scan looks for a closing run of exactly the same length.
+- **Fenced block exclusion**: `in_code_block` early return in `text()` fires before
+  `in_code_span` check. md4c does NOT fire `SpanType.code` inside fenced blocks,
+  so this is a belt-and-suspenders guard.
+- **ABI change**: CMd4cResult grew from 40 to 48 bytes (added `code_spans` pointer +
+  `code_spans_count`, removed `_padding`). Both Zig comptime and Rust const size
+  asserts verify alignment.
+- **Entity decoding**: md4c fires `TextType.code` (not `.entity`) for code span
+  content, so entities are NOT decoded inside code spans. This matches CommonMark
+  spec (code spans are verbatim).
+
 ---
 
 ## Using markymark Effectively
