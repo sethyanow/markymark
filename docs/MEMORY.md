@@ -613,10 +613,45 @@ Phase A-1 (marky-pdyo, DONE) built the bottom half only:
 1. ~~**ix3 A-2 (marky-vsh2)** — wire code spans through engine/blob/from_blob/ScanBackend/from_scan~~ DONE
 2. ~~**n7wx Layer 1 (marky-2yzz)** — string interning~~ DONE
 3. ~~**ix3 A-3 (marky-ix3.1)** — LSP/MCP surfaces + RealmIndex cross-doc index (benefits from interning)~~ DONE
-4. **ix3 Phase B** — migrate 11 extractors from Rust regex to Zig
+4. **ix3 Phase B** — Zig extraction consolidation (9 tasks, see below)
 5. **n7wx Layers 2-4** — stem index, incremental updates, lazy cold indexes
 
 n7wx is orthogonal: RealmIndex stays Rust regardless. ix3 is the Zig-sink work.
+
+### Phase B Plan (Refined 2026-02-21)
+
+**Key architectural decisions:**
+- **from_ast → from_blob** for MCP batch indexing. DocumentEngine → blob → from_blob replaces
+  tree-sitter → extract.rs regex. Tree-sitter retained only for frontmatter (YAML/TOML stays Rust).
+- **ALL extractors in Zig** — embeds, tasks, callouts, query_blocks, link_definitions implemented
+  in Zig ExtractionRenderer (currently public API only, not in DocumentDependent).
+- **Full path parity** — block_refs, properties, xml_tags added to Zig/blob pipeline.
+- **Blob v2** — header expands 64→128 bytes with 8 new count fields + 44 bytes reserved.
+
+**md4c callback availability:**
+- Direct callback: Tasks (LiDetail.is_task), Callouts (enterBlock .quote + text check),
+  Embeds (leaveSpan .wikilink + preceding `!` check), XML tags (TextType.html)
+- Text scanning needed: Block refs `((uuid))`, Properties `key:: value`, Query blocks
+  `{{query}}`, Link definitions `[label]: url`
+
+**Task order (9 tasks, B-1 first: marky-2u6h):**
+B-1: Blob v2 header expansion (foundation) — marky-2u6h
+B-2: DocumentDependent type additions (5 new entry types)
+B-3: Tasks + Embeds (md4c callback extractors)
+B-4: Callouts + Block refs (md4c + text scan)
+B-5: Link defs + Query blocks (text scan)
+B-6: Properties (structured parsing)
+B-7: XML tags (complex parser migration)
+B-8: MCP batch path migration (from_ast → from_blob)
+B-9: extract.rs cleanup (remove dead code)
+
+Each B-3..B-7 follows: Zig extraction → blob struct + header count → from_blob deserialization
+→ DocumentDependent field + accessor → tests → remove extract.rs regex.
+
+**5 unused extractors added to DocumentDependent:**
+embeds, tasks, callouts, query_blocks, link_definitions currently exist as Ast public API
+methods (extract.rs regex) but are NOT stored in DocumentIndex. Phase B adds them to
+DocumentDependent, making them available via all construction paths.
 
 ### Phase A-3 Complete (2026-02-21, marky-ix3.1)
 
