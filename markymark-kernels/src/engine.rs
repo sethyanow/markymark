@@ -228,11 +228,11 @@ mod tests {
     fn test_engine_empty_input() {
         let engine = DocumentEngine::new("").unwrap();
         let blob = engine.get_blob().unwrap();
-        // Empty blob is header-only (64 bytes)
+        // Empty blob is header-only (128 bytes for v2)
         assert_eq!(
             blob.len(),
-            64,
-            "empty blob should be 64 bytes (header only)"
+            128,
+            "empty blob should be 128 bytes (v2 header only)"
         );
     }
 
@@ -280,9 +280,9 @@ mod tests {
         let magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
         assert_eq!(magic, 0x4D4B_5343);
 
-        // Version: 1
+        // Version: 2
         let version = u16::from_le_bytes([data[4], data[5]]);
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
 
         // heading_count at offset 16 (after magic:4 + version:2 + flags:2 + content_hash:8)
         let heading_count = u32::from_le_bytes([data[16], data[17], data[18], data[19]]);

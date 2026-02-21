@@ -176,8 +176,8 @@ test "test_blob_empty_document" {
     defer engine.destroy();
 
     const blob_data = try engine.getBlob();
-    // Empty document blob is header only (64 bytes)
-    try testing.expectEqual(@as(usize, 64), blob_data.len);
+    // Empty document blob is header only (128 bytes for v2)
+    try testing.expectEqual(@as(usize, 128), blob_data.len);
 
     const header = blob.readHeader(blob_data);
     try testing.expectEqual(@as(u32, 0), header.heading_count);
@@ -187,7 +187,7 @@ test "test_blob_empty_document" {
 }
 
 test "test_blob_validate_rejects_bad_magic" {
-    var buf: [64]u8 = .{0} ** 64;
+    var buf: [128]u8 = .{0} ** 128;
     std.mem.writeInt(u32, buf[0..4], 0xDEADBEEF, .little);
     try testing.expectError(error.InvalidMagic, blob.validateBlob(&buf));
 }

@@ -7,11 +7,11 @@
 //! # Blob format (from `zig/src/engine/blob.zig`)
 //!
 //! ```text
-//! [ScanBlobHeader: 64 bytes]
+//! [ScanBlobHeader: 64 bytes (v1) | 128 bytes (v2)]
 //!   magic(4) version(2) flags(2) content_hash(8)
 //!   heading_count(4) link_count(4) tag_count(4) block_id_count(4)
 //!   line_count(4) text_pool_size(4) token_estimate(4) total_blob_size(4)
-//!   _reserved(16)
+//!   code_span_count(4@48), v2-only counts at 52..84, reserved bytes through 127
 //! [BlobHeading × heading_count: 40 bytes each]
 //! [BlobLink    × link_count:    40 bytes each]
 //! [BlobTag     × tag_count:     24 bytes each]
@@ -38,8 +38,10 @@ use super::{
 // ---------------------------------------------------------------------------
 
 const BLOB_MAGIC: u32 = 0x4D4B_5343; // "MKSC"
-const BLOB_VERSION: u16 = 1;
-const HEADER_SIZE: usize = 64;
+const BLOB_VERSION_V1: u16 = 1;
+const BLOB_VERSION_V2: u16 = 2;
+const V1_HEADER_SIZE: usize = 64;
+const V2_HEADER_SIZE: usize = 128;
 const HEADING_SIZE: usize = 40;
 const LINK_SIZE: usize = 40;
 const TAG_SIZE: usize = 24;
@@ -53,11 +55,11 @@ const CODE_SPAN_SIZE: usize = 32;
 /// Error type for [`DocumentIndex::from_blob`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BlobError {
-    /// Data is too short to hold a valid blob header (minimum 64 bytes).
+    /// Data is too short to hold a valid blob header (minimum 64 bytes for v1, 128 bytes for v2).
     TooSmall,
     /// Magic number does not match `MKSC` (`0x4D4B5343`).
     InvalidMagic,
-    /// Blob version field is not supported (expected version 1).
+    /// Blob version field is not supported (expected versions 1 or 2).
     UnsupportedVersion,
     /// Total blob size field does not match actual data length or computed size.
     SizeMismatch,
@@ -70,12 +72,18 @@ pub enum BlobError {
 impl std::fmt::Display for BlobError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::TooSmall => write!(f, "blob too small (minimum 64 bytes required for header)"),
+            Self::TooSmall => write!(
+                f,
+                "blob too small (minimum 64 bytes for v1 or 128 bytes for v2 header)"
+            ),
             Self::InvalidMagic => {
                 write!(f, "invalid blob magic (expected MKSC / 0x4D4B5343)")
             }
             Self::UnsupportedVersion => {
-                write!(f, "unsupported blob version (only version 1 is supported)")
+                write!(
+                    f,
+                    "unsupported blob version (only versions 1 and 2 are supported)"
+                )
             }
             Self::SizeMismatch => write!(
                 f,
@@ -120,6 +128,7 @@ fn read_u32_le(data: &[u8], offset: usize) -> u32 {
 // ---------------------------------------------------------------------------
 
 struct BlobHeader {
+    header_size: usize,
     heading_count: u32,
     link_count: u32,
     tag_count: u32,
@@ -135,9 +144,9 @@ struct BlobHeader {
 ///   magic(4) version(2) flags(2) content_hash(8)
 ///   heading_count(4@16) link_count(4@20) tag_count(4@24) block_id_count(4@28)
 ///   line_count(4@32) text_pool_size(4@36) token_estimate(4@40) total_blob_size(4@44)
-///   code_span_count(4@48) _reserved(12@52)
+///   code_span_count(4@48) + v2 count fields at 52..84, then reserved
 fn validate_blob(data: &[u8]) -> Result<BlobHeader, BlobError> {
-    if data.len() < HEADER_SIZE {
+    if data.len() < V1_HEADER_SIZE {
         return Err(BlobError::TooSmall);
     }
 
@@ -147,9 +156,16 @@ fn validate_blob(data: &[u8]) -> Result<BlobHeader, BlobError> {
     }
 
     let version = read_u16_le(data, 4);
-    if version != BLOB_VERSION {
-        return Err(BlobError::UnsupportedVersion);
-    }
+    let header_size = match version {
+        BLOB_VERSION_V1 => V1_HEADER_SIZE,
+        BLOB_VERSION_V2 => {
+            if data.len() < V2_HEADER_SIZE {
+                return Err(BlobError::TooSmall);
+            }
+            V2_HEADER_SIZE
+        }
+        _ => return Err(BlobError::UnsupportedVersion),
+    };
 
     let heading_count = read_u32_le(data, 16);
     let link_count = read_u32_le(data, 20);
@@ -158,12 +174,11 @@ fn validate_blob(data: &[u8]) -> Result<BlobHeader, BlobError> {
     let line_count = read_u32_le(data, 32);
     let text_pool_size = read_u32_le(data, 36);
     let total_blob_size = read_u32_le(data, 44);
-    // code_span_count lives at offset 48 — first 4 bytes of what was _reserved.
-    // v1 blobs have zeros here, so code_span_count==0 is backward compatible.
+    // code_span_count lives at offset 48 for both v1 and v2.
     let code_span_count = read_u32_le(data, 48);
 
     // Compute expected total size via checked arithmetic to prevent overflow.
-    let expected = HEADER_SIZE
+    let expected = header_size
         .checked_add(
             (heading_count as usize)
                 .checked_mul(HEADING_SIZE)
@@ -182,6 +197,7 @@ fn validate_blob(data: &[u8]) -> Result<BlobHeader, BlobError> {
     }
 
     Ok(BlobHeader {
+        header_size,
         heading_count,
         link_count,
         tag_count,
@@ -207,7 +223,7 @@ struct SectionOffsets {
 }
 
 fn compute_offsets(h: &BlobHeader) -> SectionOffsets {
-    let headings = HEADER_SIZE;
+    let headings = h.header_size;
     let links = headings + h.heading_count as usize * HEADING_SIZE;
     let tags = links + h.link_count as usize * LINK_SIZE;
     let block_ids = tags + h.tag_count as usize * TAG_SIZE;
@@ -296,9 +312,9 @@ impl DocumentIndex {
     /// # Errors
     ///
     /// Returns [`BlobError`] if the blob is malformed:
-    /// - [`BlobError::TooSmall`] — fewer than 64 bytes
+    /// - [`BlobError::TooSmall`] — fewer than 64 bytes (v1) or 128 bytes (v2)
     /// - [`BlobError::InvalidMagic`] — magic number mismatch
-    /// - [`BlobError::UnsupportedVersion`] — version ≠ 1
+    /// - [`BlobError::UnsupportedVersion`] — version not in {1, 2}
     /// - [`BlobError::SizeMismatch`] — computed size ≠ actual length
     /// - [`BlobError::TextPoolOutOfBounds`] — an entry's text offset+len overflows pool
     /// - [`BlobError::InvalidUtf8`] — text pool contains invalid UTF-8
@@ -756,6 +772,24 @@ mod tests {
         engine.get_blob().expect("get_blob failed").data().to_vec()
     }
 
+    /// Helper: construct a minimal v1 blob fixture (64-byte header, version=1).
+    fn make_v1_empty_blob() -> [u8; 64] {
+        let mut buf = [0u8; 64];
+        buf[0..4].copy_from_slice(&BLOB_MAGIC.to_le_bytes());
+        buf[4..6].copy_from_slice(&BLOB_VERSION_V1.to_le_bytes());
+        buf[44..48].copy_from_slice(&64u32.to_le_bytes()); // total_blob_size
+        buf
+    }
+
+    /// Helper: construct a minimal v2 blob fixture (128-byte header, version=2).
+    fn make_v2_empty_blob() -> [u8; 128] {
+        let mut buf = [0u8; 128];
+        buf[0..4].copy_from_slice(&BLOB_MAGIC.to_le_bytes());
+        buf[4..6].copy_from_slice(&BLOB_VERSION_V2.to_le_bytes());
+        buf[44..48].copy_from_slice(&128u32.to_le_bytes()); // total_blob_size
+        buf
+    }
+
     // ── Engine-backed tests (tests 1–9, 14–15) ───────────────────────────
 
     #[test]
@@ -967,13 +1001,53 @@ mod tests {
     }
 
     #[test]
+    fn test_from_blob_v2_empty_document() {
+        let buf = make_v2_empty_blob();
+        let index = DocumentIndex::from_blob(&buf).expect("v2 empty blob should parse");
+        assert!(index.headings().is_empty());
+        assert!(index.wiki_links().is_empty());
+        assert!(index.tags().is_empty());
+    }
+
+    #[test]
+    fn test_from_blob_rejects_truncated_v2() {
+        // 80 bytes: enough for v1 header but too small for v2.
+        let mut buf = [0u8; 80];
+        buf[0..4].copy_from_slice(&BLOB_MAGIC.to_le_bytes());
+        buf[4..6].copy_from_slice(&BLOB_VERSION_V2.to_le_bytes());
+        assert!(matches!(
+            DocumentIndex::from_blob(&buf),
+            Err(BlobError::TooSmall)
+        ));
+    }
+
+    #[test]
+    fn test_from_blob_v2_same_result_as_v1_for_empty_doc() {
+        let v1_blob = make_v1_empty_blob();
+        let v2_blob = make_v2_empty_blob();
+
+        let v1_index = DocumentIndex::from_blob(&v1_blob).expect("v1 empty blob should parse");
+        let v2_index =
+            DocumentIndex::from_blob(&v2_blob).expect("v2 empty blob should parse equivalently");
+
+        assert_eq!(v1_index.headings().len(), v2_index.headings().len());
+        assert_eq!(v1_index.wiki_links().len(), v2_index.wiki_links().len());
+        assert_eq!(
+            v1_index.markdown_links().len(),
+            v2_index.markdown_links().len()
+        );
+        assert_eq!(v1_index.tags().len(), v2_index.tags().len());
+        assert_eq!(v1_index.block_ids().count(), v2_index.block_ids().count());
+    }
+
+    #[test]
     fn test_from_blob_rejects_size_mismatch() {
         // Build a valid minimal blob (header only) but corrupt total_blob_size.
         let blob = blob_for("");
-        assert_eq!(blob.len(), 64);
+        assert_eq!(blob.len(), 128);
         let mut corrupt = blob.clone();
-        // Set total_blob_size to 128 (doesn't match actual 64 bytes)
-        corrupt[44] = 128;
+        // Set total_blob_size to 64 (doesn't match actual 128 bytes)
+        corrupt[44] = 64;
         corrupt[45] = 0;
         corrupt[46] = 0;
         corrupt[47] = 0;
@@ -1298,7 +1372,7 @@ mod tests {
         let cases: &[(BlobError, &str)] = &[
             (BlobError::TooSmall, "64 bytes"),
             (BlobError::InvalidMagic, "MKSC"),
-            (BlobError::UnsupportedVersion, "version 1"),
+            (BlobError::UnsupportedVersion, "versions 1 and 2"),
             (BlobError::SizeMismatch, "size mismatch"),
             (BlobError::TextPoolOutOfBounds, "text pool"),
             (BlobError::InvalidUtf8, "UTF-8"),
@@ -1392,11 +1466,33 @@ mod tests {
 
     #[test]
     fn test_from_blob_code_spans_backward_compat() {
-        // A v1 blob (code_span_count=0) should still parse with empty code_spans.
-        // The blob_for helper uses the current engine which now sets code_span_count.
-        // To test backward compat, use a document with no code spans.
-        let blob = blob_for("# Just a heading\n\nSome text.");
-        let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+        // A true v1 blob with 1 heading but no code spans.
+        // v1 has code_span_count=0 by default (offset 48 is zero-initialized).
+        let pool = b"a heading\0a-heading\0\0\0";
+        let pool_size = pool.len() as u32;
+        let total_size = V1_HEADER_SIZE as u32 + HEADING_SIZE as u32 + pool_size;
+
+        let mut v1_blob = vec![0u8; total_size as usize];
+        // Start from the empty v1 header template.
+        v1_blob[..V1_HEADER_SIZE].copy_from_slice(&make_v1_empty_blob());
+        // Patch counts and sizes.
+        v1_blob[16..20].copy_from_slice(&1u32.to_le_bytes()); // heading_count
+        v1_blob[36..40].copy_from_slice(&pool_size.to_le_bytes()); // text_pool_size
+        v1_blob[44..48].copy_from_slice(&total_size.to_le_bytes()); // total_blob_size
+
+        // BlobHeading: text_off=0, text_len=9, slug_off=10, slug_len=9, level=1
+        let h = V1_HEADER_SIZE;
+        v1_blob[h..h + 4].copy_from_slice(&0u32.to_le_bytes());
+        v1_blob[h + 4..h + 8].copy_from_slice(&9u32.to_le_bytes());
+        v1_blob[h + 8..h + 12].copy_from_slice(&10u32.to_le_bytes());
+        v1_blob[h + 12..h + 16].copy_from_slice(&9u32.to_le_bytes());
+        v1_blob[h + 36] = 1; // level
+
+        // Text pool follows the heading section.
+        let pool_start = V1_HEADER_SIZE + HEADING_SIZE;
+        v1_blob[pool_start..pool_start + pool.len()].copy_from_slice(pool);
+
+        let index = DocumentIndex::from_blob(&v1_blob).expect("v1 blob should parse");
         assert!(index.code_spans().is_empty());
         assert_eq!(index.headings().len(), 1);
     }

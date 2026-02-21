@@ -4,18 +4,19 @@
 // mmap-compatible layout, zero pointer chasing.
 //
 // Section order (fixed, offsets computed from counts):
-//   [ScanBlobHeader]
+//   [ScanBlobHeader]             (v2: 128 bytes)
 //   [BlobHeading × heading_count]
 //   [BlobLink × link_count]
 //   [BlobTag × tag_count]
 //   [BlobBlockId × block_id_count]
+//   [BlobCodeSpan × code_span_count]
 //   [u32 × line_count]           (line_starts)
 //   [u8 × text_pool_size]        (text pool)
 
 const std = @import("std");
 
 pub const BLOB_MAGIC: u32 = 0x4D4B5343; // "MKSC" (MarKy SCan)
-pub const BLOB_VERSION: u16 = 1;
+pub const BLOB_VERSION: u16 = 2;
 
 // ── Blob structs ────────────────────────────────────────────────────
 
@@ -35,7 +36,15 @@ pub const ScanBlobHeader = extern struct {
     token_estimate: u32 = 0,
     total_blob_size: u32 = 0,
     code_span_count: u32 = 0,
-    _reserved: [12]u8 = .{0} ** 12,
+    embed_count: u32 = 0,
+    task_count: u32 = 0,
+    callout_count: u32 = 0,
+    query_block_count: u32 = 0,
+    link_def_count: u32 = 0,
+    block_ref_count: u32 = 0,
+    property_count: u32 = 0,
+    xml_tag_count: u32 = 0,
+    _reserved_v2: [44]u8 = .{0} ** 44,
 };
 
 pub const BlobHeading = extern struct {
@@ -99,7 +108,7 @@ pub const BlobCodeSpan = extern struct {
 // ── Comptime size assertions ────────────────────────────────────────
 
 comptime {
-    std.debug.assert(@sizeOf(ScanBlobHeader) == 64);
+    std.debug.assert(@sizeOf(ScanBlobHeader) == 128);
     std.debug.assert(@sizeOf(BlobHeading) == 40);
     std.debug.assert(@sizeOf(BlobLink) == 40);
     std.debug.assert(@sizeOf(BlobTag) == 24);
@@ -217,7 +226,7 @@ pub fn validateBlob(data: []const u8) BlobError!ScanBlobHeader {
 
 /// Read header from raw bytes (alignment-safe bytewise copy).
 ///
-/// Precondition: `data.len >= @sizeOf(ScanBlobHeader)` (64 bytes).
+/// Precondition: `data.len >= @sizeOf(ScanBlobHeader)` (128 bytes for v2).
 /// Panics via Zig slice bounds check on undersized input.
 /// Callers should use `validateBlob()` first, which enforces the minimum size.
 pub fn readHeader(data: []const u8) ScanBlobHeader {
@@ -229,7 +238,7 @@ pub fn readHeader(data: []const u8) ScanBlobHeader {
 
 /// Write header to raw bytes (alignment-safe bytewise copy).
 ///
-/// Precondition: `data.len >= @sizeOf(ScanBlobHeader)` (64 bytes).
+/// Precondition: `data.len >= @sizeOf(ScanBlobHeader)` (128 bytes for v2).
 /// Panics via Zig slice bounds check on undersized input.
 pub fn writeHeader(data: []u8, header: ScanBlobHeader) void {
     const src: [*]const u8 = @ptrCast(&header);
@@ -259,7 +268,7 @@ pub fn readStruct(comptime T: type, buf: []const u8, offset: usize) !T {
 const testing = std.testing;
 
 test "comptime size assertions hold" {
-    try testing.expectEqual(@as(usize, 64), @sizeOf(ScanBlobHeader));
+    try testing.expectEqual(@as(usize, 128), @sizeOf(ScanBlobHeader));
     try testing.expectEqual(@as(usize, 40), @sizeOf(BlobHeading));
     try testing.expectEqual(@as(usize, 40), @sizeOf(BlobLink));
     try testing.expectEqual(@as(usize, 24), @sizeOf(BlobTag));
@@ -267,22 +276,33 @@ test "comptime size assertions hold" {
     try testing.expectEqual(@as(usize, 32), @sizeOf(BlobCodeSpan));
 }
 
+test "v2 header includes all planned count fields" {
+    try testing.expect(@hasField(ScanBlobHeader, "embed_count"));
+    try testing.expect(@hasField(ScanBlobHeader, "task_count"));
+    try testing.expect(@hasField(ScanBlobHeader, "callout_count"));
+    try testing.expect(@hasField(ScanBlobHeader, "query_block_count"));
+    try testing.expect(@hasField(ScanBlobHeader, "link_def_count"));
+    try testing.expect(@hasField(ScanBlobHeader, "block_ref_count"));
+    try testing.expect(@hasField(ScanBlobHeader, "property_count"));
+    try testing.expect(@hasField(ScanBlobHeader, "xml_tag_count"));
+}
+
 test "computeBlobSize empty document" {
     const size = computeBlobSize(0, 0, 0, 0, 0, 0, 0);
-    try testing.expectEqual(@as(?u32, 64), size);
+    try testing.expectEqual(@as(?u32, 128), size);
 }
 
 test "computeBlobSize with counts" {
     // 1 heading (40) + 1 link (40) + 1 tag (24) + 1 block_id (28) + 0 code_spans + 2 lines (8) + 10 text
     const size = computeBlobSize(1, 1, 1, 1, 0, 2, 10);
-    const expected: u32 = 64 + 40 + 40 + 24 + 28 + 8 + 10;
+    const expected: u32 = 128 + 40 + 40 + 24 + 28 + 8 + 10;
     try testing.expectEqual(@as(?u32, expected), size);
 }
 
 test "computeBlobSize with code spans" {
     // 1 heading (40) + 1 link (40) + 1 tag (24) + 1 block_id (28) + 2 code_spans (64) + 2 lines (8) + 10 text
     const size = computeBlobSize(1, 1, 1, 1, 2, 2, 10);
-    const expected: u32 = 64 + 40 + 40 + 24 + 28 + 64 + 8 + 10;
+    const expected: u32 = 128 + 40 + 40 + 24 + 28 + 64 + 8 + 10;
     try testing.expectEqual(@as(?u32, expected), size);
 }
 
@@ -297,7 +317,7 @@ test "validateBlob rejects too small" {
 }
 
 test "validateBlob rejects bad magic" {
-    var buf: [64]u8 = .{0} ** 64;
+    var buf: [128]u8 = .{0} ** 128;
     // Write wrong magic
     std.mem.writeInt(u32, buf[0..4], 0xDEADBEEF, .little);
     try testing.expectError(error.InvalidMagic, validateBlob(&buf));
@@ -306,19 +326,19 @@ test "validateBlob rejects bad magic" {
 test "validateBlob accepts valid empty blob" {
     var header = ScanBlobHeader{};
     header.total_blob_size = @sizeOf(ScanBlobHeader);
-    var buf: [64]u8 = undefined;
+    var buf: [128]u8 = undefined;
     writeHeader(&buf, header);
     const validated = try validateBlob(&buf);
     try testing.expectEqual(BLOB_MAGIC, validated.magic);
     try testing.expectEqual(BLOB_VERSION, validated.version);
     try testing.expectEqual(@as(u32, 0), validated.heading_count);
-    try testing.expectEqual(@as(u32, 64), validated.total_blob_size);
+    try testing.expectEqual(@as(u32, 128), validated.total_blob_size);
 }
 
 test "validateBlob rejects size mismatch" {
     var header = ScanBlobHeader{};
-    header.total_blob_size = 128; // Wrong: actual data is 64 bytes
-    var buf: [64]u8 = undefined;
+    header.total_blob_size = 64; // Wrong: actual data is 128 bytes
+    var buf: [128]u8 = undefined;
     writeHeader(&buf, header);
     try testing.expectError(error.SizeMismatch, validateBlob(&buf));
 }
@@ -334,10 +354,10 @@ test "computeSectionOffsets correct for known counts" {
         .text_pool_size = 20,
     };
     const offsets = computeSectionOffsets(header).?;
-    try testing.expectEqual(@as(u32, 64), offsets.headings);
-    try testing.expectEqual(@as(u32, 64 + 2 * 40), offsets.links);
-    try testing.expectEqual(@as(u32, 64 + 2 * 40 + 1 * 40), offsets.tags);
-    try testing.expectEqual(@as(u32, 64 + 2 * 40 + 1 * 40 + 3 * 24), offsets.block_ids);
+    try testing.expectEqual(@as(u32, 128), offsets.headings);
+    try testing.expectEqual(@as(u32, 128 + 2 * 40), offsets.links);
+    try testing.expectEqual(@as(u32, 128 + 2 * 40 + 1 * 40), offsets.tags);
+    try testing.expectEqual(@as(u32, 128 + 2 * 40 + 1 * 40 + 3 * 24), offsets.block_ids);
     // code_spans section at block_ids end (0 code spans)
     try testing.expectEqual(offsets.block_ids + 1 * 28, offsets.code_spans);
 }
@@ -353,17 +373,17 @@ test "computeSectionOffsets with code spans" {
         .text_pool_size = 5,
     };
     const offsets = computeSectionOffsets(header).?;
-    try testing.expectEqual(@as(u32, 64), offsets.headings);
-    try testing.expectEqual(@as(u32, 64 + 1 * 40), offsets.links);
-    try testing.expectEqual(@as(u32, 64 + 1 * 40), offsets.tags);
-    try testing.expectEqual(@as(u32, 64 + 1 * 40), offsets.block_ids);
-    try testing.expectEqual(@as(u32, 64 + 1 * 40), offsets.code_spans);
+    try testing.expectEqual(@as(u32, 128), offsets.headings);
+    try testing.expectEqual(@as(u32, 128 + 1 * 40), offsets.links);
+    try testing.expectEqual(@as(u32, 128 + 1 * 40), offsets.tags);
+    try testing.expectEqual(@as(u32, 128 + 1 * 40), offsets.block_ids);
+    try testing.expectEqual(@as(u32, 128 + 1 * 40), offsets.code_spans);
     // 2 code spans * 32 bytes each = 64
-    try testing.expectEqual(@as(u32, 64 + 1 * 40 + 2 * 32), offsets.line_starts);
+    try testing.expectEqual(@as(u32, 128 + 1 * 40 + 2 * 32), offsets.line_starts);
 }
 
 test "writeStruct and readStruct roundtrip" {
-    var buf: [128]u8 = .{0} ** 128;
+    var buf: [256]u8 = .{0} ** 256;
     const heading = BlobHeading{
         .text_off = 10,
         .text_len = 5,
@@ -376,8 +396,8 @@ test "writeStruct and readStruct roundtrip" {
         .end_col = 7,
         .level = 1,
     };
-    try writeStruct(BlobHeading, &buf, 64, heading);
-    const read_back = try readStruct(BlobHeading, &buf, 64);
+    try writeStruct(BlobHeading, &buf, 128, heading);
+    const read_back = try readStruct(BlobHeading, &buf, 128);
     try testing.expectEqual(heading.text_off, read_back.text_off);
     try testing.expectEqual(heading.text_len, read_back.text_len);
     try testing.expectEqual(heading.level, read_back.level);
