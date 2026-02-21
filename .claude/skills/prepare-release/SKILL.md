@@ -241,7 +241,7 @@ command -v git-cliff && echo "git-cliff available" || echo "git-cliff not instal
 
    **If pre-commit hooks fail:** The commit did NOT happen. Fix the issue, re-stage, and create a NEW commit attempt. Do NOT use `--amend`.
 
-12. **Push to remote immediately** (prevents race conditions):
+11. **Push to remote immediately** (prevents race conditions):
     ```bash
     git push origin dev
     ```
