@@ -50,6 +50,7 @@ struct DocumentDependent<'a> {
     tags: &'a [TagEntry<'a>],
     markdown_links: &'a [MarkdownLinkEntry<'a>],
     xml_tags: &'a [XmlTagEntry<'a>],
+    code_spans: &'a [CodeSpanEntry<'a>],
     frontmatter: &'a [FrontmatterEntry<'a>],
     aliases: &'a [&'a str],
     properties: &'a [PropertyEntry<'a>],
@@ -280,6 +281,10 @@ impl DocumentIndex {
                 })
                 .collect()
         };
+
+        // Code spans: use overrides if available, otherwise empty (from_ast doesn't
+        // extract code spans yet — that's Phase A-3/B).
+        let code_spans_owned: Vec<CodeSpanOwned> = overrides.code_spans.unwrap_or_default();
 
         // Extract frontmatter and properties as owned data BEFORE arena move.
         #[derive(Debug)]
@@ -527,6 +532,20 @@ impl DocumentIndex {
             }
             let block_refs = block_refs_builder.into_bump_slice();
 
+            // Arena-allocate code span entries.
+            let mut cs_builder = BumpVec::new_in(arena_ref);
+            for cs in &code_spans_owned {
+                cs_builder.push(CodeSpanEntry {
+                    text: arena_alloc_str(arena_ref, &cs.text),
+                    range: cs.range,
+                    start_byte: cs.start_byte,
+                    end_byte: cs.end_byte,
+                    language_hint: None,
+                    kind: None,
+                });
+            }
+            let code_spans = cs_builder.into_bump_slice();
+
             DocumentDependent {
                 headings,
                 slug_to_heading,
@@ -537,6 +556,7 @@ impl DocumentIndex {
                 tags,
                 markdown_links,
                 xml_tags,
+                code_spans,
                 frontmatter,
                 aliases,
                 properties,
@@ -698,6 +718,9 @@ impl DocumentIndex {
             // XML tags: not supported by scan backend
             let xml_tags = BumpVec::<XmlTagEntry<'_>>::new_in(arena_ref).into_bump_slice();
 
+            // Code spans: not yet wired from scan backend (Phase A-2 step 7)
+            let code_spans = BumpVec::<CodeSpanEntry<'_>>::new_in(arena_ref).into_bump_slice();
+
             // Frontmatter/properties/block-refs: not available from scan backend
             let frontmatter = BumpVec::<FrontmatterEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let aliases = BumpVec::<&str>::new_in(arena_ref).into_bump_slice();
@@ -714,6 +737,7 @@ impl DocumentIndex {
                 tags,
                 markdown_links,
                 xml_tags,
+                code_spans,
                 frontmatter,
                 aliases,
                 properties,
@@ -780,6 +804,11 @@ impl DocumentIndex {
     /// Get all indexed XML tags.
     pub fn xml_tags<'a>(&'a self) -> &'a [XmlTagEntry<'a>] {
         self.cell.borrow_dependent().xml_tags
+    }
+
+    /// Get all inline code span entries.
+    pub fn code_spans<'a>(&'a self) -> &'a [CodeSpanEntry<'a>] {
+        self.cell.borrow_dependent().code_spans
     }
 
     /// Get all block IDs in this document.
