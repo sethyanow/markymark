@@ -143,7 +143,7 @@ command -v git-cliff && echo "git-cliff available" || echo "git-cliff not instal
    python3 -c "import json; json.load(open('markymark-plugin/.claude-plugin/plugin.json')); print('plugin.json: valid')"
    ```
 
-5. **Cross-file version assertion** (all files must match):
+5. **Cross-crate package version assertion** (all crate package versions and plugin.json must match):
    ```bash
    CARGO_VER=$(cargo metadata --format-version 1 --no-deps | python3 -c "
    import json, sys
@@ -158,8 +158,9 @@ command -v git-cliff && echo "git-cliff available" || echo "git-cliff not instal
    echo "plugin.json version: $PLUGIN_VER"
    [ "$CARGO_VER" = "$PLUGIN_VER" ] && echo "Versions match" || echo "ERROR: Version mismatch!"
    ```
+   **Note:** This checks crate *package* versions and plugin.json. Inter-crate dependency `version = "..."` fields (step 2) are validated by `cargo build` in step 6 — if they're wrong, the build fails with "failed to select a version for the requirement".
 
-7. **Rebuild to regenerate Cargo.lock:**
+6. **Rebuild to regenerate Cargo.lock:**
    ```bash
    cargo build
    ```
@@ -168,9 +169,9 @@ command -v git-cliff && echo "git-cliff available" || echo "git-cliff not instal
    **If build fails:**
    - Diagnose the error
    - If unrelated to version change: fix the root cause first (separate commit), then retry
-   - If caused by the version change itself (unlikely): revert edits with `git checkout -- Cargo.toml markymark-plugin/.claude-plugin/plugin.json`
+   - If caused by the version change itself (unlikely): revert edits with `git checkout -- Cargo.toml markymark-*/Cargo.toml markymark-plugin/.claude-plugin/plugin.json`
 
-8. **Validate Cargo.lock regeneration** (dynamic, not hardcoded):
+7. **Validate Cargo.lock regeneration** (dynamic, not hardcoded):
    ```bash
    cargo metadata --format-version 1 --no-deps | python3 -c "
    import json, sys
@@ -186,7 +187,7 @@ command -v git-cliff && echo "git-cliff available" || echo "git-cliff not instal
    ```
    If Cargo.lock is unchanged after a version bump, something went wrong.
 
-9. **Run full quality gates** (all must pass before committing):
+8. **Run full quality gates** (all must pass before committing):
    ```bash
    # Format check
    cargo fmt --all -- --check
@@ -213,7 +214,7 @@ command -v git-cliff && echo "git-cliff available" || echo "git-cliff not instal
    - **NEVER** commit the version bump with failing gates.
    - **NEVER** amend a previous commit to include fixes. Always create new commits.
 
-10. **Validate RELEASING.md publish order** against current cargo metadata:
+9. **Validate RELEASING.md publish order** against current cargo metadata:
    ```bash
    cargo metadata --format-version 1 --no-deps | python3 -c "
    import json, sys
@@ -226,7 +227,7 @@ command -v git-cliff && echo "git-cliff available" || echo "git-cliff not instal
    ```
    Compare the output against the publish order listed in RELEASING.md. If they differ, update RELEASING.md as part of this commit.
 
-11. **Commit ALL version-bumped files in one commit:**
+10. **Commit ALL version-bumped files in one commit:**
    ```bash
    git add Cargo.toml Cargo.lock markymark-plugin/.claude-plugin/plugin.json
    git add markymark-*/Cargo.toml  # inter-crate dependency versions
