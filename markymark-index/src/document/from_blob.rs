@@ -28,9 +28,9 @@ use markymark_core::arena::{arena_alloc_str, DocumentArena};
 use markymark_core::{Position, Range};
 
 use super::{
-    helpers, BlockEntry, BlockRefEntry, DocumentDependent, DocumentIndex, DocumentIndexCell,
-    DocumentOwner, FrontmatterEntry, HeadingEntry, MarkdownLinkEntry, PropertyEntry, TagEntry,
-    WikiLinkEntry, XmlTagEntry, XmlTagOwned,
+    helpers, BlockEntry, BlockRefEntry, CodeSpanEntry, DocumentDependent, DocumentIndex,
+    DocumentIndexCell, DocumentOwner, FrontmatterEntry, HeadingEntry, MarkdownLinkEntry,
+    PropertyEntry, TagEntry, WikiLinkEntry, XmlTagEntry, XmlTagOwned,
 };
 
 // ---------------------------------------------------------------------------
@@ -44,6 +44,7 @@ const HEADING_SIZE: usize = 40;
 const LINK_SIZE: usize = 40;
 const TAG_SIZE: usize = 24;
 const BLOCK_ID_SIZE: usize = 28;
+const CODE_SPAN_SIZE: usize = 32;
 
 // ---------------------------------------------------------------------------
 // BlobError
@@ -123,6 +124,7 @@ struct BlobHeader {
     link_count: u32,
     tag_count: u32,
     block_id_count: u32,
+    code_span_count: u32,
     line_count: u32,
     text_pool_size: u32,
 }
@@ -133,7 +135,7 @@ struct BlobHeader {
 ///   magic(4) version(2) flags(2) content_hash(8)
 ///   heading_count(4@16) link_count(4@20) tag_count(4@24) block_id_count(4@28)
 ///   line_count(4@32) text_pool_size(4@36) token_estimate(4@40) total_blob_size(4@44)
-///   _reserved(16@48)
+///   code_span_count(4@48) _reserved(12@52)
 fn validate_blob(data: &[u8]) -> Result<BlobHeader, BlobError> {
     if data.len() < HEADER_SIZE {
         return Err(BlobError::TooSmall);
@@ -156,6 +158,9 @@ fn validate_blob(data: &[u8]) -> Result<BlobHeader, BlobError> {
     let line_count = read_u32_le(data, 32);
     let text_pool_size = read_u32_le(data, 36);
     let total_blob_size = read_u32_le(data, 44);
+    // code_span_count lives at offset 48 — first 4 bytes of what was _reserved.
+    // v1 blobs have zeros here, so code_span_count==0 is backward compatible.
+    let code_span_count = read_u32_le(data, 48);
 
     // Compute expected total size via checked arithmetic to prevent overflow.
     let expected = HEADER_SIZE
@@ -167,6 +172,7 @@ fn validate_blob(data: &[u8]) -> Result<BlobHeader, BlobError> {
         .and_then(|s| s.checked_add((link_count as usize).checked_mul(LINK_SIZE)?))
         .and_then(|s| s.checked_add((tag_count as usize).checked_mul(TAG_SIZE)?))
         .and_then(|s| s.checked_add((block_id_count as usize).checked_mul(BLOCK_ID_SIZE)?))
+        .and_then(|s| s.checked_add((code_span_count as usize).checked_mul(CODE_SPAN_SIZE)?))
         .and_then(|s| s.checked_add((line_count as usize).checked_mul(4)?))
         .and_then(|s| s.checked_add(text_pool_size as usize))
         .ok_or(BlobError::SizeMismatch)?;
@@ -180,6 +186,7 @@ fn validate_blob(data: &[u8]) -> Result<BlobHeader, BlobError> {
         link_count,
         tag_count,
         block_id_count,
+        code_span_count,
         line_count,
         text_pool_size,
     })
@@ -194,6 +201,7 @@ struct SectionOffsets {
     links: usize,
     tags: usize,
     block_ids: usize,
+    code_spans: usize,
     // line_starts skipped — positions are pre-computed in the blob
     text_pool: usize,
 }
@@ -203,13 +211,15 @@ fn compute_offsets(h: &BlobHeader) -> SectionOffsets {
     let links = headings + h.heading_count as usize * HEADING_SIZE;
     let tags = links + h.link_count as usize * LINK_SIZE;
     let block_ids = tags + h.tag_count as usize * TAG_SIZE;
-    let line_starts = block_ids + h.block_id_count as usize * BLOCK_ID_SIZE;
+    let code_spans = block_ids + h.block_id_count as usize * BLOCK_ID_SIZE;
+    let line_starts = code_spans + h.code_span_count as usize * CODE_SPAN_SIZE;
     let text_pool = line_starts + h.line_count as usize * 4;
     SectionOffsets {
         headings,
         links,
         tags,
         block_ids,
+        code_spans,
         text_pool,
     }
 }
@@ -367,12 +377,24 @@ impl DocumentIndex {
             end_col: u32,
         }
 
+        struct CodeSpanData {
+            text: String,
+            source_offset: u32,
+            end_offset: u32,
+            start_line: u32,
+            start_col: u32,
+            end_line: u32,
+            end_col: u32,
+        }
+
         let mut headings_owned: Vec<HeadingData> =
             Vec::with_capacity(header.heading_count as usize);
         let mut wiki_owned: Vec<WikiData> = Vec::with_capacity(header.link_count as usize);
         let mut markdown_owned: Vec<MarkdownData> = Vec::with_capacity(header.link_count as usize);
         let mut tags_owned: Vec<TagData> = Vec::with_capacity(header.tag_count as usize);
         let mut blocks_owned: Vec<BlockData> = Vec::with_capacity(header.block_id_count as usize);
+        let mut code_spans_owned: Vec<CodeSpanData> =
+            Vec::with_capacity(header.code_span_count as usize);
 
         // ── Headings ────────────────────────────────────────────────
         // BlobHeading layout (40 bytes):
@@ -516,6 +538,32 @@ impl DocumentIndex {
             });
         }
 
+        // ── Code Spans ────────────────────────────────────────────────
+        // BlobCodeSpan layout (32 bytes):
+        //   text_off(4@0) text_len(4@4) source_offset(4@8) end_offset(4@12)
+        //   start_line(4@16) start_col(4@20) end_line(4@24) end_col(4@28)
+        for i in 0..header.code_span_count as usize {
+            let base = offsets.code_spans + i * CODE_SPAN_SIZE;
+            let text_off = read_u32_le(data, base);
+            let text_len = read_u32_le(data, base + 4);
+            let source_offset = read_u32_le(data, base + 8);
+            let end_offset = read_u32_le(data, base + 12);
+            let start_line = read_u32_le(data, base + 16);
+            let start_col = read_u32_le(data, base + 20);
+            let end_line = read_u32_le(data, base + 24);
+            let end_col = read_u32_le(data, base + 28);
+            let text = pool_str(text_pool, text_off, text_len)?.to_owned();
+            code_spans_owned.push(CodeSpanData {
+                text,
+                source_offset,
+                end_offset,
+                start_line,
+                start_col,
+                end_line,
+                end_col,
+            });
+        }
+
         // ── Build DocumentIndex via self_cell ────────────────────────
         let owner = DocumentOwner {
             arena: DocumentArena::new(),
@@ -647,6 +695,24 @@ impl DocumentIndex {
                 });
             }
             let xml_tags = xt_builder.into_bump_slice();
+
+            // --- Code spans ---
+            let mut cs_builder = BumpVec::new_in(arena_ref);
+            for cs in &code_spans_owned {
+                let text = arena_alloc_str(arena_ref, &cs.text);
+                let start_pos = Position::new(cs.start_line, cs.start_col);
+                let end_pos = Position::new(cs.end_line, cs.end_col);
+                cs_builder.push(CodeSpanEntry {
+                    text,
+                    range: Range::new(start_pos, end_pos),
+                    start_byte: cs.source_offset as usize,
+                    end_byte: cs.end_offset as usize,
+                    language_hint: None,
+                    kind: None,
+                });
+            }
+            let code_spans = cs_builder.into_bump_slice();
+
             let frontmatter = BumpVec::<FrontmatterEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let aliases = BumpVec::<&str>::new_in(arena_ref).into_bump_slice();
             let properties = BumpVec::<PropertyEntry<'_>>::new_in(arena_ref).into_bump_slice();
@@ -662,6 +728,7 @@ impl DocumentIndex {
                 tags,
                 markdown_links,
                 xml_tags,
+                code_spans,
                 frontmatter,
                 aliases,
                 properties,
