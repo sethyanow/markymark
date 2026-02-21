@@ -154,6 +154,57 @@ pub struct XmlTagOwned {
     pub end_byte: usize,
 }
 
+/// Kind of symbol referenced by an inline code span.
+///
+/// Tier 1 (backtick extraction) always sets `None` — the kind cannot be
+/// determined from syntax alone. Tier 2+ may infer kind from context
+/// (e.g. `DocumentArena` following "struct" in prose).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SymbolKind {
+    /// A struct type.
+    Struct,
+    /// A trait.
+    Trait,
+    /// A function or method.
+    Function,
+    /// A type alias or other named type.
+    Type,
+    /// A constant or static.
+    Constant,
+    /// A module or crate.
+    Module,
+}
+
+/// An inline code span entry stored in the index.
+#[derive(Debug, Clone)]
+pub struct CodeSpanEntry<'arena> {
+    /// The backtick-delimited text content (decoded).
+    pub text: &'arena str,
+    /// Source range of the code span.
+    pub range: Range,
+    /// Byte offset of the opening backtick.
+    pub start_byte: usize,
+    /// Byte offset one past the closing backtick.
+    pub end_byte: usize,
+    /// Language hint (None for Tier 1 — all backtick spans are untyped).
+    pub language_hint: Option<&'arena str>,
+    /// Symbol kind (None for Tier 1 — cannot determine struct/fn/trait from backtick alone).
+    pub kind: Option<SymbolKind>,
+}
+
+/// Owned code span payload used by incremental merge paths before arena allocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodeSpanOwned {
+    /// The backtick-delimited text content (decoded).
+    pub text: String,
+    /// Source range of the code span.
+    pub range: Range,
+    /// Byte offset of the opening backtick.
+    pub start_byte: usize,
+    /// Byte offset one past the closing backtick.
+    pub end_byte: usize,
+}
+
 /// Overrides for each independent extractor used by the incremental index path.
 ///
 /// `None` means: extract fresh from the AST (no reuse).
@@ -173,6 +224,8 @@ pub struct IncrementalOverrides {
     pub markdown_links: Option<Vec<MarkdownLinkOwned>>,
     /// Merged XML tags from the incremental path, or `None` to re-extract.
     pub xml_tags: Option<Vec<XmlTagOwned>>,
+    /// Merged code spans from the incremental path, or `None` to re-extract.
+    pub code_spans: Option<Vec<CodeSpanOwned>>,
 }
 
 /// A markdown link entry stored in the index.

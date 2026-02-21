@@ -32,9 +32,16 @@ pub const ExtractedLink = struct {
     is_wiki: bool,
 };
 
+pub const ExtractedCodeSpan = struct {
+    text: []const u8, // owned decoded code span text
+    offset: u32, // byte offset of opening backtick in source
+    end_offset: u32, // byte offset past closing backtick in source
+};
+
 pub const ExtractionResult = struct {
     headings: []ExtractedHeading,
     links: []ExtractedLink,
+    code_spans: []ExtractedCodeSpan,
     allocator: Allocator,
 
     pub fn deinit(self: *ExtractionResult) void {
@@ -47,6 +54,10 @@ pub const ExtractionResult = struct {
             self.allocator.free(l.target);
         }
         self.allocator.free(self.links);
+        for (self.code_spans) |cs| {
+            self.allocator.free(cs.text);
+        }
+        self.allocator.free(self.code_spans);
     }
 };
 
@@ -76,6 +87,12 @@ pub const ExtractionRenderer = struct {
     link_text_buf: std.ArrayListUnmanaged(u8) = .{},
     link_href_buf: std.ArrayListUnmanaged(u8) = .{},
 
+    // code span accumulation state (SEPARATE cursor per marky-0rl6 lesson)
+    code_spans: std.ArrayListUnmanaged(ExtractedCodeSpan) = .{},
+    code_scan_cursor: u32 = 0,
+    in_code_span: bool = false,
+    code_text_buf: std.ArrayListUnmanaged(u8) = .{},
+
     // code block tracking
     in_code_block: bool = false,
 
@@ -94,6 +111,7 @@ pub const ExtractionRenderer = struct {
         self.heading_text_buf.deinit(self.allocator);
         self.link_text_buf.deinit(self.allocator);
         self.link_href_buf.deinit(self.allocator);
+        self.code_text_buf.deinit(self.allocator);
 
         // Free owned strings in results
         for (self.headings.items) |h| {
@@ -105,6 +123,10 @@ pub const ExtractionRenderer = struct {
             self.allocator.free(l.target);
         }
         self.links.deinit(self.allocator);
+        for (self.code_spans.items) |cs| {
+            self.allocator.free(cs.text);
+        }
+        self.code_spans.deinit(self.allocator);
     }
 
     pub fn renderer(self: *ExtractionRenderer) Renderer {
@@ -201,6 +223,10 @@ pub const ExtractionRenderer = struct {
             .img => {
                 self.in_image = true;
             },
+            .code => {
+                self.in_code_span = true;
+                self.code_text_buf.clearRetainingCapacity();
+            },
             else => {},
         }
     }
@@ -221,6 +247,12 @@ pub const ExtractionRenderer = struct {
             },
             .img => {
                 self.in_image = false;
+            },
+            .code => {
+                if (self.in_code_span) {
+                    self.finalizeCodeSpan();
+                    self.in_code_span = false;
+                }
             },
             else => {},
         }
@@ -243,6 +275,9 @@ pub const ExtractionRenderer = struct {
         }
         if (self.in_link and !self.in_image) {
             self.link_text_buf.appendSlice(self.allocator, effective) catch { self.oom = true; };
+        }
+        if (self.in_code_span) {
+            self.code_text_buf.appendSlice(self.allocator, effective) catch { self.oom = true; };
         }
     }
 
@@ -289,6 +324,67 @@ pub const ExtractionRenderer = struct {
             self.allocator.free(owned_text);
             self.allocator.free(owned_target);
         };
+    }
+
+    fn finalizeCodeSpan(self: *ExtractionRenderer) void {
+        const owned_text = self.code_text_buf.toOwnedSlice(self.allocator) catch {
+            self.oom = true;
+            return;
+        };
+
+        const offset = self.findCodeSpanOffset();
+        const end_offset: u32 = self.code_scan_cursor;
+        self.code_spans.append(self.allocator, .{
+            .text = owned_text,
+            .offset = offset,
+            .end_offset = end_offset,
+        }) catch {
+            self.oom = true;
+            self.allocator.free(owned_text);
+        };
+    }
+
+    /// Scan forward from code_scan_cursor to find the opening backtick(s) of a code span.
+    /// Advances code_scan_cursor past the closing backtick(s).
+    fn findCodeSpanOffset(self: *ExtractionRenderer) u32 {
+        const src = self.src_text;
+        var pos: u32 = self.code_scan_cursor;
+
+        // Find the opening backtick run
+        while (pos < src.len) {
+            if (src[pos] == '`') {
+                const open_start = pos;
+                // Count opening backtick run length
+                var open_len: u32 = 0;
+                while (pos < src.len and src[pos] == '`') : (pos += 1) {
+                    open_len += 1;
+                }
+                // Scan for closing backtick run of exactly the same length
+                while (pos < src.len) {
+                    if (src[pos] == '`') {
+                        var close_len: u32 = 0;
+                        while (pos < src.len and src[pos] == '`') : (pos += 1) {
+                            close_len += 1;
+                        }
+                        if (close_len == open_len) {
+                            // Found matching closing backticks
+                            self.code_scan_cursor = pos;
+                            return open_start;
+                        }
+                        // Not matching — continue scanning (pos already advanced past these backticks)
+                    } else {
+                        pos += 1;
+                    }
+                }
+                // No matching close found — return opening position, advance cursor
+                self.code_scan_cursor = pos;
+                return open_start;
+            }
+            pos += 1;
+        }
+
+        // Fallback: no backtick found
+        return self.code_scan_cursor;
     }
 
     // ── Offset recovery via forward scan ─────────────────────────────
@@ -590,18 +686,31 @@ pub fn extractFromMarkdown(
     const links = ext.links.toOwnedSlice(allocator) catch {
         return error.OutOfMemory;
     };
+    errdefer {
+        for (links) |l| {
+            allocator.free(l.text);
+            allocator.free(l.target);
+        }
+        allocator.free(links);
+    }
+    const code_spans = ext.code_spans.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
 
     // Free accumulation buffers only (results transferred)
     ext.heading_text_buf.deinit(allocator);
     ext.link_text_buf.deinit(allocator);
     ext.link_href_buf.deinit(allocator);
+    ext.code_text_buf.deinit(allocator);
     // Deinit the now-empty ArrayLists (items transferred to owned slices)
     ext.headings.deinit(allocator);
     ext.links.deinit(allocator);
+    ext.code_spans.deinit(allocator);
 
     return .{
         .headings = headings,
         .links = links,
+        .code_spans = code_spans,
         .allocator = allocator,
     };
 }
@@ -1077,10 +1186,10 @@ test "marky-gmny: extractFromMarkdown OOM loop — no double-free or leak" {
     // GPA detects double-free (fills freed memory with 0xaa → segfault).
     // GPA leak check (.check() returning .leak) detects missing frees.
     //
-    // Uses a document with both headings and links so that the partially-
-    // transferred-headings path (links.toOwnedSlice fails after headings
-    // transferred) is exercised at some fail_index values.
-    const input = "# Heading One\n\n[Link Text](https://example.com)\n\n## Heading Two\n";
+    // Uses a document with headings, links, and code spans so that the
+    // partially-transferred ownership paths (toOwnedSlice cascade) are
+    // exercised at various fail_index values.
+    const input = "# Heading One\n\n[Link Text](https://example.com)\n\n## Heading `code` Two\n";
 
     var fail_index: usize = 0;
     // Upper bound: enough to cover all allocation sites. If we get 5
@@ -1228,4 +1337,130 @@ test "lzd5-F2b: backtick fence not closed by tilde line — link scan" {
     try testing.expectEqualStrings("real", result.links[0].text);
     try testing.expectEqual(@as(u32, 42), result.links[0].offset);
     try testing.expect(input[result.links[0].offset] == '[');
+}
+
+// --- Code span tests (marky-pdyo) ---
+
+test "code_span_basic: single backtick code span" {
+    // "here is `hello` world\n"
+    // offset of opening backtick: 8
+    const input = "here is `hello` world\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.code_spans.len);
+    try testing.expectEqualStrings("hello", result.code_spans[0].text);
+    try testing.expectEqual(@as(u32, 8), result.code_spans[0].offset);
+    try testing.expect(input[result.code_spans[0].offset] == '`');
+    // end_offset past closing backtick: 8 + 1(`hello`) -> backtick at 14, past it = 15
+    try testing.expectEqual(@as(u32, 15), result.code_spans[0].end_offset);
+}
+
+test "code_span_double_backtick: double backtick delimiters" {
+    // "``code with `backtick``` "
+    const input = "``code with `backtick``\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.code_spans.len);
+    try testing.expectEqualStrings("code with `backtick", result.code_spans[0].text);
+    try testing.expectEqual(@as(u32, 0), result.code_spans[0].offset);
+    try testing.expect(input[result.code_spans[0].offset] == '`');
+}
+
+test "code_span_in_heading: code span inside heading" {
+    // "# Title `code`\n" — heading text should include code span text
+    const input = "# Title `code`\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqualStrings("Title code", result.headings[0].text);
+    try testing.expectEqual(@as(usize, 1), result.code_spans.len);
+    try testing.expectEqualStrings("code", result.code_spans[0].text);
+    try testing.expectEqual(@as(u32, 8), result.code_spans[0].offset);
+}
+
+test "code_span_in_link: code span inside link text" {
+    // "[`code`](url)\n" — link text includes code span text
+    const input = "[`code`](url)\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.links.len);
+    try testing.expectEqualStrings("code", result.links[0].text);
+    try testing.expectEqual(@as(usize, 1), result.code_spans.len);
+    try testing.expectEqualStrings("code", result.code_spans[0].text);
+}
+
+test "code_span_in_fenced_block_not_extracted" {
+    // Code spans inside fenced code blocks are NOT inline code spans —
+    // md4c does not fire SpanType.code inside fenced blocks.
+    const input = "```\nsome `code` here\n```\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 0), result.code_spans.len);
+}
+
+test "code_span_single_space: minimal code span content" {
+    // "` `\n" — code span with single space (md4c normalizes whitespace)
+    // This is the smallest valid code span in CommonMark.
+    const input = "` `\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.code_spans.len);
+    try testing.expectEqual(@as(u32, 0), result.code_spans[0].offset);
+    try testing.expect(input[result.code_spans[0].offset] == '`');
+}
+
+test "code_span_multiple: two code spans in order" {
+    // "`a` then `b`\n"
+    // `a` at offset 0, `b` at offset 10
+    const input = "`a` then `b`\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 2), result.code_spans.len);
+    try testing.expectEqualStrings("a", result.code_spans[0].text);
+    try testing.expectEqualStrings("b", result.code_spans[1].text);
+    // Offsets must be ascending
+    try testing.expect(result.code_spans[1].offset > result.code_spans[0].offset);
+    try testing.expectEqual(@as(u32, 0), result.code_spans[0].offset);
+    try testing.expectEqual(@as(u32, 9), result.code_spans[1].offset);
+}
+
+test "code_span_entity_decoded: entity inside code span" {
+    // "`a &amp; b`\n" — entity should be decoded to "a & b"
+    const input = "`a &amp; b`\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.code_spans.len);
+    // Note: md4c may or may not decode entities inside code spans.
+    // In CommonMark, code spans are verbatim — entities are NOT decoded.
+    // md4c fires TextType.code (not .entity) for code span content.
+    // So the text should be the raw content: "a &amp; b"
+    try testing.expectEqualStrings("a &amp; b", result.code_spans[0].text);
+}
+
+test "code_span_interleaved_with_heading_and_link: all offsets correct" {
+    // "# Title `code` [link](url)\n" — heading, code span, and link coexist
+    const input = "# Title `code` [link](url)\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.headings.len);
+    try testing.expectEqual(@as(usize, 1), result.links.len);
+    try testing.expectEqual(@as(usize, 1), result.code_spans.len);
+
+    // All offsets should be valid and point to correct characters
+    try testing.expect(input[result.headings[0].offset] == '#');
+    try testing.expect(input[result.code_spans[0].offset] == '`');
+    try testing.expect(input[result.links[0].offset] == '[');
+
+    // Offsets ascending: heading < code_span < link
+    try testing.expect(result.code_spans[0].offset > result.headings[0].offset);
+    try testing.expect(result.links[0].offset > result.code_spans[0].offset);
 }
