@@ -52,6 +52,17 @@ pub(crate) fn handle_search_symbols(realm: &RealmIndex, query: String) -> CoreOp
         }
     }
 
+    // Collect code span candidates — borrow text from arena, no clone.
+    // Dedup by text within each document to avoid flooding results.
+    for (uri, index) in &docs {
+        let mut seen = std::collections::HashSet::new();
+        for cs in index.code_spans() {
+            if seen.insert(cs.text) {
+                candidates.push((Cow::Borrowed(cs.text), (*uri).clone(), cs.range));
+            }
+        }
+    }
+
     // Collect structured key-path candidates (pre-filtered by search_key_paths,
     // unlike headings which are collected exhaustively then ranked by fuzzy score).
     for (uri, path, _key, _kind, range) in realm.search_key_paths(&query) {
@@ -161,4 +172,81 @@ pub(crate) fn handle_semantic_search(
             })
             .collect(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use markymark_index::{CodeSpanOwned, DocumentIndex, IncrementalOverrides};
+    use std::path::PathBuf;
+
+    fn uri(name: &str) -> DocumentUri {
+        DocumentUri::from_file_path(&PathBuf::from(format!("/vault/{name}")))
+    }
+
+    fn symbol_names(result: CoreOperationResult) -> Vec<String> {
+        match result {
+            CoreOperationResult::Symbols(matches) => {
+                matches.into_iter().map(|(name, _, _)| name).collect()
+            }
+            other => panic!("expected Symbols result, got: {other:?}"),
+        }
+    }
+
+    fn code_span(text: &str) -> CodeSpanOwned {
+        CodeSpanOwned {
+            text: text.to_string(),
+            range: Range::new(
+                markymark_core::Position::new(0, 0),
+                markymark_core::Position::new(0, 0),
+            ),
+            start_byte: 0,
+            end_byte: text.len(),
+        }
+    }
+
+    fn make_index_with_code_spans(source: &str, spans: Vec<CodeSpanOwned>) -> DocumentIndex {
+        let ast = markymark_parser::parse(source).unwrap();
+        DocumentIndex::from_ast_with_overrides_opt(
+            ast,
+            IncrementalOverrides {
+                code_spans: Some(spans),
+                ..Default::default()
+            },
+        )
+    }
+
+    #[test]
+    fn search_symbols_includes_code_span_candidates() {
+        let mut realm = RealmIndex::new();
+        let index = make_index_with_code_spans("# Types\n", vec![code_span("HashMap")]);
+        realm.add_document(uri("types.md"), index);
+
+        let names = symbol_names(handle_search_symbols(&realm, "HashMap".to_string()));
+        assert!(
+            names.iter().any(|n| n == "HashMap"),
+            "expected code span 'HashMap' in search results, got: {names:?}"
+        );
+    }
+
+    #[test]
+    fn search_symbols_dedup_code_spans_per_document() {
+        let mut realm = RealmIndex::new();
+        let index = make_index_with_code_spans(
+            "# Doc\n",
+            vec![
+                code_span("Result"),
+                code_span("Result"),
+                code_span("Result"),
+            ],
+        );
+        realm.add_document(uri("results.md"), index);
+
+        let names = symbol_names(handle_search_symbols(&realm, "Result".to_string()));
+        let result_count = names.iter().filter(|n| *n == "Result").count();
+        assert_eq!(
+            result_count, 1,
+            "same text 3x in one doc should produce 1 candidate, got {result_count}"
+        );
+    }
 }

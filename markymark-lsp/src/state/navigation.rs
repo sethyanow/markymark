@@ -2,7 +2,7 @@
 
 use markymark_core::structured::{DocumentKind, KeyEntry, ValueKind};
 use markymark_core::{DocumentUri, Position};
-use markymark_index::{HeadingEntry, MarkdownLinkEntry, WikiLinkEntry, XmlTagEntry};
+use markymark_index::{CodeSpanEntry, HeadingEntry, MarkdownLinkEntry, WikiLinkEntry, XmlTagEntry};
 
 use super::ServerState;
 
@@ -17,6 +17,8 @@ pub enum SymbolAtPosition<'a> {
     MarkdownLink(MarkdownLinkEntry<'a>),
     /// An XML tag.
     XmlTag(XmlTagEntry<'a>),
+    /// An inline code span (backtick-delimited text).
+    CodeSpan(CodeSpanEntry<'a>),
     /// A key in a structured document (JSON, YAML, TOML, etc.).
     StructuredKey(StructuredKeyInfo),
 }
@@ -97,6 +99,13 @@ impl ServerState {
         for xt in index.xml_tags() {
             if xt.range.contains(pos) {
                 return Some(SymbolAtPosition::XmlTag(xt.clone()));
+            }
+        }
+
+        // Check code spans
+        for cs in index.code_spans() {
+            if cs.range.contains(pos) {
+                return Some(SymbolAtPosition::CodeSpan(cs.clone()));
             }
         }
 
