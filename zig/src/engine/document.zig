@@ -518,6 +518,7 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
     const max_u32 = std.math.maxInt(u32);
     if (engine.headings.len > max_u32 or
         engine.links.len > max_u32 or
+        engine.code_spans.len > max_u32 or
         engine.tags.len > max_u32 or
         engine.block_ids.len > max_u32 or
         engine.line_starts.len > max_u32) return error.OutOfMemory;
@@ -535,6 +536,9 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
     for (engine.tags) |t| {
         text_pool_size += t.name.len;
     }
+    for (engine.code_spans) |cs| {
+        text_pool_size += cs.text.len;
+    }
     for (engine.block_ids) |b| {
         text_pool_size += b.id.len;
     }
@@ -546,6 +550,7 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
         @intCast(engine.links.len),
         @intCast(engine.tags.len),
         @intCast(engine.block_ids.len),
+        @intCast(engine.code_spans.len),
         @intCast(engine.line_starts.len),
         text_pool_u32,
     ) orelse return error.OutOfMemory;
@@ -564,6 +569,7 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
         .link_count = @intCast(engine.links.len),
         .tag_count = @intCast(engine.tags.len),
         .block_id_count = @intCast(engine.block_ids.len),
+        .code_span_count = @intCast(engine.code_spans.len),
         .line_count = @intCast(engine.line_starts.len),
         .text_pool_size = text_pool_u32,
         .token_estimate = engine.token_estimate,

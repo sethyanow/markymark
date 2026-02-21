@@ -34,7 +34,8 @@ pub const ScanBlobHeader = extern struct {
     text_pool_size: u32 = 0,
     token_estimate: u32 = 0,
     total_blob_size: u32 = 0,
-    _reserved: [16]u8 = .{0} ** 16,
+    code_span_count: u32 = 0,
+    _reserved: [12]u8 = .{0} ** 12,
 };
 
 pub const BlobHeading = extern struct {
@@ -84,6 +85,17 @@ pub const BlobBlockId = extern struct {
     end_col: u32 = 0,
 };
 
+pub const BlobCodeSpan = extern struct {
+    text_off: u32 = 0,
+    text_len: u32 = 0,
+    source_offset: u32 = 0, // byte offset of opening backtick
+    end_offset: u32 = 0, // byte offset past closing backtick
+    start_line: u32 = 0,
+    start_col: u32 = 0,
+    end_line: u32 = 0,
+    end_col: u32 = 0,
+};
+
 // ── Comptime size assertions ────────────────────────────────────────
 
 comptime {
@@ -92,6 +104,7 @@ comptime {
     std.debug.assert(@sizeOf(BlobLink) == 40);
     std.debug.assert(@sizeOf(BlobTag) == 24);
     std.debug.assert(@sizeOf(BlobBlockId) == 28);
+    std.debug.assert(@sizeOf(BlobCodeSpan) == 32);
 }
 
 // ── Blob size computation ───────────────────────────────────────────
@@ -102,6 +115,7 @@ pub fn computeBlobSize(
     link_count: u32,
     tag_count: u32,
     block_id_count: u32,
+    code_span_count: u32,
     line_count: u32,
     text_pool_size: u32,
 ) ?u32 {
@@ -110,6 +124,7 @@ pub fn computeBlobSize(
         @as(u64, link_count) * @sizeOf(BlobLink) +
         @as(u64, tag_count) * @sizeOf(BlobTag) +
         @as(u64, block_id_count) * @sizeOf(BlobBlockId) +
+        @as(u64, code_span_count) * @sizeOf(BlobCodeSpan) +
         @as(u64, line_count) * @sizeOf(u32) +
         @as(u64, text_pool_size);
 
@@ -123,6 +138,7 @@ pub const SectionOffsets = struct {
     links: u32,
     tags: u32,
     block_ids: u32,
+    code_spans: u32,
     line_starts: u32,
     text_pool: u32,
 };
@@ -139,6 +155,7 @@ pub fn computeSectionOffsets(header: ScanBlobHeader) ?SectionOffsets {
         header.link_count,
         header.tag_count,
         header.block_id_count,
+        header.code_span_count,
         header.line_count,
         header.text_pool_size,
     ) == null) return null;
@@ -147,13 +164,15 @@ pub fn computeSectionOffsets(header: ScanBlobHeader) ?SectionOffsets {
     const links = headings + header.heading_count * @sizeOf(BlobHeading);
     const tags = links + header.link_count * @sizeOf(BlobLink);
     const block_ids = tags + header.tag_count * @sizeOf(BlobTag);
-    const line_starts = block_ids + header.block_id_count * @sizeOf(BlobBlockId);
+    const code_spans = block_ids + header.block_id_count * @sizeOf(BlobBlockId);
+    const line_starts = code_spans + header.code_span_count * @sizeOf(BlobCodeSpan);
     const text_pool = line_starts + header.line_count * @sizeOf(u32);
     return .{
         .headings = headings,
         .links = links,
         .tags = tags,
         .block_ids = block_ids,
+        .code_spans = code_spans,
         .line_starts = line_starts,
         .text_pool = text_pool,
     };
@@ -185,6 +204,7 @@ pub fn validateBlob(data: []const u8) BlobError!ScanBlobHeader {
         header.link_count,
         header.tag_count,
         header.block_id_count,
+        header.code_span_count,
         header.line_count,
         header.text_pool_size,
     ) orelse return error.OutOfRange;
@@ -244,22 +264,30 @@ test "comptime size assertions hold" {
     try testing.expectEqual(@as(usize, 40), @sizeOf(BlobLink));
     try testing.expectEqual(@as(usize, 24), @sizeOf(BlobTag));
     try testing.expectEqual(@as(usize, 28), @sizeOf(BlobBlockId));
+    try testing.expectEqual(@as(usize, 32), @sizeOf(BlobCodeSpan));
 }
 
 test "computeBlobSize empty document" {
-    const size = computeBlobSize(0, 0, 0, 0, 0, 0);
+    const size = computeBlobSize(0, 0, 0, 0, 0, 0, 0);
     try testing.expectEqual(@as(?u32, 64), size);
 }
 
 test "computeBlobSize with counts" {
-    // 1 heading (40) + 1 link (40) + 1 tag (24) + 1 block_id (28) + 2 lines (8) + 10 text
-    const size = computeBlobSize(1, 1, 1, 1, 2, 10);
+    // 1 heading (40) + 1 link (40) + 1 tag (24) + 1 block_id (28) + 0 code_spans + 2 lines (8) + 10 text
+    const size = computeBlobSize(1, 1, 1, 1, 0, 2, 10);
     const expected: u32 = 64 + 40 + 40 + 24 + 28 + 8 + 10;
     try testing.expectEqual(@as(?u32, expected), size);
 }
 
+test "computeBlobSize with code spans" {
+    // 1 heading (40) + 1 link (40) + 1 tag (24) + 1 block_id (28) + 2 code_spans (64) + 2 lines (8) + 10 text
+    const size = computeBlobSize(1, 1, 1, 1, 2, 2, 10);
+    const expected: u32 = 64 + 40 + 40 + 24 + 28 + 64 + 8 + 10;
+    try testing.expectEqual(@as(?u32, expected), size);
+}
+
 test "computeBlobSize overflow returns null" {
-    const size = computeBlobSize(std.math.maxInt(u32), 0, 0, 0, 0, 0);
+    const size = computeBlobSize(std.math.maxInt(u32), 0, 0, 0, 0, 0, 0);
     try testing.expectEqual(@as(?u32, null), size);
 }
 
@@ -301,6 +329,7 @@ test "computeSectionOffsets correct for known counts" {
         .link_count = 1,
         .tag_count = 3,
         .block_id_count = 1,
+        .code_span_count = 0,
         .line_count = 4,
         .text_pool_size = 20,
     };
@@ -309,6 +338,28 @@ test "computeSectionOffsets correct for known counts" {
     try testing.expectEqual(@as(u32, 64 + 2 * 40), offsets.links);
     try testing.expectEqual(@as(u32, 64 + 2 * 40 + 1 * 40), offsets.tags);
     try testing.expectEqual(@as(u32, 64 + 2 * 40 + 1 * 40 + 3 * 24), offsets.block_ids);
+    // code_spans section at block_ids end (0 code spans)
+    try testing.expectEqual(offsets.block_ids + 1 * 28, offsets.code_spans);
+}
+
+test "computeSectionOffsets with code spans" {
+    const header = ScanBlobHeader{
+        .heading_count = 1,
+        .link_count = 0,
+        .tag_count = 0,
+        .block_id_count = 0,
+        .code_span_count = 2,
+        .line_count = 1,
+        .text_pool_size = 5,
+    };
+    const offsets = computeSectionOffsets(header).?;
+    try testing.expectEqual(@as(u32, 64), offsets.headings);
+    try testing.expectEqual(@as(u32, 64 + 1 * 40), offsets.links);
+    try testing.expectEqual(@as(u32, 64 + 1 * 40), offsets.tags);
+    try testing.expectEqual(@as(u32, 64 + 1 * 40), offsets.block_ids);
+    try testing.expectEqual(@as(u32, 64 + 1 * 40), offsets.code_spans);
+    // 2 code spans * 32 bytes each = 64
+    try testing.expectEqual(@as(u32, 64 + 1 * 40 + 2 * 32), offsets.line_starts);
 }
 
 test "writeStruct and readStruct roundtrip" {
