@@ -1282,7 +1282,7 @@ mod tests {
 
     #[test]
     fn test_golden_blob_roundtrip() {
-        let blob = include_bytes!("testdata/golden_v1.blob");
+        let blob = include_bytes!("../testdata/golden_v1.blob");
 
         // validate_blob() must succeed and header counts must match the input
         let header = validate_blob(blob).expect("validate_blob failed on golden blob");
