@@ -1,8 +1,9 @@
 # markymark
 
-A language server and AI agent tool for Markdown and structured data files,
-built in Rust with Zig SIMD kernels. Provides navigation, refactoring, search,
-and diagnostics across Markdown, JSON, YAML, TOML, .env, INI, and more.
+A language server and AI agent tool for Markdown and structured data files.
+Rust workspace with a dependency-free Zig parser core (based on bun's Zig port
+of md4c). Provides navigation, refactoring, search, and diagnostics across
+Markdown, JSON, YAML, TOML, .env, INI, and more.
 
 > **Pre-release**: APIs and behavior may change before v1.0.
 
@@ -25,17 +26,16 @@ cargo install markymark-cli
 ```
 
 Pre-built binaries: [GitHub Releases](https://github.com/sethyanow/markymark/releases)
-| VS Code: [Marketplace](https://marketplace.visualstudio.com/items?itemName=sethyanow.markymark)
 | Claude Code: [Plugin README](markymark-plugin/README.md)
 
 ## Documentation
 
-Full documentation at **[markymark.rs](https://markymark.rs)**:
+Full documentation at **[sethyanow.github.io/markymark](https://sethyanow.github.io/markymark)**:
 
-- [Getting Started](https://markymark.rs/getting-started/installation/)
-- [Editor Setup](https://markymark.rs/editors/vscode/)
-- [MCP Tools Reference](https://markymark.rs/features/mcp-tools/)
-- [Agent Tutorial](https://markymark.rs/guides/agents/)
+- [Getting Started](https://sethyanow.github.io/markymark/getting-started/installation/)
+- [Editor Setup](https://sethyanow.github.io/markymark/editors/vscode/)
+- [MCP Tools Reference](https://sethyanow.github.io/markymark/features/mcp-tools/)
+- [Agent Tutorial](https://sethyanow.github.io/markymark/guides/agents/)
 
 ## Claude Code
 
@@ -52,4 +52,4 @@ This project uses markymark LSP. Prefer LSP over reading raw files:
 
 ## License
 
-[MIT OR Apache-2.0](LICENSE.txt)
+[AGPL-3.0](LICENSE.txt)
