@@ -298,6 +298,8 @@ false positive due to not following symlinks (2026-02-20).
 
 ### Testing
 - Safe file splits: (1) module dir, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit
+- Rust-analyzer can show transient `unlinked-file` diagnostics immediately after creating a new module file during refactors; once the parent `mod.rs` includes `mod <name>;` and the workspace rebuilds, the warning clears (2026-02-22).
+- from_blob refactors are safest when decode loops are moved wholesale into a sibling module and return a single owned-data container, preserving comments and marky-d7hh alias logic verbatim (2026-02-22).
 - Use `assert_eq!` not `>=` — `>=` masked a closing-tag rename bug
 - Integration test crate roots (`tests/*.rs`) resolve `mod foo;` in `tests/foo.rs` (sibling), NOT `tests/basename/foo.rs`. Use `#[path = "basename/foo.rs"] mod foo;` for subdirectory splits (marky-a90)
 - Env-gated benchmarks (`MARKYMARK_RUN_100K_BENCH=1`) for checkpoint evidence
