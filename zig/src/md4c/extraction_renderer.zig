@@ -38,10 +38,25 @@ pub const ExtractedCodeSpan = struct {
     end_offset: u32, // byte offset past closing backtick in source
 };
 
+pub const ExtractedTask = struct {
+    state: u8, // task mark char: ' ', 'x', 'X'
+    text: []const u8, // owned by allocator
+    offset: u32, // byte offset of '[' in [x]
+    end_offset: u32, // byte offset past task text
+};
+
+pub const ExtractedEmbed = struct {
+    target: []const u8, // owned by allocator
+    offset: u32, // byte offset of '!' before '![['
+    end_offset: u32, // byte offset past ']]'
+};
+
 pub const ExtractionResult = struct {
     headings: []ExtractedHeading,
     links: []ExtractedLink,
     code_spans: []ExtractedCodeSpan,
+    tasks: []ExtractedTask,
+    embeds: []ExtractedEmbed,
     allocator: Allocator,
 
     pub fn deinit(self: *ExtractionResult) void {
@@ -58,6 +73,14 @@ pub const ExtractionResult = struct {
             self.allocator.free(cs.text);
         }
         self.allocator.free(self.code_spans);
+        for (self.tasks) |t| {
+            self.allocator.free(t.text);
+        }
+        self.allocator.free(self.tasks);
+        for (self.embeds) |e| {
+            self.allocator.free(e.target);
+        }
+        self.allocator.free(self.embeds);
     }
 };
 
@@ -93,6 +116,16 @@ pub const ExtractionRenderer = struct {
     in_code_span: bool = false,
     code_text_buf: std.ArrayListUnmanaged(u8) = .{},
 
+    // task accumulation state (SEPARATE cursor)
+    tasks: std.ArrayListUnmanaged(ExtractedTask) = .{},
+    in_task: bool = false,
+    task_state: u8 = 0,
+    task_text_buf: std.ArrayListUnmanaged(u8) = .{},
+    task_scan_cursor: u32 = 0,
+
+    // embed accumulation state
+    embeds: std.ArrayListUnmanaged(ExtractedEmbed) = .{},
+
     // code block tracking
     in_code_block: bool = false,
 
@@ -112,6 +145,7 @@ pub const ExtractionRenderer = struct {
         self.link_text_buf.deinit(self.allocator);
         self.link_href_buf.deinit(self.allocator);
         self.code_text_buf.deinit(self.allocator);
+        self.task_text_buf.deinit(self.allocator);
 
         // Free owned strings in results
         for (self.headings.items) |h| {
@@ -127,6 +161,14 @@ pub const ExtractionRenderer = struct {
             self.allocator.free(cs.text);
         }
         self.code_spans.deinit(self.allocator);
+        for (self.tasks.items) |t| {
+            self.allocator.free(t.text);
+        }
+        self.tasks.deinit(self.allocator);
+        for (self.embeds.items) |e| {
+            self.allocator.free(e.target);
+        }
+        self.embeds.deinit(self.allocator);
     }
 
     pub fn renderer(self: *ExtractionRenderer) Renderer {
@@ -181,6 +223,18 @@ pub const ExtractionRenderer = struct {
             .code => {
                 self.in_code_block = true;
             },
+            .li => {
+                // Nested task handling: finalize current task if re-entering
+                if (self.in_task) self.finalizeTask();
+                const task_mark = types.taskMarkFromData(data);
+                if (task_mark != 0) {
+                    self.in_task = true;
+                    self.task_state = task_mark;
+                    self.task_text_buf.clearRetainingCapacity();
+                } else {
+                    self.in_task = false;
+                }
+            },
             else => {},
         }
     }
@@ -193,6 +247,12 @@ pub const ExtractionRenderer = struct {
             },
             .code => {
                 self.in_code_block = false;
+            },
+            .li => {
+                if (self.in_task) {
+                    self.finalizeTask();
+                    self.in_task = false;
+                }
             },
             else => {},
         }
@@ -279,6 +339,9 @@ pub const ExtractionRenderer = struct {
         if (self.in_code_span) {
             self.code_text_buf.appendSlice(self.allocator, effective) catch { self.oom = true; };
         }
+        if (self.in_task) {
+            self.task_text_buf.appendSlice(self.allocator, effective) catch { self.oom = true; };
+        }
     }
 
     // ── Finalization helpers ─────────────────────────────────────────
@@ -323,7 +386,24 @@ pub const ExtractionRenderer = struct {
             self.oom = true;
             self.allocator.free(owned_text);
             self.allocator.free(owned_target);
+            return;
         };
+
+        // Detect embed: wikilink preceded by '!' in source
+        if (self.link_is_wiki and offset > 0 and self.src_text[offset - 1] == '!' and owned_target.len > 0) {
+            const embed_target = self.allocator.dupe(u8, owned_target) catch {
+                self.oom = true;
+                return;
+            };
+            self.embeds.append(self.allocator, .{
+                .target = embed_target,
+                .offset = offset - 1, // '!' position
+                .end_offset = end_offset,
+            }) catch {
+                self.oom = true;
+                self.allocator.free(embed_target);
+            };
+        }
     }
 
     fn finalizeCodeSpan(self: *ExtractionRenderer) void {
@@ -385,6 +465,41 @@ pub const ExtractionRenderer = struct {
 
         // Fallback: no backtick found
         return self.code_scan_cursor;
+    }
+
+    fn finalizeTask(self: *ExtractionRenderer) void {
+        const owned_text = self.task_text_buf.toOwnedSlice(self.allocator) catch {
+            self.oom = true;
+            return;
+        };
+
+        const offset = self.findTaskOffset();
+        const end_offset: u32 = self.task_scan_cursor;
+        self.tasks.append(self.allocator, .{
+            .state = self.task_state,
+            .text = owned_text,
+            .offset = offset,
+            .end_offset = end_offset,
+        }) catch {
+            self.oom = true;
+            self.allocator.free(owned_text);
+        };
+    }
+
+    /// Scan forward from task_scan_cursor to find the '[' of a task checkbox [x].
+    /// Advances task_scan_cursor past the checkbox and task text.
+    fn findTaskOffset(self: *ExtractionRenderer) u32 {
+        const src = self.src_text;
+        var pos: u32 = self.task_scan_cursor;
+        while (pos + 2 < src.len) {
+            if (src[pos] == '[' and src[pos + 2] == ']') {
+                // Advance cursor past the checkbox marker "[ ] " or "[x] "
+                self.task_scan_cursor = @intCast(@min(@as(u64, pos) + 4, src.len));
+                return pos;
+            }
+            pos += 1;
+        }
+        return self.task_scan_cursor;
     }
 
     // ── Offset recovery via forward scan ─────────────────────────────
@@ -696,21 +811,40 @@ pub fn extractFromMarkdown(
     const code_spans = ext.code_spans.toOwnedSlice(allocator) catch {
         return error.OutOfMemory;
     };
+    errdefer {
+        for (code_spans) |cs| allocator.free(cs.text);
+        allocator.free(code_spans);
+    }
+    const tasks = ext.tasks.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
+    errdefer {
+        for (tasks) |t| allocator.free(t.text);
+        allocator.free(tasks);
+    }
+    const embeds = ext.embeds.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
 
     // Free accumulation buffers only (results transferred)
     ext.heading_text_buf.deinit(allocator);
     ext.link_text_buf.deinit(allocator);
     ext.link_href_buf.deinit(allocator);
     ext.code_text_buf.deinit(allocator);
+    ext.task_text_buf.deinit(allocator);
     // Deinit the now-empty ArrayLists (items transferred to owned slices)
     ext.headings.deinit(allocator);
     ext.links.deinit(allocator);
     ext.code_spans.deinit(allocator);
+    ext.tasks.deinit(allocator);
+    ext.embeds.deinit(allocator);
 
     return .{
         .headings = headings,
         .links = links,
         .code_spans = code_spans,
+        .tasks = tasks,
+        .embeds = embeds,
         .allocator = allocator,
     };
 }

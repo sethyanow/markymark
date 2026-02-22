@@ -50,19 +50,45 @@ comptime {
     std.debug.assert(@sizeOf(CMd4cCodeSpan) == 16);
 }
 
+pub const CMd4cTask = extern struct {
+    source_offset: u32,
+    end_offset: u32,
+    text_offset: u32,
+    text_length: u32,
+    state: u8,
+    _pad: [3]u8 = .{ 0, 0, 0 },
+};
+comptime {
+    std.debug.assert(@sizeOf(CMd4cTask) == 20);
+}
+
+pub const CMd4cEmbed = extern struct {
+    source_offset: u32,
+    end_offset: u32,
+    target_offset: u32,
+    target_length: u32,
+};
+comptime {
+    std.debug.assert(@sizeOf(CMd4cEmbed) == 16);
+}
+
 // Pointers grouped first, then u32 counts — avoids internal padding on 64-bit.
 pub const CMd4cResult = extern struct {
     headings: ?[*]CMd4cHeading, // Zig-allocated array, freed by marky_md4c_free
     links: ?[*]CMd4cLink, // Zig-allocated array, freed by marky_md4c_free
     code_spans: ?[*]CMd4cCodeSpan, // Zig-allocated array, freed by marky_md4c_free
+    tasks: ?[*]CMd4cTask, // Zig-allocated array, freed by marky_md4c_free
+    embeds: ?[*]CMd4cEmbed, // Zig-allocated array, freed by marky_md4c_free
     text_blob: ?[*]const u8, // concatenated decoded texts, freed by marky_md4c_free
     headings_count: u32,
     links_count: u32,
     code_spans_count: u32,
+    tasks_count: u32,
+    embeds_count: u32,
     text_blob_len: u32,
 };
 comptime {
-    std.debug.assert(@sizeOf(CMd4cResult) == 48);
+    std.debug.assert(@sizeOf(CMd4cResult) == 72);
 }
 
 // ── C ABI Functions ──────────────────────────────────────────────────
@@ -100,6 +126,8 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
     const heading_count = result.headings.len;
     const link_count = result.links.len;
     const code_span_count = result.code_spans.len;
+    const task_count = result.tasks.len;
+    const embed_count = result.embeds.len;
 
     // Calculate text blob size
     var blob_size: usize = 0;
@@ -112,6 +140,12 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
     }
     for (result.code_spans) |cs| {
         blob_size += cs.text.len;
+    }
+    for (result.tasks) |tk| {
+        blob_size += tk.text.len;
+    }
+    for (result.embeds) |e| {
+        blob_size += e.target.len;
     }
 
     // T1-3: blob_offset is u32 — guard against wrapping for documents whose total
@@ -156,6 +190,33 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
     var c_code_spans: ?[]CMd4cCodeSpan = null;
     if (code_span_count > 0) {
         c_code_spans = ffi_allocator.alloc(CMd4cCodeSpan, code_span_count) catch {
+            if (c_links) |l| ffi_allocator.free(l);
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate task array
+    var c_tasks: ?[]CMd4cTask = null;
+    if (task_count > 0) {
+        c_tasks = ffi_allocator.alloc(CMd4cTask, task_count) catch {
+            if (c_code_spans) |cs| ffi_allocator.free(cs);
+            if (c_links) |l| ffi_allocator.free(l);
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate embed array
+    var c_embeds: ?[]CMd4cEmbed = null;
+    if (embed_count > 0) {
+        c_embeds = ffi_allocator.alloc(CMd4cEmbed, embed_count) catch {
+            if (c_tasks) |tk| ffi_allocator.free(tk);
+            if (c_code_spans) |cs| ffi_allocator.free(cs);
             if (c_links) |l| ffi_allocator.free(l);
             if (c_headings) |h| ffi_allocator.free(h);
             if (blob) |b| ffi_allocator.free(b);
@@ -230,6 +291,37 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
         blob_offset += text_len;
     }
 
+    for (result.tasks, 0..) |tk, i| {
+        const text_len: u32 = @intCast(tk.text.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, text_len) <= b.len);
+            @memcpy(b[blob_offset..][0..text_len], tk.text);
+        }
+        c_tasks.?[i] = .{
+            .source_offset = tk.offset,
+            .end_offset = tk.end_offset,
+            .text_offset = blob_offset,
+            .text_length = text_len,
+            .state = tk.state,
+        };
+        blob_offset += text_len;
+    }
+
+    for (result.embeds, 0..) |e, i| {
+        const target_len: u32 = @intCast(e.target.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, target_len) <= b.len);
+            @memcpy(b[blob_offset..][0..target_len], e.target);
+        }
+        c_embeds.?[i] = .{
+            .source_offset = e.offset,
+            .end_offset = e.end_offset,
+            .target_offset = blob_offset,
+            .target_length = target_len,
+        };
+        blob_offset += target_len;
+    }
+
     // Free ExtractionResult (owned strings — already copied to blob)
     result.deinit();
 
@@ -241,6 +333,10 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
         .links_count = @intCast(link_count),
         .code_spans = if (c_code_spans) |cs| cs.ptr else null,
         .code_spans_count = @intCast(code_span_count),
+        .tasks = if (c_tasks) |tk| tk.ptr else null,
+        .tasks_count = @intCast(task_count),
+        .embeds = if (c_embeds) |e| e.ptr else null,
+        .embeds_count = @intCast(embed_count),
         .text_blob = blob_ptr,
         .text_blob_len = blob_offset,
     };
@@ -268,6 +364,16 @@ export fn marky_md4c_free(result: ?*CMd4cResult) void {
     if (r.code_spans) |code_spans_ptr| {
         if (r.code_spans_count > 0) {
             ffi_allocator.free(code_spans_ptr[0..r.code_spans_count]);
+        }
+    }
+    if (r.tasks) |tasks_ptr| {
+        if (r.tasks_count > 0) {
+            ffi_allocator.free(tasks_ptr[0..r.tasks_count]);
+        }
+    }
+    if (r.embeds) |embeds_ptr| {
+        if (r.embeds_count > 0) {
+            ffi_allocator.free(embeds_ptr[0..r.embeds_count]);
         }
     }
     if (r.text_blob) |blob_ptr| {
@@ -430,4 +536,43 @@ test "md4c_extract: no code spans" {
     defer marky_md4c_free(&result);
     try testing.expectEqual(@as(i32, 0), rc);
     try testing.expectEqual(@as(u32, 0), result.code_spans_count);
+}
+
+// --- Task/Embed FFI tests (marky-rd7r) ---
+
+test "md4c_extract: task via blob" {
+    const input = "- [x] Done\n";
+    var result: CMd4cResult = undefined;
+    const rc = marky_md4c_extract(input.ptr, input.len, &result);
+    defer marky_md4c_free(&result);
+    try testing.expectEqual(@as(i32, 0), rc);
+    try testing.expectEqual(@as(u32, 1), result.tasks_count);
+    const blob = result.text_blob.?[0..result.text_blob_len];
+    const tk = result.tasks.?[0];
+    try testing.expectEqualStrings("Done", blob[tk.text_offset..tk.text_offset + tk.text_length]);
+    try testing.expectEqual(@as(u8, 'x'), tk.state);
+}
+
+test "md4c_extract: embed via blob" {
+    const input = "![[target]]\n";
+    var result: CMd4cResult = undefined;
+    const rc = marky_md4c_extract(input.ptr, input.len, &result);
+    defer marky_md4c_free(&result);
+    try testing.expectEqual(@as(i32, 0), rc);
+    try testing.expectEqual(@as(u32, 1), result.embeds_count);
+    const blob = result.text_blob.?[0..result.text_blob_len];
+    const e = result.embeds.?[0];
+    try testing.expectEqualStrings("target", blob[e.target_offset..e.target_offset + e.target_length]);
+    // Also has a wikilink
+    try testing.expectEqual(@as(u32, 1), result.links_count);
+}
+
+test "md4c_extract: no tasks or embeds" {
+    const input = "Just plain text.\n";
+    var result: CMd4cResult = undefined;
+    const rc = marky_md4c_extract(input.ptr, input.len, &result);
+    defer marky_md4c_free(&result);
+    try testing.expectEqual(@as(i32, 0), rc);
+    try testing.expectEqual(@as(u32, 0), result.tasks_count);
+    try testing.expectEqual(@as(u32, 0), result.embeds_count);
 }
