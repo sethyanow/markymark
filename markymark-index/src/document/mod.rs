@@ -53,6 +53,11 @@ struct DocumentDependent<'a> {
     aliases: &'a [&'a str],
     properties: &'a [PropertyEntry<'a>],
     block_refs: &'a [BlockRefEntry<'a>],
+    embeds: &'a [EmbedEntry<'a>],
+    tasks: &'a [TaskEntry<'a>],
+    callouts: &'a [CalloutEntry<'a>],
+    query_blocks: &'a [QueryBlockEntry<'a>],
+    link_definitions: &'a [LinkDefinitionEntry<'a>],
 }
 
 self_cell!(
@@ -193,6 +198,31 @@ impl DocumentIndex {
     pub fn block_refs<'a>(&'a self) -> &'a [BlockRefEntry<'a>] {
         self.cell.borrow_dependent().block_refs
     }
+
+    /// Get all embed entries (`![[target]]`) in this document.
+    pub fn embeds<'a>(&'a self) -> &'a [EmbedEntry<'a>] {
+        self.cell.borrow_dependent().embeds
+    }
+
+    /// Get all task entries (checkbox items) in this document.
+    pub fn tasks<'a>(&'a self) -> &'a [TaskEntry<'a>] {
+        self.cell.borrow_dependent().tasks
+    }
+
+    /// Get all callout entries (Obsidian `[!type]` blockquotes) in this document.
+    pub fn callouts<'a>(&'a self) -> &'a [CalloutEntry<'a>] {
+        self.cell.borrow_dependent().callouts
+    }
+
+    /// Get all query block entries (Logseq `{{query ...}}`) in this document.
+    pub fn query_blocks<'a>(&'a self) -> &'a [QueryBlockEntry<'a>] {
+        self.cell.borrow_dependent().query_blocks
+    }
+
+    /// Get all link definition entries (`[label]: url`) in this document.
+    pub fn link_definitions<'a>(&'a self) -> &'a [LinkDefinitionEntry<'a>] {
+        self.cell.borrow_dependent().link_definitions
+    }
 }
 
 impl fmt::Debug for DocumentIndex {
@@ -211,6 +241,11 @@ impl fmt::Debug for DocumentIndex {
             .field("aliases", &dep.aliases.len())
             .field("properties", &dep.properties.len())
             .field("block_refs", &dep.block_refs.len())
+            .field("embeds", &dep.embeds.len())
+            .field("tasks", &dep.tasks.len())
+            .field("callouts", &dep.callouts.len())
+            .field("query_blocks", &dep.query_blocks.len())
+            .field("link_definitions", &dep.link_definitions.len())
             .finish()
     }
 }
