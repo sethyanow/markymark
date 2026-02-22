@@ -690,6 +690,28 @@ test "code_span_in_fenced_block_not_extracted" {
     try testing.expectEqual(@as(usize, 0), result.code_spans.len);
 }
 
+test "code_span_after_fenced_block: offset skips fence delimiters (marky-4tqn)" {
+    // Regression: findCodeSpanOffset must skip fenced code block delimiters.
+    // Without fix, scanner matches fence triple-backticks as the code span pair.
+    // "```\ncode\n```\n\nText `inline` here\n"
+    // Byte layout:
+    //   "```\n"     = 0..4
+    //   "code\n"    = 4..9
+    //   "```\n"     = 9..13
+    //   "\n"        = 13..14
+    //   "Text "     = 14..19
+    //   "`inline`"  = 19..27  (opening backtick at 19)
+    //   " here\n"   = 27..33
+    const input = "```\ncode\n```\n\nText `inline` here\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.code_spans.len);
+    try testing.expectEqualStrings("inline", result.code_spans[0].text);
+    try testing.expectEqual(@as(u32, 19), result.code_spans[0].offset);
+    try testing.expect(input[result.code_spans[0].offset] == '`');
+}
+
 test "code_span_single_space: minimal code span content" {
     // "` `\n" — code span with single space (md4c normalizes whitespace)
     // This is the smallest valid code span in CommonMark.
@@ -835,6 +857,28 @@ test "extract task offset points to bracket" {
 
     try testing.expectEqual(@as(usize, 1), result.tasks.len);
     try testing.expect(input[result.tasks[0].offset] == '[');
+}
+
+test "task offset skips non-checkbox bracket pairs (marky-4do1)" {
+    // Regression: findTaskOffset must only match valid checkbox markers [ ], [x], [X].
+    // Without fix, [a] in prose before the task checkbox would match first.
+    // "See [a] for details\n\n- [ ] do the thing\n"
+    // Byte layout:
+    //   "See [a] for details\n" = 0..20
+    //   "\n"                    = 20..21
+    //   "- "                    = 21..23
+    //   "[ ] "                  = 23..27  (checkbox '[' at 23)
+    //   "do the thing\n"       = 27..40
+    const input = "See [a] for details\n\n- [ ] do the thing\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.tasks.len);
+    try testing.expectEqualStrings("do the thing", result.tasks[0].text);
+    try testing.expectEqual(@as(u32, 23), result.tasks[0].offset);
+    try testing.expect(input[result.tasks[0].offset] == '[');
+    // The middle character must be a valid checkbox marker
+    try testing.expect(input[result.tasks[0].offset + 1] == ' ');
 }
 
 // --- Embed tests ---

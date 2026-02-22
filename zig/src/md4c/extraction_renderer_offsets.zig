@@ -8,12 +8,71 @@
 
 /// Find the offset of the next code span (backtick-delimited) in the source.
 /// Scans for a matching backtick run pair (1, 2, or 3 backticks).
+/// Tracks fenced code blocks to avoid matching fence delimiters as inline spans.
 /// Advances `cursor` past the closing backticks.
 pub fn findCodeSpanOffset(src: []const u8, cursor: *u32) u32 {
     var pos: u32 = cursor.*;
+    // Track fenced code blocks to avoid matching fence backticks as inline spans.
+    var in_fence: bool = false;
+    var fence_char: u8 = 0;
+    var fence_len: u32 = 0;
 
-    // Find the opening backtick run
     while (pos < src.len) {
+        const at_line_start = (pos == 0 or src[pos - 1] == '\n');
+
+        // At line start: detect fenced code block open/close (0-3 spaces + 3+ backticks/tildes)
+        if (at_line_start) {
+            var fp = pos;
+            var sp: u32 = 0;
+            while (fp < src.len and src[fp] == ' ' and sp < 3) {
+                fp += 1;
+                sp += 1;
+            }
+            if (fp < src.len and (src[fp] == '`' or src[fp] == '~')) {
+                const fc = src[fp];
+                var flen: u32 = 0;
+                while (fp + flen < src.len and src[fp + flen] == fc) : (flen += 1) {}
+                if (flen >= 3) {
+                    if (!in_fence) {
+                        in_fence = true;
+                        fence_char = fc;
+                        fence_len = flen;
+                        // Skip to next line
+                        pos = fp + flen;
+                        while (pos < src.len and src[pos] != '\n') : (pos += 1) {}
+                        if (pos < src.len) pos += 1;
+                        continue;
+                    } else if (fc == fence_char and flen >= fence_len) {
+                        // Closing fence: must have only trailing whitespace
+                        var cp = fp + flen;
+                        var valid_close = true;
+                        while (cp < src.len and src[cp] != '\n') {
+                            if (src[cp] != ' ' and src[cp] != '\t') {
+                                valid_close = false;
+                                break;
+                            }
+                            cp += 1;
+                        }
+                        if (valid_close) {
+                            in_fence = false;
+                            fence_char = 0;
+                            fence_len = 0;
+                            pos = if (cp < src.len) cp + 1 else @intCast(src.len);
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Inside fenced block: skip to end of line
+        if (in_fence) {
+            while (pos < src.len and src[pos] != '\n') : (pos += 1) {}
+            if (pos < src.len) pos += 1;
+            continue;
+        }
+
+        // Outside fenced block: look for inline code span backtick runs
         if (src[pos] == '`') {
             const open_start = pos;
             // Count opening backtick run length
@@ -50,14 +109,18 @@ pub fn findCodeSpanOffset(src: []const u8, cursor: *u32) u32 {
 }
 
 /// Scan forward from cursor to find the '[' of a task checkbox [x].
+/// Only matches valid checkbox markers: [ ], [x], [X].
 /// Advances cursor past the checkbox and task text.
 pub fn findTaskOffset(src: []const u8, cursor: *u32) u32 {
     var pos: u32 = cursor.*;
     while (pos + 2 < src.len) {
         if (src[pos] == '[' and src[pos + 2] == ']') {
-            // Advance cursor past the checkbox marker "[ ] " or "[x] "
-            cursor.* = @intCast(@min(@as(u64, pos) + 4, src.len));
-            return pos;
+            const mark = src[pos + 1];
+            if (mark == ' ' or mark == 'x' or mark == 'X') {
+                // Advance cursor past the checkbox marker "[ ] " or "[x] "
+                cursor.* = @intCast(@min(@as(u64, pos) + 4, src.len));
+                return pos;
+            }
         }
         pos += 1;
     }
