@@ -76,7 +76,7 @@ search-symbols: { "query": "installation" }
 a specific heading:
 
 ```
-find-references: { "uri": "file:///path/to/doc.md", "position": { "start": 0, "end": 0 } }
+find-references: { "uri": "file:///path/to/doc.md", "line": 0, "character": 0 }
 ```
 
 **Check for problems.** Call `get-diagnostics` to detect broken links and
