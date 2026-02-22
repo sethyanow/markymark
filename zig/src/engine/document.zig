@@ -70,6 +70,23 @@ pub const StoredBlockId = struct {
     end: Position,
 };
 
+pub const StoredTask = struct {
+    state: u8,
+    text: []const u8, // owned
+    source_offset: u32,
+    end_offset: u32,
+    start: Position,
+    end: Position,
+};
+
+pub const StoredEmbed = struct {
+    target: []const u8, // owned
+    source_offset: u32,
+    end_offset: u32,
+    start: Position,
+    end: Position,
+};
+
 // ── DocumentEngine ──────────────────────────────────────────────────
 
 pub const DocumentEngine = struct {
@@ -80,6 +97,8 @@ pub const DocumentEngine = struct {
     code_spans: []StoredCodeSpan = &.{},
     tags: []StoredTag = &.{},
     block_ids: []StoredBlockId = &.{},
+    tasks: []StoredTask = &.{},
+    embeds: []StoredEmbed = &.{},
     line_starts: []u32 = &.{},
 
     token_estimate: u32 = 0,
@@ -113,6 +132,8 @@ pub const DocumentEngine = struct {
         var new_code_spans: []StoredCodeSpan = &.{};
         var new_tags: []StoredTag = &.{};
         var new_block_ids: []StoredBlockId = &.{};
+        var new_tasks: []StoredTask = &.{};
+        var new_embeds: []StoredEmbed = &.{};
         var new_line_starts: []u32 = &.{};
         var new_token_estimate: u32 = 0;
         var new_content_hash: u64 = 0;
@@ -125,6 +146,8 @@ pub const DocumentEngine = struct {
             &new_code_spans,
             &new_tags,
             &new_block_ids,
+            &new_tasks,
+            &new_embeds,
             &new_line_starts,
             &new_token_estimate,
             &new_content_hash,
@@ -137,6 +160,8 @@ pub const DocumentEngine = struct {
         self.code_spans = new_code_spans;
         self.tags = new_tags;
         self.block_ids = new_block_ids;
+        self.tasks = new_tasks;
+        self.embeds = new_embeds;
         self.line_starts = new_line_starts;
         self.token_estimate = new_token_estimate;
         self.content_hash = new_content_hash;
@@ -169,6 +194,8 @@ pub const DocumentEngine = struct {
             &self.code_spans,
             &self.tags,
             &self.block_ids,
+            &self.tasks,
+            &self.embeds,
             &self.line_starts,
             &self.token_estimate,
             &self.content_hash,
@@ -186,6 +213,10 @@ pub const DocumentEngine = struct {
         self.tags = &.{};
         freeBlockIds(self.allocator, self.block_ids);
         self.block_ids = &.{};
+        freeTasks(self.allocator, self.tasks);
+        self.tasks = &.{};
+        freeEmbeds(self.allocator, self.embeds);
+        self.embeds = &.{};
         if (self.line_starts.len > 0) {
             self.allocator.free(self.line_starts);
             self.line_starts = &.{};
@@ -207,6 +238,8 @@ pub fn parseAll(
     out_code_spans: *[]StoredCodeSpan,
     out_tags: *[]StoredTag,
     out_block_ids: *[]StoredBlockId,
+    out_tasks: *[]StoredTask,
+    out_embeds: *[]StoredEmbed,
     out_line_starts: *[]u32,
     out_token_estimate: *u32,
     out_content_hash: *u64,
@@ -224,6 +257,8 @@ pub fn parseAll(
     var stored_code_spans_list = std.ArrayListUnmanaged(StoredCodeSpan){};
     var stored_tags_list = std.ArrayListUnmanaged(StoredTag){};
     var stored_block_ids_list = std.ArrayListUnmanaged(StoredBlockId){};
+    var stored_tasks_list = std.ArrayListUnmanaged(StoredTask){};
+    var stored_embeds_list = std.ArrayListUnmanaged(StoredEmbed){};
 
     // Tracks whether h.text/l.text/l.target/cs.text have been transferred from extraction
     // into the stored lists (i.e., after extraction.headings/links/code_spans slice containers
@@ -239,6 +274,8 @@ pub fn parseAll(
         freeStoredCodeSpansList(allocator, &stored_code_spans_list, texts_transferred);
         freeStoredTagsList(allocator, &stored_tags_list);
         freeStoredBlockIdsList(allocator, &stored_block_ids_list);
+        freeStoredTasksList(allocator, &stored_tasks_list, texts_transferred);
+        freeStoredEmbedsList(allocator, &stored_embeds_list, texts_transferred);
     }
 
     // 2. Compute line_starts
@@ -321,13 +358,48 @@ pub fn parseAll(
         };
     }
 
-    // OWNERSHIP: The string data (h.text, l.text, l.target, cs.text) from extraction_renderer's
-    // ExtractedHeading/ExtractedLink/ExtractedCodeSpan arrays has been moved into the stored lists
-    // by the loops above (steps 4-5b). Only the slice containers are freed here — NOT the string
+    // 5c. Process tasks: positions
+    for (extraction.tasks) |t| {
+        const start_pos = byteOffsetToPosition(line_starts, t.offset);
+        const end_pos = byteOffsetToPosition(line_starts, t.end_offset);
+        stored_tasks_list.append(allocator, .{
+            .state = t.state,
+            .text = t.text,
+            .source_offset = t.offset,
+            .end_offset = t.end_offset,
+            .start = start_pos,
+            .end = end_pos,
+        }) catch {
+            extraction.deinit();
+            return error.OutOfMemory;
+        };
+    }
+
+    // 5d. Process embeds: positions
+    for (extraction.embeds) |e| {
+        const start_pos = byteOffsetToPosition(line_starts, e.offset);
+        const end_pos = byteOffsetToPosition(line_starts, e.end_offset);
+        stored_embeds_list.append(allocator, .{
+            .target = e.target,
+            .source_offset = e.offset,
+            .end_offset = e.end_offset,
+            .start = start_pos,
+            .end = end_pos,
+        }) catch {
+            extraction.deinit();
+            return error.OutOfMemory;
+        };
+    }
+
+    // OWNERSHIP: The string data (h.text, l.text, l.target, cs.text, t.text, e.target)
+    // from extraction_renderer's arrays has been moved into the stored lists by the loops
+    // above (steps 4-5d). Only the slice containers are freed here — NOT the string
     // contents. The strings are now owned by stored lists.
     allocator.free(extraction.headings);
     allocator.free(extraction.links);
     allocator.free(extraction.code_spans);
+    allocator.free(extraction.tasks);
+    allocator.free(extraction.embeds);
     // From this point, the errdefer must free string data from the stored lists directly.
     texts_transferred = true;
 
@@ -408,8 +480,12 @@ pub fn parseAll(
     errdefer freeCodeSpans(allocator, out_code_spans.*);
     out_tags.* = stored_tags_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
     errdefer freeTags(allocator, out_tags.*);
-    // No errdefer for block_ids: nothing allocates after this point.
     out_block_ids.* = stored_block_ids_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
+    errdefer freeBlockIds(allocator, out_block_ids.*);
+    out_tasks.* = stored_tasks_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
+    errdefer freeTasks(allocator, out_tasks.*);
+    // No errdefer for embeds: nothing allocates after this point.
+    out_embeds.* = stored_embeds_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
     out_line_starts.* = line_starts;
     out_token_estimate.* = token_est;
     out_content_hash.* = c_hash;
@@ -521,6 +597,8 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
         engine.code_spans.len > max_u32 or
         engine.tags.len > max_u32 or
         engine.block_ids.len > max_u32 or
+        engine.tasks.len > max_u32 or
+        engine.embeds.len > max_u32 or
         engine.line_starts.len > max_u32) return error.OutOfMemory;
 
     // Compute text pool size in u64 to avoid u32 wrap-before-check (C6).
@@ -542,6 +620,12 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
     for (engine.block_ids) |b| {
         text_pool_size += b.id.len;
     }
+    for (engine.tasks) |t| {
+        text_pool_size += t.text.len;
+    }
+    for (engine.embeds) |e| {
+        text_pool_size += e.target.len;
+    }
     if (text_pool_size > std.math.maxInt(u32)) return error.OutOfMemory;
     const text_pool_u32: u32 = @intCast(text_pool_size);
 
@@ -551,6 +635,8 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
         @intCast(engine.tags.len),
         @intCast(engine.block_ids.len),
         @intCast(engine.code_spans.len),
+        @intCast(engine.tasks.len),
+        @intCast(engine.embeds.len),
         @intCast(engine.line_starts.len),
         text_pool_u32,
     ) orelse return error.OutOfMemory;
@@ -570,6 +656,8 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
         .tag_count = @intCast(engine.tags.len),
         .block_id_count = @intCast(engine.block_ids.len),
         .code_span_count = @intCast(engine.code_spans.len),
+        .task_count = @intCast(engine.tasks.len),
+        .embed_count = @intCast(engine.embeds.len),
         .line_count = @intCast(engine.line_starts.len),
         .text_pool_size = text_pool_u32,
         .token_estimate = engine.token_estimate,
@@ -675,6 +763,43 @@ fn serializeState(engine: *const DocumentEngine) ![]u8 {
         pool_off += @intCast(cs.text.len);
     }
 
+    // Write tasks
+    for (engine.tasks, 0..) |t, i| {
+        const bt = blob.BlobTask{
+            .text_off = pool_off,
+            .text_len = @intCast(t.text.len),
+            .source_offset = t.source_offset,
+            .end_offset = t.end_offset,
+            .start_line = t.start.line,
+            .start_col = t.start.col,
+            .end_line = t.end.line,
+            .end_col = t.end.col,
+            .state = t.state,
+        };
+        try blob.writeStruct(blob.BlobTask, buf, offsets.tasks + i * @sizeOf(blob.BlobTask), bt);
+
+        @memcpy(buf[offsets.text_pool + pool_off ..][0..t.text.len], t.text);
+        pool_off += @intCast(t.text.len);
+    }
+
+    // Write embeds
+    for (engine.embeds, 0..) |e, i| {
+        const be = blob.BlobEmbed{
+            .target_off = pool_off,
+            .target_len = @intCast(e.target.len),
+            .source_offset = e.source_offset,
+            .end_offset = e.end_offset,
+            .start_line = e.start.line,
+            .start_col = e.start.col,
+            .end_line = e.end.line,
+            .end_col = e.end.col,
+        };
+        try blob.writeStruct(blob.BlobEmbed, buf, offsets.embeds + i * @sizeOf(blob.BlobEmbed), be);
+
+        @memcpy(buf[offsets.text_pool + pool_off ..][0..e.target.len], e.target);
+        pool_off += @intCast(e.target.len);
+    }
+
     // Write line_starts
     for (engine.line_starts, 0..) |ls, i| {
         const offset = offsets.line_starts + @as(u32, @intCast(i)) * @sizeOf(u32);
@@ -723,6 +848,20 @@ pub fn freeBlockIds(allocator: Allocator, block_ids: []StoredBlockId) void {
     if (block_ids.len > 0) allocator.free(block_ids);
 }
 
+pub fn freeTasks(allocator: Allocator, tasks: []StoredTask) void {
+    for (tasks) |t| {
+        allocator.free(t.text);
+    }
+    if (tasks.len > 0) allocator.free(tasks);
+}
+
+pub fn freeEmbeds(allocator: Allocator, embeds: []StoredEmbed) void {
+    for (embeds) |e| {
+        allocator.free(e.target);
+    }
+    if (embeds.len > 0) allocator.free(embeds);
+}
+
 pub fn freeStoredHeadingsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredHeading), free_texts: bool) void {
     for (list.items) |h| {
         // h.text was transferred from extraction; only free it when texts_transferred=true
@@ -765,6 +904,24 @@ fn freeStoredTagsList(allocator: Allocator, list: *std.ArrayListUnmanaged(Stored
 fn freeStoredBlockIdsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredBlockId)) void {
     for (list.items) |b| {
         allocator.free(b.id);
+    }
+    list.deinit(allocator);
+}
+
+fn freeStoredTasksList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredTask), free_texts: bool) void {
+    if (free_texts) {
+        for (list.items) |t| {
+            allocator.free(t.text);
+        }
+    }
+    list.deinit(allocator);
+}
+
+fn freeStoredEmbedsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredEmbed), free_texts: bool) void {
+    if (free_texts) {
+        for (list.items) |e| {
+            allocator.free(e.target);
+        }
     }
     list.deinit(allocator);
 }

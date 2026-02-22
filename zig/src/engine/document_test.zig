@@ -479,6 +479,8 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
         var out_code_spans: []StoredCodeSpan = &.{};
         var out_tags: []StoredTag = &.{};
         var out_block_ids: []StoredBlockId = &.{};
+        var out_tasks: []doc.StoredTask = &.{};
+        var out_embeds: []doc.StoredEmbed = &.{};
         var out_line_starts: []u32 = &.{};
         var out_token_estimate: u32 = 0;
         var out_content_hash: u64 = 0;
@@ -491,6 +493,8 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
             &out_code_spans,
             &out_tags,
             &out_block_ids,
+            &out_tasks,
+            &out_embeds,
             &out_line_starts,
             &out_token_estimate,
             &out_content_hash,
@@ -503,6 +507,8 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
             freeCodeSpans(failing.allocator(), out_code_spans);
             freeTags(failing.allocator(), out_tags);
             freeBlockIds(failing.allocator(), out_block_ids);
+            doc.freeTasks(failing.allocator(), out_tasks);
+            doc.freeEmbeds(failing.allocator(), out_embeds);
             if (out_line_starts.len > 0) failing.allocator().free(out_line_starts);
             consecutive_successes += 1;
         } else |_| {
