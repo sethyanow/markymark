@@ -87,6 +87,27 @@ pub(super) struct EmbedData {
     pub(super) end_col: u32,
 }
 
+#[derive(Clone)]
+pub(super) struct CalloutData {
+    pub(super) callout_type: String,
+    pub(super) title: Option<String>,
+    pub(super) source_offset: u32,
+    pub(super) end_offset: u32,
+    pub(super) start_line: u32,
+    pub(super) start_col: u32,
+    pub(super) end_line: u32,
+    pub(super) end_col: u32,
+}
+
+#[derive(Clone)]
+pub(super) struct BlockRefData {
+    pub(super) uuid: String,
+    pub(super) start_line: u32,
+    pub(super) start_col: u32,
+    pub(super) end_line: u32,
+    pub(super) end_col: u32,
+}
+
 pub(super) struct DecodedOwnedData {
     pub(super) headings: Vec<HeadingData>,
     pub(super) wiki_links: Vec<WikiData>,
@@ -96,5 +117,7 @@ pub(super) struct DecodedOwnedData {
     pub(super) code_spans: Vec<CodeSpanData>,
     pub(super) tasks: Vec<TaskData>,
     pub(super) embeds: Vec<EmbedData>,
+    pub(super) callouts: Vec<CalloutData>,
+    pub(super) block_refs: Vec<BlockRefData>,
 }
 

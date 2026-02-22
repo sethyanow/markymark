@@ -32,23 +32,34 @@ impl DocumentIndex {
         // Collect owned data from scan backend before entering self_cell closure.
         // Fall back to independent scans if scan_all fails so that headings
         // and links are never both silently dropped due to one-sided error.
-        let (scan_headings, scan_links, scan_code_spans, scan_tasks, scan_embeds) =
-            match backend.scan_all(text) {
-                Ok(result) => (
-                    result.headings,
-                    result.links,
-                    result.code_spans,
-                    result.tasks,
-                    result.embeds,
-                ),
-                Err(_) => (
-                    backend.scan_headings(text).unwrap_or_default(),
-                    backend.scan_links(text).unwrap_or_default(),
-                    backend.scan_code_spans(text).unwrap_or_default(),
-                    backend.scan_tasks(text).unwrap_or_default(),
-                    backend.scan_embeds(text).unwrap_or_default(),
-                ),
-            };
+        let (
+            scan_headings,
+            scan_links,
+            scan_code_spans,
+            scan_tasks,
+            scan_embeds,
+            scan_callouts,
+            scan_block_refs,
+        ) = match backend.scan_all(text) {
+            Ok(result) => (
+                result.headings,
+                result.links,
+                result.code_spans,
+                result.tasks,
+                result.embeds,
+                result.callouts,
+                result.block_refs,
+            ),
+            Err(_) => (
+                backend.scan_headings(text).unwrap_or_default(),
+                backend.scan_links(text).unwrap_or_default(),
+                backend.scan_code_spans(text).unwrap_or_default(),
+                backend.scan_tasks(text).unwrap_or_default(),
+                backend.scan_embeds(text).unwrap_or_default(),
+                backend.scan_callouts(text).unwrap_or_default(),
+                backend.scan_block_refs(text).unwrap_or_default(),
+            ),
+        };
         let scan_tags = backend.scan_tags(text).unwrap_or_default();
         let scan_blocks = backend.scan_block_ids(text).unwrap_or_default();
 
@@ -197,11 +208,10 @@ impl DocumentIndex {
             }
             let code_spans = cs_builder.into_bump_slice();
 
-            // Frontmatter/properties/block-refs: not available from scan backend
+            // Frontmatter/properties: not available from scan backend
             let frontmatter = BumpVec::<FrontmatterEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let aliases = BumpVec::<&str>::new_in(arena_ref).into_bump_slice();
             let properties = BumpVec::<PropertyEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let block_refs = BumpVec::<BlockRefEntry<'_>>::new_in(arena_ref).into_bump_slice();
 
             // --- Tasks ---
             let mut tasks_builder = BumpVec::new_in(arena_ref);
@@ -235,8 +245,39 @@ impl DocumentIndex {
             }
             let embeds = embeds_builder.into_bump_slice();
 
-            // Callouts/query_blocks/link_definitions: not yet in scan backend
-            let callouts = BumpVec::<CalloutEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            // --- Callouts ---
+            let mut callouts_builder = BumpVec::new_in(arena_ref);
+            for c in scan_callouts {
+                let callout_type = arena_alloc_str(arena_ref, &c.callout_type);
+                let title = c.title.as_deref().map(|t| arena_alloc_str(arena_ref, t));
+                let pos = helpers::byte_offset_to_position(&line_starts, c.offset);
+                let end_pos = helpers::byte_offset_to_position(&line_starts, c.end_offset);
+                callouts_builder.push(CalloutEntry {
+                    callout_type,
+                    title,
+                    range: Range::new(pos, end_pos),
+                    start_byte: c.offset as usize,
+                    end_byte: c.end_offset as usize,
+                });
+            }
+            let callouts = callouts_builder.into_bump_slice();
+
+            // --- Block refs ---
+            let mut block_refs_builder = BumpVec::new_in(arena_ref);
+            for br in scan_block_refs {
+                let uuid = arena_alloc_str(arena_ref, &br.uuid);
+                let pos = helpers::byte_offset_to_position(&line_starts, br.offset);
+                // ((uuid)) = 2 + uuid.len() + 2 = uuid.len() + 4
+                let end_offset = br.offset + br.uuid.len() as u32 + 4;
+                let end_pos = helpers::byte_offset_to_position(&line_starts, end_offset);
+                block_refs_builder.push(BlockRefEntry {
+                    uuid,
+                    range: Range::new(pos, end_pos),
+                });
+            }
+            let block_refs = block_refs_builder.into_bump_slice();
+
+            // Query blocks/link definitions: not yet in scan backend
             let query_blocks =
                 BumpVec::<QueryBlockEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let link_definitions =

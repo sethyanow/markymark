@@ -821,3 +821,126 @@ fn test_from_blob_v2_empty_task_text() {
     // May or may not have a task depending on engine behavior; just verify no panic
     let _ = index.tasks();
 }
+
+// ── Callout + Block ref tests (marky-8ac8) ──────────────────────────
+
+#[test]
+fn test_from_blob_callout_note() {
+    let blob = blob_for("> [!note]\n> Some content here\n");
+    let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    assert_eq!(index.callouts().len(), 1, "expected 1 callout");
+    assert_eq!(index.callouts()[0].callout_type, "note");
+    assert!(index.callouts()[0].title.is_none());
+}
+
+#[test]
+fn test_from_blob_callout_with_title() {
+    let blob = blob_for("> [!tip] My Custom Title\n> Content\n");
+    let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    assert_eq!(index.callouts().len(), 1, "expected 1 callout");
+    assert_eq!(index.callouts()[0].callout_type, "tip");
+    assert_eq!(index.callouts()[0].title, Some("My Custom Title"));
+}
+
+#[test]
+fn test_from_blob_callout_range_and_bytes() {
+    let blob = blob_for("> [!warning]\n> Watch out\n");
+    let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    assert_eq!(index.callouts().len(), 1);
+    let c = &index.callouts()[0];
+    assert_eq!(c.callout_type, "warning");
+    // start_byte should be at the '>' character
+    assert!(c.start_byte < c.end_byte, "start_byte < end_byte");
+}
+
+#[test]
+fn test_from_blob_no_callout_for_plain_blockquote() {
+    let blob = blob_for("> This is just a regular quote\n");
+    let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    assert!(
+        index.callouts().is_empty(),
+        "plain blockquotes should not produce callouts"
+    );
+}
+
+#[test]
+fn test_from_blob_block_ref_basic() {
+    let blob = blob_for("Text ((a1b2c3d4-e5f6-7890-abcd-ef1234567890)) more\n");
+    let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    assert_eq!(index.block_refs().len(), 1, "expected 1 block ref");
+    assert_eq!(
+        index.block_refs()[0].uuid,
+        "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    );
+}
+
+#[test]
+fn test_from_blob_block_ref_no_match_for_invalid() {
+    let blob = blob_for("Text ((not-a-valid-uuid)) more\n");
+    let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    assert!(
+        index.block_refs().is_empty(),
+        "invalid UUID should not produce block ref"
+    );
+}
+
+#[test]
+fn test_from_blob_v1_no_callouts_or_block_refs() {
+    let blob = make_v1_empty_blob();
+    let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    assert!(index.callouts().is_empty());
+    assert!(index.block_refs().is_empty());
+}
+
+#[test]
+fn test_from_blob_v2_empty_no_callouts_or_block_refs() {
+    let blob = make_v2_empty_blob();
+    let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    assert!(index.callouts().is_empty());
+    assert!(index.block_refs().is_empty());
+}
+
+#[test]
+fn test_from_blob_callout_parity_with_from_scan() {
+    use markymark_core::scanner::Md4cScanBackend;
+
+    let text = "> [!note]\n> Content A\n\n> [!tip] My Title\n> Content B\n";
+
+    let blob = blob_for(text);
+    let blob_idx = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    let scan_idx = DocumentIndex::from_scan(text, &Md4cScanBackend);
+
+    let blob_callouts = blob_idx.callouts();
+    let scan_callouts = scan_idx.callouts();
+    assert_eq!(
+        blob_callouts.len(),
+        scan_callouts.len(),
+        "callout count mismatch"
+    );
+    for (b, s) in blob_callouts.iter().zip(scan_callouts.iter()) {
+        assert_eq!(b.callout_type, s.callout_type, "callout type mismatch");
+        assert_eq!(b.title, s.title, "callout title mismatch");
+    }
+}
+
+#[test]
+fn test_from_blob_block_ref_parity_with_from_scan() {
+    use markymark_core::scanner::Md4cScanBackend;
+
+    let text = "See ((a1b2c3d4-e5f6-7890-abcd-ef1234567890)) and ((11111111-2222-3333-4444-555555555555))\n";
+
+    let blob = blob_for(text);
+    let blob_idx = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    let scan_idx = DocumentIndex::from_scan(text, &Md4cScanBackend);
+
+    let blob_refs = blob_idx.block_refs();
+    let scan_refs = scan_idx.block_refs();
+    assert_eq!(
+        blob_refs.len(),
+        scan_refs.len(),
+        "block ref count mismatch"
+    );
+    for (b, s) in blob_refs.iter().zip(scan_refs.iter()) {
+        assert_eq!(b.uuid, s.uuid, "block ref uuid mismatch");
+    }
+}

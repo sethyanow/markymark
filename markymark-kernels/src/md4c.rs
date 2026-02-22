@@ -178,6 +178,28 @@ pub struct Md4cEmbed {
     pub end_offset: u32,
 }
 
+/// A callout extracted by the md4c single-pass parser (e.g. `> [!note] Title`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Md4cCallout {
+    /// Callout type (e.g. "note", "warning", "tip").
+    pub callout_type: String,
+    /// Optional callout title.
+    pub title: Option<String>,
+    /// Byte offset of `>` in source.
+    pub source_offset: u32,
+    /// Byte offset past the callout block.
+    pub end_offset: u32,
+}
+
+/// A block reference extracted by the md4c single-pass parser (e.g. `((uuid))`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Md4cBlockRef {
+    /// The UUID string.
+    pub uuid: String,
+    /// Byte offset of `(` in `((uuid))` in source.
+    pub source_offset: u32,
+}
+
 /// Results from md4c single-pass extraction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Md4cExtraction {
@@ -186,6 +208,8 @@ pub struct Md4cExtraction {
     pub code_spans: Vec<Md4cCodeSpan>,
     pub tasks: Vec<Md4cTask>,
     pub embeds: Vec<Md4cEmbed>,
+    pub callouts: Vec<Md4cCallout>,
+    pub block_refs: Vec<Md4cBlockRef>,
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +228,8 @@ pub fn extract_md4c(text: &str) -> Result<Md4cExtraction, KernelError> {
             code_spans: Vec::new(),
             tasks: Vec::new(),
             embeds: Vec::new(),
+            callouts: Vec::new(),
+            block_refs: Vec::new(),
         });
     }
 
@@ -386,12 +412,70 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         }
     }
 
+    let mut callouts = Vec::with_capacity(out.callouts_count as usize);
+    if out.callouts_count > 0 && !out.callouts.is_null() {
+        // SAFETY: callouts pointer is valid for callouts_count elements,
+        // allocated by Zig page_allocator.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let c_callouts =
+            unsafe { std::slice::from_raw_parts(out.callouts, out.callouts_count as usize) };
+        for c in c_callouts {
+            let type_start = c.type_offset as usize;
+            let callout_type =
+                std::str::from_utf8(safe_blob_slice(blob, type_start, c.type_length as usize)?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned();
+            let title = if c.title_length == 0 {
+                None
+            } else {
+                let title_start = c.title_offset as usize;
+                Some(
+                    std::str::from_utf8(safe_blob_slice(
+                        blob,
+                        title_start,
+                        c.title_length as usize,
+                    )?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned(),
+                )
+            };
+            callouts.push(Md4cCallout {
+                callout_type,
+                title,
+                source_offset: c.source_offset,
+                end_offset: c.end_offset,
+            });
+        }
+    }
+
+    let mut block_refs = Vec::with_capacity(out.block_refs_count as usize);
+    if out.block_refs_count > 0 && !out.block_refs.is_null() {
+        // SAFETY: block_refs pointer is valid for block_refs_count elements,
+        // allocated by Zig page_allocator.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let c_block_refs =
+            unsafe { std::slice::from_raw_parts(out.block_refs, out.block_refs_count as usize) };
+        for br in c_block_refs {
+            let uuid_start = br.uuid_offset as usize;
+            let uuid =
+                std::str::from_utf8(safe_blob_slice(blob, uuid_start, br.uuid_length as usize)?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned();
+            block_refs.push(Md4cBlockRef {
+                uuid,
+                source_offset: br.source_offset,
+            });
+        }
+    }
+
     Ok(Md4cExtraction {
         headings,
         links,
         code_spans,
         tasks,
         embeds,
+        callouts,
+        block_refs,
     })
 }
 
@@ -749,5 +833,62 @@ mod tests {
         let result = extract_md4c("Just plain text.\n").unwrap();
         assert!(result.tasks.is_empty());
         assert!(result.embeds.is_empty());
+    }
+
+    // --- Callout tests (marky-8ac8) ---
+
+    #[test]
+    fn test_extract_callout_basic() {
+        let result = extract_md4c("> [!note]\n> Some content\n").unwrap();
+        assert_eq!(result.callouts.len(), 1);
+        assert_eq!(result.callouts[0].callout_type, "note");
+        assert!(result.callouts[0].title.is_none());
+    }
+
+    #[test]
+    fn test_extract_callout_with_title() {
+        let result = extract_md4c("> [!tip] My Title\n> Content\n").unwrap();
+        assert_eq!(result.callouts.len(), 1);
+        assert_eq!(result.callouts[0].callout_type, "tip");
+        assert_eq!(result.callouts[0].title.as_deref(), Some("My Title"));
+    }
+
+    #[test]
+    fn test_extract_no_callout_for_plain_quote() {
+        let result = extract_md4c("> Just a regular quote\n").unwrap();
+        assert!(result.callouts.is_empty());
+    }
+
+    #[test]
+    fn test_extract_empty_has_no_callouts_or_block_refs() {
+        let result = extract_md4c("").unwrap();
+        assert!(result.callouts.is_empty());
+        assert!(result.block_refs.is_empty());
+    }
+
+    // --- Block ref tests (marky-8ac8) ---
+
+    #[test]
+    fn test_extract_block_ref_basic() {
+        let result =
+            extract_md4c("Text ((a1b2c3d4-e5f6-7890-abcd-ef1234567890)) more\n").unwrap();
+        assert_eq!(result.block_refs.len(), 1);
+        assert_eq!(
+            result.block_refs[0].uuid,
+            "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        );
+    }
+
+    #[test]
+    fn test_extract_block_ref_invalid_uuid_rejected() {
+        let result = extract_md4c("Text ((not-valid-uuid)) more\n").unwrap();
+        assert!(result.block_refs.is_empty());
+    }
+
+    #[test]
+    fn test_extract_plain_text_no_callouts_or_block_refs() {
+        let result = extract_md4c("Just plain text.\n").unwrap();
+        assert!(result.callouts.is_empty());
+        assert!(result.block_refs.is_empty());
     }
 }

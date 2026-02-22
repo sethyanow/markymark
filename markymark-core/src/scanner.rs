@@ -123,7 +123,30 @@ pub struct EmbedResult {
     pub end_offset: u32,
 }
 
-/// Combined result from a single-pass scan of headings, links, code spans, tasks, and embeds.
+/// A callout found by a scan backend (e.g. `> [!note] Title`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CalloutResult {
+    /// Callout type (e.g. "note", "warning", "tip").
+    pub callout_type: String,
+    /// Optional callout title.
+    pub title: Option<String>,
+    /// Byte offset of `>` in the source text.
+    pub offset: u32,
+    /// Byte offset past the callout block.
+    pub end_offset: u32,
+}
+
+/// A block reference found by a scan backend (e.g. `((uuid))`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockRefResult {
+    /// The UUID string.
+    pub uuid: String,
+    /// Byte offset of first `(` in `((uuid))` in the source text.
+    pub offset: u32,
+}
+
+/// Combined result from a single-pass scan of headings, links, code spans, tasks, embeds,
+/// callouts, and block refs.
 #[derive(Debug, Default)]
 pub struct ScanAllResult {
     /// Headings extracted from the document.
@@ -136,6 +159,10 @@ pub struct ScanAllResult {
     pub tasks: Vec<TaskResult>,
     /// Embed references extracted from the document.
     pub embeds: Vec<EmbedResult>,
+    /// Callout blockquotes extracted from the document.
+    pub callouts: Vec<CalloutResult>,
+    /// Block references extracted from the document.
+    pub block_refs: Vec<BlockRefResult>,
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +210,22 @@ pub trait ScanBackend: Send + Sync {
         Ok(Vec::new())
     }
 
-    /// Scan text for headings, links, code spans, tasks, and embeds in a single pass.
+    /// Scan text for callout blockquotes (e.g. `> [!note] Title`).
+    ///
+    /// Default returns empty (backward compat for backends that don't extract).
+    fn scan_callouts(&self, _text: &str) -> Result<Vec<CalloutResult>, ScanError> {
+        Ok(Vec::new())
+    }
+
+    /// Scan text for block references (e.g. `((uuid))`).
+    ///
+    /// Default returns empty (backward compat for backends that don't extract).
+    fn scan_block_refs(&self, _text: &str) -> Result<Vec<BlockRefResult>, ScanError> {
+        Ok(Vec::new())
+    }
+
+    /// Scan text for headings, links, code spans, tasks, embeds, callouts, and
+    /// block refs in a single pass.
     ///
     /// The default implementation calls each scan method separately. Backends
     /// that parse once internally (e.g., [`Md4cScanBackend`]) should override
@@ -195,6 +237,8 @@ pub trait ScanBackend: Send + Sync {
             code_spans: self.scan_code_spans(text)?,
             tasks: self.scan_tasks(text)?,
             embeds: self.scan_embeds(text)?,
+            callouts: self.scan_callouts(text)?,
+            block_refs: self.scan_block_refs(text)?,
         })
     }
 }
@@ -394,6 +438,38 @@ impl ScanBackend for Md4cScanBackend {
             .map_err(|e| ScanError::InternalError(e.to_string()))
     }
 
+    fn scan_callouts(&self, text: &str) -> Result<Vec<CalloutResult>, ScanError> {
+        markymark_kernels::md4c::extract_md4c(text)
+            .map(|extraction| {
+                extraction
+                    .callouts
+                    .into_iter()
+                    .map(|c| CalloutResult {
+                        callout_type: c.callout_type,
+                        title: c.title,
+                        offset: c.source_offset,
+                        end_offset: c.end_offset,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
+    fn scan_block_refs(&self, text: &str) -> Result<Vec<BlockRefResult>, ScanError> {
+        markymark_kernels::md4c::extract_md4c(text)
+            .map(|extraction| {
+                extraction
+                    .block_refs
+                    .into_iter()
+                    .map(|br| BlockRefResult {
+                        uuid: br.uuid,
+                        offset: br.source_offset,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
     fn scan_all(&self, text: &str) -> Result<ScanAllResult, ScanError> {
         markymark_kernels::md4c::extract_md4c(text)
             .map(|extraction| ScanAllResult {
@@ -429,6 +505,24 @@ impl ScanBackend for Md4cScanBackend {
                         target: e.target,
                         offset: e.source_offset,
                         end_offset: e.end_offset,
+                    })
+                    .collect(),
+                callouts: extraction
+                    .callouts
+                    .into_iter()
+                    .map(|c| CalloutResult {
+                        callout_type: c.callout_type,
+                        title: c.title,
+                        offset: c.source_offset,
+                        end_offset: c.end_offset,
+                    })
+                    .collect(),
+                block_refs: extraction
+                    .block_refs
+                    .into_iter()
+                    .map(|br| BlockRefResult {
+                        uuid: br.uuid,
+                        offset: br.source_offset,
                     })
                     .collect(),
             })
@@ -781,6 +875,60 @@ mod tests {
             assert_eq!(all.embeds.len(), 1);
             assert_eq!(all.embeds[0].target, "embed");
         }
+
+        // --- Callout + Block ref tests (marky-8ac8) ---
+
+        #[test]
+        fn test_md4c_scan_callouts_basic() {
+            let backend = Md4cScanBackend;
+            let result = backend.scan_callouts("> [!note]\n> Content\n").unwrap();
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].callout_type, "note");
+            assert!(result[0].title.is_none());
+        }
+
+        #[test]
+        fn test_md4c_scan_callouts_with_title() {
+            let backend = Md4cScanBackend;
+            let result = backend
+                .scan_callouts("> [!tip] My Title\n> Content\n")
+                .unwrap();
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].callout_type, "tip");
+            assert_eq!(result[0].title.as_deref(), Some("My Title"));
+        }
+
+        #[test]
+        fn test_md4c_scan_block_refs() {
+            let backend = Md4cScanBackend;
+            let result = backend
+                .scan_block_refs("Text ((a1b2c3d4-e5f6-7890-abcd-ef1234567890)) more\n")
+                .unwrap();
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].uuid, "a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+        }
+
+        #[test]
+        fn test_md4c_scan_block_refs_invalid_rejected() {
+            let backend = Md4cScanBackend;
+            let result = backend.scan_block_refs("((not-valid))\n").unwrap();
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn test_scan_all_includes_callouts_block_refs() {
+            let backend = Md4cScanBackend;
+            let text =
+                "> [!warning]\n> Watch out\n\nText ((a1b2c3d4-e5f6-7890-abcd-ef1234567890))\n";
+            let all = backend.scan_all(text).unwrap();
+            assert_eq!(all.callouts.len(), 1);
+            assert_eq!(all.callouts[0].callout_type, "warning");
+            assert_eq!(all.block_refs.len(), 1);
+            assert_eq!(
+                all.block_refs[0].uuid,
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+            );
+        }
     }
 
     #[test]
@@ -802,6 +950,22 @@ mod tests {
     fn test_default_scan_embeds_empty() {
         let backend = DummyScanBackend;
         let result = backend.scan_embeds("![[embed]]").unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_default_scan_callouts_empty() {
+        let backend = DummyScanBackend;
+        let result = backend.scan_callouts("> [!note]\n> Content").unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_default_scan_block_refs_empty() {
+        let backend = DummyScanBackend;
+        let result = backend
+            .scan_block_refs("((a1b2c3d4-e5f6-7890-abcd-ef1234567890))")
+            .unwrap();
         assert!(result.is_empty());
     }
 }

@@ -1,10 +1,11 @@
 use super::header::{
     pool_str, read_u32_le, read_u8, BlobError, BlobHeader, SectionOffsets, BLOCK_ID_SIZE,
-    CODE_SPAN_SIZE, EMBED_SIZE, HEADING_SIZE, LINK_SIZE, TAG_SIZE, TASK_SIZE,
+    BLOCK_REF_SIZE, CALLOUT_SIZE, CODE_SPAN_SIZE, EMBED_SIZE, HEADING_SIZE, LINK_SIZE, TAG_SIZE,
+    TASK_SIZE,
 };
 use super::owned::{
-    BlockData, CodeSpanData, DecodedOwnedData, EmbedData, HeadingData, MarkdownData, TagData,
-    TaskData, WikiData,
+    BlockData, BlockRefData, CalloutData, CodeSpanData, DecodedOwnedData, EmbedData, HeadingData,
+    MarkdownData, TagData, TaskData, WikiData,
 };
 
 pub(super) fn decode_owned_data(
@@ -252,6 +253,68 @@ pub(super) fn decode_owned_data(
         });
     }
 
+    // ── Callouts ──────────────────────────────────────────────────
+    // BlobCallout layout (40 bytes):
+    //   type_off(4@0) type_len(4@4) title_off(4@8) title_len(4@12)
+    //   source_offset(4@16) end_offset(4@20) start_line(4@24) start_col(4@28)
+    //   end_line(4@32) end_col(4@36)
+    let mut callouts_owned: Vec<CalloutData> =
+        Vec::with_capacity(header.callout_count as usize);
+    for i in 0..header.callout_count as usize {
+        let base = offsets.callouts + i * CALLOUT_SIZE;
+        let type_off = read_u32_le(data, base);
+        let type_len = read_u32_le(data, base + 4);
+        let title_off = read_u32_le(data, base + 8);
+        let title_len = read_u32_le(data, base + 12);
+        let source_offset = read_u32_le(data, base + 16);
+        let end_offset = read_u32_le(data, base + 20);
+        let start_line = read_u32_le(data, base + 24);
+        let start_col = read_u32_le(data, base + 28);
+        let end_line = read_u32_le(data, base + 32);
+        let end_col = read_u32_le(data, base + 36);
+        let callout_type = pool_str(text_pool, type_off, type_len)?.to_owned();
+        let title = if title_len == 0 {
+            None
+        } else {
+            Some(pool_str(text_pool, title_off, title_len)?.to_owned())
+        };
+        callouts_owned.push(CalloutData {
+            callout_type,
+            title,
+            source_offset,
+            end_offset,
+            start_line,
+            start_col,
+            end_line,
+            end_col,
+        });
+    }
+
+    // ── Block Refs ────────────────────────────────────────────────
+    // BlobBlockRef layout (28 bytes):
+    //   uuid_off(4@0) uuid_len(4@4) source_offset(4@8)
+    //   start_line(4@12) start_col(4@16) end_line(4@20) end_col(4@24)
+    let mut block_refs_owned: Vec<BlockRefData> =
+        Vec::with_capacity(header.block_ref_count as usize);
+    for i in 0..header.block_ref_count as usize {
+        let base = offsets.block_refs + i * BLOCK_REF_SIZE;
+        let uuid_off = read_u32_le(data, base);
+        let uuid_len = read_u32_le(data, base + 4);
+        let _source_offset = read_u32_le(data, base + 8);
+        let start_line = read_u32_le(data, base + 12);
+        let start_col = read_u32_le(data, base + 16);
+        let end_line = read_u32_le(data, base + 20);
+        let end_col = read_u32_le(data, base + 24);
+        let uuid = pool_str(text_pool, uuid_off, uuid_len)?.to_owned();
+        block_refs_owned.push(BlockRefData {
+            uuid,
+            start_line,
+            start_col,
+            end_line,
+            end_col,
+        });
+    }
+
     Ok(DecodedOwnedData {
         headings: headings_owned,
         wiki_links: wiki_owned,
@@ -261,5 +324,7 @@ pub(super) fn decode_owned_data(
         code_spans: code_spans_owned,
         tasks: tasks_owned,
         embeds: embeds_owned,
+        callouts: callouts_owned,
+        block_refs: block_refs_owned,
     })
 }

@@ -133,6 +133,8 @@ impl DocumentIndex {
             code_spans: code_spans_owned,
             tasks: tasks_owned,
             embeds: embeds_owned,
+            callouts: callouts_owned,
+            block_refs: block_refs_owned,
         } = decode_owned_data(data, &header, &offsets, text_pool)?;
 
         // ── Build DocumentIndex via self_cell ────────────────────────
@@ -287,7 +289,6 @@ impl DocumentIndex {
             let frontmatter = BumpVec::<FrontmatterEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let aliases = BumpVec::<&str>::new_in(arena_ref).into_bump_slice();
             let properties = BumpVec::<PropertyEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let block_refs = BumpVec::<BlockRefEntry<'_>>::new_in(arena_ref).into_bump_slice();
 
             // --- Tasks ---
             let mut tasks_builder = BumpVec::new_in(arena_ref);
@@ -321,8 +322,37 @@ impl DocumentIndex {
             }
             let embeds = embeds_builder.into_bump_slice();
 
-            // Callouts/query_blocks/link_definitions: not yet in blob format
-            let callouts = BumpVec::<CalloutEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            // --- Callouts ---
+            let mut callouts_builder = BumpVec::new_in(arena_ref);
+            for cd in &callouts_owned {
+                let callout_type = arena_alloc_str(arena_ref, &cd.callout_type);
+                let title = cd.title.as_deref().map(|t| arena_alloc_str(arena_ref, t));
+                let start_pos = Position::new(cd.start_line, cd.start_col);
+                let end_pos = Position::new(cd.end_line, cd.end_col);
+                callouts_builder.push(CalloutEntry {
+                    callout_type,
+                    title,
+                    range: Range::new(start_pos, end_pos),
+                    start_byte: cd.source_offset as usize,
+                    end_byte: cd.end_offset as usize,
+                });
+            }
+            let callouts = callouts_builder.into_bump_slice();
+
+            // --- Block refs ---
+            let mut block_refs_builder = BumpVec::new_in(arena_ref);
+            for br in &block_refs_owned {
+                let uuid = arena_alloc_str(arena_ref, &br.uuid);
+                let start_pos = Position::new(br.start_line, br.start_col);
+                let end_pos = Position::new(br.end_line, br.end_col);
+                block_refs_builder.push(BlockRefEntry {
+                    uuid,
+                    range: Range::new(start_pos, end_pos),
+                });
+            }
+            let block_refs = block_refs_builder.into_bump_slice();
+
+            // Query blocks/link definitions: not yet in blob format
             let query_blocks =
                 BumpVec::<QueryBlockEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let link_definitions =
