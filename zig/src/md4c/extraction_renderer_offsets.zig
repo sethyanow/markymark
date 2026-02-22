@@ -285,6 +285,69 @@ pub fn findHeadingOffset(src: []const u8, cursor: *u32, is_setext: bool, level: 
     return cursor.*;
 }
 
+/// Find the offset of a callout in the source ('>  [!' pattern).
+/// Scans forward from cursor for a line starting with '>' followed by '[!'.
+/// Advances cursor past the callout blockquote.
+pub fn findCalloutOffset(src: []const u8, cursor: *u32) u32 {
+    var pos: u32 = cursor.*;
+    while (pos < src.len) {
+        // Look for '>' at line start (or after leading spaces)
+        const at_line_start = (pos == 0 or src[pos - 1] == '\n');
+        if (at_line_start) {
+            var lp = pos;
+            // Skip optional leading spaces
+            while (lp < src.len and src[lp] == ' ') : (lp += 1) {}
+            if (lp < src.len and src[lp] == '>') {
+                const gt_pos = lp;
+                // Skip whitespace after '>'
+                lp += 1;
+                while (lp < src.len and (src[lp] == ' ' or src[lp] == '\t')) : (lp += 1) {}
+                // Check for '[!'
+                if (lp + 1 < src.len and src[lp] == '[' and src[lp + 1] == '!') {
+                    // Advance cursor to end of this blockquote block
+                    var end = lp;
+                    while (end < src.len and src[end] != '\n') : (end += 1) {}
+                    if (end < src.len) end += 1;
+                    // Continue scanning through continuation lines starting with '>'
+                    while (end < src.len) {
+                        var cp = end;
+                        while (cp < src.len and src[cp] == ' ') : (cp += 1) {}
+                        if (cp < src.len and src[cp] == '>') {
+                            while (end < src.len and src[end] != '\n') : (end += 1) {}
+                            if (end < src.len) end += 1;
+                        } else break;
+                    }
+                    cursor.* = @intCast(end);
+                    return @intCast(gt_pos);
+                }
+            }
+        }
+        // Skip to next line
+        while (pos < src.len and src[pos] != '\n') : (pos += 1) {}
+        if (pos < src.len) pos += 1;
+    }
+    return cursor.*;
+}
+
+/// Find the offset of a block ref '((' in the source.
+/// Scans forward from cursor for '((' followed by 36 chars and '))'.
+/// Advances cursor past the '((' match.
+pub fn findBlockRefOffset(src: []const u8, cursor: *u32) u32 {
+    var pos: u32 = cursor.*;
+    while (pos + 1 < src.len) {
+        if (src[pos] == '(' and src[pos + 1] == '(') {
+            // Advance cursor past this block ref
+            const match_start = pos;
+            // Skip past (( + 36 + ))
+            const end: u32 = @intCast(@min(@as(u64, pos) + 2 + 36 + 2, src.len));
+            cursor.* = end;
+            return match_start;
+        }
+        pos += 1;
+    }
+    return cursor.*;
+}
+
 /// Find the offset of the next link in the source.
 /// Handles wiki links ([[...]]), autolinks (<...>), and standard links ([...](...)
 /// or [...][...]). Tracks fenced code blocks for standard links.

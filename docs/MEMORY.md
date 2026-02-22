@@ -640,7 +640,7 @@ n7wx is orthogonal: RealmIndex stays Rust regardless. ix3 is the Zig-sink work.
 ~~B-1: Blob v2 header expansion (foundation) — marky-2u6h~~ DONE
 ~~B-2: DocumentDependent type additions (5 new entry types) — marky-w4d1~~ DONE
 ~~B-3: Tasks + Embeds — marky-oiw5 (B-3.1 Zig: marky-rd7r, B-3.2 Rust: marky-bmu9)~~ DONE
-B-4: Callouts + Block refs (md4c + text scan)
+B-4: Callouts + Block refs — marky-h9qe (B-4.0: marky-7kmo DONE, B-4.1 Zig: marky-1r0t DONE, B-4.2 Rust: marky-8ac8 ready)
 B-5: Link defs + Query blocks (text scan)
 B-6: Properties (structured parsing)
 B-7: XML tags (complex parser migration)

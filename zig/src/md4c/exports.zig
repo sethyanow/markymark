@@ -72,6 +72,27 @@ comptime {
     std.debug.assert(@sizeOf(CMd4cEmbed) == 16);
 }
 
+pub const CMd4cCallout = extern struct {
+    source_offset: u32, // byte offset of '>' in source
+    end_offset: u32,
+    type_offset: u32, // offset into text_blob for callout type string
+    type_length: u32,
+    title_offset: u32, // offset into text_blob for title (0 if no title)
+    title_length: u32, // 0 means no title
+};
+comptime {
+    std.debug.assert(@sizeOf(CMd4cCallout) == 24);
+}
+
+pub const CMd4cBlockRef = extern struct {
+    source_offset: u32, // byte offset of first '(' of '((' in source
+    uuid_offset: u32, // offset into text_blob for UUID string
+    uuid_length: u32, // should be 36 for valid UUIDs
+};
+comptime {
+    std.debug.assert(@sizeOf(CMd4cBlockRef) == 12);
+}
+
 // Pointers grouped first, then u32 counts — avoids internal padding on 64-bit.
 pub const CMd4cResult = extern struct {
     headings: ?[*]CMd4cHeading, // Zig-allocated array, freed by marky_md4c_free
@@ -79,16 +100,20 @@ pub const CMd4cResult = extern struct {
     code_spans: ?[*]CMd4cCodeSpan, // Zig-allocated array, freed by marky_md4c_free
     tasks: ?[*]CMd4cTask, // Zig-allocated array, freed by marky_md4c_free
     embeds: ?[*]CMd4cEmbed, // Zig-allocated array, freed by marky_md4c_free
+    callouts: ?[*]CMd4cCallout, // Zig-allocated array, freed by marky_md4c_free
+    block_refs: ?[*]CMd4cBlockRef, // Zig-allocated array, freed by marky_md4c_free
     text_blob: ?[*]const u8, // concatenated decoded texts, freed by marky_md4c_free
     headings_count: u32,
     links_count: u32,
     code_spans_count: u32,
     tasks_count: u32,
     embeds_count: u32,
+    callouts_count: u32,
+    block_refs_count: u32,
     text_blob_len: u32,
 };
 comptime {
-    std.debug.assert(@sizeOf(CMd4cResult) == 72);
+    std.debug.assert(@sizeOf(CMd4cResult) == 96);
 }
 
 // ── C ABI Functions ──────────────────────────────────────────────────
@@ -128,6 +153,8 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
     const code_span_count = result.code_spans.len;
     const task_count = result.tasks.len;
     const embed_count = result.embeds.len;
+    const callout_count = result.callouts.len;
+    const block_ref_count = result.block_refs.len;
 
     // Calculate text blob size
     var blob_size: usize = 0;
@@ -146,6 +173,13 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
     }
     for (result.embeds) |e| {
         blob_size += e.target.len;
+    }
+    for (result.callouts) |cl| {
+        blob_size += cl.callout_type.len;
+        if (cl.title) |ttl| blob_size += ttl.len;
+    }
+    for (result.block_refs) |br| {
+        blob_size += br.uuid.len;
     }
 
     // T1-3: blob_offset is u32 — guard against wrapping for documents whose total
@@ -215,6 +249,37 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
     var c_embeds: ?[]CMd4cEmbed = null;
     if (embed_count > 0) {
         c_embeds = ffi_allocator.alloc(CMd4cEmbed, embed_count) catch {
+            if (c_tasks) |tk| ffi_allocator.free(tk);
+            if (c_code_spans) |cs| ffi_allocator.free(cs);
+            if (c_links) |l| ffi_allocator.free(l);
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate callout array
+    var c_callouts: ?[]CMd4cCallout = null;
+    if (callout_count > 0) {
+        c_callouts = ffi_allocator.alloc(CMd4cCallout, callout_count) catch {
+            if (c_embeds) |em| ffi_allocator.free(em);
+            if (c_tasks) |tk| ffi_allocator.free(tk);
+            if (c_code_spans) |cs| ffi_allocator.free(cs);
+            if (c_links) |l| ffi_allocator.free(l);
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate block ref array
+    var c_block_refs: ?[]CMd4cBlockRef = null;
+    if (block_ref_count > 0) {
+        c_block_refs = ffi_allocator.alloc(CMd4cBlockRef, block_ref_count) catch {
+            if (c_callouts) |cl| ffi_allocator.free(cl);
+            if (c_embeds) |em| ffi_allocator.free(em);
             if (c_tasks) |tk| ffi_allocator.free(tk);
             if (c_code_spans) |cs| ffi_allocator.free(cs);
             if (c_links) |l| ffi_allocator.free(l);
@@ -322,6 +387,51 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
         blob_offset += target_len;
     }
 
+    for (result.callouts, 0..) |cl, i| {
+        const type_len: u32 = @intCast(cl.callout_type.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, type_len) <= b.len);
+            @memcpy(b[blob_offset..][0..type_len], cl.callout_type);
+        }
+        const type_off = blob_offset;
+        blob_offset += type_len;
+
+        var title_off: u32 = 0;
+        var title_len: u32 = 0;
+        if (cl.title) |ttl| {
+            title_len = @intCast(ttl.len);
+            if (blob) |b| {
+                std.debug.assert(@as(usize, blob_offset) + @as(usize, title_len) <= b.len);
+                @memcpy(b[blob_offset..][0..title_len], ttl);
+            }
+            title_off = blob_offset;
+            blob_offset += title_len;
+        }
+
+        c_callouts.?[i] = .{
+            .source_offset = cl.offset,
+            .end_offset = cl.end_offset,
+            .type_offset = type_off,
+            .type_length = type_len,
+            .title_offset = title_off,
+            .title_length = title_len,
+        };
+    }
+
+    for (result.block_refs, 0..) |br, i| {
+        const uuid_len: u32 = @intCast(br.uuid.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, uuid_len) <= b.len);
+            @memcpy(b[blob_offset..][0..uuid_len], br.uuid);
+        }
+        c_block_refs.?[i] = .{
+            .source_offset = br.offset,
+            .uuid_offset = blob_offset,
+            .uuid_length = uuid_len,
+        };
+        blob_offset += uuid_len;
+    }
+
     // Free ExtractionResult (owned strings — already copied to blob)
     result.deinit();
 
@@ -337,6 +447,10 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
         .tasks_count = @intCast(task_count),
         .embeds = if (c_embeds) |e| e.ptr else null,
         .embeds_count = @intCast(embed_count),
+        .callouts = if (c_callouts) |cl| cl.ptr else null,
+        .callouts_count = @intCast(callout_count),
+        .block_refs = if (c_block_refs) |br| br.ptr else null,
+        .block_refs_count = @intCast(block_ref_count),
         .text_blob = blob_ptr,
         .text_blob_len = blob_offset,
     };
@@ -374,6 +488,16 @@ export fn marky_md4c_free(result: ?*CMd4cResult) void {
     if (r.embeds) |embeds_ptr| {
         if (r.embeds_count > 0) {
             ffi_allocator.free(embeds_ptr[0..r.embeds_count]);
+        }
+    }
+    if (r.callouts) |callouts_ptr| {
+        if (r.callouts_count > 0) {
+            ffi_allocator.free(callouts_ptr[0..r.callouts_count]);
+        }
+    }
+    if (r.block_refs) |block_refs_ptr| {
+        if (r.block_refs_count > 0) {
+            ffi_allocator.free(block_refs_ptr[0..r.block_refs_count]);
         }
     }
     if (r.text_blob) |blob_ptr| {
@@ -575,4 +699,54 @@ test "md4c_extract: no tasks or embeds" {
     try testing.expectEqual(@as(i32, 0), rc);
     try testing.expectEqual(@as(u32, 0), result.tasks_count);
     try testing.expectEqual(@as(u32, 0), result.embeds_count);
+}
+
+// --- Callout/BlockRef FFI tests (marky-1r0t) ---
+
+test "md4c_extract: callout via blob" {
+    const input = "> [!note]\n> Some content\n";
+    var result: CMd4cResult = undefined;
+    const rc = marky_md4c_extract(input.ptr, input.len, &result);
+    defer marky_md4c_free(&result);
+    try testing.expectEqual(@as(i32, 0), rc);
+    try testing.expectEqual(@as(u32, 1), result.callouts_count);
+    const blob_slice = result.text_blob.?[0..result.text_blob_len];
+    const cl = result.callouts.?[0];
+    try testing.expectEqualStrings("note", blob_slice[cl.type_offset..cl.type_offset + cl.type_length]);
+    try testing.expectEqual(@as(u32, 0), cl.title_length); // no title
+}
+
+test "md4c_extract: callout with title via blob" {
+    const input = "> [!tip] My Title\n> Content\n";
+    var result: CMd4cResult = undefined;
+    const rc = marky_md4c_extract(input.ptr, input.len, &result);
+    defer marky_md4c_free(&result);
+    try testing.expectEqual(@as(i32, 0), rc);
+    try testing.expectEqual(@as(u32, 1), result.callouts_count);
+    const blob_slice = result.text_blob.?[0..result.text_blob_len];
+    const cl = result.callouts.?[0];
+    try testing.expectEqualStrings("tip", blob_slice[cl.type_offset..cl.type_offset + cl.type_length]);
+    try testing.expectEqualStrings("My Title", blob_slice[cl.title_offset..cl.title_offset + cl.title_length]);
+}
+
+test "md4c_extract: block ref via blob" {
+    const input = "Text ((a1b2c3d4-e5f6-7890-abcd-ef1234567890)) more\n";
+    var result: CMd4cResult = undefined;
+    const rc = marky_md4c_extract(input.ptr, input.len, &result);
+    defer marky_md4c_free(&result);
+    try testing.expectEqual(@as(i32, 0), rc);
+    try testing.expectEqual(@as(u32, 1), result.block_refs_count);
+    const blob_slice = result.text_blob.?[0..result.text_blob_len];
+    const br = result.block_refs.?[0];
+    try testing.expectEqualStrings("a1b2c3d4-e5f6-7890-abcd-ef1234567890", blob_slice[br.uuid_offset..br.uuid_offset + br.uuid_length]);
+}
+
+test "md4c_extract: no callouts or block refs" {
+    const input = "Just plain text.\n";
+    var result: CMd4cResult = undefined;
+    const rc = marky_md4c_extract(input.ptr, input.len, &result);
+    defer marky_md4c_free(&result);
+    try testing.expectEqual(@as(i32, 0), rc);
+    try testing.expectEqual(@as(u32, 0), result.callouts_count);
+    try testing.expectEqual(@as(u32, 0), result.block_refs_count);
 }

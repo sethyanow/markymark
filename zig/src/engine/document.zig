@@ -88,6 +88,22 @@ pub const StoredEmbed = struct {
     end: Position,
 };
 
+pub const StoredCallout = struct {
+    callout_type: []const u8, // owned, lowercase alpha
+    title: ?[]const u8, // owned, null if no title
+    source_offset: u32,
+    end_offset: u32,
+    start: Position,
+    end: Position,
+};
+
+pub const StoredBlockRef = struct {
+    uuid: []const u8, // owned, 36-char UUID
+    source_offset: u32,
+    start: Position,
+    end: Position,
+};
+
 // ── DocumentEngine ──────────────────────────────────────────────────
 
 pub const DocumentEngine = struct {
@@ -100,6 +116,8 @@ pub const DocumentEngine = struct {
     block_ids: []StoredBlockId = &.{},
     tasks: []StoredTask = &.{},
     embeds: []StoredEmbed = &.{},
+    callouts: []StoredCallout = &.{},
+    block_refs: []StoredBlockRef = &.{},
     line_starts: []u32 = &.{},
 
     token_estimate: u32 = 0,
@@ -135,6 +153,8 @@ pub const DocumentEngine = struct {
         var new_block_ids: []StoredBlockId = &.{};
         var new_tasks: []StoredTask = &.{};
         var new_embeds: []StoredEmbed = &.{};
+        var new_callouts: []StoredCallout = &.{};
+        var new_block_refs: []StoredBlockRef = &.{};
         var new_line_starts: []u32 = &.{};
         var new_token_estimate: u32 = 0;
         var new_content_hash: u64 = 0;
@@ -149,6 +169,8 @@ pub const DocumentEngine = struct {
             &new_block_ids,
             &new_tasks,
             &new_embeds,
+            &new_callouts,
+            &new_block_refs,
             &new_line_starts,
             &new_token_estimate,
             &new_content_hash,
@@ -163,6 +185,8 @@ pub const DocumentEngine = struct {
         self.block_ids = new_block_ids;
         self.tasks = new_tasks;
         self.embeds = new_embeds;
+        self.callouts = new_callouts;
+        self.block_refs = new_block_refs;
         self.line_starts = new_line_starts;
         self.token_estimate = new_token_estimate;
         self.content_hash = new_content_hash;
@@ -197,6 +221,8 @@ pub const DocumentEngine = struct {
             &self.block_ids,
             &self.tasks,
             &self.embeds,
+            &self.callouts,
+            &self.block_refs,
             &self.line_starts,
             &self.token_estimate,
             &self.content_hash,
@@ -218,6 +244,10 @@ pub const DocumentEngine = struct {
         self.tasks = &.{};
         freeEmbeds(self.allocator, self.embeds);
         self.embeds = &.{};
+        freeCallouts(self.allocator, self.callouts);
+        self.callouts = &.{};
+        freeBlockRefs(self.allocator, self.block_refs);
+        self.block_refs = &.{};
         if (self.line_starts.len > 0) {
             self.allocator.free(self.line_starts);
             self.line_starts = &.{};
@@ -241,6 +271,8 @@ pub fn parseAll(
     out_block_ids: *[]StoredBlockId,
     out_tasks: *[]StoredTask,
     out_embeds: *[]StoredEmbed,
+    out_callouts: *[]StoredCallout,
+    out_block_refs: *[]StoredBlockRef,
     out_line_starts: *[]u32,
     out_token_estimate: *u32,
     out_content_hash: *u64,
@@ -260,6 +292,8 @@ pub fn parseAll(
     var stored_block_ids_list = std.ArrayListUnmanaged(StoredBlockId){};
     var stored_tasks_list = std.ArrayListUnmanaged(StoredTask){};
     var stored_embeds_list = std.ArrayListUnmanaged(StoredEmbed){};
+    var stored_callouts_list = std.ArrayListUnmanaged(StoredCallout){};
+    var stored_block_refs_list = std.ArrayListUnmanaged(StoredBlockRef){};
 
     // Tracks whether h.text/l.text/l.target/cs.text have been transferred from extraction
     // into the stored lists (i.e., after extraction.headings/links/code_spans slice containers
@@ -277,6 +311,8 @@ pub fn parseAll(
         freeStoredBlockIdsList(allocator, &stored_block_ids_list);
         freeStoredTasksList(allocator, &stored_tasks_list, texts_transferred);
         freeStoredEmbedsList(allocator, &stored_embeds_list, texts_transferred);
+        freeStoredCalloutsList(allocator, &stored_callouts_list, texts_transferred);
+        freeStoredBlockRefsList(allocator, &stored_block_refs_list, texts_transferred);
     }
 
     // 2. Compute line_starts
@@ -392,15 +428,51 @@ pub fn parseAll(
         };
     }
 
-    // OWNERSHIP: The string data (h.text, l.text, l.target, cs.text, t.text, e.target)
-    // from extraction_renderer's arrays has been moved into the stored lists by the loops
-    // above (steps 4-5d). Only the slice containers are freed here — NOT the string
-    // contents. The strings are now owned by stored lists.
+    // 5e. Process callouts: positions
+    for (extraction.callouts) |c| {
+        const start_pos = byteOffsetToPosition(line_starts, c.offset);
+        const end_pos = byteOffsetToPosition(line_starts, c.end_offset);
+        stored_callouts_list.append(allocator, .{
+            .callout_type = c.callout_type,
+            .title = c.title,
+            .source_offset = c.offset,
+            .end_offset = c.end_offset,
+            .start = start_pos,
+            .end = end_pos,
+        }) catch {
+            extraction.deinit();
+            return error.OutOfMemory;
+        };
+    }
+
+    // 5f. Process block refs: positions
+    for (extraction.block_refs) |br| {
+        const start_pos = byteOffsetToPosition(line_starts, br.offset);
+        // End position: past "((" + 36-char UUID + "))" = offset + 40
+        const end_offset = br.offset +| 40;
+        const end_pos = byteOffsetToPosition(line_starts, end_offset);
+        stored_block_refs_list.append(allocator, .{
+            .uuid = br.uuid,
+            .source_offset = br.offset,
+            .start = start_pos,
+            .end = end_pos,
+        }) catch {
+            extraction.deinit();
+            return error.OutOfMemory;
+        };
+    }
+
+    // OWNERSHIP: The string data (h.text, l.text, l.target, cs.text, t.text, e.target,
+    // c.callout_type, c.title, br.uuid) from extraction_renderer's arrays has been moved
+    // into the stored lists by the loops above (steps 4-5f). Only the slice containers
+    // are freed here — NOT the string contents. The strings are now owned by stored lists.
     allocator.free(extraction.headings);
     allocator.free(extraction.links);
     allocator.free(extraction.code_spans);
     allocator.free(extraction.tasks);
     allocator.free(extraction.embeds);
+    allocator.free(extraction.callouts);
+    allocator.free(extraction.block_refs);
     // From this point, the errdefer must free string data from the stored lists directly.
     texts_transferred = true;
 
@@ -485,8 +557,12 @@ pub fn parseAll(
     errdefer freeBlockIds(allocator, out_block_ids.*);
     out_tasks.* = stored_tasks_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
     errdefer freeTasks(allocator, out_tasks.*);
-    // No errdefer for embeds: nothing allocates after this point.
     out_embeds.* = stored_embeds_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
+    errdefer freeEmbeds(allocator, out_embeds.*);
+    out_callouts.* = stored_callouts_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
+    errdefer freeCallouts(allocator, out_callouts.*);
+    // No errdefer for block_refs: nothing allocates after this point.
+    out_block_refs.* = stored_block_refs_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
     out_line_starts.* = line_starts;
     out_token_estimate.* = token_est;
     out_content_hash.* = c_hash;
@@ -699,6 +775,40 @@ fn freeStoredEmbedsList(allocator: Allocator, list: *std.ArrayListUnmanaged(Stor
     if (free_texts) {
         for (list.items) |e| {
             allocator.free(e.target);
+        }
+    }
+    list.deinit(allocator);
+}
+
+pub fn freeCallouts(allocator: Allocator, callouts: []StoredCallout) void {
+    for (callouts) |c| {
+        allocator.free(c.callout_type);
+        if (c.title) |t| allocator.free(t);
+    }
+    if (callouts.len > 0) allocator.free(callouts);
+}
+
+pub fn freeBlockRefs(allocator: Allocator, block_refs: []StoredBlockRef) void {
+    for (block_refs) |br| {
+        allocator.free(br.uuid);
+    }
+    if (block_refs.len > 0) allocator.free(block_refs);
+}
+
+fn freeStoredCalloutsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredCallout), free_texts: bool) void {
+    if (free_texts) {
+        for (list.items) |c| {
+            allocator.free(c.callout_type);
+            if (c.title) |t| allocator.free(t);
+        }
+    }
+    list.deinit(allocator);
+}
+
+fn freeStoredBlockRefsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredBlockRef), free_texts: bool) void {
+    if (free_texts) {
+        for (list.items) |br| {
+            allocator.free(br.uuid);
         }
     }
     list.deinit(allocator);

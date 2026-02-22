@@ -52,12 +52,26 @@ pub const ExtractedEmbed = struct {
     end_offset: u32, // byte offset past ']]'
 };
 
+pub const ExtractedCallout = struct {
+    callout_type: []const u8, // owned, lowercase alpha (e.g. "note", "warning")
+    title: ?[]const u8, // owned, null if no title text after [!type]
+    offset: u32, // byte offset of '>' in source
+    end_offset: u32, // byte offset past callout content
+};
+
+pub const ExtractedBlockRef = struct {
+    uuid: []const u8, // owned, 36-char UUID preserved as-is from source
+    offset: u32, // byte offset of first '(' of '((' in source
+};
+
 pub const ExtractionResult = struct {
     headings: []ExtractedHeading,
     links: []ExtractedLink,
     code_spans: []ExtractedCodeSpan,
     tasks: []ExtractedTask,
     embeds: []ExtractedEmbed,
+    callouts: []ExtractedCallout,
+    block_refs: []ExtractedBlockRef,
     allocator: Allocator,
 
     pub fn deinit(self: *ExtractionResult) void {
@@ -82,6 +96,15 @@ pub const ExtractionResult = struct {
             self.allocator.free(e.target);
         }
         self.allocator.free(self.embeds);
+        for (self.callouts) |c| {
+            self.allocator.free(c.callout_type);
+            if (c.title) |t| self.allocator.free(t);
+        }
+        self.allocator.free(self.callouts);
+        for (self.block_refs) |br| {
+            self.allocator.free(br.uuid);
+        }
+        self.allocator.free(self.block_refs);
     }
 };
 
@@ -127,6 +150,17 @@ pub const ExtractionRenderer = struct {
     // embed accumulation state
     embeds: std.ArrayListUnmanaged(ExtractedEmbed) = .{},
 
+    // callout accumulation state (SEPARATE cursor per marky-0rl6 lesson)
+    callouts: std.ArrayListUnmanaged(ExtractedCallout) = .{},
+    quote_depth: u8 = 0,
+    callout_type_buf: std.ArrayListUnmanaged(u8) = .{},
+    callout_title_buf: std.ArrayListUnmanaged(u8) = .{},
+    callout_scan_cursor: u32 = 0,
+
+    // block ref accumulation state (SEPARATE cursor)
+    block_refs: std.ArrayListUnmanaged(ExtractedBlockRef) = .{},
+    block_ref_scan_cursor: u32 = 0,
+
     // code block tracking
     in_code_block: bool = false,
 
@@ -147,6 +181,8 @@ pub const ExtractionRenderer = struct {
         self.link_href_buf.deinit(self.allocator);
         self.code_text_buf.deinit(self.allocator);
         self.task_text_buf.deinit(self.allocator);
+        self.callout_type_buf.deinit(self.allocator);
+        self.callout_title_buf.deinit(self.allocator);
 
         // Free owned strings in results
         for (self.headings.items) |h| {
@@ -170,6 +206,15 @@ pub const ExtractionRenderer = struct {
             self.allocator.free(e.target);
         }
         self.embeds.deinit(self.allocator);
+        for (self.callouts.items) |c| {
+            self.allocator.free(c.callout_type);
+            if (c.title) |t| self.allocator.free(t);
+        }
+        self.callouts.deinit(self.allocator);
+        for (self.block_refs.items) |br| {
+            self.allocator.free(br.uuid);
+        }
+        self.block_refs.deinit(self.allocator);
     }
 
     pub fn renderer(self: *ExtractionRenderer) Renderer {
@@ -236,6 +281,15 @@ pub const ExtractionRenderer = struct {
                     self.in_task = false;
                 }
             },
+            .quote => {
+                self.quote_depth += 1;
+                if (self.quote_depth == 1) {
+                    self.callout_type_buf.clearRetainingCapacity();
+                    self.callout_title_buf.clearRetainingCapacity();
+                    // Scan raw source for callout pattern > [!type] title
+                    self.scanCalloutInSource();
+                }
+            },
             else => {},
         }
     }
@@ -254,6 +308,12 @@ pub const ExtractionRenderer = struct {
                     self.finalizeTask();
                     self.in_task = false;
                 }
+            },
+            .quote => {
+                if (self.quote_depth == 1) {
+                    self.finalizeCallout();
+                }
+                if (self.quote_depth > 0) self.quote_depth -= 1;
             },
             else => {},
         }
@@ -342,6 +402,11 @@ pub const ExtractionRenderer = struct {
         }
         if (self.in_task) {
             self.task_text_buf.appendSlice(self.allocator, effective) catch { self.oom = true; };
+        }
+
+        // Block ref scanning: look for ((uuid)) in non-code content
+        if (!self.in_code_span) {
+            self.scanBlockRefs(effective);
         }
     }
 
@@ -459,6 +524,146 @@ pub const ExtractionRenderer = struct {
     fn findLinkOffset(self: *ExtractionRenderer) u32 {
         return offsets.findLinkOffset(self.src_text, &self.link_scan_cursor, self.link_is_wiki, self.link_is_autolink);
     }
+
+    /// Scan raw source text from callout_scan_cursor for callout pattern: > [!type] title
+    /// If found, populate callout_type_buf (lowercased) and callout_title_buf.
+    fn scanCalloutInSource(self: *ExtractionRenderer) void {
+        const src = self.src_text;
+        var pos: u32 = self.callout_scan_cursor;
+
+        // Find '>' at start of a line
+        while (pos < src.len) {
+            const at_line_start = (pos == 0 or src[pos - 1] == '\n');
+            if (at_line_start) {
+                var lp: u32 = pos;
+                // Skip leading spaces (up to 3)
+                var spaces: u32 = 0;
+                while (lp < src.len and src[lp] == ' ' and spaces < 3) {
+                    lp += 1;
+                    spaces += 1;
+                }
+                if (lp < src.len and src[lp] == '>') {
+                    lp += 1;
+                    // Skip whitespace after '>'
+                    while (lp < src.len and (src[lp] == ' ' or src[lp] == '\t')) : (lp += 1) {}
+                    // Check for [!
+                    if (lp + 2 < src.len and src[lp] == '[' and src[lp + 1] == '!') {
+                        lp += 2;
+                        const type_start = lp;
+                        while (lp < src.len and std.ascii.isAlphabetic(src[lp])) : (lp += 1) {}
+                        if (lp == type_start) return; // empty type [!]
+                        if (lp >= src.len or src[lp] != ']') return; // no closing ]
+
+                        // Store lowercased type
+                        for (src[type_start..lp]) |ch| {
+                            self.callout_type_buf.append(self.allocator, std.ascii.toLower(ch)) catch {
+                                self.oom = true;
+                                return;
+                            };
+                        }
+                        lp += 1; // skip ']'
+
+                        // Extract title: rest of line after ], trimmed
+                        var line_end = lp;
+                        while (line_end < src.len and src[line_end] != '\n') : (line_end += 1) {}
+                        const raw_title = std.mem.trim(u8, src[lp..line_end], " \t");
+                        if (raw_title.len > 0) {
+                            self.callout_title_buf.appendSlice(self.allocator, raw_title) catch {
+                                self.oom = true;
+                            };
+                        }
+                        return;
+                    }
+                }
+            }
+            pos += 1;
+        }
+    }
+
+    /// Finalize a callout if callout_type_buf is non-empty (i.e., [!type] was found).
+    fn finalizeCallout(self: *ExtractionRenderer) void {
+        if (self.callout_type_buf.items.len == 0) return;
+
+        const owned_type = self.callout_type_buf.toOwnedSlice(self.allocator) catch {
+            self.oom = true;
+            return;
+        };
+        const owned_title: ?[]const u8 = if (self.callout_title_buf.items.len > 0)
+            self.callout_title_buf.toOwnedSlice(self.allocator) catch {
+                self.oom = true;
+                self.allocator.free(owned_type);
+                return;
+            }
+        else
+            null;
+
+        const co_offset = self.findCalloutOffset();
+        // end_offset: use callout_scan_cursor (advanced past the callout in source)
+        const end_offset: u32 = self.callout_scan_cursor;
+        self.callouts.append(self.allocator, .{
+            .callout_type = owned_type,
+            .title = owned_title,
+            .offset = co_offset,
+            .end_offset = end_offset,
+        }) catch {
+            self.oom = true;
+            self.allocator.free(owned_type);
+            if (owned_title) |t| self.allocator.free(t);
+        };
+    }
+
+    /// Scan forward from callout_scan_cursor for '>' then '[!' to find callout offset.
+    fn findCalloutOffset(self: *ExtractionRenderer) u32 {
+        return offsets.findCalloutOffset(self.src_text, &self.callout_scan_cursor);
+    }
+
+    /// Scan text content for block refs matching ((uuid)) pattern with 8-4-4-4-12 validation.
+    fn scanBlockRefs(self: *ExtractionRenderer, content: []const u8) void {
+        var i: usize = 0;
+        while (i + 1 < content.len) {
+            if (content[i] == '(' and content[i + 1] == '(') {
+                // Need at least 36 chars of UUID + '))'
+                if (i + 2 + 36 + 2 <= content.len) {
+                    const uuid_slice = content[i + 2 .. i + 2 + 36];
+                    if (content[i + 2 + 36] == ')' and content[i + 2 + 36 + 1] == ')') {
+                        if (isValidUuid(uuid_slice)) {
+                            const owned_uuid = self.allocator.dupe(u8, uuid_slice) catch {
+                                self.oom = true;
+                                return;
+                            };
+                            const br_offset = offsets.findBlockRefOffset(self.src_text, &self.block_ref_scan_cursor);
+                            self.block_refs.append(self.allocator, .{
+                                .uuid = owned_uuid,
+                                .offset = br_offset,
+                            }) catch {
+                                self.oom = true;
+                                self.allocator.free(owned_uuid);
+                                return;
+                            };
+                            i += 2 + 36 + 2;
+                            continue;
+                        }
+                    }
+                }
+                i += 2;
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    /// Validate UUID format: 8-4-4-4-12 hex digits with dashes at positions 8,13,18,23.
+    fn isValidUuid(s: []const u8) bool {
+        if (s.len != 36) return false;
+        for (s, 0..) |ch, idx| {
+            if (idx == 8 or idx == 13 or idx == 18 or idx == 23) {
+                if (ch != '-') return false;
+            } else {
+                if (!std.ascii.isHex(ch)) return false;
+            }
+        }
+        return true;
+    }
 };
 
 // ── Public API ───────────────────────────────────────────────────────
@@ -526,6 +731,23 @@ pub fn extractFromMarkdown(
     const embeds = ext.embeds.toOwnedSlice(allocator) catch {
         return error.OutOfMemory;
     };
+    errdefer {
+        for (embeds) |e| allocator.free(e.target);
+        allocator.free(embeds);
+    }
+    const callouts = ext.callouts.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
+    errdefer {
+        for (callouts) |c| {
+            allocator.free(c.callout_type);
+            if (c.title) |t| allocator.free(t);
+        }
+        allocator.free(callouts);
+    }
+    const block_refs = ext.block_refs.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
 
     // Free accumulation buffers only (results transferred)
     ext.heading_text_buf.deinit(allocator);
@@ -533,12 +755,16 @@ pub fn extractFromMarkdown(
     ext.link_href_buf.deinit(allocator);
     ext.code_text_buf.deinit(allocator);
     ext.task_text_buf.deinit(allocator);
+    ext.callout_type_buf.deinit(allocator);
+    ext.callout_title_buf.deinit(allocator);
     // Deinit the now-empty ArrayLists (items transferred to owned slices)
     ext.headings.deinit(allocator);
     ext.links.deinit(allocator);
     ext.code_spans.deinit(allocator);
     ext.tasks.deinit(allocator);
     ext.embeds.deinit(allocator);
+    ext.callouts.deinit(allocator);
+    ext.block_refs.deinit(allocator);
 
     return .{
         .headings = headings,
@@ -546,6 +772,8 @@ pub fn extractFromMarkdown(
         .code_spans = code_spans,
         .tasks = tasks,
         .embeds = embeds,
+        .callouts = callouts,
+        .block_refs = block_refs,
         .allocator = allocator,
     };
 }

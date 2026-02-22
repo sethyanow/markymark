@@ -62,18 +62,41 @@ struct CMd4cEmbed {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
+struct CMd4cCallout {
+    source_offset: u32,
+    end_offset: u32,
+    type_offset: u32,
+    type_length: u32,
+    title_offset: u32,
+    title_length: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CMd4cBlockRef {
+    source_offset: u32,
+    uuid_offset: u32,
+    uuid_length: u32,
+}
+
+#[repr(C)]
 struct CMd4cResult {
     headings: *mut CMd4cHeading,
     links: *mut CMd4cLink,
     code_spans: *mut CMd4cCodeSpan,
     tasks: *mut CMd4cTask,
     embeds: *mut CMd4cEmbed,
+    callouts: *mut CMd4cCallout,
+    block_refs: *mut CMd4cBlockRef,
     text_blob: *const u8,
     headings_count: u32,
     links_count: u32,
     code_spans_count: u32,
     tasks_count: u32,
     embeds_count: u32,
+    callouts_count: u32,
+    block_refs_count: u32,
     text_blob_len: u32,
 }
 
@@ -83,7 +106,9 @@ const _: () = assert!(std::mem::size_of::<CMd4cLink>() == 24);
 const _: () = assert!(std::mem::size_of::<CMd4cCodeSpan>() == 16);
 const _: () = assert!(std::mem::size_of::<CMd4cTask>() == 20);
 const _: () = assert!(std::mem::size_of::<CMd4cEmbed>() == 16);
-const _: () = assert!(std::mem::size_of::<CMd4cResult>() == 72);
+const _: () = assert!(std::mem::size_of::<CMd4cCallout>() == 24);
+const _: () = assert!(std::mem::size_of::<CMd4cBlockRef>() == 12);
+const _: () = assert!(std::mem::size_of::<CMd4cResult>() == 96);
 
 extern "C" {
     fn marky_md4c_extract(text: *const u8, len: u32, out: *mut CMd4cResult) -> i32;
@@ -444,7 +469,9 @@ mod tests {
         assert_eq!(std::mem::size_of::<CMd4cCodeSpan>(), 16);
         assert_eq!(std::mem::size_of::<CMd4cTask>(), 20);
         assert_eq!(std::mem::size_of::<CMd4cEmbed>(), 16);
-        assert_eq!(std::mem::size_of::<CMd4cResult>(), 72);
+        assert_eq!(std::mem::size_of::<CMd4cCallout>(), 24);
+        assert_eq!(std::mem::size_of::<CMd4cBlockRef>(), 12);
+        assert_eq!(std::mem::size_of::<CMd4cResult>(), 96);
     }
 
     /// Regression test for T2-11: silent `.unwrap_or("")` masked data corruption.
@@ -469,12 +496,16 @@ mod tests {
             code_spans: std::ptr::null_mut(),
             tasks: std::ptr::null_mut(),
             embeds: std::ptr::null_mut(),
+            callouts: std::ptr::null_mut(),
+            block_refs: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 1,
             links_count: 0,
             code_spans_count: 0,
             tasks_count: 0,
             embeds_count: 0,
+            callouts_count: 0,
+            block_refs_count: 0,
             text_blob_len: 3,
         };
         // Before fix: returns Ok(headings[0].text == "") — silent data loss.
@@ -505,12 +536,16 @@ mod tests {
             code_spans: std::ptr::null_mut(),
             tasks: std::ptr::null_mut(),
             embeds: std::ptr::null_mut(),
+            callouts: std::ptr::null_mut(),
+            block_refs: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 0,
             links_count: 1,
             code_spans_count: 0,
             tasks_count: 0,
             embeds_count: 0,
+            callouts_count: 0,
+            block_refs_count: 0,
             text_blob_len: 3,
         };
         let result = convert_result(&out);
@@ -538,12 +573,16 @@ mod tests {
             code_spans: std::ptr::null_mut(),
             tasks: std::ptr::null_mut(),
             embeds: std::ptr::null_mut(),
+            callouts: std::ptr::null_mut(),
+            block_refs: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 1,
             links_count: 0,
             code_spans_count: 0,
             tasks_count: 0,
             embeds_count: 0,
+            callouts_count: 0,
+            block_refs_count: 0,
             text_blob_len: blob.len() as u32,
         };
         let result = convert_result(&out);
@@ -573,12 +612,16 @@ mod tests {
             code_spans: std::ptr::null_mut(),
             tasks: std::ptr::null_mut(),
             embeds: std::ptr::null_mut(),
+            callouts: std::ptr::null_mut(),
+            block_refs: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 0,
             links_count: 1,
             code_spans_count: 0,
             tasks_count: 0,
             embeds_count: 0,
+            callouts_count: 0,
+            block_refs_count: 0,
             text_blob_len: blob.len() as u32,
         };
         let result = convert_result(&out);
@@ -606,12 +649,16 @@ mod tests {
             code_spans: std::ptr::null_mut(),
             tasks: std::ptr::null_mut(),
             embeds: std::ptr::null_mut(),
+            callouts: std::ptr::null_mut(),
+            block_refs: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 1,
             links_count: 0,
             code_spans_count: 0,
             tasks_count: 0,
             embeds_count: 0,
+            callouts_count: 0,
+            block_refs_count: 0,
             text_blob_len: blob.len() as u32,
         };
         let result = convert_result(&out);

@@ -931,3 +931,114 @@ test "extract embed offset points to bang" {
     try testing.expectEqual(@as(usize, 1), result.embeds.len);
     try testing.expect(input[result.embeds[0].offset] == '!');
 }
+
+// ── Callout tests ──────────────────────────────────────────────────
+
+test "callout basic note" {
+    const input = "> [!note]\n> Content\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.callouts.len);
+    try testing.expectEqualStrings("note", result.callouts[0].callout_type);
+    try testing.expectEqual(@as(?[]const u8, null), result.callouts[0].title);
+}
+
+test "callout with title" {
+    const input = "> [!tip] My Title\n> Content\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.callouts.len);
+    try testing.expectEqualStrings("tip", result.callouts[0].callout_type);
+    try testing.expectEqualStrings("My Title", result.callouts[0].title.?);
+}
+
+test "callout nested blockquote ignored" {
+    // Only depth-1 blockquotes are checked for callout markers.
+    // Inner blockquote's [!note] at depth 2 is not a callout.
+    const input = "> > [!note]\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 0), result.callouts.len);
+}
+
+test "standard blockquote no callout" {
+    const input = "> Some text\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 0), result.callouts.len);
+}
+
+test "callout uppercase type normalized" {
+    const input = "> [!WARNING]\n> Be careful\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.callouts.len);
+    try testing.expectEqualStrings("warning", result.callouts[0].callout_type);
+}
+
+test "callout empty type rejected" {
+    const input = "> [!]\n> Content\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 0), result.callouts.len);
+}
+
+// ── Block ref tests ────────────────────────────────────────────────
+
+test "block ref basic uuid" {
+    const input = "Text ((a1b2c3d4-e5f6-7890-abcd-ef1234567890)) more\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.block_refs.len);
+    try testing.expectEqualStrings("a1b2c3d4-e5f6-7890-abcd-ef1234567890", result.block_refs[0].uuid);
+}
+
+test "block ref in code block not extracted" {
+    const input = "```\n((a1b2c3d4-e5f6-7890-abcd-ef1234567890))\n```\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 0), result.block_refs.len);
+}
+
+test "block ref in code span not extracted" {
+    const input = "`((a1b2c3d4-e5f6-7890-abcd-ef1234567890))`\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 0), result.block_refs.len);
+}
+
+test "block ref multiple on line" {
+    const input = "((a1b2c3d4-e5f6-7890-abcd-ef1234567890)) and ((b2c3d4e5-f6a7-8901-bcde-f12345678901))\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 2), result.block_refs.len);
+    try testing.expectEqualStrings("a1b2c3d4-e5f6-7890-abcd-ef1234567890", result.block_refs[0].uuid);
+    try testing.expectEqualStrings("b2c3d4e5-f6a7-8901-bcde-f12345678901", result.block_refs[1].uuid);
+}
+
+test "block ref invalid uuid rejected" {
+    const input = "((not-valid)) and ((too-short))\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 0), result.block_refs.len);
+}
+
+test "block ref uppercase hex accepted" {
+    const input = "((A1B2C3D4-E5F6-7890-ABCD-EF1234567890))\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.block_refs.len);
+    try testing.expectEqualStrings("A1B2C3D4-E5F6-7890-ABCD-EF1234567890", result.block_refs[0].uuid);
+}

@@ -22,6 +22,8 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         engine.block_ids.len > max_u32 or
         engine.tasks.len > max_u32 or
         engine.embeds.len > max_u32 or
+        engine.callouts.len > max_u32 or
+        engine.block_refs.len > max_u32 or
         engine.line_starts.len > max_u32) return error.OutOfMemory;
 
     // Compute text pool size in u64 to avoid u32 wrap-before-check (C6).
@@ -49,6 +51,13 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
     for (engine.embeds) |e| {
         text_pool_size += e.target.len;
     }
+    for (engine.callouts) |c| {
+        text_pool_size += c.callout_type.len;
+        if (c.title) |t| text_pool_size += t.len;
+    }
+    for (engine.block_refs) |br| {
+        text_pool_size += br.uuid.len;
+    }
     if (text_pool_size > std.math.maxInt(u32)) return error.OutOfMemory;
     const text_pool_u32: u32 = @intCast(text_pool_size);
 
@@ -60,6 +69,8 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         @intCast(engine.code_spans.len),
         @intCast(engine.tasks.len),
         @intCast(engine.embeds.len),
+        @intCast(engine.callouts.len),
+        @intCast(engine.block_refs.len),
         @intCast(engine.line_starts.len),
         text_pool_u32,
     ) orelse return error.OutOfMemory;
@@ -81,6 +92,8 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         .code_span_count = @intCast(engine.code_spans.len),
         .task_count = @intCast(engine.tasks.len),
         .embed_count = @intCast(engine.embeds.len),
+        .callout_count = @intCast(engine.callouts.len),
+        .block_ref_count = @intCast(engine.block_refs.len),
         .line_count = @intCast(engine.line_starts.len),
         .text_pool_size = text_pool_u32,
         .token_estimate = engine.token_estimate,
@@ -221,6 +234,49 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
 
         @memcpy(buf[offsets.text_pool + pool_off ..][0..e.target.len], e.target);
         pool_off += @intCast(e.target.len);
+    }
+
+    // Write callouts
+    for (engine.callouts, 0..) |c, i| {
+        const title_off: u32 = if (c.title != null) pool_off + @as(u32, @intCast(c.callout_type.len)) else 0;
+        const title_len: u32 = if (c.title) |t| @intCast(t.len) else 0;
+        const bc = blob.BlobCallout{
+            .type_off = pool_off,
+            .type_len = @intCast(c.callout_type.len),
+            .title_off = title_off,
+            .title_len = title_len,
+            .source_offset = c.source_offset,
+            .end_offset = c.end_offset,
+            .start_line = c.start.line,
+            .start_col = c.start.col,
+            .end_line = c.end.line,
+            .end_col = c.end.col,
+        };
+        try blob.writeStruct(blob.BlobCallout, buf, offsets.callouts + i * @sizeOf(blob.BlobCallout), bc);
+
+        @memcpy(buf[offsets.text_pool + pool_off ..][0..c.callout_type.len], c.callout_type);
+        pool_off += @intCast(c.callout_type.len);
+        if (c.title) |t| {
+            @memcpy(buf[offsets.text_pool + pool_off ..][0..t.len], t);
+            pool_off += @intCast(t.len);
+        }
+    }
+
+    // Write block refs
+    for (engine.block_refs, 0..) |br, i| {
+        const bbr = blob.BlobBlockRef{
+            .uuid_off = pool_off,
+            .uuid_len = @intCast(br.uuid.len),
+            .source_offset = br.source_offset,
+            .start_line = br.start.line,
+            .start_col = br.start.col,
+            .end_line = br.end.line,
+            .end_col = br.end.col,
+        };
+        try blob.writeStruct(blob.BlobBlockRef, buf, offsets.block_refs + i * @sizeOf(blob.BlobBlockRef), bbr);
+
+        @memcpy(buf[offsets.text_pool + pool_off ..][0..br.uuid.len], br.uuid);
+        pool_off += @intCast(br.uuid.len);
     }
 
     // Write line_starts
