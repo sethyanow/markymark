@@ -773,3 +773,51 @@ fn test_from_blob_code_span_parity_with_from_scan() {
         );
     }
 }
+
+// ── Task/Embed from_blob tests (marky-bmu9) ──────────────────────────
+
+#[test]
+fn test_from_blob_v2_with_tasks() {
+    let blob = blob_for("- [ ] Todo\n- [x] Done\n");
+    let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    let tasks = index.tasks();
+    assert_eq!(tasks.len(), 2);
+    assert_eq!(tasks[0].state, "unchecked");
+    assert_eq!(tasks[0].text, "Todo");
+    assert_eq!(tasks[1].state, "checked");
+    assert_eq!(tasks[1].text, "Done");
+}
+
+#[test]
+fn test_from_blob_v2_with_embeds() {
+    let blob = blob_for("![[target]]\n");
+    let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    let embeds = index.embeds();
+    assert_eq!(embeds.len(), 1);
+    assert_eq!(embeds[0].target, "target");
+}
+
+#[test]
+fn test_from_blob_v2_tasks_and_embeds() {
+    let blob = blob_for("- [x] Task\n\n![[embed]]\n");
+    let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    assert_eq!(index.tasks().len(), 1);
+    assert_eq!(index.embeds().len(), 1);
+}
+
+#[test]
+fn test_from_blob_v1_no_tasks_or_embeds() {
+    let blob = make_v1_empty_blob();
+    let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    assert!(index.tasks().is_empty());
+    assert!(index.embeds().is_empty());
+}
+
+#[test]
+fn test_from_blob_v2_empty_task_text() {
+    // A task list item with no text content: `- [ ] \n`
+    let blob = blob_for("- [ ] \n");
+    let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    // May or may not have a task depending on engine behavior; just verify no panic
+    let _ = index.tasks();
+}

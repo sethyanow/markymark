@@ -42,14 +42,38 @@ struct CMd4cCodeSpan {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
+struct CMd4cTask {
+    source_offset: u32,
+    end_offset: u32,
+    text_offset: u32,
+    text_length: u32,
+    state: u8,
+    _padding: [u8; 3],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CMd4cEmbed {
+    source_offset: u32,
+    end_offset: u32,
+    target_offset: u32,
+    target_length: u32,
+}
+
+#[repr(C)]
 struct CMd4cResult {
     headings: *mut CMd4cHeading,
     links: *mut CMd4cLink,
     code_spans: *mut CMd4cCodeSpan,
+    tasks: *mut CMd4cTask,
+    embeds: *mut CMd4cEmbed,
     text_blob: *const u8,
     headings_count: u32,
     links_count: u32,
     code_spans_count: u32,
+    tasks_count: u32,
+    embeds_count: u32,
     text_blob_len: u32,
 }
 
@@ -57,7 +81,9 @@ struct CMd4cResult {
 const _: () = assert!(std::mem::size_of::<CMd4cHeading>() == 16);
 const _: () = assert!(std::mem::size_of::<CMd4cLink>() == 24);
 const _: () = assert!(std::mem::size_of::<CMd4cCodeSpan>() == 16);
-const _: () = assert!(std::mem::size_of::<CMd4cResult>() == 48);
+const _: () = assert!(std::mem::size_of::<CMd4cTask>() == 20);
+const _: () = assert!(std::mem::size_of::<CMd4cEmbed>() == 16);
+const _: () = assert!(std::mem::size_of::<CMd4cResult>() == 72);
 
 extern "C" {
     fn marky_md4c_extract(text: *const u8, len: u32, out: *mut CMd4cResult) -> i32;
@@ -103,12 +129,38 @@ pub struct Md4cCodeSpan {
     pub end_offset: u32,
 }
 
+/// A task list item extracted by the md4c single-pass parser.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Md4cTask {
+    /// Checkbox state: "checked" or "unchecked".
+    pub state: String,
+    /// Task description text.
+    pub text: String,
+    /// Byte offset of the `[` in `[x]` in source.
+    pub source_offset: u32,
+    /// Byte offset past the task text.
+    pub end_offset: u32,
+}
+
+/// An embed reference extracted by the md4c single-pass parser (e.g. `![[target]]`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Md4cEmbed {
+    /// The embedded resource path.
+    pub target: String,
+    /// Byte offset of `!` in `![[target]]` in source.
+    pub source_offset: u32,
+    /// Byte offset past `]]`.
+    pub end_offset: u32,
+}
+
 /// Results from md4c single-pass extraction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Md4cExtraction {
     pub headings: Vec<Md4cHeading>,
     pub links: Vec<Md4cLink>,
     pub code_spans: Vec<Md4cCodeSpan>,
+    pub tasks: Vec<Md4cTask>,
+    pub embeds: Vec<Md4cEmbed>,
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +177,8 @@ pub fn extract_md4c(text: &str) -> Result<Md4cExtraction, KernelError> {
             headings: Vec::new(),
             links: Vec::new(),
             code_spans: Vec::new(),
+            tasks: Vec::new(),
+            embeds: Vec::new(),
         });
     }
 
@@ -164,6 +218,14 @@ fn safe_blob_slice(blob: &[u8], start: usize, len: usize) -> Result<&[u8], Kerne
         .checked_add(len)
         .ok_or(KernelError::InternalError(-101))?;
     blob.get(start..end).ok_or(KernelError::InternalError(-101))
+}
+
+/// Map md4c task checkbox mark byte to state string.
+fn task_state_str(mark: u8) -> &'static str {
+    match mark {
+        b'x' | b'X' => "checked",
+        _ => "unchecked",
+    }
 }
 
 /// Convert C ABI result to owned Rust types.
@@ -254,10 +316,57 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         }
     }
 
+    let mut tasks = Vec::with_capacity(out.tasks_count as usize);
+    if out.tasks_count > 0 && !out.tasks.is_null() {
+        // SAFETY: tasks pointer is valid for tasks_count elements,
+        // allocated by Zig page_allocator.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let c_tasks = unsafe { std::slice::from_raw_parts(out.tasks, out.tasks_count as usize) };
+        for t in c_tasks {
+            let text_start = t.text_offset as usize;
+            let text =
+                std::str::from_utf8(safe_blob_slice(blob, text_start, t.text_length as usize)?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned();
+            tasks.push(Md4cTask {
+                state: task_state_str(t.state).to_owned(),
+                text,
+                source_offset: t.source_offset,
+                end_offset: t.end_offset,
+            });
+        }
+    }
+
+    let mut embeds = Vec::with_capacity(out.embeds_count as usize);
+    if out.embeds_count > 0 && !out.embeds.is_null() {
+        // SAFETY: embeds pointer is valid for embeds_count elements,
+        // allocated by Zig page_allocator.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let c_embeds =
+            unsafe { std::slice::from_raw_parts(out.embeds, out.embeds_count as usize) };
+        for e in c_embeds {
+            let target_start = e.target_offset as usize;
+            let target = std::str::from_utf8(safe_blob_slice(
+                blob,
+                target_start,
+                e.target_length as usize,
+            )?)
+            .map_err(|_| KernelError::InternalError(-100))?
+            .to_owned();
+            embeds.push(Md4cEmbed {
+                target,
+                source_offset: e.source_offset,
+                end_offset: e.end_offset,
+            });
+        }
+    }
+
     Ok(Md4cExtraction {
         headings,
         links,
         code_spans,
+        tasks,
+        embeds,
     })
 }
 
@@ -333,7 +442,9 @@ mod tests {
         assert_eq!(std::mem::size_of::<CMd4cHeading>(), 16);
         assert_eq!(std::mem::size_of::<CMd4cLink>(), 24);
         assert_eq!(std::mem::size_of::<CMd4cCodeSpan>(), 16);
-        assert_eq!(std::mem::size_of::<CMd4cResult>(), 48);
+        assert_eq!(std::mem::size_of::<CMd4cTask>(), 20);
+        assert_eq!(std::mem::size_of::<CMd4cEmbed>(), 16);
+        assert_eq!(std::mem::size_of::<CMd4cResult>(), 72);
     }
 
     /// Regression test for T2-11: silent `.unwrap_or("")` masked data corruption.
@@ -355,12 +466,16 @@ mod tests {
         let out = CMd4cResult {
             headings: &heading as *const _ as *mut _,
             links: std::ptr::null_mut(),
+            code_spans: std::ptr::null_mut(),
+            tasks: std::ptr::null_mut(),
+            embeds: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 1,
             links_count: 0,
-            code_spans: std::ptr::null_mut(),
-            text_blob_len: 3,
             code_spans_count: 0,
+            tasks_count: 0,
+            embeds_count: 0,
+            text_blob_len: 3,
         };
         // Before fix: returns Ok(headings[0].text == "") — silent data loss.
         // After fix: returns Err(KernelError::InternalError(-100)).
@@ -387,12 +502,16 @@ mod tests {
         let out = CMd4cResult {
             headings: std::ptr::null_mut(),
             links: &link as *const _ as *mut _,
+            code_spans: std::ptr::null_mut(),
+            tasks: std::ptr::null_mut(),
+            embeds: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 0,
             links_count: 1,
-            code_spans: std::ptr::null_mut(),
-            text_blob_len: 3,
             code_spans_count: 0,
+            tasks_count: 0,
+            embeds_count: 0,
+            text_blob_len: 3,
         };
         let result = convert_result(&out);
         assert!(
@@ -417,10 +536,14 @@ mod tests {
             headings: &heading as *const _ as *mut _,
             links: std::ptr::null_mut(),
             code_spans: std::ptr::null_mut(),
+            tasks: std::ptr::null_mut(),
+            embeds: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 1,
             links_count: 0,
             code_spans_count: 0,
+            tasks_count: 0,
+            embeds_count: 0,
             text_blob_len: blob.len() as u32,
         };
         let result = convert_result(&out);
@@ -448,10 +571,14 @@ mod tests {
             headings: std::ptr::null_mut(),
             links: &link as *const _ as *mut _,
             code_spans: std::ptr::null_mut(),
+            tasks: std::ptr::null_mut(),
+            embeds: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 0,
             links_count: 1,
             code_spans_count: 0,
+            tasks_count: 0,
+            embeds_count: 0,
             text_blob_len: blob.len() as u32,
         };
         let result = convert_result(&out);
@@ -477,10 +604,14 @@ mod tests {
             headings: &heading as *const _ as *mut _,
             links: std::ptr::null_mut(),
             code_spans: std::ptr::null_mut(),
+            tasks: std::ptr::null_mut(),
+            embeds: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 1,
             links_count: 0,
             code_spans_count: 0,
+            tasks_count: 0,
+            embeds_count: 0,
             text_blob_len: blob.len() as u32,
         };
         let result = convert_result(&out);
@@ -523,5 +654,53 @@ mod tests {
         assert_eq!(result.code_spans[0].text, "a");
         assert_eq!(result.code_spans[1].text, "b");
         assert!(result.code_spans[1].source_offset > result.code_spans[0].source_offset);
+    }
+
+    // --- Task/Embed tests (marky-bmu9) ---
+
+    #[test]
+    fn test_extract_task_unchecked() {
+        let result = extract_md4c("- [ ] Todo\n").unwrap();
+        assert_eq!(result.tasks.len(), 1);
+        assert_eq!(result.tasks[0].state, "unchecked");
+        assert_eq!(result.tasks[0].text, "Todo");
+    }
+
+    #[test]
+    fn test_extract_task_checked() {
+        let result = extract_md4c("- [x] Done\n").unwrap();
+        assert_eq!(result.tasks.len(), 1);
+        assert_eq!(result.tasks[0].state, "checked");
+        assert_eq!(result.tasks[0].text, "Done");
+    }
+
+    #[test]
+    fn test_extract_embed() {
+        let result = extract_md4c("![[target]]\n").unwrap();
+        assert_eq!(result.embeds.len(), 1);
+        assert_eq!(result.embeds[0].target, "target");
+        // Also a wiki link
+        assert_eq!(result.links.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_no_embed_for_wikilink() {
+        let result = extract_md4c("[[link]]\n").unwrap();
+        assert!(result.embeds.is_empty());
+        assert_eq!(result.links.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_empty_has_no_tasks_or_embeds() {
+        let result = extract_md4c("").unwrap();
+        assert!(result.tasks.is_empty());
+        assert!(result.embeds.is_empty());
+    }
+
+    #[test]
+    fn test_extract_plain_text_no_tasks_or_embeds() {
+        let result = extract_md4c("Just plain text.\n").unwrap();
+        assert!(result.tasks.is_empty());
+        assert!(result.embeds.is_empty());
     }
 }

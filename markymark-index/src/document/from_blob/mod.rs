@@ -191,6 +191,30 @@ impl DocumentIndex {
         let mut code_spans_owned: Vec<CodeSpanData> =
             Vec::with_capacity(header.code_span_count as usize);
 
+        struct TaskData {
+            state: String,
+            text: String,
+            source_offset: u32,
+            end_offset: u32,
+            start_line: u32,
+            start_col: u32,
+            end_line: u32,
+            end_col: u32,
+        }
+
+        struct EmbedData {
+            target: String,
+            source_offset: u32,
+            end_offset: u32,
+            start_line: u32,
+            start_col: u32,
+            end_line: u32,
+            end_col: u32,
+        }
+
+        let mut tasks_owned: Vec<TaskData> = Vec::with_capacity(header.task_count as usize);
+        let mut embeds_owned: Vec<EmbedData> = Vec::with_capacity(header.embed_count as usize);
+
         // ── Headings ────────────────────────────────────────────────
         // BlobHeading layout (40 bytes):
         //   text_off(4@0) text_len(4@4) slug_off(4@8) slug_len(4@12)
@@ -359,6 +383,66 @@ impl DocumentIndex {
             });
         }
 
+        // ── Tasks ──────────────────────────────────────────────────
+        // BlobTask layout (36 bytes):
+        //   text_off(4@0) text_len(4@4) source_offset(4@8) end_offset(4@12)
+        //   start_line(4@16) start_col(4@20) end_line(4@24) end_col(4@28)
+        //   state(1@32) _pad(3@33)
+        for i in 0..header.task_count as usize {
+            let base = offsets.tasks + i * TASK_SIZE;
+            let text_off = read_u32_le(data, base);
+            let text_len = read_u32_le(data, base + 4);
+            let source_offset = read_u32_le(data, base + 8);
+            let end_offset = read_u32_le(data, base + 12);
+            let start_line = read_u32_le(data, base + 16);
+            let start_col = read_u32_le(data, base + 20);
+            let end_line = read_u32_le(data, base + 24);
+            let end_col = read_u32_le(data, base + 28);
+            let state_byte = read_u8(data, base + 32);
+            let text = pool_str(text_pool, text_off, text_len)?.to_owned();
+            let state = match state_byte {
+                b'x' | b'X' => "checked",
+                _ => "unchecked",
+            }
+            .to_owned();
+            tasks_owned.push(TaskData {
+                state,
+                text,
+                source_offset,
+                end_offset,
+                start_line,
+                start_col,
+                end_line,
+                end_col,
+            });
+        }
+
+        // ── Embeds ────────────────────────────────────────────────────
+        // BlobEmbed layout (32 bytes):
+        //   target_off(4@0) target_len(4@4) source_offset(4@8) end_offset(4@12)
+        //   start_line(4@16) start_col(4@20) end_line(4@24) end_col(4@28)
+        for i in 0..header.embed_count as usize {
+            let base = offsets.embeds + i * EMBED_SIZE;
+            let target_off = read_u32_le(data, base);
+            let target_len = read_u32_le(data, base + 4);
+            let source_offset = read_u32_le(data, base + 8);
+            let end_offset = read_u32_le(data, base + 12);
+            let start_line = read_u32_le(data, base + 16);
+            let start_col = read_u32_le(data, base + 20);
+            let end_line = read_u32_le(data, base + 24);
+            let end_col = read_u32_le(data, base + 28);
+            let target = pool_str(text_pool, target_off, target_len)?.to_owned();
+            embeds_owned.push(EmbedData {
+                target,
+                source_offset,
+                end_offset,
+                start_line,
+                start_col,
+                end_line,
+                end_col,
+            });
+        }
+
         // ── Build DocumentIndex via self_cell ────────────────────────
         let owner = DocumentOwner {
             arena: DocumentArena::new(),
@@ -513,9 +597,39 @@ impl DocumentIndex {
             let properties = BumpVec::<PropertyEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let block_refs = BumpVec::<BlockRefEntry<'_>>::new_in(arena_ref).into_bump_slice();
 
-            // Embeds/tasks/callouts/query_blocks/link_definitions: not yet in blob format
-            let embeds = BumpVec::<EmbedEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let tasks = BumpVec::<TaskEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            // --- Tasks ---
+            let mut tasks_builder = BumpVec::new_in(arena_ref);
+            for td in &tasks_owned {
+                let state = arena_alloc_str(arena_ref, &td.state);
+                let text = arena_alloc_str(arena_ref, &td.text);
+                let start_pos = Position::new(td.start_line, td.start_col);
+                let end_pos = Position::new(td.end_line, td.end_col);
+                tasks_builder.push(TaskEntry {
+                    state,
+                    text,
+                    range: Range::new(start_pos, end_pos),
+                    start_byte: td.source_offset as usize,
+                    end_byte: td.end_offset as usize,
+                });
+            }
+            let tasks = tasks_builder.into_bump_slice();
+
+            // --- Embeds ---
+            let mut embeds_builder = BumpVec::new_in(arena_ref);
+            for ed in &embeds_owned {
+                let target = arena_alloc_str(arena_ref, &ed.target);
+                let start_pos = Position::new(ed.start_line, ed.start_col);
+                let end_pos = Position::new(ed.end_line, ed.end_col);
+                embeds_builder.push(EmbedEntry {
+                    target,
+                    range: Range::new(start_pos, end_pos),
+                    start_byte: ed.source_offset as usize,
+                    end_byte: ed.end_offset as usize,
+                });
+            }
+            let embeds = embeds_builder.into_bump_slice();
+
+            // Callouts/query_blocks/link_definitions: not yet in blob format
             let callouts = BumpVec::<CalloutEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let query_blocks =
                 BumpVec::<QueryBlockEntry<'_>>::new_in(arena_ref).into_bump_slice();

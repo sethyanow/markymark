@@ -12,6 +12,8 @@ pub(super) const LINK_SIZE: usize = 40;
 pub(super) const TAG_SIZE: usize = 24;
 pub(super) const BLOCK_ID_SIZE: usize = 28;
 pub(super) const CODE_SPAN_SIZE: usize = 32;
+pub(super) const TASK_SIZE: usize = 36;
+pub(super) const EMBED_SIZE: usize = 32;
 
 // ---------------------------------------------------------------------------
 // BlobError
@@ -99,6 +101,8 @@ pub(super) struct BlobHeader {
     pub(super) tag_count: u32,
     pub(super) block_id_count: u32,
     pub(super) code_span_count: u32,
+    pub(super) task_count: u32,
+    pub(super) embed_count: u32,
     pub(super) line_count: u32,
     pub(super) text_pool_size: u32,
 }
@@ -141,6 +145,12 @@ pub(super) fn validate_blob(data: &[u8]) -> Result<BlobHeader, BlobError> {
     let total_blob_size = read_u32_le(data, 44);
     // code_span_count lives at offset 48 for both v1 and v2.
     let code_span_count = read_u32_le(data, 48);
+    // task_count at offset 56, embed_count at offset 52 (v2 only; v1 → 0).
+    let (embed_count, task_count) = if version >= BLOB_VERSION_V2 {
+        (read_u32_le(data, 52), read_u32_le(data, 56))
+    } else {
+        (0, 0)
+    };
 
     // Compute expected total size via checked arithmetic to prevent overflow.
     let expected = header_size
@@ -153,6 +163,8 @@ pub(super) fn validate_blob(data: &[u8]) -> Result<BlobHeader, BlobError> {
         .and_then(|s| s.checked_add((tag_count as usize).checked_mul(TAG_SIZE)?))
         .and_then(|s| s.checked_add((block_id_count as usize).checked_mul(BLOCK_ID_SIZE)?))
         .and_then(|s| s.checked_add((code_span_count as usize).checked_mul(CODE_SPAN_SIZE)?))
+        .and_then(|s| s.checked_add((task_count as usize).checked_mul(TASK_SIZE)?))
+        .and_then(|s| s.checked_add((embed_count as usize).checked_mul(EMBED_SIZE)?))
         .and_then(|s| s.checked_add((line_count as usize).checked_mul(4)?))
         .and_then(|s| s.checked_add(text_pool_size as usize))
         .ok_or(BlobError::SizeMismatch)?;
@@ -168,6 +180,8 @@ pub(super) fn validate_blob(data: &[u8]) -> Result<BlobHeader, BlobError> {
         tag_count,
         block_id_count,
         code_span_count,
+        task_count,
+        embed_count,
         line_count,
         text_pool_size,
     })
@@ -183,6 +197,8 @@ pub(super) struct SectionOffsets {
     pub(super) tags: usize,
     pub(super) block_ids: usize,
     pub(super) code_spans: usize,
+    pub(super) tasks: usize,
+    pub(super) embeds: usize,
     // line_starts skipped — positions are pre-computed in the blob
     pub(super) text_pool: usize,
 }
@@ -193,7 +209,9 @@ pub(super) fn compute_offsets(h: &BlobHeader) -> SectionOffsets {
     let tags = links + h.link_count as usize * LINK_SIZE;
     let block_ids = tags + h.tag_count as usize * TAG_SIZE;
     let code_spans = block_ids + h.block_id_count as usize * BLOCK_ID_SIZE;
-    let line_starts = code_spans + h.code_span_count as usize * CODE_SPAN_SIZE;
+    let tasks = code_spans + h.code_span_count as usize * CODE_SPAN_SIZE;
+    let embeds = tasks + h.task_count as usize * TASK_SIZE;
+    let line_starts = embeds + h.embed_count as usize * EMBED_SIZE;
     let text_pool = line_starts + h.line_count as usize * 4;
     SectionOffsets {
         headings,
@@ -201,6 +219,8 @@ pub(super) fn compute_offsets(h: &BlobHeader) -> SectionOffsets {
         tags,
         block_ids,
         code_spans,
+        tasks,
+        embeds,
         text_pool,
     }
 }

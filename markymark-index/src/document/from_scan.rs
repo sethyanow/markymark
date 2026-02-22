@@ -32,14 +32,23 @@ impl DocumentIndex {
         // Collect owned data from scan backend before entering self_cell closure.
         // Fall back to independent scans if scan_all fails so that headings
         // and links are never both silently dropped due to one-sided error.
-        let (scan_headings, scan_links, scan_code_spans) = match backend.scan_all(text) {
-            Ok(result) => (result.headings, result.links, result.code_spans),
-            Err(_) => (
-                backend.scan_headings(text).unwrap_or_default(),
-                backend.scan_links(text).unwrap_or_default(),
-                backend.scan_code_spans(text).unwrap_or_default(),
-            ),
-        };
+        let (scan_headings, scan_links, scan_code_spans, scan_tasks, scan_embeds) =
+            match backend.scan_all(text) {
+                Ok(result) => (
+                    result.headings,
+                    result.links,
+                    result.code_spans,
+                    result.tasks,
+                    result.embeds,
+                ),
+                Err(_) => (
+                    backend.scan_headings(text).unwrap_or_default(),
+                    backend.scan_links(text).unwrap_or_default(),
+                    backend.scan_code_spans(text).unwrap_or_default(),
+                    backend.scan_tasks(text).unwrap_or_default(),
+                    backend.scan_embeds(text).unwrap_or_default(),
+                ),
+            };
         let scan_tags = backend.scan_tags(text).unwrap_or_default();
         let scan_blocks = backend.scan_block_ids(text).unwrap_or_default();
 
@@ -194,9 +203,39 @@ impl DocumentIndex {
             let properties = BumpVec::<PropertyEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let block_refs = BumpVec::<BlockRefEntry<'_>>::new_in(arena_ref).into_bump_slice();
 
-            // Embeds/tasks/callouts/query_blocks/link_definitions: not yet in scan backend
-            let embeds = BumpVec::<EmbedEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let tasks = BumpVec::<TaskEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            // --- Tasks ---
+            let mut tasks_builder = BumpVec::new_in(arena_ref);
+            for t in scan_tasks {
+                let state = arena_alloc_str(arena_ref, &t.state);
+                let text = arena_alloc_str(arena_ref, &t.text);
+                let pos = helpers::byte_offset_to_position(&line_starts, t.offset);
+                let end_pos = helpers::byte_offset_to_position(&line_starts, t.end_offset);
+                tasks_builder.push(TaskEntry {
+                    state,
+                    text,
+                    range: Range::new(pos, end_pos),
+                    start_byte: t.offset as usize,
+                    end_byte: t.end_offset as usize,
+                });
+            }
+            let tasks = tasks_builder.into_bump_slice();
+
+            // --- Embeds ---
+            let mut embeds_builder = BumpVec::new_in(arena_ref);
+            for e in scan_embeds {
+                let target = arena_alloc_str(arena_ref, &e.target);
+                let pos = helpers::byte_offset_to_position(&line_starts, e.offset);
+                let end_pos = helpers::byte_offset_to_position(&line_starts, e.end_offset);
+                embeds_builder.push(EmbedEntry {
+                    target,
+                    range: Range::new(pos, end_pos),
+                    start_byte: e.offset as usize,
+                    end_byte: e.end_offset as usize,
+                });
+            }
+            let embeds = embeds_builder.into_bump_slice();
+
+            // Callouts/query_blocks/link_definitions: not yet in scan backend
             let callouts = BumpVec::<CalloutEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let query_blocks =
                 BumpVec::<QueryBlockEntry<'_>>::new_in(arena_ref).into_bump_slice();

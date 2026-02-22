@@ -653,6 +653,43 @@ mod md4c_scan_tests {
             assert_eq!(z.slug, m.slug, "heading slug mismatch");
         }
     }
+
+    // ── Task/Embed from_scan tests (marky-bmu9) ──────────────────────
+
+    #[test]
+    fn test_md4c_from_scan_tasks() {
+        let index = build_index_from_md4c_scan("- [ ] Todo\n- [x] Done\n");
+        let tasks = index.tasks();
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].state, "unchecked");
+        assert_eq!(tasks[0].text, "Todo");
+        assert_eq!(tasks[1].state, "checked");
+        assert_eq!(tasks[1].text, "Done");
+    }
+
+    #[test]
+    fn test_md4c_from_scan_embeds() {
+        let index = build_index_from_md4c_scan("![[target]]\n");
+        let embeds = index.embeds();
+        assert_eq!(embeds.len(), 1);
+        assert_eq!(embeds[0].target, "target");
+    }
+
+    #[test]
+    fn test_md4c_from_scan_checkbox_parity() {
+        // Verify from_scan task count matches from_ast for checkbox-only input.
+        // md4c doesn't surface marker tasks (TODO/DONE), so use checkbox-only input.
+        let text = "- [x] Done\n- [ ] Todo\n";
+        let md4c_idx = build_index_from_md4c_scan(text);
+        let ast_idx = build_index(text);
+        assert_eq!(
+            md4c_idx.tasks().len(),
+            ast_idx.tasks().len(),
+            "checkbox parity: md4c={}, ast={}",
+            md4c_idx.tasks().len(),
+            ast_idx.tasks().len(),
+        );
+    }
 }
 
 // --- Task 4 (marky-gb1): IncrementalOverrides tests ---

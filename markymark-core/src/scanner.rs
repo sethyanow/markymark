@@ -99,7 +99,31 @@ pub struct CodeSpanResult {
     pub end_offset: u32,
 }
 
-/// Combined result from a single-pass scan of headings, links, and code spans.
+/// A task list item found by a scan backend (e.g. `- [x] Done`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskResult {
+    /// Checkbox state: "checked" or "unchecked".
+    pub state: String,
+    /// Task description text.
+    pub text: String,
+    /// Byte offset of the `[` in the source text.
+    pub offset: u32,
+    /// Byte offset past the task text.
+    pub end_offset: u32,
+}
+
+/// An embed reference found by a scan backend (e.g. `![[target]]`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmbedResult {
+    /// The embedded resource path.
+    pub target: String,
+    /// Byte offset of `!` in the source text.
+    pub offset: u32,
+    /// Byte offset past `]]`.
+    pub end_offset: u32,
+}
+
+/// Combined result from a single-pass scan of headings, links, code spans, tasks, and embeds.
 #[derive(Debug, Default)]
 pub struct ScanAllResult {
     /// Headings extracted from the document.
@@ -108,6 +132,10 @@ pub struct ScanAllResult {
     pub links: Vec<LinkResult>,
     /// Inline code spans extracted from the document.
     pub code_spans: Vec<CodeSpanResult>,
+    /// Task list items extracted from the document.
+    pub tasks: Vec<TaskResult>,
+    /// Embed references extracted from the document.
+    pub embeds: Vec<EmbedResult>,
 }
 
 // ---------------------------------------------------------------------------
@@ -141,16 +169,32 @@ pub trait ScanBackend: Send + Sync {
         Ok(Vec::new())
     }
 
-    /// Scan text for headings, links, and code spans in a single pass.
+    /// Scan text for task list items (e.g. `- [x] Done`).
     ///
-    /// The default implementation calls [`scan_headings`], [`scan_links`], and
-    /// [`scan_code_spans`] separately. Backends that parse once internally
-    /// (e.g., [`Md4cScanBackend`]) should override this to avoid multiple parses.
+    /// Default returns empty (backward compat for backends that don't extract).
+    fn scan_tasks(&self, _text: &str) -> Result<Vec<TaskResult>, ScanError> {
+        Ok(Vec::new())
+    }
+
+    /// Scan text for embed references (e.g. `![[target]]`).
+    ///
+    /// Default returns empty (backward compat for backends that don't extract).
+    fn scan_embeds(&self, _text: &str) -> Result<Vec<EmbedResult>, ScanError> {
+        Ok(Vec::new())
+    }
+
+    /// Scan text for headings, links, code spans, tasks, and embeds in a single pass.
+    ///
+    /// The default implementation calls each scan method separately. Backends
+    /// that parse once internally (e.g., [`Md4cScanBackend`]) should override
+    /// this to avoid multiple parses.
     fn scan_all(&self, text: &str) -> Result<ScanAllResult, ScanError> {
         Ok(ScanAllResult {
             headings: self.scan_headings(text)?,
             links: self.scan_links(text)?,
             code_spans: self.scan_code_spans(text)?,
+            tasks: self.scan_tasks(text)?,
+            embeds: self.scan_embeds(text)?,
         })
     }
 }
@@ -317,6 +361,39 @@ impl ScanBackend for Md4cScanBackend {
             .map_err(|e| ScanError::InternalError(e.to_string()))
     }
 
+    fn scan_tasks(&self, text: &str) -> Result<Vec<TaskResult>, ScanError> {
+        markymark_kernels::md4c::extract_md4c(text)
+            .map(|extraction| {
+                extraction
+                    .tasks
+                    .into_iter()
+                    .map(|t| TaskResult {
+                        state: t.state,
+                        text: t.text,
+                        offset: t.source_offset,
+                        end_offset: t.end_offset,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
+    fn scan_embeds(&self, text: &str) -> Result<Vec<EmbedResult>, ScanError> {
+        markymark_kernels::md4c::extract_md4c(text)
+            .map(|extraction| {
+                extraction
+                    .embeds
+                    .into_iter()
+                    .map(|e| EmbedResult {
+                        target: e.target,
+                        offset: e.source_offset,
+                        end_offset: e.end_offset,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
     fn scan_all(&self, text: &str) -> Result<ScanAllResult, ScanError> {
         markymark_kernels::md4c::extract_md4c(text)
             .map(|extraction| ScanAllResult {
@@ -333,6 +410,25 @@ impl ScanBackend for Md4cScanBackend {
                         text: cs.text,
                         offset: cs.source_offset,
                         end_offset: cs.end_offset,
+                    })
+                    .collect(),
+                tasks: extraction
+                    .tasks
+                    .into_iter()
+                    .map(|t| TaskResult {
+                        state: t.state,
+                        text: t.text,
+                        offset: t.source_offset,
+                        end_offset: t.end_offset,
+                    })
+                    .collect(),
+                embeds: extraction
+                    .embeds
+                    .into_iter()
+                    .map(|e| EmbedResult {
+                        target: e.target,
+                        offset: e.source_offset,
+                        end_offset: e.end_offset,
                     })
                     .collect(),
             })
@@ -640,6 +736,51 @@ mod tests {
             let result = backend.scan_code_spans("No code here").unwrap();
             assert!(result.is_empty());
         }
+
+        // ── Task/Embed tests (marky-bmu9) ───────────────────────────
+
+        #[test]
+        fn test_md4c_scan_tasks_unchecked() {
+            let backend = Md4cScanBackend;
+            let result = backend.scan_tasks("- [ ] Todo\n").unwrap();
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].state, "unchecked");
+            assert_eq!(result[0].text, "Todo");
+        }
+
+        #[test]
+        fn test_md4c_scan_tasks_checked() {
+            let backend = Md4cScanBackend;
+            let result = backend.scan_tasks("- [x] Done\n").unwrap();
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].state, "checked");
+        }
+
+        #[test]
+        fn test_md4c_scan_embeds() {
+            let backend = Md4cScanBackend;
+            let result = backend.scan_embeds("![[target]]\n").unwrap();
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].target, "target");
+        }
+
+        #[test]
+        fn test_md4c_scan_no_embed_for_wikilink() {
+            let backend = Md4cScanBackend;
+            let result = backend.scan_embeds("[[link]]\n").unwrap();
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn test_scan_all_includes_tasks_embeds() {
+            let backend = Md4cScanBackend;
+            let text = "- [x] Done\n\n![[embed]]\n";
+            let all = backend.scan_all(text).unwrap();
+            assert_eq!(all.tasks.len(), 1);
+            assert_eq!(all.tasks[0].state, "checked");
+            assert_eq!(all.embeds.len(), 1);
+            assert_eq!(all.embeds[0].target, "embed");
+        }
     }
 
     #[test]
@@ -647,6 +788,20 @@ mod tests {
         // The default trait implementation returns an empty vec.
         let backend = DummyScanBackend;
         let result = backend.scan_code_spans("Hello `world` end").unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_default_scan_tasks_empty() {
+        let backend = DummyScanBackend;
+        let result = backend.scan_tasks("- [x] Task").unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_default_scan_embeds_empty() {
+        let backend = DummyScanBackend;
+        let result = backend.scan_embeds("![[embed]]").unwrap();
         assert!(result.is_empty());
     }
 }
