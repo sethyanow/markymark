@@ -28,9 +28,10 @@ use markymark_core::arena::{arena_alloc_str, DocumentArena};
 use markymark_core::{Position, Range};
 
 use super::{
-    helpers, BlockEntry, BlockRefEntry, CodeSpanEntry, DocumentDependent, DocumentIndex,
-    DocumentIndexCell, DocumentOwner, FrontmatterEntry, HeadingEntry, MarkdownLinkEntry,
-    PropertyEntry, TagEntry, WikiLinkEntry, XmlTagEntry, XmlTagOwned,
+    helpers, BlockEntry, BlockRefEntry, CalloutEntry, CodeSpanEntry, DocumentDependent,
+    DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry, HeadingEntry,
+    LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry, QueryBlockEntry, TagEntry, TaskEntry,
+    WikiLinkEntry, XmlTagEntry, XmlTagOwned,
 };
 
 mod header;
@@ -512,6 +513,15 @@ impl DocumentIndex {
             let properties = BumpVec::<PropertyEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let block_refs = BumpVec::<BlockRefEntry<'_>>::new_in(arena_ref).into_bump_slice();
 
+            // Embeds/tasks/callouts/query_blocks/link_definitions: not yet in blob format
+            let embeds = BumpVec::<EmbedEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            let tasks = BumpVec::<TaskEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            let callouts = BumpVec::<CalloutEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            let query_blocks =
+                BumpVec::<QueryBlockEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            let link_definitions =
+                BumpVec::<LinkDefinitionEntry<'_>>::new_in(arena_ref).into_bump_slice();
+
             DocumentDependent {
                 headings,
                 slug_to_heading,
@@ -527,6 +537,11 @@ impl DocumentIndex {
                 aliases,
                 properties,
                 block_refs,
+                embeds,
+                tasks,
+                callouts,
+                query_blocks,
+                link_definitions,
             }
         });
 

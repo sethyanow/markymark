@@ -671,6 +671,7 @@ fn test_tag_no_incremental_opt_always_full_rebuild() {
         markdown_links: None,
         xml_tags: None,
         code_spans: None,
+        ..Default::default()
     };
     let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
     let tags = index.tags();
@@ -701,6 +702,7 @@ fn test_markdown_link_override_reuses_when_provided() {
         markdown_links: Some(vec![override_link]),
         xml_tags: None,
         code_spans: None,
+        ..Default::default()
     };
     let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
     let mls = index.markdown_links();
@@ -731,6 +733,7 @@ fn test_xml_tag_override_reuses_when_provided() {
         markdown_links: None,
         xml_tags: Some(vec![override_tag]),
         code_spans: None,
+        ..Default::default()
     };
     let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
     let xts = index.xml_tags();
@@ -851,6 +854,7 @@ fn test_incremental_overrides_all_five() {
             end_byte: 10,
         }]),
         code_spans: None,
+        ..Default::default()
     };
     let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
     assert_eq!(index.wiki_links().len(), 1);
@@ -862,4 +866,102 @@ fn test_incremental_overrides_all_five() {
     assert_eq!(index.xml_tags()[0].tag_name, "injected-xml");
     // Tags: always from AST (override is None), expect #tag from source
     assert!(index.tags().iter().any(|t| t.name == "tag"));
+}
+
+// ── Phase B-2: 5 new DocumentDependent types ───────────────────────
+
+#[test]
+fn test_embeds_from_ast() {
+    let source = "![[my-image.png]]\n\nSome text ![[other-file]]\n";
+    let index = build_index(source);
+    let embeds = index.embeds();
+    assert_eq!(embeds.len(), 2);
+    assert_eq!(embeds[0].target, "my-image.png");
+    assert_eq!(embeds[1].target, "other-file");
+}
+
+#[test]
+fn test_tasks_from_ast() {
+    let source = "- [x] Done task\n- [ ] Open task\n- [/] In progress\n";
+    let index = build_index(source);
+    let tasks = index.tasks();
+    assert_eq!(tasks.len(), 3);
+    assert_eq!(tasks[0].state, "checked");
+    assert_eq!(tasks[1].state, "unchecked");
+    assert_eq!(tasks[2].state, "in_progress");
+}
+
+#[test]
+fn test_callouts_from_ast() {
+    let source = "> [!note] My Title\n> content\n\n> [!warning] Watch out\n> danger\n";
+    let index = build_index(source);
+    let callouts = index.callouts();
+    assert_eq!(callouts.len(), 2);
+    assert_eq!(callouts[0].callout_type, "note");
+    assert_eq!(callouts[0].title, Some("My Title"));
+    assert_eq!(callouts[1].callout_type, "warning");
+    assert_eq!(callouts[1].title, Some("Watch out"));
+}
+
+#[test]
+fn test_query_blocks_from_ast() {
+    let source = "{{query (and [[page]] (task done))}}\n\ntext\n\n{{query simple}}\n";
+    let index = build_index(source);
+    let qbs = index.query_blocks();
+    assert_eq!(qbs.len(), 2);
+    assert_eq!(qbs[0].query, "(and [[page]] (task done))");
+    assert_eq!(qbs[1].query, "simple");
+}
+
+#[test]
+fn test_link_definitions_from_ast() {
+    let source = "[example]: https://example.com\n[rust]: https://rust-lang.org \"Rust\"\n";
+    let index = build_index(source);
+    let lds = index.link_definitions();
+    assert_eq!(lds.len(), 2);
+    assert_eq!(lds[0].label, "example");
+    assert_eq!(lds[0].url, "https://example.com");
+    assert_eq!(lds[0].title, None);
+    assert_eq!(lds[1].label, "rust");
+    assert_eq!(lds[1].url, "https://rust-lang.org");
+    assert_eq!(lds[1].title, Some("Rust"));
+}
+
+#[test]
+fn test_new_types_empty_on_plain_text() {
+    let source = "# Just a heading\n\nPlain paragraph.\n";
+    let index = build_index(source);
+    assert!(index.embeds().is_empty());
+    assert!(index.tasks().is_empty());
+    assert!(index.callouts().is_empty());
+    assert!(index.query_blocks().is_empty());
+    assert!(index.link_definitions().is_empty());
+}
+
+#[test]
+fn test_new_types_override_via_incremental() {
+    let source = "![[original-embed]]\n";
+    let ast = markymark_parser::parse(source).unwrap();
+    let overrides = IncrementalOverrides {
+        embeds: Some(vec![EmbedOwned {
+            target: "injected".to_string(),
+            range: Range::new(Position::new(0, 0), Position::new(0, 5)),
+            start_byte: 0,
+            end_byte: 5,
+        }]),
+        tasks: Some(vec![TaskOwned {
+            state: "checked".to_string(),
+            text: "injected task".to_string(),
+            range: Range::new(Position::new(0, 0), Position::new(0, 5)),
+            start_byte: 0,
+            end_byte: 5,
+        }]),
+        ..Default::default()
+    };
+    let index = DocumentIndex::from_ast_with_overrides_opt(ast, overrides);
+    assert_eq!(index.embeds().len(), 1);
+    assert_eq!(index.embeds()[0].target, "injected");
+    assert_eq!(index.tasks().len(), 1);
+    assert_eq!(index.tasks()[0].state, "checked");
+    assert_eq!(index.tasks()[0].text, "injected task");
 }

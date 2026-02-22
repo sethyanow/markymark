@@ -226,6 +226,16 @@ pub struct IncrementalOverrides {
     pub xml_tags: Option<Vec<XmlTagOwned>>,
     /// Merged code spans from the incremental path, or `None` to re-extract.
     pub code_spans: Option<Vec<CodeSpanOwned>>,
+    /// Merged embeds from the incremental path, or `None` to re-extract.
+    pub embeds: Option<Vec<EmbedOwned>>,
+    /// Merged tasks from the incremental path, or `None` to re-extract.
+    pub tasks: Option<Vec<TaskOwned>>,
+    /// Merged callouts from the incremental path, or `None` to re-extract.
+    pub callouts: Option<Vec<CalloutOwned>>,
+    /// Merged query blocks from the incremental path, or `None` to re-extract.
+    pub query_blocks: Option<Vec<QueryBlockOwned>>,
+    /// Merged link definitions from the incremental path, or `None` to re-extract.
+    pub link_definitions: Option<Vec<LinkDefinitionOwned>>,
 }
 
 /// A markdown link entry stored in the index.
@@ -314,5 +324,151 @@ pub struct XmlTagEntry<'arena> {
     /// Start byte offset in the source document.
     pub start_byte: usize,
     /// End byte offset in the source document.
+    pub end_byte: usize,
+}
+
+/// An embed entry (`![[target]]`) stored in the index.
+#[derive(Debug, Clone)]
+pub struct EmbedEntry<'arena> {
+    /// The embedded resource path.
+    pub target: &'arena str,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset in the source document.
+    pub start_byte: usize,
+    /// End byte offset in the source document.
+    pub end_byte: usize,
+}
+
+/// Owned embed payload for incremental merge paths.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmbedOwned {
+    /// The embedded resource path.
+    pub target: String,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset.
+    pub start_byte: usize,
+    /// End byte offset.
+    pub end_byte: usize,
+}
+
+/// A task entry (checkbox item) stored in the index.
+#[derive(Debug, Clone)]
+pub struct TaskEntry<'arena> {
+    /// Checkbox state (e.g. "unchecked", "checked", "in_progress").
+    pub state: &'arena str,
+    /// Task description text.
+    pub text: &'arena str,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset in the source document.
+    pub start_byte: usize,
+    /// End byte offset in the source document.
+    pub end_byte: usize,
+}
+
+/// Owned task payload for incremental merge paths.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskOwned {
+    /// Checkbox state.
+    pub state: String,
+    /// Task description text.
+    pub text: String,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset.
+    pub start_byte: usize,
+    /// End byte offset.
+    pub end_byte: usize,
+}
+
+/// A callout entry (Obsidian `[!type]` blockquote) stored in the index.
+#[derive(Debug, Clone)]
+pub struct CalloutEntry<'arena> {
+    /// Callout type (e.g. "note", "warning", "tip").
+    pub callout_type: &'arena str,
+    /// Optional callout title.
+    pub title: Option<&'arena str>,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset in the source document.
+    pub start_byte: usize,
+    /// End byte offset in the source document.
+    pub end_byte: usize,
+}
+
+/// Owned callout payload for incremental merge paths.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CalloutOwned {
+    /// Callout type.
+    pub callout_type: String,
+    /// Optional callout title.
+    pub title: Option<String>,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset.
+    pub start_byte: usize,
+    /// End byte offset.
+    pub end_byte: usize,
+}
+
+/// A query block entry (Logseq `{{query ...}}`) stored in the index.
+#[derive(Debug, Clone)]
+pub struct QueryBlockEntry<'arena> {
+    /// The query text.
+    pub query: &'arena str,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset in the source document.
+    pub start_byte: usize,
+    /// End byte offset in the source document.
+    pub end_byte: usize,
+}
+
+/// Owned query block payload for incremental merge paths.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueryBlockOwned {
+    /// The query text.
+    pub query: String,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset.
+    pub start_byte: usize,
+    /// End byte offset.
+    pub end_byte: usize,
+}
+
+/// A link definition entry (`[label]: url "title"`) stored in the index.
+#[derive(Debug, Clone)]
+pub struct LinkDefinitionEntry<'arena> {
+    /// The link label.
+    pub label: &'arena str,
+    /// The link URL.
+    pub url: &'arena str,
+    /// Optional title.
+    pub title: Option<&'arena str>,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset in the source document.
+    pub start_byte: usize,
+    /// End byte offset in the source document.
+    pub end_byte: usize,
+}
+
+/// Owned link definition payload for incremental merge paths.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkDefinitionOwned {
+    /// The link label.
+    pub label: String,
+    /// The link URL.
+    pub url: String,
+    /// Optional title.
+    pub title: Option<String>,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset.
+    pub start_byte: usize,
+    /// End byte offset.
     pub end_byte: usize,
 }
