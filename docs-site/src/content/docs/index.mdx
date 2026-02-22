@@ -1,0 +1,69 @@
+---
+title: markymark
+description: High-performance Markdown language server and AI agent toolkit built in Rust and Zig.
+template: splash
+hero:
+  tagline: Navigate, search, and refactor your Markdown workspace at the speed of thought.
+  actions:
+    - text: Get Started
+      link: /getting-started/installation/
+      icon: right-arrow
+    - text: MCP Tools Reference
+      link: /features/mcp-tools/
+      icon: open-book
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+markymark is a language server and AI agent tool for Markdown-heavy projects. It understands your
+documents — headings, links, tags, cross-references — and gives your editor and AI agents a
+structured view of your knowledge base. Works with VS Code, Neovim, and Claude Code out of the box.
+
+## What markymark does
+
+<CardGrid stagger>
+  <Card title="Jump to definitions" icon="right-arrow">
+    Go to definition on wiki links, heading references, and block IDs. Navigate across hundreds of
+    files instantly.
+  </Card>
+  <Card title="Find all references" icon="magnifier">
+    See every document that links to a heading, tag, or code symbol. Rename with confidence — all
+    references update automatically.
+  </Card>
+  <Card title="Catch broken links" icon="warning">
+    Diagnostics flag broken internal links, duplicate headings, and malformed anchors as you type,
+    before they become problems.
+  </Card>
+  <Card title="Search your workspace" icon="magnifier">
+    Fuzzy symbol search, full-text search, frontmatter filtering, and regex search with context
+    lines — all from your editor or AI agent.
+  </Card>
+  <Card title="AI agent toolkit" icon="rocket">
+    Runs as an MCP server so AI agents can query document structure, search symbols, and navigate
+    references without reading whole files.
+  </Card>
+  <Card title="Obsidian and Logseq support" icon="document">
+    Full support for wiki links, callouts, block IDs, and page properties. Works with your existing
+    Obsidian vault or Logseq graph.
+  </Card>
+</CardGrid>
+
+## Quick install
+
+```bash
+cargo install markymark-cli
+```
+
+Or grab a pre-built binary for macOS (ARM64/x86_64), Linux, or Windows from
+[GitHub Releases](https://github.com/sethyanow/markymark/releases).
+
+A [VS Code extension](https://marketplace.visualstudio.com/items?itemName=sethyanow.markymark)
+and [Claude Code plugin](/editors/claude-code/) are also available.
+
+## Where to go next
+
+- **New to markymark?** → [Installation guide](/getting-started/installation/) then [Quick Start](/getting-started/quick-start/)
+- **Using an editor?** → [VS Code](/editors/vscode/), [Neovim](/editors/neovim/), or [Claude Code](/editors/claude-code/)
+- **Building with AI agents?** → [Agent tutorial](/guides/agents/) and [MCP Tools Reference](/features/mcp-tools/)
+- **Contributing?** → [Development setup](/contributing/development/)

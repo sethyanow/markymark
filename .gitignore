@@ -31,3 +31,8 @@ zig-out/
 .brain
 
 brza-spec.md
+
+# Docs site (Starlight/Astro)
+docs-site/node_modules/
+docs-site/dist/
+docs-site/.astro/
