@@ -30,8 +30,8 @@ use markymark_core::{Position, Range};
 use super::{
     helpers, BlockEntry, BlockRefEntry, CalloutEntry, CodeSpanEntry, DocumentDependent,
     DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry, HeadingEntry,
-    LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry, QueryBlockEntry, TagEntry, TaskEntry,
-    WikiLinkEntry, XmlTagEntry, XmlTagOwned,
+    LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry,
+    TagEntry, TaskEntry, WikiLinkEntry, XmlTagEntry, XmlTagOwned,
 };
 
 mod decode;
@@ -137,6 +137,7 @@ impl DocumentIndex {
             block_refs: block_refs_owned,
             query_blocks: query_blocks_owned,
             link_definitions: link_defs_owned,
+            properties: properties_owned,
         } = decode_owned_data(data, &header, &offsets, text_pool)?;
 
         // ── Build DocumentIndex via self_cell ────────────────────────
@@ -290,7 +291,31 @@ impl DocumentIndex {
 
             let frontmatter = BumpVec::<FrontmatterEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let aliases = BumpVec::<&str>::new_in(arena_ref).into_bump_slice();
-            let properties = BumpVec::<PropertyEntry<'_>>::new_in(arena_ref).into_bump_slice();
+
+            // --- Properties ---
+            let mut props_builder = BumpVec::new_in(arena_ref);
+            for pd in &properties_owned {
+                let key = arena_alloc_str(arena_ref, &pd.key);
+                let value = match pd.value_type {
+                    1 => {
+                        // List: split on comma, trim items
+                        let items: Vec<&str> = pd.value.split(',').map(|s| s.trim()).collect();
+                        let mut bump_items = BumpVec::new_in(arena_ref);
+                        for item in items {
+                            bump_items.push(arena_alloc_str(arena_ref, item));
+                        }
+                        PropertyValueEntry::List(bump_items.into_bump_slice())
+                    }
+                    2 => {
+                        // PageRef: strip [[ and ]]
+                        let inner = pd.value.trim_start_matches("[[").trim_end_matches("]]");
+                        PropertyValueEntry::PageRef(arena_alloc_str(arena_ref, inner))
+                    }
+                    _ => PropertyValueEntry::String(arena_alloc_str(arena_ref, &pd.value)),
+                };
+                props_builder.push(PropertyEntry { key, value });
+            }
+            let properties = props_builder.into_bump_slice();
 
             // --- Tasks ---
             let mut tasks_builder = BumpVec::new_in(arena_ref);

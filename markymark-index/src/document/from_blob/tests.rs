@@ -944,3 +944,75 @@ fn test_from_blob_block_ref_parity_with_from_scan() {
         assert_eq!(b.uuid, s.uuid, "block ref uuid mismatch");
     }
 }
+
+// ── Property tests (B-6) ──────────────────────────────────────────────
+
+#[test]
+fn test_from_blob_properties_string() {
+    let text = "tags:: project\nstatus:: active\n\n# Content\n";
+    let blob = blob_for(text);
+    let idx = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    let props = idx.properties();
+    assert_eq!(props.len(), 2, "expected 2 properties");
+    assert_eq!(props[0].key, "tags");
+    assert_eq!(props[1].key, "status");
+    // Both are simple strings
+    match &props[0].value {
+        super::super::PropertyValueEntry::String(v) => assert_eq!(*v, "project"),
+        other => panic!("expected String, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_from_blob_properties_list() {
+    let text = "tags:: foo, bar, baz\n\n# Content\n";
+    let blob = blob_for(text);
+    let idx = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    let props = idx.properties();
+    assert_eq!(props.len(), 1);
+    match &props[0].value {
+        super::super::PropertyValueEntry::List(items) => {
+            assert_eq!(items.len(), 3);
+            assert_eq!(items[0], "foo");
+            assert_eq!(items[1], "bar");
+            assert_eq!(items[2], "baz");
+        }
+        other => panic!("expected List, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_from_blob_properties_page_ref() {
+    let text = "author:: [[Jane]]\n\n# Content\n";
+    let blob = blob_for(text);
+    let idx = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    let props = idx.properties();
+    assert_eq!(props.len(), 1);
+    match &props[0].value {
+        super::super::PropertyValueEntry::PageRef(v) => assert_eq!(*v, "Jane"),
+        other => panic!("expected PageRef, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_from_blob_no_properties() {
+    let text = "# Just heading\n\nNo properties here.\n";
+    let blob = blob_for(text);
+    let idx = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    assert!(idx.properties().is_empty());
+}
+
+#[test]
+fn test_from_blob_properties_match_from_scan() {
+    use markymark_core::scanner::Md4cScanBackend;
+    let text = "tags:: project\nstatus:: active\nauthor:: [[Jane]]\n\n# Content\n";
+    let blob = blob_for(text);
+    let blob_idx = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    let scan_idx = DocumentIndex::from_scan(text, &Md4cScanBackend);
+    let blob_props = blob_idx.properties();
+    let scan_props = scan_idx.properties();
+    assert_eq!(blob_props.len(), scan_props.len(), "property count mismatch");
+    for (b, s) in blob_props.iter().zip(scan_props.iter()) {
+        assert_eq!(b.key, s.key, "property key mismatch");
+    }
+}

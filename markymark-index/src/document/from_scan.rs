@@ -15,8 +15,8 @@ use std::collections::HashMap as StdHashMap;
 use super::{
     helpers, BlockEntry, BlockRefEntry, CalloutEntry, CodeSpanEntry, DocumentDependent,
     DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry, HeadingEntry,
-    LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry, QueryBlockEntry, TagEntry, TaskEntry,
-    WikiLinkEntry, XmlTagEntry,
+    LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry,
+    TagEntry, TaskEntry, WikiLinkEntry, XmlTagEntry,
 };
 
 impl DocumentIndex {
@@ -42,6 +42,7 @@ impl DocumentIndex {
             scan_block_refs,
             scan_query_blocks,
             scan_link_definitions,
+            scan_properties,
         ) = match backend.scan_all(text) {
             Ok(result) => (
                 result.headings,
@@ -53,6 +54,7 @@ impl DocumentIndex {
                 result.block_refs,
                 result.query_blocks,
                 result.link_definitions,
+                result.properties,
             ),
             Err(_) => (
                 backend.scan_headings(text).unwrap_or_default(),
@@ -64,6 +66,7 @@ impl DocumentIndex {
                 backend.scan_block_refs(text).unwrap_or_default(),
                 backend.scan_query_blocks(text).unwrap_or_default(),
                 backend.scan_link_definitions(text).unwrap_or_default(),
+                backend.scan_properties(text).unwrap_or_default(),
             ),
         };
         let scan_tags = backend.scan_tags(text).unwrap_or_default();
@@ -214,10 +217,34 @@ impl DocumentIndex {
             }
             let code_spans = cs_builder.into_bump_slice();
 
-            // Frontmatter/properties: not available from scan backend
+            // Frontmatter/aliases: not available from scan backend
             let frontmatter = BumpVec::<FrontmatterEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let aliases = BumpVec::<&str>::new_in(arena_ref).into_bump_slice();
-            let properties = BumpVec::<PropertyEntry<'_>>::new_in(arena_ref).into_bump_slice();
+
+            // --- Properties ---
+            let mut props_builder = BumpVec::new_in(arena_ref);
+            for p in &scan_properties {
+                let key = arena_alloc_str(arena_ref, &p.key);
+                let value = match p.value_type {
+                    1 => {
+                        // List: split on comma, trim items
+                        let items: Vec<&str> = p.value.split(',').map(|s| s.trim()).collect();
+                        let mut bump_items = BumpVec::new_in(arena_ref);
+                        for item in items {
+                            bump_items.push(arena_alloc_str(arena_ref, item));
+                        }
+                        PropertyValueEntry::List(bump_items.into_bump_slice())
+                    }
+                    2 => {
+                        // PageRef: strip [[ and ]]
+                        let inner = p.value.trim_start_matches("[[").trim_end_matches("]]");
+                        PropertyValueEntry::PageRef(arena_alloc_str(arena_ref, inner))
+                    }
+                    _ => PropertyValueEntry::String(arena_alloc_str(arena_ref, &p.value)),
+                };
+                props_builder.push(PropertyEntry { key, value });
+            }
+            let properties = props_builder.into_bump_slice();
 
             // --- Tasks ---
             let mut tasks_builder = BumpVec::new_in(arena_ref);

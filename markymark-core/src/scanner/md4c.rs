@@ -263,6 +263,22 @@ impl super::ScanBackend for Md4cScanBackend {
             .map_err(|e| ScanError::InternalError(e.to_string()))
     }
 
+    fn scan_properties(&self, text: &str) -> Result<Vec<PropertyResult>, ScanError> {
+        markymark_kernels::md4c::extract_md4c(text)
+            .map(|extraction| {
+                extraction
+                    .properties
+                    .into_iter()
+                    .map(|p| PropertyResult {
+                        key: p.key,
+                        value: p.value,
+                        value_type: p.value_type,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
     fn scan_all(&self, text: &str) -> Result<ScanAllResult, ScanError> {
         markymark_kernels::md4c::extract_md4c(text)
             .map(|extraction| ScanAllResult {
@@ -336,6 +352,15 @@ impl super::ScanBackend for Md4cScanBackend {
                         title: ld.title,
                         offset: ld.source_offset,
                         end_offset: ld.end_offset,
+                    })
+                    .collect(),
+                properties: extraction
+                    .properties
+                    .into_iter()
+                    .map(|p| PropertyResult {
+                        key: p.key,
+                        value: p.value,
+                        value_type: p.value_type,
                     })
                     .collect(),
             })

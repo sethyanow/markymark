@@ -132,6 +132,12 @@ pub(super) struct LinkDefinitionData {
     pub(super) end_col: u32,
 }
 
+pub(super) struct PropertyData {
+    pub(super) key: String,
+    pub(super) value: String,
+    pub(super) value_type: u8,
+}
+
 pub(super) struct DecodedOwnedData {
     pub(super) headings: Vec<HeadingData>,
     pub(super) wiki_links: Vec<WikiData>,
@@ -145,5 +151,6 @@ pub(super) struct DecodedOwnedData {
     pub(super) block_refs: Vec<BlockRefData>,
     pub(super) query_blocks: Vec<QueryBlockData>,
     pub(super) link_definitions: Vec<LinkDefinitionData>,
+    pub(super) properties: Vec<PropertyData>,
 }
 

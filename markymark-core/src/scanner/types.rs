@@ -164,6 +164,17 @@ pub struct LinkDefinitionResult {
     pub end_offset: u32,
 }
 
+/// A property found by a scan backend (e.g. `tags:: project`).
+#[derive(Debug, Clone)]
+pub struct PropertyResult {
+    /// The property key.
+    pub key: String,
+    /// The raw property value (not yet classified).
+    pub value: String,
+    /// Value type: 0=string, 1=list, 2=page_ref.
+    pub value_type: u8,
+}
+
 /// Combined result from a single-pass scan of headings, links, code spans, tasks, embeds,
 /// callouts, and block refs.
 #[derive(Debug, Default)]
@@ -186,4 +197,6 @@ pub struct ScanAllResult {
     pub query_blocks: Vec<QueryBlockResult>,
     /// Link definitions extracted from the document.
     pub link_definitions: Vec<LinkDefinitionResult>,
+    /// Properties extracted from the document.
+    pub properties: Vec<PropertyResult>,
 }

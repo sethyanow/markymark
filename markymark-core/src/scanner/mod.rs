@@ -95,6 +95,13 @@ pub trait ScanBackend: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// Scan text for Logseq-style properties (e.g. `tags:: project`).
+    ///
+    /// Default returns empty (backward compat for backends that don't extract).
+    fn scan_properties(&self, _text: &str) -> Result<Vec<PropertyResult>, ScanError> {
+        Ok(Vec::new())
+    }
+
     /// Scan text for headings, links, code spans, tasks, embeds, callouts, and
     /// block refs in a single pass.
     ///
@@ -112,6 +119,7 @@ pub trait ScanBackend: Send + Sync {
             block_refs: self.scan_block_refs(text)?,
             query_blocks: self.scan_query_blocks(text)?,
             link_definitions: self.scan_link_definitions(text)?,
+            properties: self.scan_properties(text)?,
         })
     }
 }

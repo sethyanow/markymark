@@ -410,6 +410,65 @@ mod md4c_tests {
         assert_eq!(all.link_definitions.len(), 1);
         assert_eq!(all.link_definitions[0].label, "label");
     }
+
+    // --- Property tests (B-6) ---
+
+    #[test]
+    fn test_md4c_scan_properties_basic() {
+        let backend = Md4cScanBackend;
+        let result = backend.scan_properties("tags:: project\n").unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].key, "tags");
+        assert_eq!(result[0].value, "project");
+        assert_eq!(result[0].value_type, 0); // string
+    }
+
+    #[test]
+    fn test_md4c_scan_properties_list() {
+        let backend = Md4cScanBackend;
+        let result = backend.scan_properties("tags:: foo, bar, baz\n").unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].key, "tags");
+        assert_eq!(result[0].value, "foo, bar, baz");
+        assert_eq!(result[0].value_type, 1); // list
+    }
+
+    #[test]
+    fn test_md4c_scan_properties_page_ref() {
+        let backend = Md4cScanBackend;
+        let result = backend.scan_properties("author:: [[Jane]]\n").unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].key, "author");
+        assert_eq!(result[0].value, "[[Jane]]");
+        assert_eq!(result[0].value_type, 2); // page_ref
+    }
+
+    #[test]
+    fn test_md4c_scan_properties_empty() {
+        let backend = Md4cScanBackend;
+        let result = backend.scan_properties("# Just heading\n").unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_md4c_scan_properties_stops_at_blank_line() {
+        let backend = Md4cScanBackend;
+        let result = backend
+            .scan_properties("tags:: project\n\nauthor:: Jane\n")
+            .unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].key, "tags");
+    }
+
+    #[test]
+    fn test_scan_all_includes_properties() {
+        let backend = Md4cScanBackend;
+        let text = "tags:: project\nstatus:: active\n\n# Heading\n";
+        let all = backend.scan_all(text).unwrap();
+        assert_eq!(all.properties.len(), 2);
+        assert_eq!(all.properties[0].key, "tags");
+        assert_eq!(all.properties[1].key, "status");
+    }
 }
 
 #[test]
@@ -467,10 +526,18 @@ fn test_default_scan_link_definitions_empty() {
 }
 
 #[test]
+fn test_default_scan_properties_empty() {
+    let backend = DummyScanBackend;
+    let result = backend.scan_properties("tags:: project").unwrap();
+    assert!(result.is_empty());
+}
+
+#[test]
 fn test_scan_all_includes_query_blocks_and_link_defs() {
     // Default scan_all returns empty vecs from default trait impls.
     let backend = DummyScanBackend;
     let all = backend.scan_all("").unwrap();
     assert!(all.query_blocks.is_empty());
     assert!(all.link_definitions.is_empty());
+    assert!(all.properties.is_empty());
 }

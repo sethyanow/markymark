@@ -1,11 +1,11 @@
 use super::header::{
     pool_str, read_u32_le, read_u8, BlobError, BlobHeader, SectionOffsets, BLOCK_ID_SIZE,
     BLOCK_REF_SIZE, CALLOUT_SIZE, CODE_SPAN_SIZE, EMBED_SIZE, HEADING_SIZE, LINK_DEF_SIZE,
-    LINK_SIZE, QUERY_BLOCK_SIZE, TAG_SIZE, TASK_SIZE,
+    LINK_SIZE, PROPERTY_SIZE, QUERY_BLOCK_SIZE, TAG_SIZE, TASK_SIZE,
 };
 use super::owned::{
     BlockData, BlockRefData, CalloutData, CodeSpanData, DecodedOwnedData, EmbedData, HeadingData,
-    LinkDefinitionData, MarkdownData, QueryBlockData, TagData, TaskData, WikiData,
+    LinkDefinitionData, MarkdownData, PropertyData, QueryBlockData, TagData, TaskData, WikiData,
 };
 
 pub(super) fn decode_owned_data(
@@ -384,6 +384,28 @@ pub(super) fn decode_owned_data(
         });
     }
 
+    // ── Properties ─────────────────────────────────────────────────
+    // BlobProperty layout (20 bytes):
+    //   key_off(4@0) key_len(4@4) value_off(4@8) value_len(4@12)
+    //   value_type(1@16) _pad(3@17)
+    let mut properties_owned: Vec<PropertyData> =
+        Vec::with_capacity(header.property_count as usize);
+    for i in 0..header.property_count as usize {
+        let base = offsets.properties + i * PROPERTY_SIZE;
+        let key_off = read_u32_le(data, base);
+        let key_len = read_u32_le(data, base + 4);
+        let value_off = read_u32_le(data, base + 8);
+        let value_len = read_u32_le(data, base + 12);
+        let value_type = read_u8(data, base + 16);
+        let key = pool_str(text_pool, key_off, key_len)?.to_owned();
+        let value = pool_str(text_pool, value_off, value_len)?.to_owned();
+        properties_owned.push(PropertyData {
+            key,
+            value,
+            value_type,
+        });
+    }
+
     Ok(DecodedOwnedData {
         headings: headings_owned,
         wiki_links: wiki_owned,
@@ -397,5 +419,6 @@ pub(super) fn decode_owned_data(
         block_refs: block_refs_owned,
         query_blocks: query_blocks_owned,
         link_definitions: link_defs_owned,
+        properties: properties_owned,
     })
 }
