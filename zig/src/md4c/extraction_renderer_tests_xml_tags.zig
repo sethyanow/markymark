@@ -263,5 +263,309 @@ test "xml_tags: multiple block-level tags on separate lines" {
     try testing.expectEqualStrings("goal", result.xml_tags[1].tag_name);
 }
 
+// ── Investigation: md4c inline HTML callback behavior ────────────────
+//
+// These tests verify md4c's behavior for inline HTML to inform the design
+// of inline XML tag extraction (marky-s64n). They use a spy renderer to
+// observe raw text callbacks.
+
+const root = @import("root.zig");
+const parser_mod = @import("parser.zig");
+const types = @import("types.zig");
+
+/// Spy renderer that captures TextType.html callbacks with pointer metadata.
+/// Content is duped so it survives parser cleanup (md4c internal buffers freed on deinit).
+const HtmlSpy = struct {
+    const Entry = struct {
+        content: []const u8, // owned copy
+        points_to_source: bool,
+    };
+
+    entries: std.ArrayListUnmanaged(Entry) = .{},
+    allocator: std.mem.Allocator,
+    src_text: []const u8,
+
+    fn init(allocator: std.mem.Allocator, src_text: []const u8) HtmlSpy {
+        return .{
+            .allocator = allocator,
+            .src_text = src_text,
+        };
+    }
+
+    fn deinit(self: *HtmlSpy) void {
+        for (self.entries.items) |entry| {
+            self.allocator.free(entry.content);
+        }
+        self.entries.deinit(self.allocator);
+    }
+
+    fn renderer(self: *HtmlSpy) types.Renderer {
+        return .{ .ptr = self, .vtable = &vtable };
+    }
+
+    const vtable: types.Renderer.VTable = .{
+        .enterBlock = struct {
+            fn f(_: *anyopaque, _: types.BlockType, _: u32, _: u32) types.CallbackError!void {}
+        }.f,
+        .leaveBlock = struct {
+            fn f(_: *anyopaque, _: types.BlockType, _: u32) types.CallbackError!void {}
+        }.f,
+        .enterSpan = struct {
+            fn f(_: *anyopaque, _: types.SpanType, _: types.SpanDetail) types.CallbackError!void {}
+        }.f,
+        .leaveSpan = struct {
+            fn f(_: *anyopaque, _: types.SpanType) types.CallbackError!void {}
+        }.f,
+        .text = textImpl,
+    };
+
+    fn textImpl(ptr: *anyopaque, text_type: types.TextType, content: []const u8) types.CallbackError!void {
+        if (text_type != .html) return;
+        const self: *HtmlSpy = @ptrCast(@alignCast(ptr));
+        const src_start = @intFromPtr(self.src_text.ptr);
+        const src_end = src_start + self.src_text.len;
+        const content_start = @intFromPtr(content.ptr);
+        const content_end = content_start + content.len;
+        const points_to_source = (content.len > 0 and content_start >= src_start and content_end <= src_end);
+        // Dupe content so it survives parser cleanup
+        const owned = self.allocator.dupe(u8, content) catch return error.OutOfMemory;
+        self.entries.append(self.allocator, .{
+            .content = owned,
+            .points_to_source = points_to_source,
+        }) catch {
+            self.allocator.free(owned);
+            return error.OutOfMemory;
+        };
+    }
+};
+
+test "investigation: md4c fires TextType.html for inline HTML" {
+    // Inline HTML: <agent>content</agent> within a paragraph
+    const input = "Hello <agent>content</agent> world\n";
+
+    var spy = HtmlSpy.init(testing.allocator, input);
+    defer spy.deinit();
+
+    const opts = root.Options{
+        .tables = true,
+        .strikethrough = true,
+        .tasklists = true,
+        .wiki_links = true,
+    };
+    try root.renderWithRenderer(input, testing.allocator, opts, spy.renderer());
+
+    // Q1: Does md4c fire TextType.html for inline HTML?
+    // If entries.len > 0, md4c does fire html callbacks for inline HTML.
+    try testing.expect(spy.entries.items.len > 0);
+
+    // Q2: What content does md4c pass?
+    // Log the entries for inspection.
+    // Expected: separate callbacks for <agent>, </agent> (not the content between them).
+    for (spy.entries.items) |entry| {
+        // Q3: Do inline HTML pointers point to source text or md4c internal buffer?
+        // The design assumed inline HTML points to internal buffer (points_to_source = false).
+        // This test empirically verifies that assumption.
+        _ = entry;
+    }
+
+    // Verify at least 2 entries (open tag + close tag)
+    try testing.expect(spy.entries.items.len >= 2);
+
+    // Verify the content matches expected tag text
+    try testing.expectEqualStrings("<agent>", spy.entries.items[0].content);
+    try testing.expectEqualStrings("</agent>", spy.entries.items[1].content);
+}
+
+test "investigation: inline HTML pointers are NOT in source text range" {
+    const input = "Hello <agent>content</agent> world\n";
+
+    var spy = HtmlSpy.init(testing.allocator, input);
+    defer spy.deinit();
+
+    const opts = root.Options{
+        .tables = true,
+        .strikethrough = true,
+        .tasklists = true,
+        .wiki_links = true,
+    };
+    try root.renderWithRenderer(input, testing.allocator, opts, spy.renderer());
+
+    // The design states inline HTML content pointers point to md4c's internal buffer,
+    // NOT the source text. Verify this critical assumption.
+    for (spy.entries.items) |entry| {
+        // If this fails (points_to_source = true), then inline HTML CAN be extracted
+        // using the existing pointer-bounds approach, and the design needs revision.
+        try testing.expect(!entry.points_to_source);
+    }
+}
+
+test "investigation: block-level HTML pointers ARE in source text range" {
+    // Block-level HTML: tag on own line with blank lines around it
+    const input = "<agent>\n\ncontent\n\n</agent>\n";
+
+    var spy = HtmlSpy.init(testing.allocator, input);
+    defer spy.deinit();
+
+    const opts = root.Options{
+        .tables = true,
+        .strikethrough = true,
+        .tasklists = true,
+        .wiki_links = true,
+    };
+    try root.renderWithRenderer(input, testing.allocator, opts, spy.renderer());
+
+    // Block-level HTML should have at least some pointers into source text
+    try testing.expect(spy.entries.items.len > 0);
+    var source_count: usize = 0;
+    for (spy.entries.items) |entry| {
+        if (entry.points_to_source) source_count += 1;
+    }
+    // At least the tag lines should point to source
+    try testing.expect(source_count > 0);
+}
+
+test "investigation: inline HTML inside code span NOT fired" {
+    // Inline code: `<agent>` — should NOT fire TextType.html
+    const input = "Hello `<agent>` world\n";
+
+    var spy = HtmlSpy.init(testing.allocator, input);
+    defer spy.deinit();
+
+    const opts = root.Options{
+        .tables = true,
+        .strikethrough = true,
+        .tasklists = true,
+        .wiki_links = true,
+    };
+    try root.renderWithRenderer(input, testing.allocator, opts, spy.renderer());
+
+    // md4c should NOT fire TextType.html for HTML inside code spans.
+    // It fires TextType.code instead.
+    try testing.expectEqual(@as(usize, 0), spy.entries.items.len);
+}
+
+test "investigation: inline HTML inside fenced code block NOT fired" {
+    // Fenced code block
+    const input = "```\n<agent>content</agent>\n```\n";
+
+    var spy = HtmlSpy.init(testing.allocator, input);
+    defer spy.deinit();
+
+    const opts = root.Options{
+        .tables = true,
+        .strikethrough = true,
+        .tasklists = true,
+        .wiki_links = true,
+    };
+    try root.renderWithRenderer(input, testing.allocator, opts, spy.renderer());
+
+    // md4c should NOT fire TextType.html for HTML inside fenced code blocks.
+    try testing.expectEqual(@as(usize, 0), spy.entries.items.len);
+}
+
+test "investigation: multiple inline tags on same line" {
+    const input = "Text <a>one</a> and <b>two</b> end\n";
+
+    var spy = HtmlSpy.init(testing.allocator, input);
+    defer spy.deinit();
+
+    const opts = root.Options{
+        .tables = true,
+        .strikethrough = true,
+        .tasklists = true,
+        .wiki_links = true,
+    };
+    try root.renderWithRenderer(input, testing.allocator, opts, spy.renderer());
+
+    // Should fire 4 html callbacks: <a>, </a>, <b>, </b>
+    try testing.expectEqual(@as(usize, 4), spy.entries.items.len);
+    try testing.expectEqualStrings("<a>", spy.entries.items[0].content);
+    try testing.expectEqualStrings("</a>", spy.entries.items[1].content);
+    try testing.expectEqualStrings("<b>", spy.entries.items[2].content);
+    try testing.expectEqualStrings("</b>", spy.entries.items[3].content);
+}
+
+test "investigation: inline HTML callback content detail" {
+    // Verify exact content of each inline HTML callback
+    const input = "Hello <agent>content</agent> world\n";
+
+    var spy = HtmlSpy.init(testing.allocator, input);
+    defer spy.deinit();
+
+    const opts = root.Options{
+        .tables = true,
+        .strikethrough = true,
+        .tasklists = true,
+        .wiki_links = true,
+    };
+    try root.renderWithRenderer(input, testing.allocator, opts, spy.renderer());
+
+    // Verify md4c fires separate callbacks for open and close tags.
+    // The content between tags (<agent>content</agent>) is NOT fired as TextType.html —
+    // it's fired as TextType.normal.
+    try testing.expectEqual(@as(usize, 2), spy.entries.items.len);
+    try testing.expectEqualStrings("<agent>", spy.entries.items[0].content);
+    try testing.expectEqualStrings("</agent>", spy.entries.items[1].content);
+
+    // Both should be internal buffer pointers (not source text)
+    try testing.expect(!spy.entries.items[0].points_to_source);
+    try testing.expect(!spy.entries.items[1].points_to_source);
+}
+
+test "investigation: block-level HTML callback content includes full lines" {
+    // Block-level HTML: lines include newlines
+    const input = "<agent>\n\ncontent\n\n</agent>\n";
+
+    var spy = HtmlSpy.init(testing.allocator, input);
+    defer spy.deinit();
+
+    const opts = root.Options{
+        .tables = true,
+        .strikethrough = true,
+        .tasklists = true,
+        .wiki_links = true,
+    };
+    try root.renderWithRenderer(input, testing.allocator, opts, spy.renderer());
+
+    // Block-level HTML: md4c fires one callback per line of the HTML block,
+    // with the full line content including newline.
+    try testing.expect(spy.entries.items.len >= 1);
+
+    // Check that the first entry contains the opening tag line
+    var found_open = false;
+    var found_close = false;
+    for (spy.entries.items) |entry| {
+        if (std.mem.indexOf(u8, entry.content, "<agent>") != null) found_open = true;
+        if (std.mem.indexOf(u8, entry.content, "</agent>") != null) found_close = true;
+    }
+    try testing.expect(found_open);
+    try testing.expect(found_close);
+}
+
+test "investigation: mixed inline and block-level HTML" {
+    // Block-level tag first, then paragraph with inline tag
+    const input = "<div>\n\nblock content\n\n</div>\n\nParagraph with <span>inline</span> tag\n";
+
+    var spy = HtmlSpy.init(testing.allocator, input);
+    defer spy.deinit();
+
+    const opts = root.Options{
+        .tables = true,
+        .strikethrough = true,
+        .tasklists = true,
+        .wiki_links = true,
+    };
+    try root.renderWithRenderer(input, testing.allocator, opts, spy.renderer());
+
+    // Should have both block-level (source pointers) and inline (internal buffer) entries
+    var has_source = false;
+    var has_internal = false;
+    for (spy.entries.items) |entry| {
+        if (entry.points_to_source) has_source = true else has_internal = true;
+    }
+    try testing.expect(has_source); // block-level <div>...</div>
+    try testing.expect(has_internal); // inline <span>...</span>
+}
+
 // NOTE: DocumentEngine integration and blob serialization tests live in
 // engine/document_test.zig (cannot cross module path boundary from md4c/).
