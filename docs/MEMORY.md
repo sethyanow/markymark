@@ -455,25 +455,15 @@ false positive due to not following symlinks (2026-02-20).
 - **Zero-copy blob borrowing** — investigated, not worth it. Breaks DocumentIndex lifetime model for ~1-2ms.
 - **Edit range support in engine.update()** — prerequisite for incremental md4c, no longer premature.
 
-### RealmIndex v2 (marky-n7wx) — ALL 4 LAYERS DONE
+### RealmIndex v2 (marky-n7wx) — COMPLETE
 
-Investigation revealed the real post-Epic-H bottleneck is **RealmIndex cross-doc indexing**, not
-the engine pipeline. On every 75ms edit: remove_document allocates N+B+T Strings for HashMap
-key lookups, add_document allocates ~52 Strings for a 50-heading doc, find_uri_by_stem is O(D).
+lasso Rodeo interner in RealmIndex. Cross-doc HashMaps keyed by Spur (u32) instead of String.
+`update_document()` diffs `DocContribution` (HashSets of Spur) — fast path skips all cross-doc
+ops when structure unchanged. Lazy `tag_to_docs` via `tags_dirty` flag; `tag_counts(&self)`
+computes from contributions when dirty (no interior mutability). `find_uri_by_stem()` is O(1)
+via `stem_to_uris` index. Wired into LSP at `state/mod.rs:245,333`.
 
-Epic marky-n7wx addresses this in 4 layers:
-1. **String interning** (marky-2yzz, DONE) — lasso Rodeo interner, Spur-keyed HashMaps.
-2. **Stem index** (marky-e2nu, DONE) — O(1) wiki link resolution via Spur-keyed HashMap.
-3. **Incremental cross-doc updates** (marky-c9dm, DONE) — diff old vs new contributions, patch only changes.
-4. **Lazy cold indexes** (marky-tuxu, DONE) — tags_dirty flag defers tag_to_docs patching. tag_counts() computes from contributions when dirty (read-only, no interior mutability). key_path_to_docs already lazy (never touched by update_document). old_contrib.clone() eliminated. Quadratic patch_headings fixed.
-
-**Layer 4 threading design:** ServerState behind Arc<tokio::RwLock>. tag_counts(&self) called from LSP completion with read lock. Changing to &mut self would block concurrent reads. Solution: when dirty, compute from contributions (O(D * avg_tags), microseconds for 1000-doc vault). &mut self paths call ensure_tags_clean() which rebuilds tag_to_docs.
-
-**Layer 3 issues fixed in Layer 4 (e75b624):**
-- `old_contrib.clone()` — replaced with contributions.remove() for owned access (no 4-HashSet clone)
-- `patch_headings` quadratic scan — slug-to-entries HashMap built once, O(N*H) → O(N+H)
-
-Key design decisions (SRE review, 2026-02-19):
+Key design decisions:
 - **Rodeo not ThreadedRodeo** — RealmIndex is single-threaded, simpler API.
 - **Don't intern URIs** — unique per document, no dedup benefit.
 - **ResolvedHeading keeps String fields** — resolve Spur→&str at query boundary (cold path).
@@ -643,131 +633,23 @@ false positives — do not re-triage. Same pattern may apply to other verbatim s
 
 ---
 
-## Cross-Language Symbol Bridging (Epic marky-ix3)
+## Cross-Language Symbol Bridging (Epic marky-ix3) — COMPLETE
 
-### Vision (2026-02-20): Universal Symbol Search for Agents
+All 11 markdown-content extractors migrated from extract.rs regex to Zig ExtractionRenderer.
+Only frontmatter stays in Rust. Blob v2 header (128 bytes, 8 new count fields). MCP batch
+path uses from_blob instead of from_ast. Code spans surfaced via LSP (workspaceSymbol, hover)
+and MCP (search-symbols). Three phases completed: A (code spans all paths), B (extractor
+migration B-1..B-9), C (extract.rs cleanup).
 
-ix3's value expanded from "cross-language symbol bridging" to "unified agent knowledge layer."
-Generated code docs (external markdown from rustdoc etc.) dropped into workspace. markymark
-indexes all backtick code references uniformly. Agents query via standard LSP calls
-(workspaceSymbol, hover, findReferences) — no special tooling. Tool stays indifferent to
-generated vs hand-written markdown.
+### Key Decisions (retained for future reference)
 
-### Architectural Drift (assessed 2026-02-20)
-
-Design was cut Feb 16. Three shifts since: Option H blob format (no code_span_count),
-ExtractionRenderer solidified (SpanType::code exists but ignored), ScanBackend trait has
-no scan_code_spans(). All three DocumentIndex construction paths need code span support
-(from_ast, from_scan, from_blob) — ix3 only addressed from_scan.
-
-### Key Decisions
-
-- **Tier 1 only for first pass** — backtick inline code spans, no confidence scoring
-- **kind field is Optional** — Tier 1 can't determine struct/fn/trait from backtick text
-- **All 3 construction paths required for Tier 1** — from_scan (Zig FFI), from_blob (blob v2),
-  from_ast (extract.rs regex). No silent gaps where some paths lack code spans.
-- **fgl8 deferred** — extract.rs at 862 lines, under 1000-line hard stop. Phase B will
-  progressively empty it anyway, making a pre-split busywork.
-- **Zig consolidation committed in ix3** — all 11 markdown-content extractors migrate from
-  extract.rs regex to Zig ExtractionRenderer. Only frontmatter stays in Rust. Three phases:
-  A (code spans all paths), B (extractor migration), C (extract.rs becomes shim).
-- **No BLOB_VERSION bump for code spans** — use _reserved[0..3] as code_span_count. v1 blobs
-  have zeros there, so code_span_count==0 is naturally backward-compatible. Save v2 for Phase B.
-- **from_blob backward-compatible** — must read both v1 (no code spans) and v2 blobs.
-- **FFI path is md4c/exports.zig** — CMd4cResult extended with code_spans pointer and count.
-  NOT engine/exports.zig (that's the Document Engine lifecycle only).
-- **Separate code_scan_cursor** — per marky-0rl6 lesson, never share mutable scan cursors
-  between extraction types. Code spans get their own cursor.
-- **bt3e refinement complete** — ix3 epic updated, first task marky-pdyo SRE-refined and ready.
-
-### Pipeline Status (assessed 2026-02-20)
-
-Phase A-1 (marky-pdyo, DONE) built the bottom half only:
-- Zig ExtractionRenderer: captures code spans (enterSpan/leaveSpan .code)
-- FFI: CMd4cCodeSpan struct, CMd4cResult extended
-- Rust FFI types: Md4cCodeSpan, CodeSpanEntry, CodeSpanOwned, SymbolKind
-- IncrementalOverrides: has code_spans field
-
-**Not yet wired (Phase A-2, marky-vsh2):**
-- DocumentEngine/parseAll: does not extract code spans
-- Engine blob: does not serialize code spans (no BlobCodeSpan, no header field)
-- from_blob: cannot deserialize code spans
-- ScanBackend: no scan_code_spans() method
-- from_scan: does not wire code spans into DocumentDependent
-- DocumentDependent: no code_spans field
-- DocumentIndex: no code_spans() accessor
-
-**Not yet wired (Phase A-3, not created):**
-- RealmIndex: code_span_to_docs field exists (Spur-keyed) but is always empty
-- LSP: workspaceSymbol/hover don't surface code spans
-- MCP: search-symbols doesn't include code spans
-
-### Execution Order (updated 2026-02-21)
-
-1. ~~**ix3 A-2 (marky-vsh2)** — wire code spans through engine/blob/from_blob/ScanBackend/from_scan~~ DONE
-2. ~~**n7wx Layer 1 (marky-2yzz)** — string interning~~ DONE
-3. ~~**ix3 A-3 (marky-ix3.1)** — LSP/MCP surfaces + RealmIndex cross-doc index (benefits from interning)~~ DONE
-4. **ix3 Phase B** — Zig extraction consolidation (9 tasks, see below)
-5. **n7wx Layers 2-4** — stem index, incremental updates, lazy cold indexes
-
-n7wx is orthogonal: RealmIndex stays Rust regardless. ix3 is the Zig-sink work.
-
-### Phase B Plan (Refined 2026-02-21)
-
-**Key architectural decisions:**
-- **from_ast → from_blob** for MCP batch indexing. DocumentEngine → blob → from_blob replaces
-  tree-sitter → extract.rs regex. Tree-sitter retained only for frontmatter (YAML/TOML stays Rust).
-- **ALL extractors in Zig** — embeds, tasks, callouts, query_blocks, link_definitions implemented
-  in Zig ExtractionRenderer (currently public API only, not in DocumentDependent).
-- **Full path parity** — block_refs, properties, xml_tags added to Zig/blob pipeline.
-- **Blob v2** — header expands 64→128 bytes with 8 new count fields + 44 bytes reserved.
-
-**md4c callback availability:**
-- Direct callback: Tasks (LiDetail.is_task), Callouts (enterBlock .quote + text check),
-  Embeds (leaveSpan .wikilink + preceding `!` check), XML tags (TextType.html)
-- Text scanning needed: Block refs `((uuid))`, Properties `key:: value`, Query blocks
-  `{{query}}`, Link definitions `[label]: url`
-
-**Task order (9 tasks, B-1 first: marky-2u6h):**
-~~B-1: Blob v2 header expansion (foundation) — marky-2u6h~~ DONE
-~~B-2: DocumentDependent type additions (5 new entry types) — marky-w4d1~~ DONE
-~~B-3: Tasks + Embeds — marky-oiw5 (B-3.1 Zig: marky-rd7r, B-3.2 Rust: marky-bmu9)~~ DONE
-~~B-4: Callouts + Block refs — marky-h9qe (B-4.0: marky-7kmo, B-4.1 Zig: marky-1r0t, B-4.2 Rust: marky-8ac8)~~ DONE
-~~B-5: Link defs + Query blocks (text scan)~~ DONE
-~~B-6: Properties (structured parsing) — marky-3uqj (B-6.1: fa98602, B-6.2: 4a86687)~~ DONE
-B-7: XML tags (complex parser migration)
-B-8: MCP batch path migration (from_ast → from_blob)
-B-9: extract.rs cleanup (remove dead code)
-
-Each B-3..B-7 follows: Zig extraction → blob struct + header count → from_blob deserialization
-→ DocumentDependent field + accessor → tests → remove extract.rs regex.
-
-**5 unused extractors added to DocumentDependent:**
-embeds, tasks, callouts, query_blocks, link_definitions currently exist as Ast public API
-methods (extract.rs regex) but are NOT stored in DocumentIndex. Phase B adds them to
-DocumentDependent, making them available via all construction paths.
-
-### Phase A-3 Complete (2026-02-21, marky-ix3.1)
-
-Code spans surfaced to end users via three channels:
-- **RealmIndex:** code_span_to_docs populated on add_document (Spur-keyed, dedup by text per doc),
-  cleaned on remove, lookup_code_span() method added.
-- **LSP workspaceSymbol:** code spans returned alongside headings/tags/xml_tags (SymbolKind::VARIABLE).
-- **LSP hover:** CodeSpan variant added to SymbolAtPosition. Shows cross-doc reference count.
-- **MCP search-symbols:** code span text added as fuzzy match candidates (per-doc dedup).
-
-Known gap: MCP batch indexing (from_workspace_roots → from_ast) doesn't extract code spans.
-Only LSP (from_blob) and from_scan paths populate code spans. Phase B will address from_ast
-via Zig consolidation.
-
-### n7wx Layer 1 Complete (2026-02-21, marky-2yzz)
-
-lasso::Rodeo interner added to RealmIndex. Three cross-doc HashMaps (slug_to_headings,
-block_to_location, tag_to_docs) changed from String keys to Spur keys. code_span_to_docs
-added as Spur-keyed placeholder (empty until ix3 A-3). ResolvedCodeSpan type added to
-realm/types.rs. docs and key_path_to_docs remain String-keyed per design (URIs unique,
-key paths low repetition). 7 new regression tests added. Public API unchanged — callers
-pass `&str` to lookup methods, interner resolves internally.
+- **Separate cursors per extraction type** — per marky-0rl6, never share mutable scan cursors.
+- **from_blob backward-compatible** — reads both v1 and v2 blobs (code_span_count in _reserved).
+- **FFI path is md4c/exports.zig** — NOT engine/exports.zig (that's Document Engine lifecycle).
+- **Each B-task pattern:** Zig extraction → blob struct + header count → from_blob → DocumentDependent field → tests → remove extract.rs regex.
+- **md4c callback types:** Tasks (LiDetail.is_task), Callouts (enterBlock .quote), Embeds
+  (leaveSpan .wikilink + `!`), XML tags (TextType.html). Text scanning: block refs `((uuid))`,
+  properties `key:: value`, query blocks `{{query}}`, link defs `[label]: url`.
 
 ---
 
