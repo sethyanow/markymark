@@ -117,6 +117,18 @@ comptime {
     std.debug.assert(@sizeOf(CMd4cLinkDefinition) == 32);
 }
 
+pub const CMd4cProperty = extern struct {
+    key_offset: u32, // offset into text_blob for key
+    key_length: u32,
+    value_offset: u32, // offset into text_blob for raw value
+    value_length: u32,
+    value_type: u8, // 0=string, 1=list, 2=page_ref
+    _pad: [3]u8 = .{ 0, 0, 0 },
+};
+comptime {
+    std.debug.assert(@sizeOf(CMd4cProperty) == 20);
+}
+
 // Pointers grouped first, then u32 counts — avoids internal padding on 64-bit.
 pub const CMd4cResult = extern struct {
     headings: ?[*]CMd4cHeading, // Zig-allocated array, freed by marky_md4c_free
@@ -128,6 +140,7 @@ pub const CMd4cResult = extern struct {
     block_refs: ?[*]CMd4cBlockRef, // Zig-allocated array, freed by marky_md4c_free
     query_blocks: ?[*]CMd4cQueryBlock, // Zig-allocated array, freed by marky_md4c_free
     link_definitions: ?[*]CMd4cLinkDefinition, // Zig-allocated array, freed by marky_md4c_free
+    properties: ?[*]CMd4cProperty, // Zig-allocated array, freed by marky_md4c_free
     text_blob: ?[*]const u8, // concatenated decoded texts, freed by marky_md4c_free
     headings_count: u32,
     links_count: u32,
@@ -138,10 +151,12 @@ pub const CMd4cResult = extern struct {
     block_refs_count: u32,
     query_blocks_count: u32,
     link_definitions_count: u32,
+    properties_count: u32,
     text_blob_len: u32,
 };
 comptime {
-    std.debug.assert(@sizeOf(CMd4cResult) == 120);
+    // 11 pointers (88) + 11 u32 (44) + 4 padding = 136
+    std.debug.assert(@sizeOf(CMd4cResult) == 136);
 }
 
 // ── C ABI Functions ──────────────────────────────────────────────────
@@ -185,6 +200,7 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
     const block_ref_count = result.block_refs.len;
     const query_block_count = result.query_blocks.len;
     const link_definition_count = result.link_definitions.len;
+    const property_count = result.properties.len;
 
     // Calculate text blob size
     var blob_size: usize = 0;
@@ -218,6 +234,10 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
         blob_size += ld.label.len;
         blob_size += ld.url.len;
         if (ld.title) |ttl| blob_size += ttl.len;
+    }
+    for (result.properties) |p| {
+        blob_size += p.key.len;
+        blob_size += p.value.len;
     }
 
     // T1-3: blob_offset is u32 — guard against wrapping for documents whose total
@@ -349,6 +369,25 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
     var c_link_definitions: ?[]CMd4cLinkDefinition = null;
     if (link_definition_count > 0) {
         c_link_definitions = ffi_allocator.alloc(CMd4cLinkDefinition, link_definition_count) catch {
+            if (c_query_blocks) |qb| ffi_allocator.free(qb);
+            if (c_block_refs) |br| ffi_allocator.free(br);
+            if (c_callouts) |cl| ffi_allocator.free(cl);
+            if (c_embeds) |em| ffi_allocator.free(em);
+            if (c_tasks) |tk| ffi_allocator.free(tk);
+            if (c_code_spans) |cs| ffi_allocator.free(cs);
+            if (c_links) |l| ffi_allocator.free(l);
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate property array
+    var c_properties: ?[]CMd4cProperty = null;
+    if (property_count > 0) {
+        c_properties = ffi_allocator.alloc(CMd4cProperty, property_count) catch {
+            if (c_link_definitions) |ld| ffi_allocator.free(ld);
             if (c_query_blocks) |qb| ffi_allocator.free(qb);
             if (c_block_refs) |br| ffi_allocator.free(br);
             if (c_callouts) |cl| ffi_allocator.free(cl);
@@ -561,6 +600,32 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
         };
     }
 
+    for (result.properties, 0..) |p, i| {
+        const key_len: u32 = @intCast(p.key.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, key_len) <= b.len);
+            @memcpy(b[blob_offset..][0..key_len], p.key);
+        }
+        const key_off = blob_offset;
+        blob_offset += key_len;
+
+        const value_len: u32 = @intCast(p.value.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, value_len) <= b.len);
+            @memcpy(b[blob_offset..][0..value_len], p.value);
+        }
+        const value_off = blob_offset;
+        blob_offset += value_len;
+
+        c_properties.?[i] = .{
+            .key_offset = key_off,
+            .key_length = key_len,
+            .value_offset = value_off,
+            .value_length = value_len,
+            .value_type = p.value_type,
+        };
+    }
+
     // Free ExtractionResult (owned strings — already copied to blob)
     result.deinit();
 
@@ -584,6 +649,8 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
         .query_blocks_count = @intCast(query_block_count),
         .link_definitions = if (c_link_definitions) |ld| ld.ptr else null,
         .link_definitions_count = @intCast(link_definition_count),
+        .properties = if (c_properties) |pr| pr.ptr else null,
+        .properties_count = @intCast(property_count),
         .text_blob = blob_ptr,
         .text_blob_len = blob_offset,
     };
@@ -641,6 +708,11 @@ export fn marky_md4c_free(result: ?*CMd4cResult) void {
     if (r.link_definitions) |link_definitions_ptr| {
         if (r.link_definitions_count > 0) {
             ffi_allocator.free(link_definitions_ptr[0..r.link_definitions_count]);
+        }
+    }
+    if (r.properties) |properties_ptr| {
+        if (r.properties_count > 0) {
+            ffi_allocator.free(properties_ptr[0..r.properties_count]);
         }
     }
     if (r.text_blob) |blob_ptr| {

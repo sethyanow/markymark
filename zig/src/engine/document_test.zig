@@ -485,6 +485,7 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
         var out_block_refs: []doc.StoredBlockRef = &.{};
         var out_query_blocks: []doc.StoredQueryBlock = &.{};
         var out_link_defs: []doc.StoredLinkDefinition = &.{};
+        var out_properties: []doc.StoredProperty = &.{};
         var out_line_starts: []u32 = &.{};
         var out_token_estimate: u32 = 0;
         var out_content_hash: u64 = 0;
@@ -503,6 +504,7 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
             &out_block_refs,
             &out_query_blocks,
             &out_link_defs,
+            &out_properties,
             &out_line_starts,
             &out_token_estimate,
             &out_content_hash,
@@ -521,6 +523,7 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
             doc.freeBlockRefs(failing.allocator(), out_block_refs);
             doc.freeQueryBlocks(failing.allocator(), out_query_blocks);
             doc.freeLinkDefinitions(failing.allocator(), out_link_defs);
+            doc.freeProperties(failing.allocator(), out_properties);
             if (out_line_starts.len > 0) failing.allocator().free(out_line_starts);
             consecutive_successes += 1;
         } else |_| {

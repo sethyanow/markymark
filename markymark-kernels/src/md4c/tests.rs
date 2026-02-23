@@ -70,7 +70,8 @@ fn test_struct_sizes_match_zig() {
     assert_eq!(std::mem::size_of::<CMd4cBlockRef>(), 12);
     assert_eq!(std::mem::size_of::<CMd4cQueryBlock>(), 16);
     assert_eq!(std::mem::size_of::<CMd4cLinkDefinition>(), 32);
-    assert_eq!(std::mem::size_of::<CMd4cResult>(), 120);
+    assert_eq!(std::mem::size_of::<CMd4cProperty>(), 20);
+    assert_eq!(std::mem::size_of::<CMd4cResult>(), 136);
 }
 
 /// Regression test for T2-11: silent `.unwrap_or("")` masked data corruption.
@@ -99,6 +100,7 @@ fn test_invalid_utf8_in_heading_blob_returns_error() {
         block_refs: std::ptr::null_mut(),
         query_blocks: std::ptr::null_mut(),
         link_definitions: std::ptr::null_mut(),
+        properties: std::ptr::null_mut(),
         text_blob: blob.as_ptr(),
         headings_count: 1,
         links_count: 0,
@@ -109,6 +111,7 @@ fn test_invalid_utf8_in_heading_blob_returns_error() {
         block_refs_count: 0,
         query_blocks_count: 0,
         link_definitions_count: 0,
+        properties_count: 0,
         text_blob_len: 3,
     };
     // Before fix: returns Ok(headings[0].text == "") — silent data loss.
@@ -143,6 +146,7 @@ fn test_invalid_utf8_in_link_blob_returns_error() {
         block_refs: std::ptr::null_mut(),
         query_blocks: std::ptr::null_mut(),
         link_definitions: std::ptr::null_mut(),
+        properties: std::ptr::null_mut(),
         text_blob: blob.as_ptr(),
         headings_count: 0,
         links_count: 1,
@@ -153,6 +157,7 @@ fn test_invalid_utf8_in_link_blob_returns_error() {
         block_refs_count: 0,
         query_blocks_count: 0,
         link_definitions_count: 0,
+        properties_count: 0,
         text_blob_len: 3,
     };
     let result = convert_result(&out);
@@ -184,6 +189,7 @@ fn test_oob_heading_offset_returns_error() {
         block_refs: std::ptr::null_mut(),
         query_blocks: std::ptr::null_mut(),
         link_definitions: std::ptr::null_mut(),
+        properties: std::ptr::null_mut(),
         text_blob: blob.as_ptr(),
         headings_count: 1,
         links_count: 0,
@@ -194,6 +200,7 @@ fn test_oob_heading_offset_returns_error() {
         block_refs_count: 0,
         query_blocks_count: 0,
         link_definitions_count: 0,
+        properties_count: 0,
         text_blob_len: blob.len() as u32,
     };
     let result = convert_result(&out);
@@ -227,6 +234,7 @@ fn test_oob_link_offset_returns_error() {
         block_refs: std::ptr::null_mut(),
         query_blocks: std::ptr::null_mut(),
         link_definitions: std::ptr::null_mut(),
+        properties: std::ptr::null_mut(),
         text_blob: blob.as_ptr(),
         headings_count: 0,
         links_count: 1,
@@ -237,6 +245,7 @@ fn test_oob_link_offset_returns_error() {
         block_refs_count: 0,
         query_blocks_count: 0,
         link_definitions_count: 0,
+        properties_count: 0,
         text_blob_len: blob.len() as u32,
     };
     let result = convert_result(&out);
@@ -268,6 +277,7 @@ fn test_overflow_offset_returns_error() {
         block_refs: std::ptr::null_mut(),
         query_blocks: std::ptr::null_mut(),
         link_definitions: std::ptr::null_mut(),
+        properties: std::ptr::null_mut(),
         text_blob: blob.as_ptr(),
         headings_count: 1,
         links_count: 0,
@@ -278,6 +288,7 @@ fn test_overflow_offset_returns_error() {
         block_refs_count: 0,
         query_blocks_count: 0,
         link_definitions_count: 0,
+        properties_count: 0,
         text_blob_len: blob.len() as u32,
     };
     let result = convert_result(&out);

@@ -106,6 +106,17 @@ struct CMd4cLinkDefinition {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
+struct CMd4cProperty {
+    key_offset: u32,
+    key_length: u32,
+    value_offset: u32,
+    value_length: u32,
+    value_type: u8,
+    _pad: [u8; 3],
+}
+
+#[repr(C)]
 struct CMd4cResult {
     headings: *mut CMd4cHeading,
     links: *mut CMd4cLink,
@@ -116,6 +127,7 @@ struct CMd4cResult {
     block_refs: *mut CMd4cBlockRef,
     query_blocks: *mut CMd4cQueryBlock,
     link_definitions: *mut CMd4cLinkDefinition,
+    properties: *mut CMd4cProperty,
     text_blob: *const u8,
     headings_count: u32,
     links_count: u32,
@@ -126,6 +138,7 @@ struct CMd4cResult {
     block_refs_count: u32,
     query_blocks_count: u32,
     link_definitions_count: u32,
+    properties_count: u32,
     text_blob_len: u32,
 }
 
@@ -139,7 +152,8 @@ const _: () = assert!(std::mem::size_of::<CMd4cCallout>() == 24);
 const _: () = assert!(std::mem::size_of::<CMd4cBlockRef>() == 12);
 const _: () = assert!(std::mem::size_of::<CMd4cQueryBlock>() == 16);
 const _: () = assert!(std::mem::size_of::<CMd4cLinkDefinition>() == 32);
-const _: () = assert!(std::mem::size_of::<CMd4cResult>() == 120);
+const _: () = assert!(std::mem::size_of::<CMd4cProperty>() == 20);
+const _: () = assert!(std::mem::size_of::<CMd4cResult>() == 136);
 
 extern "C" {
     fn marky_md4c_extract(text: *const u8, len: u32, out: *mut CMd4cResult) -> i32;
@@ -257,6 +271,17 @@ pub struct Md4cLinkDefinition {
     pub end_offset: u32,
 }
 
+/// A YAML frontmatter property extracted by md4c.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Md4cProperty {
+    /// The property key.
+    pub key: String,
+    /// The raw property value text.
+    pub value: String,
+    /// Property value type: 0=string, 1=list, 2=page_ref.
+    pub value_type: u8,
+}
+
 /// Results from md4c single-pass extraction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Md4cExtraction {
@@ -269,6 +294,7 @@ pub struct Md4cExtraction {
     pub block_refs: Vec<Md4cBlockRef>,
     pub query_blocks: Vec<Md4cQueryBlock>,
     pub link_definitions: Vec<Md4cLinkDefinition>,
+    pub properties: Vec<Md4cProperty>,
 }
 
 // ---------------------------------------------------------------------------
@@ -291,6 +317,7 @@ pub fn extract_md4c(text: &str) -> Result<Md4cExtraction, KernelError> {
             block_refs: Vec::new(),
             query_blocks: Vec::new(),
             link_definitions: Vec::new(),
+            properties: Vec::new(),
         });
     }
 
@@ -600,6 +627,38 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         }
     }
 
+    let mut properties = Vec::with_capacity(out.properties_count as usize);
+    if out.properties_count > 0 && !out.properties.is_null() {
+        // SAFETY: properties pointer is valid for properties_count elements,
+        // allocated by Zig page_allocator.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let c_properties =
+            unsafe { std::slice::from_raw_parts(out.properties, out.properties_count as usize) };
+        for p in c_properties {
+            let key_start = p.key_offset as usize;
+            let key = std::str::from_utf8(safe_blob_slice(
+                blob,
+                key_start,
+                p.key_length as usize,
+            )?)
+            .map_err(|_| KernelError::InternalError(-100))?
+            .to_owned();
+            let value_start = p.value_offset as usize;
+            let value = std::str::from_utf8(safe_blob_slice(
+                blob,
+                value_start,
+                p.value_length as usize,
+            )?)
+            .map_err(|_| KernelError::InternalError(-100))?
+            .to_owned();
+            properties.push(Md4cProperty {
+                key,
+                value,
+                value_type: p.value_type,
+            });
+        }
+    }
+
     Ok(Md4cExtraction {
         headings,
         links,
@@ -610,5 +669,6 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         block_refs,
         query_blocks,
         link_definitions,
+        properties,
     })
 }

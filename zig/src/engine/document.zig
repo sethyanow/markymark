@@ -122,6 +122,12 @@ pub const StoredLinkDefinition = struct {
     end: Position,
 };
 
+pub const StoredProperty = struct {
+    key: []const u8, // owned, the property key
+    value: []const u8, // owned, the raw value text
+    value_type: u8, // 0=string, 1=list, 2=page_ref
+};
+
 // ── DocumentEngine ──────────────────────────────────────────────────
 
 pub const DocumentEngine = struct {
@@ -138,6 +144,7 @@ pub const DocumentEngine = struct {
     block_refs: []StoredBlockRef = &.{},
     query_blocks: []StoredQueryBlock = &.{},
     link_definitions: []StoredLinkDefinition = &.{},
+    properties: []StoredProperty = &.{},
     line_starts: []u32 = &.{},
 
     token_estimate: u32 = 0,
@@ -177,6 +184,7 @@ pub const DocumentEngine = struct {
         var new_block_refs: []StoredBlockRef = &.{};
         var new_query_blocks: []StoredQueryBlock = &.{};
         var new_link_definitions: []StoredLinkDefinition = &.{};
+        var new_properties: []StoredProperty = &.{};
         var new_line_starts: []u32 = &.{};
         var new_token_estimate: u32 = 0;
         var new_content_hash: u64 = 0;
@@ -195,6 +203,7 @@ pub const DocumentEngine = struct {
             &new_block_refs,
             &new_query_blocks,
             &new_link_definitions,
+            &new_properties,
             &new_line_starts,
             &new_token_estimate,
             &new_content_hash,
@@ -213,6 +222,7 @@ pub const DocumentEngine = struct {
         self.block_refs = new_block_refs;
         self.query_blocks = new_query_blocks;
         self.link_definitions = new_link_definitions;
+        self.properties = new_properties;
         self.line_starts = new_line_starts;
         self.token_estimate = new_token_estimate;
         self.content_hash = new_content_hash;
@@ -251,6 +261,7 @@ pub const DocumentEngine = struct {
             &self.block_refs,
             &self.query_blocks,
             &self.link_definitions,
+            &self.properties,
             &self.line_starts,
             &self.token_estimate,
             &self.content_hash,
@@ -280,6 +291,8 @@ pub const DocumentEngine = struct {
         self.query_blocks = &.{};
         freeLinkDefinitions(self.allocator, self.link_definitions);
         self.link_definitions = &.{};
+        freeProperties(self.allocator, self.properties);
+        self.properties = &.{};
         if (self.line_starts.len > 0) {
             self.allocator.free(self.line_starts);
             self.line_starts = &.{};
@@ -307,6 +320,7 @@ pub fn parseAll(
     out_block_refs: *[]StoredBlockRef,
     out_query_blocks: *[]StoredQueryBlock,
     out_link_definitions: *[]StoredLinkDefinition,
+    out_properties: *[]StoredProperty,
     out_line_starts: *[]u32,
     out_token_estimate: *u32,
     out_content_hash: *u64,
@@ -330,6 +344,7 @@ pub fn parseAll(
     var stored_block_refs_list = std.ArrayListUnmanaged(StoredBlockRef){};
     var stored_query_blocks_list = std.ArrayListUnmanaged(StoredQueryBlock){};
     var stored_link_defs_list = std.ArrayListUnmanaged(StoredLinkDefinition){};
+    var stored_properties_list = std.ArrayListUnmanaged(StoredProperty){};
 
     // Tracks whether h.text/l.text/l.target/cs.text have been transferred from extraction
     // into the stored lists (i.e., after extraction.headings/links/code_spans slice containers
@@ -351,6 +366,7 @@ pub fn parseAll(
         freeStoredBlockRefsList(allocator, &stored_block_refs_list, texts_transferred);
         freeStoredQueryBlocksList(allocator, &stored_query_blocks_list, texts_transferred);
         freeStoredLinkDefsList(allocator, &stored_link_defs_list, texts_transferred);
+        freeStoredPropertiesList(allocator, &stored_properties_list, texts_transferred);
     }
 
     // 2. Compute line_starts
@@ -534,6 +550,18 @@ pub fn parseAll(
         };
     }
 
+    // 5i. Process properties (no position info needed)
+    for (extraction.properties) |p| {
+        stored_properties_list.append(allocator, .{
+            .key = p.key,
+            .value = p.value,
+            .value_type = p.value_type,
+        }) catch {
+            extraction.deinit();
+            return error.OutOfMemory;
+        };
+    }
+
     // OWNERSHIP: The string data from extraction_renderer's arrays has been moved
     // into the stored lists by the loops above (steps 4-5h). Only the slice containers
     // are freed here — NOT the string contents. The strings are now owned by stored lists.
@@ -546,6 +574,7 @@ pub fn parseAll(
     allocator.free(extraction.block_refs);
     allocator.free(extraction.query_blocks);
     allocator.free(extraction.link_definitions);
+    allocator.free(extraction.properties);
     // From this point, the errdefer must free string data from the stored lists directly.
     texts_transferred = true;
 
@@ -638,8 +667,10 @@ pub fn parseAll(
     errdefer freeBlockRefs(allocator, out_block_refs.*);
     out_query_blocks.* = stored_query_blocks_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
     errdefer freeQueryBlocks(allocator, out_query_blocks.*);
-    // No errdefer for link_defs: nothing allocates after this point.
     out_link_definitions.* = stored_link_defs_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
+    errdefer freeLinkDefinitions(allocator, out_link_definitions.*);
+    // No errdefer for properties: nothing allocates after this point.
+    out_properties.* = stored_properties_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
     out_line_starts.* = line_starts;
     out_token_estimate.* = token_est;
     out_content_hash.* = c_hash;
@@ -922,6 +953,24 @@ fn freeStoredLinkDefsList(allocator: Allocator, list: *std.ArrayListUnmanaged(St
             allocator.free(ld.label);
             allocator.free(ld.url);
             if (ld.title) |t| allocator.free(t);
+        }
+    }
+    list.deinit(allocator);
+}
+
+pub fn freeProperties(allocator: Allocator, props: []StoredProperty) void {
+    for (props) |p| {
+        allocator.free(p.key);
+        allocator.free(p.value);
+    }
+    if (props.len > 0) allocator.free(props);
+}
+
+fn freeStoredPropertiesList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredProperty), free_texts: bool) void {
+    if (free_texts) {
+        for (list.items) |p| {
+            allocator.free(p.key);
+            allocator.free(p.value);
         }
     }
     list.deinit(allocator);

@@ -79,6 +79,12 @@ pub const ExtractedLinkDefinition = struct {
     end_offset: u32, // byte offset past end of line
 };
 
+pub const ExtractedProperty = struct {
+    key: []const u8, // owned, the property key (trimmed)
+    value: []const u8, // owned, the raw value text (trimmed)
+    value_type: u8, // 0=string, 1=list, 2=page_ref
+};
+
 pub const ExtractionResult = struct {
     headings: []ExtractedHeading,
     links: []ExtractedLink,
@@ -89,6 +95,7 @@ pub const ExtractionResult = struct {
     block_refs: []ExtractedBlockRef,
     query_blocks: []ExtractedQueryBlock,
     link_definitions: []ExtractedLinkDefinition,
+    properties: []ExtractedProperty,
     allocator: Allocator,
 
     pub fn deinit(self: *ExtractionResult) void {
@@ -132,6 +139,11 @@ pub const ExtractionResult = struct {
             if (ld.title) |t| self.allocator.free(t);
         }
         self.allocator.free(self.link_definitions);
+        for (self.properties) |p| {
+            self.allocator.free(p.key);
+            self.allocator.free(p.value);
+        }
+        self.allocator.free(self.properties);
     }
 };
 
@@ -188,9 +200,10 @@ pub const ExtractionRenderer = struct {
     block_refs: std.ArrayListUnmanaged(ExtractedBlockRef) = .{},
     block_ref_scan_cursor: u32 = 0,
 
-    // query block + link definition results (raw source scan, no cursor needed)
+    // query block + link definition + property results (raw source scan, no cursor needed)
     query_blocks: std.ArrayListUnmanaged(ExtractedQueryBlock) = .{},
     link_definitions: std.ArrayListUnmanaged(ExtractedLinkDefinition) = .{},
+    properties: std.ArrayListUnmanaged(ExtractedProperty) = .{},
 
     // code block tracking
     in_code_block: bool = false,
@@ -256,6 +269,11 @@ pub const ExtractionRenderer = struct {
             if (ld.title) |t| self.allocator.free(t);
         }
         self.link_definitions.deinit(self.allocator);
+        for (self.properties.items) |p| {
+            self.allocator.free(p.key);
+            self.allocator.free(p.value);
+        }
+        self.properties.deinit(self.allocator);
     }
 
     pub fn renderer(self: *ExtractionRenderer) Renderer {
@@ -357,9 +375,10 @@ pub const ExtractionRenderer = struct {
                 if (self.quote_depth > 0) self.quote_depth -= 1;
             },
             .doc => {
-                // Raw source scans for query blocks and link definitions
+                // Raw source scans for query blocks, link definitions, and properties
                 self.scanQueryBlocks();
                 self.scanLinkDefinitions();
+                self.scanProperties();
             },
             else => {},
         }
@@ -722,6 +741,12 @@ pub const ExtractionRenderer = struct {
         if (scans.scanLinkDefinitionsInSource(self.src_text, self.allocator, &self.link_definitions))
             self.oom = true;
     }
+
+    /// Scan raw source for `key:: value` properties at document start.
+    fn scanProperties(self: *ExtractionRenderer) void {
+        if (scans.scanPropertiesInSource(self.src_text, self.allocator, &self.properties))
+            self.oom = true;
+    }
 };
 
 // ── Public API ───────────────────────────────────────────────────────
@@ -820,6 +845,17 @@ pub fn extractFromMarkdown(
     const link_definitions = ext.link_definitions.toOwnedSlice(allocator) catch {
         return error.OutOfMemory;
     };
+    errdefer {
+        for (link_definitions) |ld| {
+            allocator.free(ld.label);
+            allocator.free(ld.url);
+            if (ld.title) |t| allocator.free(t);
+        }
+        allocator.free(link_definitions);
+    }
+    const properties = ext.properties.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
 
     // Free accumulation buffers only (results transferred)
     ext.heading_text_buf.deinit(allocator);
@@ -839,6 +875,7 @@ pub fn extractFromMarkdown(
     ext.block_refs.deinit(allocator);
     ext.query_blocks.deinit(allocator);
     ext.link_definitions.deinit(allocator);
+    ext.properties.deinit(allocator);
 
     return .{
         .headings = headings,
@@ -850,6 +887,7 @@ pub fn extractFromMarkdown(
         .block_refs = block_refs,
         .query_blocks = query_blocks,
         .link_definitions = link_definitions,
+        .properties = properties,
         .allocator = allocator,
     };
 }

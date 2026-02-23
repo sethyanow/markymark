@@ -26,6 +26,7 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         engine.block_refs.len > max_u32 or
         engine.query_blocks.len > max_u32 or
         engine.link_definitions.len > max_u32 or
+        engine.properties.len > max_u32 or
         engine.line_starts.len > max_u32) return error.OutOfMemory;
 
     // Compute text pool size in u64 to avoid u32 wrap-before-check (C6).
@@ -68,6 +69,10 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         text_pool_size += ld.url.len;
         if (ld.title) |t| text_pool_size += t.len;
     }
+    for (engine.properties) |p| {
+        text_pool_size += p.key.len;
+        text_pool_size += p.value.len;
+    }
     if (text_pool_size > std.math.maxInt(u32)) return error.OutOfMemory;
     const text_pool_u32: u32 = @intCast(text_pool_size);
 
@@ -83,6 +88,7 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         @intCast(engine.block_refs.len),
         @intCast(engine.query_blocks.len),
         @intCast(engine.link_definitions.len),
+        @intCast(engine.properties.len),
         @intCast(engine.line_starts.len),
         text_pool_u32,
     ) orelse return error.OutOfMemory;
@@ -108,6 +114,7 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         .block_ref_count = @intCast(engine.block_refs.len),
         .query_block_count = @intCast(engine.query_blocks.len),
         .link_def_count = @intCast(engine.link_definitions.len),
+        .property_count = @intCast(engine.properties.len),
         .line_count = @intCast(engine.line_starts.len),
         .text_pool_size = text_pool_u32,
         .token_estimate = engine.token_estimate,
@@ -339,6 +346,23 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
             @memcpy(buf[offsets.text_pool + pool_off ..][0..t.len], t);
             pool_off += @intCast(t.len);
         }
+    }
+
+    // Write properties
+    for (engine.properties, 0..) |p, i| {
+        const bp = blob.BlobProperty{
+            .key_off = pool_off,
+            .key_len = @intCast(p.key.len),
+            .value_off = pool_off + @as(u32, @intCast(p.key.len)),
+            .value_len = @intCast(p.value.len),
+            .value_type = p.value_type,
+        };
+        try blob.writeStruct(blob.BlobProperty, buf, offsets.properties + i * @sizeOf(blob.BlobProperty), bp);
+
+        @memcpy(buf[offsets.text_pool + pool_off ..][0..p.key.len], p.key);
+        pool_off += @intCast(p.key.len);
+        @memcpy(buf[offsets.text_pool + pool_off ..][0..p.value.len], p.value);
+        pool_off += @intCast(p.value.len);
     }
 
     // Write line_starts
