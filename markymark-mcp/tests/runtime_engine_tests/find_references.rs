@@ -83,13 +83,15 @@ fn find_references_returns_markdown_link_refs_to_heading() {
 fn find_references_returns_xml_tag_refs_across_documents() {
     let ws = TempWorkspace::new("find-refs-xml");
     let a = ws.root().join("a.md");
+    // XML tags must use block-level HTML (open/close on separate lines) for
+    // the Zig md4c extraction path. Inline `<tag>x</tag>` is not extracted.
     fs::write(
         &a,
-        "# Doc A\n\n<agent>content</agent>\n\n<agent>more</agent>\n",
+        "# Doc A\n\n<agent>\ncontent\n</agent>\n\n<agent>\nmore\n</agent>\n",
     )
     .expect("a.md should be created");
     let b = ws.root().join("b.md");
-    fs::write(&b, "# Doc B\n\n<agent>stuff</agent>\n").expect("b.md should be created");
+    fs::write(&b, "# Doc B\n\n<agent>\nstuff\n</agent>\n").expect("b.md should be created");
 
     let engine =
         RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");

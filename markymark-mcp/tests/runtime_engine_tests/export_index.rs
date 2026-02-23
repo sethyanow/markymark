@@ -10,9 +10,11 @@ use super::TempWorkspace;
 fn export_index_returns_full_document_data() {
     let ws = TempWorkspace::new("export-index");
     let doc = ws.root().join("notes.md");
+    // XML tags must use block-level HTML (open/close on separate lines) for
+    // the Zig md4c extraction path. Inline `<tag>x</tag>` is not extracted.
     fs::write(
         &doc,
-        "# Introduction\n\n## Details\n\n<agent>stuff</agent>\n\n[[other-page#section]]\n\n[Click](https://example.com)\n",
+        "# Introduction\n\n## Details\n\n<agent>\nstuff\n</agent>\n\n[[other-page#section]]\n\n[Click](https://example.com)\n",
     )
     .expect("doc should be created");
 

@@ -75,10 +75,12 @@ fn rename_heading_edits_heading_text_and_wiki_link_and_markdown_anchor() {
 fn rename_xml_tag_edits_open_and_close_tags_across_documents() {
     let ws = TempWorkspace::new("rename-xml");
     let a = ws.root().join("a.md");
-    fs::write(&a, "# Doc A\n\n<agent>content</agent>\n").expect("a.md should be created");
+    // XML tags must use block-level HTML (open/close on separate lines) for
+    // the Zig md4c extraction path. Inline `<tag>x</tag>` is not extracted.
+    fs::write(&a, "# Doc A\n\n<agent>\ncontent\n</agent>\n").expect("a.md should be created");
 
     let b = ws.root().join("b.md");
-    fs::write(&b, "# Doc B\n\n<agent>stuff</agent>\n").expect("b.md should be created");
+    fs::write(&b, "# Doc B\n\n<agent>\nstuff\n</agent>\n").expect("b.md should be created");
 
     let engine =
         RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");

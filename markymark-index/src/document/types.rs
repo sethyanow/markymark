@@ -273,6 +273,24 @@ pub struct FrontmatterEntry<'arena> {
     pub value: FrontmatterValueEntry<'arena>,
 }
 
+/// An owned frontmatter value for cross-module transfer (not arena-allocated).
+#[derive(Debug, Clone)]
+pub enum FrontmatterValueOwned {
+    /// A simple string value.
+    String(String),
+    /// A list of string values.
+    List(Vec<String>),
+}
+
+/// An owned frontmatter key-value entry for cross-module transfer (not arena-allocated).
+#[derive(Debug, Clone)]
+pub struct FrontmatterOwnedEntry {
+    /// The key.
+    pub key: String,
+    /// The value.
+    pub value: FrontmatterValueOwned,
+}
+
 /// A Logseq property value stored in the index.
 #[derive(Debug, Clone)]
 pub enum PropertyValueEntry<'arena> {

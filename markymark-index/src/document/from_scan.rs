@@ -2,8 +2,7 @@
 //!
 //! Uses byte-offset based scanning instead of AST parsing. The scan backend
 //! provides heading, link, tag, block-id, code span, and XML tag extraction
-//! via SIMD kernels. Frontmatter is not available from the scan path and
-//! returns empty slices.
+//! via SIMD kernels.
 
 use bumpalo::collections::Vec as BumpVec;
 use hashbrown::HashMap;
@@ -14,7 +13,8 @@ use std::collections::HashMap as StdHashMap;
 
 use super::{
     helpers, BlockEntry, BlockRefEntry, CalloutEntry, CodeSpanEntry, DocumentDependent,
-    DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry, HeadingEntry,
+    DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry,
+    FrontmatterOwnedEntry, FrontmatterValueEntry, FrontmatterValueOwned, HeadingEntry,
     LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry,
     TagEntry, TaskEntry, WikiLinkEntry, XmlTagEntry,
 };
@@ -24,8 +24,32 @@ impl DocumentIndex {
     ///
     /// Uses byte-offset based scanning instead of AST parsing. The scan backend
     /// provides heading, link, tag, block-id, and XML tag extraction via SIMD
-    /// kernels.
+    /// kernels. Frontmatter is not available and returns empty slices.
     pub fn from_scan(text: &str, backend: &dyn ScanBackend) -> Self {
+        Self::from_scan_inner(text, backend, Vec::new(), Vec::new())
+    }
+
+    /// Build a document index from a scan backend with pre-parsed frontmatter.
+    ///
+    /// Same as [`from_scan`] but accepts owned frontmatter entries and aliases
+    /// (typically extracted from the source text independently). This allows
+    /// the MCP batch indexing path to get full Zig extraction while preserving
+    /// frontmatter data that the scan backend cannot provide.
+    pub fn from_scan_with_frontmatter(
+        text: &str,
+        backend: &dyn ScanBackend,
+        frontmatter: Vec<FrontmatterOwnedEntry>,
+        aliases: Vec<String>,
+    ) -> Self {
+        Self::from_scan_inner(text, backend, frontmatter, aliases)
+    }
+
+    fn from_scan_inner(
+        text: &str,
+        backend: &dyn ScanBackend,
+        fm_owned: Vec<FrontmatterOwnedEntry>,
+        aliases_owned: Vec<String>,
+    ) -> Self {
         // Pre-compute line starts for byte-offset → Position conversion
         let line_starts = helpers::byte_offset_line_starts(text);
 
@@ -127,7 +151,19 @@ impl DocumentIndex {
 
                 match l.link_type {
                     ScanLinkType::Wiki => {
-                        let target = arena_alloc_str(arena_ref, &l.target);
+                        // Split target on '#' to extract heading portion.
+                        // e.g. "page#section" → target="page", heading=Some("section")
+                        //      "#section"     → target="", heading=Some("section")
+                        //      "page"         → target="page", heading=None
+                        let (target_str, heading_str) =
+                            if let Some(hash_pos) = l.target.find('#') {
+                                (&l.target[..hash_pos], Some(&l.target[hash_pos + 1..]))
+                            } else {
+                                (l.target.as_str(), None)
+                            };
+                        let target = arena_alloc_str(arena_ref, target_str);
+                        let heading =
+                            heading_str.map(|h| arena_alloc_str(arena_ref, h));
                         let alias = if l.text != l.target {
                             Some(arena_alloc_str(arena_ref, &l.text))
                         } else {
@@ -136,7 +172,7 @@ impl DocumentIndex {
                         wiki_links_builder.push(WikiLinkEntry {
                             target,
                             alias,
-                            heading: None,
+                            heading,
                             range,
                             start_byte: l.offset as usize,
                             end_byte: end_offset as usize,
@@ -235,9 +271,31 @@ impl DocumentIndex {
             }
             let code_spans = cs_builder.into_bump_slice();
 
-            // Frontmatter/aliases: not available from scan backend
-            let frontmatter = BumpVec::<FrontmatterEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let aliases = BumpVec::<&str>::new_in(arena_ref).into_bump_slice();
+            // Arena-allocate frontmatter entries from owned data.
+            let mut frontmatter_builder = BumpVec::new_in(arena_ref);
+            for fm in fm_owned {
+                let key = arena_alloc_str(arena_ref, &fm.key);
+                let value = match fm.value {
+                    FrontmatterValueOwned::String(s) => {
+                        FrontmatterValueEntry::String(arena_alloc_str(arena_ref, &s))
+                    }
+                    FrontmatterValueOwned::List(items) => {
+                        let mut list = BumpVec::new_in(arena_ref);
+                        for item in items {
+                            list.push(arena_alloc_str(arena_ref, &item));
+                        }
+                        FrontmatterValueEntry::List(list.into_bump_slice())
+                    }
+                };
+                frontmatter_builder.push(FrontmatterEntry { key, value });
+            }
+            let frontmatter = frontmatter_builder.into_bump_slice();
+
+            let mut aliases_builder = BumpVec::new_in(arena_ref);
+            for alias in aliases_owned {
+                aliases_builder.push(arena_alloc_str(arena_ref, &alias));
+            }
+            let aliases = aliases_builder.into_bump_slice();
 
             // --- Properties ---
             let mut props_builder = BumpVec::new_in(arena_ref);

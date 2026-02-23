@@ -14,11 +14,11 @@ use std::collections::HashMap as StdHashMap;
 use super::{
     helpers, BlockEntry, BlockOwned, BlockRefEntry, CalloutEntry, CalloutOwned, CodeSpanEntry,
     CodeSpanOwned, DocumentDependent, DocumentIndex, DocumentIndexCell, DocumentOwner,
-    EmbedEntry, EmbedOwned, FrontmatterEntry, FrontmatterValueEntry, HeadingEntry,
-    IncrementalOverrides, LinkDefinitionEntry, LinkDefinitionOwned, MarkdownLinkEntry,
-    MarkdownLinkOwned, PropertyEntry, PropertyValueEntry, QueryBlockEntry, QueryBlockOwned,
-    TagEntry, TagOwned, TaskEntry, TaskOwned, WikiLinkEntry, WikiLinkOwned, XmlTagEntry,
-    XmlTagOwned,
+    EmbedEntry, EmbedOwned, FrontmatterEntry, FrontmatterValueEntry, FrontmatterValueOwned,
+    HeadingEntry, IncrementalOverrides, LinkDefinitionEntry, LinkDefinitionOwned,
+    MarkdownLinkEntry, MarkdownLinkOwned, PropertyEntry, PropertyValueEntry, QueryBlockEntry,
+    QueryBlockOwned, TagEntry, TagOwned, TaskEntry, TaskOwned, WikiLinkEntry, WikiLinkOwned,
+    XmlTagEntry, XmlTagOwned,
 };
 
 impl DocumentIndex {
@@ -201,16 +201,10 @@ impl DocumentIndex {
         let code_spans_owned: Vec<CodeSpanOwned> = overrides.code_spans.unwrap_or_default();
 
         // Extract frontmatter and properties as owned data BEFORE arena move.
-        #[derive(Debug)]
-        enum FrontmatterValueOwned {
-            String(String),
-            List(Vec<String>),
-        }
-        #[derive(Debug)]
-        struct FrontmatterOwned {
-            key: String,
-            value: FrontmatterValueOwned,
-        }
+        // Uses shared FrontmatterOwnedEntry/FrontmatterValueOwned types from types.rs.
+        let (frontmatter_owned, aliases_owned) =
+            super::helpers::extract_frontmatter_from_ast(&ast);
+
         #[derive(Debug)]
         enum PropertyValueOwned {
             String(String),
@@ -221,39 +215,6 @@ impl DocumentIndex {
         struct PropertyOwned {
             key: String,
             value: PropertyValueOwned,
-        }
-
-        let mut frontmatter_owned: Vec<FrontmatterOwned> = Vec::new();
-        let mut aliases_owned: Vec<String> = Vec::new();
-
-        if let Some(fm) = ast.frontmatter() {
-            use markymark_parser::FrontmatterValue;
-            for (key, value) in fm.iter() {
-                let key_str = (*key).to_string();
-                let value_owned = match value {
-                    FrontmatterValue::String(s) => FrontmatterValueOwned::String((*s).to_string()),
-                    FrontmatterValue::List(items) => {
-                        FrontmatterValueOwned::List(items.iter().map(|s| s.to_string()).collect())
-                    }
-                };
-                // Extract aliases separately for the dedicated accessor.
-                if key_str == "aliases" {
-                    match &value_owned {
-                        FrontmatterValueOwned::String(s) => {
-                            if !s.is_empty() {
-                                aliases_owned.push(s.clone());
-                            }
-                        }
-                        FrontmatterValueOwned::List(items) => {
-                            aliases_owned.extend(items.iter().cloned());
-                        }
-                    }
-                }
-                frontmatter_owned.push(FrontmatterOwned {
-                    key: key_str,
-                    value: value_owned,
-                });
-            }
         }
 
         let mut properties_owned: Vec<PropertyOwned> = Vec::new();

@@ -14,7 +14,7 @@ mod from_scan;
 #[cfg(test)]
 mod tests;
 
-pub use helpers::slugify;
+pub use helpers::{parse_frontmatter_owned, slugify};
 pub use types::*;
 
 #[cfg(feature = "zig-kernels")]
