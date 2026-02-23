@@ -235,6 +235,23 @@ commit intermediate milestones (e.g., Part 1 feature gate removal, then Part 2 d
 - **Commit intermediate milestones within large tasks.** A 14-step task with 24 file changes
   should have at least 2-3 intermediate commits, not one giant uncommitted diff.
 
+**Recurrence (2026-02-23, n7wx L2-L4):** Agent chained Layer 2 → Layer 3 → benchmarks →
+Layer 4 "verification" in a single 75-minute session with 5 commits. Then autonomously declared
+Layer 4 "redundant" and closed it without user approval. **New rule additions:**
+- **NEVER autonomously reduce designed scope.** If you think a designed layer/task is unnecessary,
+  report your analysis and let the user decide. Don't close it yourself.
+- **Benchmark numbers do not justify skipping designed work.** Performance arguments from dev
+  hardware are noise. Design decisions were made for a reason — implement them.
+
+### Benchmark methodology anti-pattern (fail-benchmark-chasing)
+Agent ran benchmarks, got bad numbers (860µs both paths), then iteratively "fixed" methodology
+(iter_batched, returning realm to avoid drop timing, reducing sample_size) until criterion numbers
+looked good enough to close a task. Each individual fix was technically valid, but the pattern
+of adjusting until success is unacceptable. **Rules:**
+- Design benchmarks correctly from the start, don't iterate until numbers match criteria
+- Never use benchmarks from development machines to gate scope decisions
+- Report honest numbers; if criterion not met, analyze why — don't adjust methodology
+
 ### tower-lsp-server v0.23 API mismatch (fail-tower-lsp-types)
 Pre-training has `lsp_types` and `#[async_trait]`. The community fork v0.23 uses `ls_types`
 and native async traits. Always read `docs/rust_crates/tower-lsp.md`.
@@ -438,18 +455,21 @@ false positive due to not following symlinks (2026-02-20).
 - **Zero-copy blob borrowing** — investigated, not worth it. Breaks DocumentIndex lifetime model for ~1-2ms.
 - **Edit range support in engine.update()** — prerequisite for incremental md4c, no longer premature.
 
-### Next: RealmIndex v2 (marky-n7wx)
+### RealmIndex v2 (marky-n7wx) — Layers 1-3 DONE, Layer 4 IN PROGRESS
 
 Investigation revealed the real post-Epic-H bottleneck is **RealmIndex cross-doc indexing**, not
 the engine pipeline. On every 75ms edit: remove_document allocates N+B+T Strings for HashMap
 key lookups, add_document allocates ~52 Strings for a 50-heading doc, find_uri_by_stem is O(D).
 
 Epic marky-n7wx addresses this in 4 layers:
-1. **String interning** (marky-2yzz) — lasso Rodeo interner, Spur-keyed HashMaps. Eliminates
-   remove-path String allocations entirely. SRE-reviewed, ready to implement.
-2. **Stem index** — O(1) wiki link resolution via Spur-keyed HashMap.
-3. **Incremental cross-doc updates** — diff old vs new headings, patch only changes.
-4. **Lazy cold indexes** — tag_to_docs, key_path_to_docs built on first query, not every edit.
+1. **String interning** (marky-2yzz, DONE) — lasso Rodeo interner, Spur-keyed HashMaps.
+2. **Stem index** (marky-e2nu, DONE) — O(1) wiki link resolution via Spur-keyed HashMap.
+3. **Incremental cross-doc updates** (marky-c9dm, DONE) — diff old vs new contributions, patch only changes.
+4. **Lazy cold indexes** (marky-tuxu, IN PROGRESS) — tag_to_docs, key_path_to_docs built on first query, not every edit. **Required** for gigantic file editing.
+
+**Layer 3 known issues to fix in Layer 4 task:**
+- `old_contrib.clone()` at `mod.rs:216` — allocates 4 HashSets on every structural edit
+- `patch_headings` at `mod.rs:452` — O(H) scan per new slug, quadratic for bulk paste
 
 Key design decisions (SRE review, 2026-02-19):
 - **Rodeo not ThreadedRodeo** — RealmIndex is single-threaded, simpler API.
