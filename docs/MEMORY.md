@@ -707,3 +707,11 @@ pass `&str` to lookup methods, interner resolves internally.
 
 First task: **marky-wvqy** — scaffold Starlight site with navigation structure (SRE-refined).
 Subsequent tasks created iteratively via executing-plans.
+
+### Progress (2026-02-22)
+
+All 10 original child tasks complete. Architecture section (marky-mjrd) written with 3 pages:
+overview.md (crate map, dependency layers, dual-server), parser-pipeline.md (md4c + tree-sitter
+dual parser, structured formats, ScanBackend), indexing.md (DocumentIndex, RealmIndex, resolution,
+diagnostics, event-driven updates). Two remaining tasks created: marky-te2d (contributing/
+3 pages) and marky-kzfy (troubleshooting + FAQ).
