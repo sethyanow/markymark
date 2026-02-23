@@ -895,5 +895,8 @@ pub fn extractFromMarkdown(
 // ── Tests ────────────────────────────────────────────────────────────
 
 test {
-    _ = @import("extraction_renderer_tests.zig");
+    _ = @import("extraction_renderer_tests_headings.zig");
+    _ = @import("extraction_renderer_tests_regressions.zig");
+    _ = @import("extraction_renderer_tests_code_spans.zig");
+    _ = @import("extraction_renderer_tests_elements.zig");
 }
