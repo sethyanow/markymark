@@ -24,13 +24,13 @@ Create a realm, then add folder roots to it:
 
 ```
 create-realm: { "name": "my-docs" }
-add-root: { "realm": "my-docs", "root": "file:///path/to/docs" }
+add-root: { "realm": "my-docs", "root": "/path/to/docs" }
 ```
 
 You can add multiple roots to a single realm. Remove a root when you no longer need it indexed:
 
 ```
-remove-root: { "realm": "my-docs", "root": "file:///path/to/docs" }
+remove-root: { "realm": "my-docs", "root": "/path/to/docs" }
 ```
 
 Check what's indexed with `realm-stats`:

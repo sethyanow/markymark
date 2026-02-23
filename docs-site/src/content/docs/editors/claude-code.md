@@ -51,9 +51,9 @@ These are the tools agents use most often:
 | `rename` | Renames a heading and updates all references |
 | `graph-analysis` | Analyzes link health: orphans, broken links, clusters |
 
-The full tool list covers workspace management (`create-realm`, `realm-stats`,
-`remove-realm`), navigation (`goto-definition`, `export-index`), and semantic
-search (`semantic-search`).
+The full tool list covers workspace management (`create-realm`, `destroy-realm`,
+`realm-stats`), document inspection (`export-index`), and semantic search
+(`semantic-search`).
 
 ## Plugin skill
 
