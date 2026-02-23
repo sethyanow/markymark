@@ -4,20 +4,15 @@ mod helpers;
 mod types;
 
 mod from_ast;
-
-#[cfg(feature = "zig-kernels")]
 mod from_blob;
-
-#[cfg(feature = "zig-kernels")]
 mod from_scan;
 
 #[cfg(test)]
 mod tests;
 
-pub use helpers::{parse_frontmatter_owned, slugify};
+pub use helpers::{mask_frontmatter, parse_frontmatter_owned, slugify};
 pub use types::*;
 
-#[cfg(feature = "zig-kernels")]
 pub use from_blob::BlobError;
 
 use hashbrown::HashMap;

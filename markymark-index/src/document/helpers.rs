@@ -6,7 +6,6 @@ use std::collections::HashMap as StdHashMap;
 
 use super::types::*;
 
-#[cfg(feature = "zig-kernels")]
 use markymark_core::prelude::Position;
 
 /// Convert heading text to a URL-safe slug.
@@ -166,7 +165,6 @@ pub(crate) fn build_outline<'arena>(
 
 /// Build a sorted list of byte offsets where each line starts.
 /// Line 0 starts at offset 0. Line N starts after the N-th newline.
-#[cfg(feature = "zig-kernels")]
 pub(super) fn byte_offset_line_starts(text: &str) -> Vec<u32> {
     let mut starts = vec![0u32];
     for (i, b) in text.bytes().enumerate() {
@@ -178,7 +176,6 @@ pub(super) fn byte_offset_line_starts(text: &str) -> Vec<u32> {
 }
 
 /// Convert a byte offset to a Position (0-based line, 0-based character).
-#[cfg(feature = "zig-kernels")]
 pub(super) fn byte_offset_to_position(line_starts: &[u32], offset: u32) -> Position {
     let line = match line_starts.binary_search(&offset) {
         Ok(exact) => exact,
@@ -289,4 +286,29 @@ pub fn parse_frontmatter_owned(source: &str) -> (Vec<FrontmatterOwnedEntry>, Vec
     }
 
     (frontmatter, aliases)
+}
+
+/// Mask YAML frontmatter so md4c doesn't misparse `---` as a setext heading.
+///
+/// Replaces all non-newline bytes in the `---\n...\n---\n` block with spaces,
+/// preserving line counting and byte offsets for the scan backend. Returns the
+/// original string unchanged if no frontmatter is present.
+pub fn mask_frontmatter(source: &str) -> String {
+    if !source.starts_with("---\n") {
+        return source.to_string();
+    }
+    let rest = &source[4..];
+    let fm_end = match rest.find("\n---\n") {
+        Some(pos) => 4 + pos + 5, // "---\n" + content + "\n---\n"
+        None => return source.to_string(),
+    };
+    let mut bytes: Vec<u8> = source.bytes().collect();
+    for b in &mut bytes[..fm_end] {
+        if *b != b'\n' {
+            *b = b' ';
+        }
+    }
+    // Frontmatter is ASCII (YAML keys/values/delimiters), so replacing
+    // non-newline bytes with spaces maintains valid UTF-8.
+    String::from_utf8(bytes).unwrap_or_else(|_| source.to_string())
 }

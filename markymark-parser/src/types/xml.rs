@@ -18,6 +18,7 @@ pub struct XmlTag<'arena> {
 
 impl<'arena> XmlTag<'arena> {
     /// Create a new XML tag
+    #[cfg(test)]
     pub(crate) fn new(
         tag_name: &'arena str,
         attributes: ArenaHashMap<'arena, &'arena str, &'arena str>,
@@ -33,26 +34,6 @@ impl<'arena> XmlTag<'arena> {
             is_self_closing,
             is_unclosed: false,
             content,
-            range,
-            start_byte,
-            end_byte,
-        }
-    }
-
-    /// Create an unclosed XML tag (opening tag with no matching close)
-    pub(crate) fn unclosed(
-        tag_name: &'arena str,
-        attributes: ArenaHashMap<'arena, &'arena str, &'arena str>,
-        range: Range,
-        start_byte: usize,
-        end_byte: usize,
-    ) -> Self {
-        Self {
-            tag_name,
-            attributes,
-            is_self_closing: false,
-            is_unclosed: true,
-            content: None,
             range,
             start_byte,
             end_byte,

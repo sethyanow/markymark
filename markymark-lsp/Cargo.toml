@@ -12,7 +12,7 @@ categories = ["development-tools", "text-editors"]
 [dependencies]
 markymark-core = { version = "0.5.1", path = "../markymark-core" }
 markymark-parser = { version = "0.5.1", path = "../markymark-parser" }
-markymark-index = { version = "0.5.1", path = "../markymark-index", features = ["zig-kernels"] }
+markymark-index = { version = "0.5.1", path = "../markymark-index" }
 markymark-kernels = { version = "0.5.1", path = "../markymark-kernels" }
 tower-lsp-server = { workspace = true }
 lsp-types = { workspace = true }

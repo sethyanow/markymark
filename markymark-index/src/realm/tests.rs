@@ -1,6 +1,6 @@
 use super::helpers::{detect_journal_date, resolve_relative_path};
 use super::*;
-use crate::document::{CodeSpanOwned, DocumentIndex, IncrementalOverrides};
+use crate::document::{CodeSpanOwned, DocumentIndex};
 use markymark_core::structured::{DocumentKind, KeyEntry, StructuredAst};
 use std::path::PathBuf;
 
@@ -9,17 +9,24 @@ fn make_md_index(source: &str) -> DocumentIndex {
     DocumentIndex::from_ast(ast)
 }
 
-/// Build a markdown index with injected code span overrides.
-/// from_ast doesn't extract code spans natively — this injects them via overrides.
-fn make_md_index_with_code_spans(source: &str, code_spans: Vec<CodeSpanOwned>) -> DocumentIndex {
-    let ast = markymark_parser::parse(source).unwrap();
-    DocumentIndex::from_ast_with_overrides_opt(
-        ast,
-        IncrementalOverrides {
-            code_spans: Some(code_spans),
-            ..Default::default()
-        },
-    )
+/// Build a markdown index whose code_spans contain the given identifiers.
+///
+/// Constructs a source string with backtick code spans so `from_ast`
+/// (which delegates to from_scan) extracts them naturally.
+fn make_md_index_with_code_spans(
+    _base_source: &str,
+    code_spans: Vec<CodeSpanOwned>,
+) -> DocumentIndex {
+    // Build source text: heading + one backtick code span per entry
+    let mut source = String::from("# Intro\n\n");
+    for cs in &code_spans {
+        source.push('`');
+        source.push_str(&cs.text);
+        source.push_str("` ");
+    }
+    source.push('\n');
+    let ast = markymark_parser::parse(&source).unwrap();
+    DocumentIndex::from_ast(ast)
 }
 
 fn uri(name: &str) -> DocumentUri {

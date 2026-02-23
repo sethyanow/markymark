@@ -202,7 +202,7 @@ pub(crate) fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
             // Mask frontmatter block so md4c doesn't misparse `---` as a
             // setext heading underline. Replace non-newline bytes with spaces
             // to preserve line counting and byte offsets.
-            let scan_source = mask_frontmatter(&source);
+            let scan_source = markymark_index::mask_frontmatter(&source);
             realm.index.add_document(
                 uri,
                 DocumentIndex::from_scan_with_frontmatter(
@@ -222,31 +222,6 @@ pub(crate) fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
                 .add_structured_document(uri, StructuredDocumentIndex::from_ast(ast));
         }
     }
-}
-
-/// Mask YAML frontmatter so md4c doesn't misparse it.
-///
-/// Replaces all non-newline bytes in the `---\n...\n---\n` block with spaces,
-/// preserving line counting and byte offsets for the scan backend. Returns the
-/// original string unchanged if no frontmatter is present.
-fn mask_frontmatter(source: &str) -> String {
-    if !source.starts_with("---\n") {
-        return source.to_string();
-    }
-    let rest = &source[4..];
-    let fm_end = match rest.find("\n---\n") {
-        Some(pos) => 4 + pos + 5, // "---\n" + content + "\n---\n"
-        None => return source.to_string(),
-    };
-    let mut bytes: Vec<u8> = source.bytes().collect();
-    for b in &mut bytes[..fm_end] {
-        if *b != b'\n' {
-            *b = b' ';
-        }
-    }
-    // SAFETY: frontmatter is ASCII (YAML keys/values/delimiters), so replacing
-    // non-newline bytes with spaces maintains valid UTF-8.
-    String::from_utf8(bytes).expect("frontmatter masking should preserve UTF-8")
 }
 
 /// Remove all documents under a root from a realm's index.

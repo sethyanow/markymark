@@ -15,7 +15,7 @@ criterion = { workspace = true }
 md5 = "0.7"
 regex = { workspace = true }
 markymark-core = { path = "../markymark-core", features = ["zig-kernels"] }
-markymark-index = { path = "../markymark-index", features = ["zig-kernels"] }
+markymark-index = { path = "../markymark-index" }
 markymark-parser = { path = "../markymark-parser" }
 
 [[bench]]

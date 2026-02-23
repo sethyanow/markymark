@@ -214,7 +214,16 @@ in Rust. Net -2,839 lines. The decisions below are historical context only.
 ### Context window exhaustion from task chaining (fail-context-runaway)
 Agent completed B-6, then marky-eebj refactor, then started marky-j516 — all in one session
 without stopping for user review. Hit context window limit mid-task, leaving from_blob/tests.rs
-split half-done (new files created, old file not deleted = E0761 build break). **Rules:**
+split half-done (new files created, old file not deleted = E0761 build break).
+
+**Recurrence (2026-02-23, marky-9s66):** B-9 is a single large task (~14 implementation steps)
+that touches 24 files and deletes ~2,895 lines. Agent made all changes in one pass without
+committing intermediate checkpoints. Hit context wall while investigating a pre-existing LSP
+compile error (key_path_str method). Left all changes uncommitted/unstaged. Recovery required
+a fresh session to validate and commit. **Lesson reinforcement:** even within a single task,
+commit intermediate milestones (e.g., Part 1 feature gate removal, then Part 2 deletion).
+
+**Rules:**
 - **ONE task per session turn.** After completing a task, STOP and report. Do not chain into
   the next task without explicit user approval.
 - **Budget awareness.** If a session has already done substantial work (>2 commits), pause
@@ -223,6 +232,8 @@ split half-done (new files created, old file not deleted = E0761 build break). *
 - **Never start a destructive refactor near context limits.** File splits require atomic
   completion (create new + delete old + test + commit). Starting one without room to finish
   leaves a broken build.
+- **Commit intermediate milestones within large tasks.** A 14-step task with 24 file changes
+  should have at least 2-3 intermediate commits, not one giant uncommitted diff.
 
 ### tower-lsp-server v0.23 API mismatch (fail-tower-lsp-types)
 Pre-training has `lsp_types` and `#[async_trait]`. The community fork v0.23 uses `ls_types`
