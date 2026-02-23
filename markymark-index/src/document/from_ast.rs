@@ -13,12 +13,11 @@ use std::collections::HashMap as StdHashMap;
 
 use super::{
     helpers, BlockEntry, BlockOwned, BlockRefEntry, CalloutEntry, CalloutOwned, CodeSpanEntry,
-    CodeSpanOwned, DocumentDependent, DocumentIndex, DocumentIndexCell, DocumentOwner,
-    EmbedEntry, EmbedOwned, FrontmatterEntry, FrontmatterValueEntry, HeadingEntry,
-    IncrementalOverrides, LinkDefinitionEntry, LinkDefinitionOwned, MarkdownLinkEntry,
-    MarkdownLinkOwned, PropertyEntry, PropertyValueEntry, QueryBlockEntry, QueryBlockOwned,
-    TagEntry, TagOwned, TaskEntry, TaskOwned, WikiLinkEntry, WikiLinkOwned, XmlTagEntry,
-    XmlTagOwned,
+    CodeSpanOwned, DocumentDependent, DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry,
+    EmbedOwned, FrontmatterEntry, FrontmatterValueEntry, HeadingEntry, IncrementalOverrides,
+    LinkDefinitionEntry, LinkDefinitionOwned, MarkdownLinkEntry, MarkdownLinkOwned, PropertyEntry,
+    PropertyValueEntry, QueryBlockEntry, QueryBlockOwned, TagEntry, TagOwned, TaskEntry, TaskOwned,
+    WikiLinkEntry, WikiLinkOwned, XmlTagEntry, XmlTagOwned,
 };
 
 impl DocumentIndex {
@@ -351,22 +350,22 @@ impl DocumentIndex {
                 .collect()
         };
 
-        let link_defs_owned: Vec<LinkDefinitionOwned> =
-            if let Some(ov) = overrides.link_definitions {
-                ov
-            } else {
-                ast.extract_link_definitions()
-                    .into_iter()
-                    .map(|ld| LinkDefinitionOwned {
-                        label: ld.label().to_string(),
-                        url: ld.url().to_string(),
-                        title: ld.title().map(str::to_string),
-                        range: Range::new(Position::new(0, 0), Position::new(0, 0)),
-                        start_byte: 0,
-                        end_byte: 0,
-                    })
-                    .collect()
-            };
+        let link_defs_owned: Vec<LinkDefinitionOwned> = if let Some(ov) = overrides.link_definitions
+        {
+            ov
+        } else {
+            ast.extract_link_definitions()
+                .into_iter()
+                .map(|ld| LinkDefinitionOwned {
+                    label: ld.label().to_string(),
+                    url: ld.url().to_string(),
+                    title: ld.title().map(str::to_string),
+                    range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+                    start_byte: 0,
+                    end_byte: 0,
+                })
+                .collect()
+        };
 
         let owner = DocumentOwner {
             arena: ast.into_arena(),

@@ -432,8 +432,7 @@ fn test_from_blob_with_xml_tags() {
 
     assert!(xml_tags.len() >= 2, "should extract agent and goal tags");
 
-    let index =
-        DocumentIndex::from_blob_with_xml_tags(&blob, xml_tags).expect("from_blob failed");
+    let index = DocumentIndex::from_blob_with_xml_tags(&blob, xml_tags).expect("from_blob failed");
 
     // Headings still work
     assert_eq!(index.headings().len(), 1);

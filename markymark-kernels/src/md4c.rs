@@ -342,8 +342,7 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         // SAFETY: embeds pointer is valid for embeds_count elements,
         // allocated by Zig page_allocator.
         // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
-        let c_embeds =
-            unsafe { std::slice::from_raw_parts(out.embeds, out.embeds_count as usize) };
+        let c_embeds = unsafe { std::slice::from_raw_parts(out.embeds, out.embeds_count as usize) };
         for e in c_embeds {
             let target_start = e.target_offset as usize;
             let target = std::str::from_utf8(safe_blob_slice(

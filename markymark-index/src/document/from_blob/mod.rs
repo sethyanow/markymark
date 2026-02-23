@@ -35,8 +35,8 @@ use super::{
 };
 
 mod header;
-use self::header::*;
 pub use self::header::BlobError;
+use self::header::*;
 
 // ---------------------------------------------------------------------------
 // XML tag extraction from raw text (standalone, no tree-sitter needed)
@@ -631,8 +631,7 @@ impl DocumentIndex {
 
             // Callouts/query_blocks/link_definitions: not yet in blob format
             let callouts = BumpVec::<CalloutEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let query_blocks =
-                BumpVec::<QueryBlockEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            let query_blocks = BumpVec::<QueryBlockEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let link_definitions =
                 BumpVec::<LinkDefinitionEntry<'_>>::new_in(arena_ref).into_bump_slice();
 
@@ -669,4 +668,3 @@ impl DocumentIndex {
 
 #[cfg(test)]
 mod tests;
-
