@@ -121,6 +121,22 @@ Key design decisions and patterns:
   content, so entities are NOT decoded inside code spans. This matches CommonMark
   spec (code spans are verbatim).
 
+### XML tag extraction via ExtractionRenderer (2026-02-23, marky-fd74)
+
+B-7.1: Full Zig→blob→FFI→Rust pipeline for XML tags. Key patterns:
+
+- **HTML callback parsing**: md4c fires `TextType.html` for block-level HTML.
+  ExtractionRenderer parses `<tag>` / `</tag>` / `<tag />` patterns from the raw
+  HTML text, with case-insensitive tag name matching for close tags.
+- **Void elements**: `<br>`, `<hr>`, `<img>` etc. are auto-closed (no close tag needed).
+- **CMd4cResult ABI**: grew from 136→144 bytes (added `xml_tags` pointer + `xml_tags_count`).
+  Rust mirror struct must exactly match Zig extern struct layout — field order matters.
+  SIGSEGVs result from any layout mismatch.
+- **Blob header**: `xml_tag_count` at offset 80 in v2 header. BlobXmlTag = 40 bytes,
+  section order: ...properties → xml_tags → line_starts → text_pool.
+- **B-7.2 remaining**: Rust `from_blob` deserialization (read xml_tags from blob directly),
+  wire into ScanBackend/ScanAllResult, remove supplementary `from_blob_with_xml_tags`.
+
 ---
 
 ## Using markymark Effectively
@@ -133,6 +149,17 @@ CLAUDE.md "Document Intelligence" section for the full LSP vs MCP decision tree.
 - `realm-stats` is cheap — use as before/after check when modifying docs
 - `search-symbols` is fuzzy on heading text, not file content
 - Ignore XML tag warnings in files with code blocks (marky-8la)
+
+### Zig MCP Tool (mcp__zig, added 2026-02-22)
+
+Available tools: `get_recommendations`, `generate_code`, `optimize_code`, `estimate_compute_units`,
+`generate_build_zig`, `analyze_build_zig`, `generate_build_zon`. All respond successfully.
+
+**Assessment:** Generic/noisy output. `get_recommendations` produces boilerplate checklists
+regardless of input specificity. `generate_code` ignores detailed prompts and returns templates.
+`analyze_build_zig` gives reasonable but shallow advice. Not useful for precision Zig work —
+stick with LSP + agent docs for code quality. May be useful for quick build.zig scaffolding
+or generating build.zig.zon dependency manifests.
 
 ---
 
