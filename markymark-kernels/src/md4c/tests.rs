@@ -496,7 +496,10 @@ fn test_extract_xml_tag_block_level() {
     );
     assert_eq!(result.xml_tags[0].tag_name, "custom-tag");
     assert!(!result.xml_tags[0].is_self_closing);
-    assert!(!result.xml_tags[0].is_inline, "block-level tags should not be inline");
+    assert!(
+        !result.xml_tags[0].is_inline,
+        "block-level tags should not be inline"
+    );
 }
 
 #[test]
@@ -610,8 +613,14 @@ fn test_extract_inline_xml_tags_extracted() {
     assert_eq!(result.xml_tags[1].tag_name, "goal");
     assert!(!result.xml_tags[0].is_unclosed);
     assert!(!result.xml_tags[1].is_unclosed);
-    assert!(result.xml_tags[0].is_inline, "inline tags should have is_inline=true");
-    assert!(result.xml_tags[1].is_inline, "inline tags should have is_inline=true");
+    assert!(
+        result.xml_tags[0].is_inline,
+        "inline tags should have is_inline=true"
+    );
+    assert!(
+        result.xml_tags[1].is_inline,
+        "inline tags should have is_inline=true"
+    );
 }
 
 #[test]
@@ -620,5 +629,8 @@ fn test_extract_block_level_xml_tag_not_inline() {
     let input = "\n<custom-tag>\n\nSome content\n\n</custom-tag>\n";
     let result = extract_md4c(input).unwrap();
     assert!(!result.xml_tags.is_empty());
-    assert!(!result.xml_tags[0].is_inline, "block-level tags should have is_inline=false");
+    assert!(
+        !result.xml_tags[0].is_inline,
+        "block-level tags should have is_inline=false"
+    );
 }
