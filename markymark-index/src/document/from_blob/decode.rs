@@ -1,11 +1,12 @@
 use super::header::{
-    pool_str, read_u32_le, read_u8, BlobError, BlobHeader, SectionOffsets, BLOCK_ID_SIZE,
-    BLOCK_REF_SIZE, CALLOUT_SIZE, CODE_SPAN_SIZE, EMBED_SIZE, HEADING_SIZE, LINK_DEF_SIZE,
-    LINK_SIZE, PROPERTY_SIZE, QUERY_BLOCK_SIZE, TAG_SIZE, TASK_SIZE,
+    pool_str, read_u16_le, read_u32_le, read_u8, BlobError, BlobHeader, SectionOffsets,
+    BLOCK_ID_SIZE, BLOCK_REF_SIZE, CALLOUT_SIZE, CODE_SPAN_SIZE, EMBED_SIZE, HEADING_SIZE,
+    LINK_DEF_SIZE, LINK_SIZE, PROPERTY_SIZE, QUERY_BLOCK_SIZE, TAG_SIZE, TASK_SIZE, XML_TAG_SIZE,
 };
 use super::owned::{
     BlockData, BlockRefData, CalloutData, CodeSpanData, DecodedOwnedData, EmbedData, HeadingData,
     LinkDefinitionData, MarkdownData, PropertyData, QueryBlockData, TagData, TaskData, WikiData,
+    XmlTagData,
 };
 
 pub(super) fn decode_owned_data(
@@ -406,6 +407,40 @@ pub(super) fn decode_owned_data(
         });
     }
 
+    // ── XML Tags ──────────────────────────────────────────────────
+    // BlobXmlTag layout (40 bytes):
+    //   tag_name_off(4@0) tag_name_len(2@4) flags(1@6) _pad(1@7)
+    //   raw_html_off(4@8) raw_html_len(2@12) _pad2(2@14)
+    //   source_offset(4@16) end_offset(4@20)
+    //   start_line(4@24) start_col(4@28) end_line(4@32) end_col(4@36)
+    let mut xml_tags_owned: Vec<XmlTagData> =
+        Vec::with_capacity(header.xml_tag_count as usize);
+    for i in 0..header.xml_tag_count as usize {
+        let base = offsets.xml_tags + i * XML_TAG_SIZE;
+        let tag_name_off = read_u32_le(data, base);
+        let tag_name_len = read_u16_le(data, base + 4) as u32;
+        let flags = read_u8(data, base + 6);
+        // raw_html_off/len at base+8..14 — not needed for XmlTagEntry
+        let source_offset = read_u32_le(data, base + 16);
+        let end_offset = read_u32_le(data, base + 20);
+        let start_line = read_u32_le(data, base + 24);
+        let start_col = read_u32_le(data, base + 28);
+        let end_line = read_u32_le(data, base + 32);
+        let end_col = read_u32_le(data, base + 36);
+        let tag_name = pool_str(text_pool, tag_name_off, tag_name_len)?.to_owned();
+        xml_tags_owned.push(XmlTagData {
+            tag_name,
+            is_self_closing: (flags & 0x01) != 0,
+            is_unclosed: (flags & 0x02) != 0,
+            source_offset,
+            end_offset,
+            start_line,
+            start_col,
+            end_line,
+            end_col,
+        });
+    }
+
     Ok(DecodedOwnedData {
         headings: headings_owned,
         wiki_links: wiki_owned,
@@ -420,5 +455,6 @@ pub(super) fn decode_owned_data(
         query_blocks: query_blocks_owned,
         link_definitions: link_defs_owned,
         properties: properties_owned,
+        xml_tags: xml_tags_owned,
     })
 }

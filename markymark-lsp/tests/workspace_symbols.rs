@@ -420,7 +420,7 @@ async fn test_workspace_symbol_includes_xml_tags() {
         let mut state = backend.state().write().await;
         state.open_document(
             DocumentUri::new("file:///ws/agents.md").unwrap(),
-            "# Config\n\n<agent>content</agent>\n<goal>win</goal>\n".to_string(),
+            "# Config\n\n<agent>\n\ncontent\n\n</agent>\n\n<goal>\n\nwin\n\n</goal>\n".to_string(),
         );
     }
 
@@ -496,7 +496,7 @@ async fn test_workspace_symbol_xml_tags_in_empty_query() {
         let mut state = backend.state().write().await;
         state.open_document(
             DocumentUri::new("file:///ws/skills.md").unwrap(),
-            "<prompt>Hello</prompt>\n".to_string(),
+            "<prompt>\nHello\n</prompt>\n".to_string(),
         );
     }
 

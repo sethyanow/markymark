@@ -369,10 +369,16 @@ pub const ExtractionRenderer = struct {
     fn text(self: *ExtractionRenderer, text_type: TextType, content: []const u8) void {
         if (self.in_code_block) return;
 
-        // Collect HTML fragments for XML tag extraction
+        // Collect HTML fragments for XML tag extraction.
+        // Only collect if content points within src_text (block-level HTML).
+        // Inline HTML content may point to md4c's internal buffer, not the source.
         if (text_type == .html) {
-            if (content.len > 0 and @intFromPtr(content.ptr) >= @intFromPtr(self.src_text.ptr)) {
-                const byte_offset = @intFromPtr(content.ptr) - @intFromPtr(self.src_text.ptr);
+            const src_start = @intFromPtr(self.src_text.ptr);
+            const src_end = src_start + self.src_text.len;
+            const content_start = @intFromPtr(content.ptr);
+            const content_end = content_start + content.len;
+            if (content.len > 0 and content_start >= src_start and content_end <= src_end) {
+                const byte_offset = content_start - src_start;
                 if (byte_offset <= std.math.maxInt(u32)) {
                     self.html_fragments.append(self.allocator, .{
                         .content = content,
@@ -648,97 +654,112 @@ pub const ExtractionRenderer = struct {
 
     /// Process collected HTML fragments into structured XML tag entries.
     /// Called from leaveBlock(.doc) after all callbacks are done.
+    /// NOTE: md4c may deliver multiple tags within a single HTML text fragment
+    /// (e.g. `<agent>content</agent>\n`), so we scan within each fragment for
+    /// all `<...>` tag occurrences rather than treating each fragment as one tag.
     fn processHtmlFragments(self: *ExtractionRenderer) void {
         if (self.oom) return;
 
         for (self.html_fragments.items) |frag| {
-            if (frag.content.len == 0 or frag.content[0] != '<') continue;
+            // Scan through the fragment for all '<...>' tag occurrences
+            var pos: usize = 0;
+            while (pos < frag.content.len) {
+                // Find next '<'
+                const lt_pos = std.mem.indexOfScalarPos(u8, frag.content, pos, '<') orelse break;
+                // Find matching '>'
+                const gt_pos = std.mem.indexOfScalarPos(u8, frag.content, lt_pos + 1, '>') orelse break;
 
-            const parsed = parseTagName(frag.content) orelse continue;
+                const tag_slice = frag.content[lt_pos .. gt_pos + 1];
+                const tag_offset = frag.offset +| @as(u32, @intCast(lt_pos));
 
-            if (parsed.is_closing) {
-                // Pop matching open tag from stack (innermost first, same-name)
-                var match_idx: ?usize = null;
-                var j = self.xml_tag_stack.items.len;
-                while (j > 0) {
-                    j -= 1;
-                    if (std.ascii.eqlIgnoreCase(self.xml_tag_stack.items[j].tag_name, parsed.name)) {
-                        match_idx = j;
-                        break;
+                pos = gt_pos + 1;
+
+                const parsed = parseTagName(tag_slice) orelse continue;
+
+                if (parsed.is_closing) {
+                    // Pop matching open tag from stack (innermost first, same-name)
+                    var match_idx: ?usize = null;
+                    var j = self.xml_tag_stack.items.len;
+                    while (j > 0) {
+                        j -= 1;
+                        if (std.ascii.eqlIgnoreCase(self.xml_tag_stack.items[j].tag_name, parsed.name)) {
+                            match_idx = j;
+                            break;
+                        }
                     }
-                }
-                if (match_idx) |idx| {
-                    const open = self.xml_tag_stack.orderedRemove(idx);
-                    const end_offset = frag.offset +| @as(u32, @intCast(frag.content.len));
+                    if (match_idx) |idx| {
+                        const open = self.xml_tag_stack.orderedRemove(idx);
+                        const end_offset = tag_offset +| @as(u32, @intCast(tag_slice.len));
 
-                    const owned_name = self.allocator.dupe(u8, open.tag_name) catch {
-                        self.oom = true;
-                        return;
-                    };
-                    errdefer self.allocator.free(owned_name);
-                    const owned_html = self.allocator.dupe(u8, open.raw_html) catch {
-                        self.oom = true;
-                        return;
-                    };
+                        const owned_name = self.allocator.dupe(u8, open.tag_name) catch {
+                            self.oom = true;
+                            return;
+                        };
+                        errdefer self.allocator.free(owned_name);
+                        const owned_html = self.allocator.dupe(u8, open.raw_html) catch {
+                            self.oom = true;
+                            return;
+                        };
 
-                    self.xml_tags.append(self.allocator, .{
-                        .tag_name = owned_name,
-                        .raw_html = owned_html,
-                        .offset = open.offset,
-                        .end_offset = end_offset,
-                        .is_self_closing = false,
-                        .is_unclosed = false,
-                    }) catch {
-                        self.allocator.free(owned_name);
-                        self.allocator.free(owned_html);
-                        self.oom = true;
-                        return;
-                    };
-                }
-                // Unmatched close tags silently ignored (same as Rust)
-            } else {
-                // Check self-closing: ends with /> or is void element
-                const is_self_closing = (frag.content.len >= 2 and
-                    frag.content[frag.content.len - 2] == '/' and
-                    frag.content[frag.content.len - 1] == '>') or
-                    isVoidElement(parsed.name);
-
-                if (is_self_closing) {
-                    const end_offset = frag.offset +| @as(u32, @intCast(frag.content.len));
-
-                    const owned_name = self.allocator.dupe(u8, parsed.name) catch {
-                        self.oom = true;
-                        return;
-                    };
-                    errdefer self.allocator.free(owned_name);
-                    const owned_html = self.allocator.dupe(u8, frag.content) catch {
-                        self.oom = true;
-                        return;
-                    };
-
-                    self.xml_tags.append(self.allocator, .{
-                        .tag_name = owned_name,
-                        .raw_html = owned_html,
-                        .offset = frag.offset,
-                        .end_offset = end_offset,
-                        .is_self_closing = true,
-                        .is_unclosed = false,
-                    }) catch {
-                        self.allocator.free(owned_name);
-                        self.allocator.free(owned_html);
-                        self.oom = true;
-                        return;
-                    };
+                        self.xml_tags.append(self.allocator, .{
+                            .tag_name = owned_name,
+                            .raw_html = owned_html,
+                            .offset = open.offset,
+                            .end_offset = end_offset,
+                            .is_self_closing = false,
+                            .is_unclosed = false,
+                        }) catch {
+                            self.allocator.free(owned_name);
+                            self.allocator.free(owned_html);
+                            self.oom = true;
+                            return;
+                        };
+                    }
+                    // Unmatched close tags silently ignored (same as Rust)
                 } else {
-                    // Push to stack for matching
-                    self.xml_tag_stack.append(self.allocator, .{
-                        .tag_name = parsed.name,
-                        .raw_html = frag.content,
-                        .offset = frag.offset,
-                    }) catch {
-                        self.oom = true;
-                        return;
-                    };
+                    // Check self-closing: ends with /> or is void element
+                    const is_self_closing = (tag_slice.len >= 2 and
+                        tag_slice[tag_slice.len - 2] == '/' and
+                        tag_slice[tag_slice.len - 1] == '>') or
+                        isVoidElement(parsed.name);
+
+                    if (is_self_closing) {
+                        const end_offset = tag_offset +| @as(u32, @intCast(tag_slice.len));
+
+                        const owned_name = self.allocator.dupe(u8, parsed.name) catch {
+                            self.oom = true;
+                            return;
+                        };
+                        errdefer self.allocator.free(owned_name);
+                        const owned_html = self.allocator.dupe(u8, tag_slice) catch {
+                            self.oom = true;
+                            return;
+                        };
+
+                        self.xml_tags.append(self.allocator, .{
+                            .tag_name = owned_name,
+                            .raw_html = owned_html,
+                            .offset = tag_offset,
+                            .end_offset = end_offset,
+                            .is_self_closing = true,
+                            .is_unclosed = false,
+                        }) catch {
+                            self.allocator.free(owned_name);
+                            self.allocator.free(owned_html);
+                            self.oom = true;
+                            return;
+                        };
+                    } else {
+                        // Push to stack for matching
+                        self.xml_tag_stack.append(self.allocator, .{
+                            .tag_name = parsed.name,
+                            .raw_html = tag_slice,
+                            .offset = tag_offset,
+                        }) catch {
+                            self.oom = true;
+                            return;
+                        };
+                    }
                 }
             }
         }

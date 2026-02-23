@@ -18,8 +18,6 @@ pub use helpers::slugify;
 pub use types::*;
 
 #[cfg(feature = "zig-kernels")]
-pub use from_blob::extract_xml_tags_from_text;
-#[cfg(feature = "zig-kernels")]
 pub use from_blob::BlobError;
 
 use hashbrown::HashMap;

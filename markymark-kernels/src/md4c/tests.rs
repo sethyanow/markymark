@@ -519,6 +519,26 @@ fn test_extract_xml_tags_empty_document() {
 }
 
 #[test]
+fn test_extract_xml_tags_multiple_block_level() {
+    // Tags must be on their own lines with blank lines to be block-level HTML.
+    // Inline HTML (<tag>content</tag> on one line) is NOT extracted — md4c's
+    // inline HTML content may point to internal buffers, not source text.
+    let input = "# Heading\n\n<agent>\n\ncontent\n\n</agent>\n\n<goal>\n\nwin\n\n</goal>\n";
+    let result = extract_md4c(input).unwrap();
+    let names: Vec<&str> = result.xml_tags.iter().map(|t| t.tag_name.as_str()).collect();
+    assert!(
+        names.contains(&"agent"),
+        "should find 'agent'; got: {:?}",
+        names
+    );
+    assert!(
+        names.contains(&"goal"),
+        "should find 'goal'; got: {:?}",
+        names
+    );
+}
+
+#[test]
 fn test_extract_xml_tag_convert_result_roundtrip() {
     // Construct a CMd4cResult with xml_tags to test convert_result path.
     let blob = b"divraw html here";
@@ -567,4 +587,17 @@ fn test_extract_xml_tag_convert_result_roundtrip() {
     assert_eq!(result.xml_tags[0].end_offset, 20);
     assert!(!result.xml_tags[0].is_self_closing);
     assert!(result.xml_tags[0].is_unclosed);
+}
+
+#[test]
+fn test_extract_inline_xml_tags_not_extracted() {
+    // Inline HTML (<tag>content</tag> on one line) is NOT extracted.
+    // md4c's inline HTML content may point to internal buffers, not source text.
+    let input = "<agent>content</agent>\n\n<goal>win</goal>\n";
+    let result = extract_md4c(input).unwrap();
+    assert_eq!(
+        result.xml_tags.len(),
+        0,
+        "inline HTML tags should not be extracted"
+    );
 }

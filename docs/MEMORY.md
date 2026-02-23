@@ -314,10 +314,26 @@ false positive due to not following symlinks (2026-02-20).
 
 ### Engine Pipeline (Epic H)
 
-- **XML tags require supplementary extraction** — md4c treats HTML as pass-through, so the
-  engine blob never contains XML tags. LSP calls `extract_xml_tags_from_text()` (markymark-parser
-  single-pass scanner) and passes results to `from_blob_with_xml_tags()`. Any future blob-missing
-  feature needs the same supplement pattern.
+- **XML tags extracted natively via blob** — B-7.1/B-7.2 (marky-fd74/marky-l5vu) migrated XML
+  tag extraction into the Zig ExtractionRenderer. Tags are serialized as `BlobXmlTag` entries
+  in the blob and deserialized by `from_blob()`. No supplementary extraction needed.
+- **md4c inline HTML content pointers are NOT into source text** — md4c passes inline HTML
+  fragments via `text()` callback with pointers to internal buffers, not the original source.
+  The bounds check in `extraction_renderer.zig:text()` must validate both start AND end:
+  `content_start >= src_start AND content_end <= src_end`. Failing to check end caused garbage
+  offsets (414M+) and corrupted tag names.
+- **processHtmlFragments scans within fragments for multiple tags** — a single HTML block line
+  like `<goal>win</goal>` contains multiple `<...>` sequences. The inner loop in
+  `processHtmlFragments()` finds each one.
+- **XML tag symbols need sort-by-range before nesting** — `xml_tags_to_symbols()` in
+  `markymark-lsp/src/symbols.rs` must sort tags by range before building parent/child nesting.
+  Parents must be inserted before children.
+- **Blob path does not preserve per-tag attributes** — the `BlobXmlTag` format stores tag name,
+  range, and flags but NOT attributes. Attribute display in hover and workspace stats is empty
+  when going through the blob path. This is an acceptable trade-off.
+- **Test fixtures must use block-level HTML for XML tag extraction** — inline HTML like
+  `<tag>content</tag>` on a single line is treated as inline by md4c, not block-level.
+  Tags are only extracted from block-level HTML (tag on its own line, content on separate lines).
 - **End positions computed in Zig** — heading, link, and block-id end positions are calculated
   during document construction in `zig/src/engine/document.zig`, avoiding double-computation in Rust.
 - **Engine lifecycle: create → update → get_blob → from_blob → destroy** — per-document
@@ -403,12 +419,13 @@ false positive due to not following symlinks (2026-02-20).
 - **H: Zig Document Engine** (marky-io3h, DONE) — see below. Tagged `marky-io3h-complete`.
 - **D: Vendor tree-sitter-md** (marky-0jz, CLOSED) — superseded by Option G.
 
-### Deferred (Low ROI after Epic H)
+### Deferred (Low ROI after Epic H) — see also Incremental md4c below
 
 - **E: Lazy AST** (marky-syx, P3) — value reduced. Tree-sitter only for MCP batch + hover/goto-def.
-- **Engine incremental diffing** — investigated, low ROI. Zig reparse ~2.5ms at 50KB, not bottleneck.
+- **Engine incremental diffing** — 2.5ms at 50KB is fine, but scales linearly. 5MB → ~250ms per
+  keystroke. Revisited in incremental md4c research (2026-02-23). See dedicated section below.
 - **Zero-copy blob borrowing** — investigated, not worth it. Breaks DocumentIndex lifetime model for ~1-2ms.
-- **Edit range support in engine.update()** — premature without incremental diffing.
+- **Edit range support in engine.update()** — prerequisite for incremental md4c, no longer premature.
 
 ### Next: RealmIndex v2 (marky-n7wx)
 
@@ -751,3 +768,115 @@ pass `&str` to lookup methods, interner resolves internally.
 
 First task: **marky-wvqy** — scaffold Starlight site with navigation structure (SRE-refined).
 Subsequent tasks created iteratively via executing-plans.
+
+---
+
+## Incremental md4c Block-Level Reparse (Research, 2026-02-23)
+
+### Motivation
+
+Current pipeline does full md4c reparse on every keystroke via `DocumentEngine.update()`.
+At ~2.5ms/50KB this is fine for typical files, but scales linearly: 5MB → ~250ms per edit.
+Goal: support multi-megabyte markdown files without degrading responsiveness.
+
+The old Rust incremental system (deleted in marky-n78f, tag `fixed-incremental`) solved the
+wrong problem at the wrong layer — it did **merge after parse** (re-running regex extractors
+on edit regions, then splicing results). The right approach is **parse less** by making the
+md4c block analyzer itself incremental.
+
+### Architecture Analysis: blocks.zig
+
+md4c's block phase (`zig/src/md4c/blocks.zig`) is a single-pass, line-by-line, forward-only
+state machine. `processDoc()` calls `analyzeLine()` + `processLine()` in a loop, then
+`buildRefDefHashtable()`, then `processAllBlocks()` (which walks the flat `block_bytes`
+buffer and fires inline parsing + renderer callbacks).
+
+**State carried across lines** (the "parser snapshot"):
+- `containers[]` + `n_containers` — active blockquote/list nesting stack
+- `current_block` — leaf block being accumulated
+- `pivot_line.type` — previous line type (setext, lazy continuation, fenced code)
+- `html_block_type` — active HTML block (1-7)
+- `fence_indent` — code fence indentation
+- `last_line_has_list_loosening_effect` — loose/tight list heuristic
+
+**Why naive incremental is hard:**
+1. Container cascades — adding `>` at line 50 changes container matching for all subsequent lines
+2. Setext headings are retrospective — `---` on line N converts the paragraph above to `<h2>`
+3. Link ref defs are paragraph-consuming — `[ref]: url` lines eaten from paragraph start
+4. Loose/tight list detection retroactively patches opener blocks
+5. `block_bytes` is append-only — no splice capability
+
+### Proposed Hybrid: SIMD Boundaries + Chunk Tree
+
+**Layer 1 — SIMD structural boundary scan (existing kernels, microseconds)**
+
+Use SIMD kernels to identify **guaranteed convergence points** where parser state is fully
+determined regardless of prior context:
+- Blank line outside fenced code block = container stack resets to 0
+- ATX heading (`# `) = self-contained single-line block
+- Thematic break (`---`/`***`/`___`) = self-contained
+- Opening code fence = known state transition
+
+A dedicated `boundary_scan` kernel could find blank-outside-fence in one SIMD pass (track
+backtick/tilde toggles, look for `\n\n`).
+
+**Layer 2 — Chunk tree with cached state (sqrt decomposition / segment tree pattern)**
+
+Build a balanced tree where each node = chunk between two safe cut points:
+```
+Chunk { byte_range, entry_state: ParserSnapshot, exit_state: ParserSnapshot, block_output, line_count }
+```
+`ParserSnapshot` ≈ 64-128 bytes (container stack depth + types, pivot_line type, html_block_type,
+fence state, loose-list flags).
+
+**Layer 3 — Edit propagation (O(log N) convergence)**
+
+On edit:
+1. SIMD scan edited region for new/removed safe cut points
+2. Find affected chunk(s) in tree
+3. Reparse those chunks using entry_state from chunk before edit
+4. Compare new exit_state to next chunk's cached entry_state
+5. Match → stop (no propagation). Mismatch → reparse next chunk. Repeat.
+
+**Performance characteristics:**
+
+| Edit type | Cost | Why |
+|-----------|------|-----|
+| Paragraph interior (95%+ of typing) | O(chunk_size) ≈ 5-50 lines | Safe cut points unchanged, one chunk reparsed, exit state matches |
+| Structural (add `>`, fence, `---`) | O(affected_chunks × chunk) | Propagates until hitting a blank-line convergence barrier |
+| Worst case (no blank lines in file) | O(N) | Same as full reparse, but this pathological case is rare |
+
+Memory overhead: ~128 bytes per chunk. For 5MB / ~100K lines with ~2K chunks → ~256KB.
+
+### Existing Infrastructure That Helps
+
+- `fence_map` kernel — already builds fenced code ranges, usable for "is this blank line inside a fence?"
+- `heading_scan` kernel — finds ATX headings
+- `block_scan` kernel — finds block-level markers
+- `content_hash` kernel — could fingerprint chunks for fast "did anything change?" checks
+
+### Key Implementation Decisions (TBD — brainstorm these)
+
+1. **Chunk granularity** — fixed size (sqrt decomposition) vs. semantic boundaries (blank lines)?
+   Semantic is better for convergence but creates variable-size chunks.
+2. **block_bytes structure** — replace flat append buffer with segmented/rope structure, or
+   rebuild from chunks on demand?
+3. **Ref def handling** — `buildRefDefHashtable` is global. Incremental needs per-chunk ref def
+   tracking with a merge step.
+4. **processAllBlocks** — walks block_bytes linearly firing inline parsing + renderer. Can be
+   restricted to changed chunks if block_bytes is segmented.
+5. **API surface** — `engine.updateRange(edit_start, old_end, new_end)` alongside `engine.update(full_text)`
+6. **Blob interaction** — blob serialization already lazy (cached_blob invalidated on update).
+   Could invalidate per-chunk and rebuild only changed segments.
+
+### Related DSA Patterns
+
+Multiple classic patterns apply. For brainstorming reference:
+- **Sqrt decomposition** — divide into √N blocks, rebuild one block per update
+- **Segment tree with lazy propagation** — O(log N) update/query, deferred recomputation
+- **Finger tree with monoidal annotations** — split/concat at edit point, tree rebalances summaries
+- **Skip list with state checkpoints** — checkpoints at log-spaced intervals, reparse from nearest
+- **tree-sitter's approach** — CST nodes with byte ranges, identify minimal reparse set via range overlap
+
+The hybrid proposed above is closest to sqrt decomposition + segment tree, with SIMD providing
+the "block boundary" function that sqrt decomposition typically gets for free (fixed intervals).

@@ -1,6 +1,5 @@
 // Parity tests — from_blob vs from_scan comparison, mixed documents, and XML tags.
 
-use super::super::extract_xml_tags_from_text;
 use super::super::super::DocumentIndex;
 use super::blob_for;
 
@@ -133,27 +132,24 @@ fn test_from_blob_mixed_document() {
     assert_eq!(toc[2].depth, 1);
 }
 
-// ── XML tag supplementary tests (test 16–17) ─────────────────────────
+// ── XML tag blob-native tests (test 16–17) ───────────────────────────
 
 #[test]
-fn test_from_blob_with_xml_tags() {
-    let text = "# Heading\n\n<agent>content</agent>\n\n<goal>win</goal>\n";
+fn test_from_blob_xml_tags_native() {
+    // XML tags are now extracted by Zig and stored in the blob directly.
+    // Tags must be block-level HTML (own line, blank lines around) to be extracted.
+    let text = "# Heading\n\n<agent>\n\ncontent\n\n</agent>\n\n<goal>\n\nwin\n\n</goal>\n";
     let blob = blob_for(text);
-    let xml_tags = extract_xml_tags_from_text(text);
-
-    assert!(xml_tags.len() >= 2, "should extract agent and goal tags");
-
-    let index =
-        DocumentIndex::from_blob_with_xml_tags(&blob, xml_tags).expect("from_blob failed");
+    let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
 
     // Headings still work
     assert_eq!(index.headings().len(), 1);
     assert_eq!(index.headings()[0].text, "Heading");
 
-    // XML tags are populated
+    // XML tags are populated from blob
     assert!(
         !index.xml_tags().is_empty(),
-        "xml_tags should not be empty when provided"
+        "xml_tags should be extracted from blob"
     );
     let tag_names: Vec<&str> = index.xml_tags().iter().map(|xt| xt.tag_name).collect();
     assert!(
@@ -169,23 +165,31 @@ fn test_from_blob_with_xml_tags() {
 }
 
 #[test]
-fn test_extract_xml_tags_from_text_basic() {
-    let text = "<agent>hello</agent>\n<goal>win</goal>\n<routing>path</routing>\n";
-    let tags = extract_xml_tags_from_text(text);
-    let names: Vec<&str> = tags.iter().map(|t| t.tag_name.as_str()).collect();
+fn test_from_blob_xml_tags_self_closing() {
+    let text = "\n<br />\n";
+    let blob = blob_for(text);
+    let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+
+    let xml_tags = index.xml_tags();
     assert!(
-        names.contains(&"agent"),
-        "should find agent; got: {:?}",
-        names
+        !xml_tags.is_empty(),
+        "should extract self-closing tag from blob"
     );
-    assert!(
-        names.contains(&"goal"),
-        "should find goal; got: {:?}",
-        names
-    );
-    assert!(
-        names.contains(&"routing"),
-        "should find routing; got: {:?}",
-        names
-    );
+    assert_eq!(xml_tags[0].tag_name, "br");
+    assert!(xml_tags[0].is_self_closing);
+}
+
+#[test]
+fn test_from_blob_xml_tags_parity_with_scan() {
+    // Verify xml_tags from blob match xml_tags from scan (Md4cScanBackend).
+    use markymark_core::scanner::Md4cScanBackend;
+
+    let text = "\n<custom-tag>\n\nSome content\n\n</custom-tag>\n";
+    let blob = blob_for(text);
+    let blob_idx = DocumentIndex::from_blob(&blob).expect("from_blob failed");
+    let scan_idx = DocumentIndex::from_scan(text, &Md4cScanBackend);
+
+    let blob_tags: Vec<&str> = blob_idx.xml_tags().iter().map(|xt| xt.tag_name).collect();
+    let scan_tags: Vec<&str> = scan_idx.xml_tags().iter().map(|xt| xt.tag_name).collect();
+    assert_eq!(blob_tags, scan_tags, "xml tag names should match between blob and scan");
 }

@@ -1,9 +1,9 @@
 //! [`DocumentIndex::from_scan`] — construct index from a Zig SIMD scan backend.
 //!
 //! Uses byte-offset based scanning instead of AST parsing. The scan backend
-//! provides heading, link, tag, block-id, and code span extraction via SIMD
-//! kernels. Frontmatter, properties, and block-refs are not available from
-//! the scan path and return empty slices.
+//! provides heading, link, tag, block-id, code span, and XML tag extraction
+//! via SIMD kernels. Frontmatter is not available from the scan path and
+//! returns empty slices.
 
 use bumpalo::collections::Vec as BumpVec;
 use hashbrown::HashMap;
@@ -23,8 +23,8 @@ impl DocumentIndex {
     /// Build a document index from a scan backend (Zig SIMD path).
     ///
     /// Uses byte-offset based scanning instead of AST parsing. The scan backend
-    /// provides heading, link, tag, and block-id extraction via SIMD kernels.
-    /// XML tags are not supported by the scan path (returns empty slice).
+    /// provides heading, link, tag, block-id, and XML tag extraction via SIMD
+    /// kernels.
     pub fn from_scan(text: &str, backend: &dyn ScanBackend) -> Self {
         // Pre-compute line starts for byte-offset → Position conversion
         let line_starts = helpers::byte_offset_line_starts(text);
@@ -43,6 +43,7 @@ impl DocumentIndex {
             scan_query_blocks,
             scan_link_definitions,
             scan_properties,
+            scan_xml_tags,
         ) = match backend.scan_all(text) {
             Ok(result) => (
                 result.headings,
@@ -55,6 +56,7 @@ impl DocumentIndex {
                 result.query_blocks,
                 result.link_definitions,
                 result.properties,
+                result.xml_tags,
             ),
             Err(_) => (
                 backend.scan_headings(text).unwrap_or_default(),
@@ -67,6 +69,7 @@ impl DocumentIndex {
                 backend.scan_query_blocks(text).unwrap_or_default(),
                 backend.scan_link_definitions(text).unwrap_or_default(),
                 backend.scan_properties(text).unwrap_or_default(),
+                backend.scan_xml_tags(text).unwrap_or_default(),
             ),
         };
         let scan_tags = backend.scan_tags(text).unwrap_or_default();
@@ -197,8 +200,23 @@ impl DocumentIndex {
             let toc = helpers::build_toc(arena_ref, headings);
             let outline = helpers::build_outline(arena_ref, headings);
 
-            // XML tags: not supported by scan backend
-            let xml_tags = BumpVec::<XmlTagEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            // --- XML Tags ---
+            let mut xml_tags_builder = BumpVec::new_in(arena_ref);
+            for xt in scan_xml_tags {
+                let tag_name = arena_alloc_str(arena_ref, &xt.tag_name);
+                let pos = helpers::byte_offset_to_position(&line_starts, xt.offset);
+                let end_pos = helpers::byte_offset_to_position(&line_starts, xt.end_offset);
+                xml_tags_builder.push(XmlTagEntry {
+                    tag_name,
+                    attributes: HashMap::new(),
+                    is_self_closing: xt.is_self_closing,
+                    is_unclosed: xt.is_unclosed,
+                    range: Range::new(pos, end_pos),
+                    start_byte: xt.offset as usize,
+                    end_byte: xt.end_offset as usize,
+                });
+            }
+            let xml_tags = xml_tags_builder.into_bump_slice();
 
             // --- Code spans ---
             let mut cs_builder = BumpVec::new_in(arena_ref);

@@ -279,6 +279,25 @@ impl super::ScanBackend for Md4cScanBackend {
             .map_err(|e| ScanError::InternalError(e.to_string()))
     }
 
+    fn scan_xml_tags(&self, text: &str) -> Result<Vec<XmlTagResult>, ScanError> {
+        markymark_kernels::md4c::extract_md4c(text)
+            .map(|extraction| {
+                extraction
+                    .xml_tags
+                    .into_iter()
+                    .map(|xt| XmlTagResult {
+                        tag_name: xt.tag_name,
+                        raw_html: xt.raw_html,
+                        offset: xt.source_offset,
+                        end_offset: xt.end_offset,
+                        is_self_closing: xt.is_self_closing,
+                        is_unclosed: xt.is_unclosed,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
     fn scan_all(&self, text: &str) -> Result<ScanAllResult, ScanError> {
         markymark_kernels::md4c::extract_md4c(text)
             .map(|extraction| ScanAllResult {
@@ -361,6 +380,18 @@ impl super::ScanBackend for Md4cScanBackend {
                         key: p.key,
                         value: p.value,
                         value_type: p.value_type,
+                    })
+                    .collect(),
+                xml_tags: extraction
+                    .xml_tags
+                    .into_iter()
+                    .map(|xt| XmlTagResult {
+                        tag_name: xt.tag_name,
+                        raw_html: xt.raw_html,
+                        offset: xt.source_offset,
+                        end_offset: xt.end_offset,
+                        is_self_closing: xt.is_self_closing,
+                        is_unclosed: xt.is_unclosed,
                     })
                     .collect(),
             })

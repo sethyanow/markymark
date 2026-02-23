@@ -225,7 +225,7 @@ async fn test_document_symbol_includes_xml_tags() {
         let core_uri = DocumentUri::new("file:///workspace/xml-doc.md").unwrap();
         state.open_document(
             core_uri,
-            "# Config\n\n<agent>content</agent>\n\n<goal>win</goal>\n".to_string(),
+            "# Config\n\n<agent>\n\ncontent\n\n</agent>\n\n<goal>\n\nwin\n\n</goal>\n".to_string(),
         );
     }
 
@@ -268,7 +268,7 @@ async fn test_document_symbol_xml_only_document() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/xml-only.md").unwrap();
-        state.open_document(core_uri, "<agent>content</agent>\n<br/>\n".to_string());
+        state.open_document(core_uri, "<agent>\n\ncontent\n\n</agent>\n\n<br/>\n".to_string());
     }
 
     let params = DocumentSymbolParams {

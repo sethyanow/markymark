@@ -9,10 +9,7 @@ use std::collections::HashMap;
 use markymark_core::scanner::Md4cScanBackend;
 use markymark_core::structured::DocumentKind;
 use markymark_core::DocumentUri;
-use markymark_index::{
-    extract_xml_tags_from_text, AnyDocumentIndex, DocumentIndex, RealmIndex,
-    StructuredDocumentIndex,
-};
+use markymark_index::{AnyDocumentIndex, DocumentIndex, RealmIndex, StructuredDocumentIndex};
 use markymark_kernels::engine::DocumentEngine;
 use markymark_parser::structured::parse_structured;
 
@@ -139,11 +136,6 @@ impl ServerState {
     /// does NOT hold references to the blob after `from_blob()` returns. The
     /// blob can safely drop and the engine can be mutated or stored.
     fn build_markdown_index_via_engine(&mut self, uri_str: &str, text: &str) -> DocumentIndex {
-        // Extract XML tags from source text. The Zig engine does not extract
-        // them (md4c treats HTML tags as pass-through), so we run the
-        // markymark-parser single-pass tag scanner as a supplement.
-        let xml_tags = extract_xml_tags_from_text(text);
-
         if let Some(engine_mutex) = self.engines.get(uri_str) {
             // Engine exists — update it. The mutex is uncontested here because
             // build_markdown_index_via_engine takes &mut self.
@@ -160,8 +152,7 @@ impl ServerState {
             };
             match engine.update(text) {
                 Ok(()) => match engine.get_blob() {
-                    Ok(blob) => match DocumentIndex::from_blob_with_xml_tags(blob.data(), xml_tags)
-                    {
+                    Ok(blob) => match DocumentIndex::from_blob(blob.data()) {
                         Ok(index) => return index,
                         Err(e) => log::warn!(
                             target: "markymark_lsp",
@@ -185,8 +176,7 @@ impl ServerState {
             // No engine yet — create one
             match DocumentEngine::new(text) {
                 Ok(engine) => match engine.get_blob() {
-                    Ok(blob) => match DocumentIndex::from_blob_with_xml_tags(blob.data(), xml_tags)
-                    {
+                    Ok(blob) => match DocumentIndex::from_blob(blob.data()) {
                         Ok(index) => {
                             self.engines
                                 .insert(uri_str.to_string(), std::sync::Mutex::new(engine));

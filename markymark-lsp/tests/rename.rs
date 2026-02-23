@@ -448,23 +448,27 @@ async fn setup_xml_rename_workspace() -> (
     let uri_b: Uri = "file:///workspace/b.md".parse().unwrap();
 
     let text_a = concat!(
-        "# Doc A\n",                     // line 0
-        "\n",                            // line 1
-        "<agent>\n",                     // line 2
-        "Agent content.\n",              // line 3
-        "</agent>\n",                    // line 4
-        "\n",                            // line 5
-        "<agent>Inline agent</agent>\n", // line 6
+        "# Doc A\n",           // line 0
+        "\n",                  // line 1
+        "<agent>\n",           // line 2
+        "Agent content.\n",    // line 3
+        "</agent>\n",          // line 4
+        "\n",                  // line 5
+        "<agent>\n",           // line 6
+        "Second agent.\n",     // line 7
+        "</agent>\n",          // line 8
     );
 
     let text_b = concat!(
-        "# Doc B\n",                 // line 0
-        "\n",                        // line 1
-        "<agent>\n",                 // line 2
-        "Another agent.\n",          // line 3
-        "</agent>\n",                // line 4
-        "\n",                        // line 5
-        "<routing>path</routing>\n", // line 6
+        "# Doc B\n",           // line 0
+        "\n",                  // line 1
+        "<agent>\n",           // line 2
+        "Another agent.\n",    // line 3
+        "</agent>\n",          // line 4
+        "\n",                  // line 5
+        "<routing>\n",         // line 6
+        "Some path\n",         // line 7
+        "</routing>\n",        // line 8
     );
 
     {
@@ -666,7 +670,7 @@ async fn test_rename_xml_tag_unique_edits_open_and_close() {
     let (service, _socket, _uri_a, uri_b) = setup_xml_rename_workspace().await;
     let backend = service.inner();
 
-    // Rename "routing" tag from b.md line 6 — <routing>path</routing> is all on one line
+    // Rename "routing" tag from b.md line 6 — block-level <routing>...</routing>
     let params = RenameParams {
         text_document_position: TextDocumentPositionParams {
             text_document: TextDocumentIdentifier { uri: uri_b.clone() },
@@ -692,12 +696,14 @@ async fn test_rename_xml_tag_unique_edits_open_and_close() {
     );
 
     let b_edits = changes.get(&uri_b).expect("should have edits for b.md");
-    // Both edits on line 6: one for <routing>, one for </routing>
+    // Open <routing> on line 6, close </routing> on line 8
     assert_eq!(b_edits.len(), 2, "should have 2 edits on b.md");
     for edit in b_edits {
         assert_eq!(edit.new_text, "navigation");
-        assert_eq!(edit.range.start.line, 6);
     }
+    let lines: Vec<u32> = b_edits.iter().map(|e| e.range.start.line).collect();
+    assert!(lines.contains(&6), "should have open tag edit on line 6");
+    assert!(lines.contains(&8), "should have close tag edit on line 8");
 }
 
 // =======================================================================

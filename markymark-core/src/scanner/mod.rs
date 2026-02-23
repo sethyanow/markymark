@@ -102,6 +102,13 @@ pub trait ScanBackend: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// Scan text for XML/HTML tags (e.g. `<agent>content</agent>`).
+    ///
+    /// Default returns empty (backward compat for backends that don't extract).
+    fn scan_xml_tags(&self, _text: &str) -> Result<Vec<XmlTagResult>, ScanError> {
+        Ok(Vec::new())
+    }
+
     /// Scan text for headings, links, code spans, tasks, embeds, callouts, and
     /// block refs in a single pass.
     ///
@@ -120,6 +127,7 @@ pub trait ScanBackend: Send + Sync {
             query_blocks: self.scan_query_blocks(text)?,
             link_definitions: self.scan_link_definitions(text)?,
             properties: self.scan_properties(text)?,
+            xml_tags: self.scan_xml_tags(text)?,
         })
     }
 }

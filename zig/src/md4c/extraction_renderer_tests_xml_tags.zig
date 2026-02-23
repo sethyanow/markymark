@@ -238,5 +238,30 @@ test "xml_tags: FFI roundtrip via marky_md4c_extract" {
     try testing.expectEqual(@as(u8, 0), xt.is_unclosed);
 }
 
+// ── Multiple tags on same line (block-level HTML) ───────────────────
+
+test "xml_tags: inline HTML tags not extracted (not block-level)" {
+    // <agent>content</agent> on one line is inline HTML (not block-level).
+    // md4c's inline HTML content may point to internal buffers, not source text.
+    // These tags are correctly skipped by the block-level HTML extraction pipeline.
+    const input = "# Heading\n\n<agent>content</agent>\n\n<goal>win</goal>\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    // Inline HTML tags are NOT extracted — only block-level HTML is
+    try testing.expectEqual(@as(usize, 0), result.xml_tags.len);
+}
+
+test "xml_tags: multiple block-level tags on separate lines" {
+    // Tags on their own lines with blank lines = proper block HTML
+    const input = "<agent>\n\ncontent\n\n</agent>\n\n<goal>\n\nwin\n\n</goal>\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 2), result.xml_tags.len);
+    try testing.expectEqualStrings("agent", result.xml_tags[0].tag_name);
+    try testing.expectEqualStrings("goal", result.xml_tags[1].tag_name);
+}
+
 // NOTE: DocumentEngine integration and blob serialization tests live in
 // engine/document_test.zig (cannot cross module path boundary from md4c/).

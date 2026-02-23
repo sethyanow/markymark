@@ -31,7 +31,7 @@ use super::{
     helpers, BlockEntry, BlockRefEntry, CalloutEntry, CodeSpanEntry, DocumentDependent,
     DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry, HeadingEntry,
     LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry,
-    TagEntry, TaskEntry, WikiLinkEntry, XmlTagEntry, XmlTagOwned,
+    TagEntry, TaskEntry, WikiLinkEntry, XmlTagEntry,
 };
 
 mod decode;
@@ -43,43 +43,6 @@ use self::owned::DecodedOwnedData;
 pub use self::header::BlobError;
 
 // ---------------------------------------------------------------------------
-// XML tag extraction from raw text (standalone, no tree-sitter needed)
-// ---------------------------------------------------------------------------
-
-/// Extract XML/HTML tags from raw markdown text as owned data.
-///
-/// This uses the single-pass stack-based tokenizer from `markymark_parser`
-/// (which does NOT require tree-sitter). Code fences are skipped, and tags
-/// with attributes, self-closing tags, and unclosed tags are all handled.
-///
-/// Used by the engine pipeline (from_blob) to supplement the blob with XML
-/// tags that the Zig engine does not extract.
-pub fn extract_xml_tags_from_text(source: &str) -> Vec<XmlTagOwned> {
-    let arena = bumpalo::Bump::new();
-    let tags = markymark_parser::extract_xml_tags(&[], source, &arena);
-    tags.into_iter()
-        .map(|xt| {
-            let mut attributes: Vec<(String, String)> = xt
-                .attributes()
-                .iter()
-                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
-                .collect();
-            attributes.sort_by(|a, b| a.0.cmp(&b.0));
-            let (start_byte, end_byte) = xt.byte_range();
-            XmlTagOwned {
-                tag_name: xt.tag_name().to_string(),
-                attributes,
-                is_self_closing: xt.is_self_closing(),
-                is_unclosed: xt.is_unclosed(),
-                range: xt.range(),
-                start_byte,
-                end_byte,
-            }
-        })
-        .collect()
-}
-
-// ---------------------------------------------------------------------------
 // DocumentIndex::from_blob
 // ---------------------------------------------------------------------------
 
@@ -89,8 +52,8 @@ impl DocumentIndex {
     /// Produces a [`DocumentIndex`] equivalent to [`from_scan`] for the same
     /// input text. The blob is the output of `DocumentEngine::get_blob()`.
     ///
-    /// XML tags are not extracted by the Zig engine; use
-    /// [`from_blob_with_xml_tags`] to include them.
+    /// XML tags are read directly from the blob (v2 format). V1 blobs
+    /// produce zero XML tags.
     ///
     /// # Errors
     ///
@@ -103,22 +66,7 @@ impl DocumentIndex {
     /// - [`BlobError::InvalidUtf8`] — text pool contains invalid UTF-8
     ///
     /// [`from_scan`]: DocumentIndex::from_scan
-    /// [`from_blob_with_xml_tags`]: DocumentIndex::from_blob_with_xml_tags
     pub fn from_blob(data: &[u8]) -> Result<Self, BlobError> {
-        Self::from_blob_with_xml_tags(data, Vec::new())
-    }
-
-    /// Build a document index from a Zig engine binary blob with XML tags.
-    ///
-    /// Identical to [`from_blob`] but also populates the XML tag entries from
-    /// the provided owned data. Use [`extract_xml_tags_from_text`] to obtain
-    /// the XML tags from the source text.
-    ///
-    /// [`from_blob`]: DocumentIndex::from_blob
-    pub fn from_blob_with_xml_tags(
-        data: &[u8],
-        xml_tags_in: Vec<XmlTagOwned>,
-    ) -> Result<Self, BlobError> {
         let header = validate_blob(data)?;
         let offsets = compute_offsets(&header);
         let text_pool =
@@ -138,6 +86,7 @@ impl DocumentIndex {
             query_blocks: query_blocks_owned,
             link_definitions: link_defs_owned,
             properties: properties_owned,
+            xml_tags: xml_tags_owned,
         } = decode_owned_data(data, &header, &offsets, text_pool)?;
 
         // ── Build DocumentIndex via self_cell ────────────────────────
@@ -252,22 +201,20 @@ impl DocumentIndex {
                 );
             }
 
-            // --- XML Tags (from supplementary extraction, not in blob) ---
+            // --- XML Tags (decoded from blob v2) ---
             let mut xt_builder = BumpVec::new_in(arena_ref);
-            for xt in &xml_tags_in {
+            for xt in &xml_tags_owned {
                 let tag_name = arena_alloc_str(arena_ref, &xt.tag_name);
-                let mut attributes = hashbrown::HashMap::new();
-                for (k, v) in &xt.attributes {
-                    attributes.insert(arena_alloc_str(arena_ref, k), arena_alloc_str(arena_ref, v));
-                }
+                let start_pos = Position::new(xt.start_line, xt.start_col);
+                let end_pos = Position::new(xt.end_line, xt.end_col);
                 xt_builder.push(XmlTagEntry {
                     tag_name,
-                    attributes,
+                    attributes: hashbrown::HashMap::new(),
                     is_self_closing: xt.is_self_closing,
                     is_unclosed: xt.is_unclosed,
-                    range: xt.range,
-                    start_byte: xt.start_byte,
-                    end_byte: xt.end_byte,
+                    range: Range::new(start_pos, end_pos),
+                    start_byte: xt.source_offset as usize,
+                    end_byte: xt.end_offset as usize,
                 });
             }
             let xml_tags = xt_builder.into_bump_slice();

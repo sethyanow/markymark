@@ -138,6 +138,19 @@ pub(super) struct PropertyData {
     pub(super) value_type: u8,
 }
 
+#[derive(Clone)]
+pub(super) struct XmlTagData {
+    pub(super) tag_name: String,
+    pub(super) is_self_closing: bool,
+    pub(super) is_unclosed: bool,
+    pub(super) source_offset: u32,
+    pub(super) end_offset: u32,
+    pub(super) start_line: u32,
+    pub(super) start_col: u32,
+    pub(super) end_line: u32,
+    pub(super) end_col: u32,
+}
+
 pub(super) struct DecodedOwnedData {
     pub(super) headings: Vec<HeadingData>,
     pub(super) wiki_links: Vec<WikiData>,
@@ -152,5 +165,6 @@ pub(super) struct DecodedOwnedData {
     pub(super) query_blocks: Vec<QueryBlockData>,
     pub(super) link_definitions: Vec<LinkDefinitionData>,
     pub(super) properties: Vec<PropertyData>,
+    pub(super) xml_tags: Vec<XmlTagData>,
 }
 

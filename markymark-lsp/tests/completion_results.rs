@@ -318,7 +318,7 @@ fn test_xml_tag_completion_returns_tag_names() {
 
     state.open_document(
         uri_source,
-        "<agent>content</agent>\n\n<goal>win</goal>\n\n<routing>path</routing>\n".to_string(),
+        "<agent>\n\ncontent\n\n</agent>\n\n<goal>\n\nwin\n\n</goal>\n\n<routing>\n\npath\n\n</routing>\n".to_string(),
     );
     state.open_document(uri_editor.clone(), "New content <".to_string());
 
@@ -363,7 +363,7 @@ fn test_xml_tag_completion_filters_by_partial() {
 
     state.open_document(
         uri_source,
-        "<agent>content</agent>\n\n<goal>win</goal>\n".to_string(),
+        "<agent>\n\ncontent\n\n</agent>\n\n<goal>\n\nwin\n\n</goal>\n".to_string(),
     );
     state.open_document(uri_editor.clone(), "New <ag".to_string());
 

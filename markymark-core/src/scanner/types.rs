@@ -175,6 +175,23 @@ pub struct PropertyResult {
     pub value_type: u8,
 }
 
+/// An XML/HTML tag found by a scan backend (e.g. `<agent>content</agent>`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct XmlTagResult {
+    /// Tag name (e.g. "agent", "div").
+    pub tag_name: String,
+    /// Raw opening tag HTML (e.g. `<agent attr="val">`).
+    pub raw_html: String,
+    /// Start byte offset in source.
+    pub offset: u32,
+    /// End byte offset (includes closing tag if matched).
+    pub end_offset: u32,
+    /// Whether this is a self-closing or void element.
+    pub is_self_closing: bool,
+    /// Whether this tag was unclosed (no matching close tag found).
+    pub is_unclosed: bool,
+}
+
 /// Combined result from a single-pass scan of headings, links, code spans, tasks, embeds,
 /// callouts, and block refs.
 #[derive(Debug, Default)]
@@ -199,4 +216,6 @@ pub struct ScanAllResult {
     pub link_definitions: Vec<LinkDefinitionResult>,
     /// Properties extracted from the document.
     pub properties: Vec<PropertyResult>,
+    /// XML/HTML tags extracted from the document.
+    pub xml_tags: Vec<XmlTagResult>,
 }
