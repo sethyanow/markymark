@@ -37,7 +37,14 @@ pub struct RealmIndex {
     /// Block id → list of (uri, block) in insertion order.
     block_to_location: HashMap<Spur, Vec<(DocumentUri, ResolvedBlock)>>,
     /// Tag name → URIs of docs containing it.
+    /// Lazily maintained: set `tags_dirty = true` during `update_document`
+    /// instead of patching eagerly. Rebuilt from `contributions` on next
+    /// mutation that needs it, or computed on-the-fly in read-only queries.
     tag_to_docs: HashMap<Spur, Vec<DocumentUri>>,
+    /// When true, `tag_to_docs` does not reflect recent `update_document` changes.
+    /// `&mut self` methods call `ensure_tags_clean()` before reading tag_to_docs.
+    /// `&self` methods compute directly from contributions when dirty.
+    tags_dirty: bool,
     /// Code span text → (uri, code span) for cross-doc code span lookups.
     code_span_to_docs: HashMap<Spur, Vec<(DocumentUri, ResolvedCodeSpan)>>,
     /// Per-document contribution metadata for incremental cross-doc index updates.
@@ -124,6 +131,7 @@ impl RealmIndex {
             slug_to_headings: HashMap::new(),
             block_to_location: HashMap::new(),
             tag_to_docs: HashMap::new(),
+            tags_dirty: false,
             code_span_to_docs: HashMap::new(),
             stem_to_uris: HashMap::new(),
             key_path_to_docs: HashMap::new(),
@@ -203,26 +211,36 @@ impl RealmIndex {
     /// Diffs old vs new contributions (heading slugs, block IDs, tags, code spans)
     /// and patches only the changed entries. For the common case (single-char edit
     /// that doesn't change structure), this skips all cross-doc index operations.
+    ///
+    /// Tags are lazily deferred: instead of patching `tag_to_docs` eagerly, we set
+    /// `tags_dirty = true`. The tag index is rebuilt from contributions on the next
+    /// mutation that needs it, or computed on-the-fly in read-only queries.
     pub fn update_document(&mut self, uri: DocumentUri, new_index: DocumentIndex) {
         let key = uri.as_str().to_string();
         let new_contrib = DocContribution::build(&mut self.interner, &new_index, &uri);
 
-        if let Some(old_contrib) = self.contributions.get(&key) {
+        // Remove old contribution to get owned access (avoids clone of 4 HashSets).
+        let old_contrib = self.contributions.remove(&key);
+
+        if let Some(ref old_contrib) = old_contrib {
             if old_contrib == &new_contrib {
                 // Fast path: contribution sets identical — skip cross-doc index ops.
                 // Just swap the stored DocumentIndex.
             } else {
                 // Slow path: diff and patch only changed entries.
-                let old_contrib = old_contrib.clone();
-                self.patch_headings(&key, &uri, &old_contrib, &new_contrib, &new_index);
-                self.patch_blocks(&key, &uri, &old_contrib, &new_contrib, &new_index);
-                self.patch_tags(&key, &uri, &old_contrib, &new_contrib);
-                self.patch_code_spans(&key, &uri, &old_contrib, &new_contrib, &new_index);
-                self.patch_stem(&old_contrib, &new_contrib, &uri);
-                self.patch_journal_date(&key, &uri, &old_contrib, &new_contrib);
+                self.patch_headings(&key, &uri, old_contrib, &new_contrib, &new_index);
+                self.patch_blocks(&key, &uri, old_contrib, &new_contrib, &new_index);
+                // Tags are lazily deferred — mark dirty instead of patching eagerly.
+                if old_contrib.tag_names != new_contrib.tag_names {
+                    self.tags_dirty = true;
+                }
+                self.patch_code_spans(&key, &uri, old_contrib, &new_contrib, &new_index);
+                self.patch_stem(old_contrib, &new_contrib, &uri);
+                self.patch_journal_date(&key, &uri, old_contrib, &new_contrib);
             }
         } else {
             // First add (no prior contribution): full population.
+            self.ensure_tags_clean();
             self.populate_cross_doc_indexes(&uri, &new_index);
         }
 
@@ -251,8 +269,30 @@ impl RealmIndex {
         self.docs.remove(&key);
     }
 
+    /// Rebuild `tag_to_docs` from contributions if dirty.
+    ///
+    /// Called from `&mut self` methods before they read/write `tag_to_docs`.
+    /// `&self` methods use `tag_counts_from_contributions()` instead.
+    fn ensure_tags_clean(&mut self) {
+        if !self.tags_dirty {
+            return;
+        }
+        self.tag_to_docs.clear();
+        for (key, contrib) in &self.contributions {
+            if let Some((uri, _)) = self.docs.get(key) {
+                for &spur in &contrib.tag_names {
+                    self.tag_to_docs.entry(spur).or_default().push(uri.clone());
+                }
+            }
+        }
+        self.tags_dirty = false;
+    }
+
     /// Remove a document's entries from cross-doc indexes by URI key.
     fn remove_from_cross_doc_indexes(&mut self, key: &str) {
+        // Ensure tag index is clean before removal (lazy tag rebuild).
+        self.ensure_tags_clean();
+
         let Some((uri, index)) = self.docs.get(key) else {
             return;
         };
@@ -446,21 +486,29 @@ impl RealmIndex {
             }
         }
 
-        // Add entries for new slugs
-        for &spur in new.heading_slugs.difference(&old.heading_slugs) {
-            let slug_str = self.interner.resolve(&spur);
+        // Build slug → heading entries lookup map for O(1) access per new slug.
+        // Without this, each new slug would scan all headings: O(N * H) → O(H²).
+        let added: HashSet<&Spur> = new.heading_slugs.difference(&old.heading_slugs).collect();
+        if !added.is_empty() {
+            let mut slug_map: HashMap<&str, Vec<_>> = HashMap::new();
             for entry in new_index.headings() {
-                if entry.slug == slug_str {
-                    let resolved = ResolvedHeading {
-                        text: entry.text.to_string(),
-                        slug: entry.slug.to_string(),
-                        level: entry.level,
-                        range: entry.range,
-                    };
-                    self.slug_to_headings
-                        .entry(spur)
-                        .or_default()
-                        .push((uri.clone(), resolved));
+                slug_map.entry(entry.slug).or_default().push(entry);
+            }
+            for &spur in &added {
+                let slug_str = self.interner.resolve(spur);
+                if let Some(entries) = slug_map.get(slug_str) {
+                    for entry in entries {
+                        let resolved = ResolvedHeading {
+                            text: entry.text.to_string(),
+                            slug: entry.slug.to_string(),
+                            level: entry.level,
+                            range: entry.range,
+                        };
+                        self.slug_to_headings
+                            .entry(*spur)
+                            .or_default()
+                            .push((uri.clone(), resolved));
+                    }
                 }
             }
         }
@@ -494,27 +542,6 @@ impl RealmIndex {
                     },
                 ));
             }
-        }
-    }
-
-    fn patch_tags(
-        &mut self,
-        key: &str,
-        uri: &DocumentUri,
-        old: &DocContribution,
-        new: &DocContribution,
-    ) {
-        for &spur in old.tag_names.difference(&new.tag_names) {
-            if let Some(uris) = self.tag_to_docs.get_mut(&spur) {
-                uris.retain(|u| u.as_str() != key);
-                if uris.is_empty() {
-                    self.tag_to_docs.remove(&spur);
-                }
-            }
-        }
-
-        for &spur in new.tag_names.difference(&old.tag_names) {
-            self.tag_to_docs.entry(spur).or_default().push(uri.clone());
         }
     }
 
@@ -669,11 +696,28 @@ impl RealmIndex {
     }
 
     /// Get tag usage counts across all markdown documents.
+    ///
+    /// When `tags_dirty`, computes directly from contributions (read-only,
+    /// no mutation needed) so this method stays `&self`.
     pub fn tag_counts(&self) -> Vec<(String, usize)> {
-        self.tag_to_docs
-            .iter()
-            .map(|(spur, uris)| (self.interner.resolve(spur).to_string(), uris.len()))
-            .collect()
+        if self.tags_dirty {
+            // Compute from contributions without mutating tag_to_docs.
+            let mut counts: HashMap<Spur, usize> = HashMap::new();
+            for contrib in self.contributions.values() {
+                for &spur in &contrib.tag_names {
+                    *counts.entry(spur).or_insert(0) += 1;
+                }
+            }
+            counts
+                .into_iter()
+                .map(|(spur, count)| (self.interner.resolve(&spur).to_string(), count))
+                .collect()
+        } else {
+            self.tag_to_docs
+                .iter()
+                .map(|(spur, uris)| (self.interner.resolve(spur).to_string(), uris.len()))
+                .collect()
+        }
     }
 
     /// Get a markdown document's index by URI.

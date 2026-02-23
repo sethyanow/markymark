@@ -703,7 +703,7 @@ fn test_update_no_structural_change() {
         .values()
         .map(|v| v.len())
         .sum::<usize>();
-    let tag_count_before = realm.tag_to_docs.values().map(|v| v.len()).sum::<usize>();
+    let tag_count_before: usize = realm.tag_counts().iter().map(|(_, c)| c).sum();
 
     // Update with identical structure but different content (simulating range shift)
     realm.update_document(
@@ -716,7 +716,7 @@ fn test_update_no_structural_change() {
         .values()
         .map(|v| v.len())
         .sum::<usize>();
-    let tag_count_after = realm.tag_to_docs.values().map(|v| v.len()).sum::<usize>();
+    let tag_count_after: usize = realm.tag_counts().iter().map(|(_, c)| c).sum();
 
     assert_eq!(
         heading_count_before, heading_count_after,
@@ -796,32 +796,11 @@ fn test_update_tag_added_removed() {
     // Update: remove zig, add wasm
     realm.update_document(u.clone(), make_md_index("# H\n\n#rust #wasm"));
 
-    let rust_spur = realm.interner.get("rust").expect("rust interned");
-    let wasm_spur = realm.interner.get("wasm").expect("wasm interned");
-    let zig_spur = realm.interner.get("zig").expect("zig interned");
-
-    assert!(
-        realm
-            .tag_to_docs
-            .get(&rust_spur)
-            .map(|v| v.contains(&u))
-            .unwrap_or(false),
-        "rust tag still present"
-    );
-    assert!(
-        realm
-            .tag_to_docs
-            .get(&wasm_spur)
-            .map(|v| v.contains(&u))
-            .unwrap_or(false),
-        "wasm tag added"
-    );
-    let has_zig = realm
-        .tag_to_docs
-        .get(&zig_spur)
-        .map(|v| v.contains(&u))
-        .unwrap_or(false);
-    assert!(!has_zig, "zig tag removed");
+    // Use tag_counts() public API — tag_to_docs is lazily maintained.
+    let counts: HashMap<String, usize> = realm.tag_counts().into_iter().collect();
+    assert_eq!(counts.get("rust"), Some(&1), "rust tag still present");
+    assert_eq!(counts.get("wasm"), Some(&1), "wasm tag added");
+    assert_eq!(counts.get("zig"), None, "zig tag removed");
 }
 
 #[test]
@@ -935,4 +914,81 @@ fn test_interner_memory_bounded_at_scale() {
         interned >= n_docs,
         "interner suspiciously small: {interned} for {n_docs} docs"
     );
+}
+
+// ── Layer 4: Lazy cold index tests ──
+
+#[test]
+fn test_lazy_tags_multiple_updates_before_query() {
+    let mut realm = RealmIndex::new();
+    let u = uri("lazy_tags.md");
+    realm.add_document(u.clone(), make_md_index("# H\n\n#rust #zig"));
+
+    // Rapid sequence of structural edits changing tags — no query between them.
+    realm.update_document(u.clone(), make_md_index("# H\n\n#rust #wasm"));
+    realm.update_document(u.clone(), make_md_index("# H\n\n#go #wasm"));
+    realm.update_document(u.clone(), make_md_index("# H\n\n#go #python #wasm"));
+
+    // Single query should reflect final state.
+    let counts: HashMap<String, usize> = realm.tag_counts().into_iter().collect();
+    assert_eq!(counts.get("go"), Some(&1));
+    assert_eq!(counts.get("python"), Some(&1));
+    assert_eq!(counts.get("wasm"), Some(&1));
+    assert_eq!(counts.get("rust"), None, "rust removed in second update");
+    assert_eq!(counts.get("zig"), None, "zig removed in first update");
+}
+
+#[test]
+fn test_lazy_tags_remove_after_dirty_update() {
+    let mut realm = RealmIndex::new();
+    let u1 = uri("doc1.md");
+    let u2 = uri("doc2.md");
+    realm.add_document(u1.clone(), make_md_index("# A\n\n#shared #unique1"));
+    realm.add_document(u2.clone(), make_md_index("# B\n\n#shared #unique2"));
+
+    // Update doc1 tags (makes tag index dirty)
+    realm.update_document(u1.clone(), make_md_index("# A\n\n#shared #replaced1"));
+
+    // Remove doc2 — must clean tag index first to avoid stale entries.
+    realm.remove_document(&u2);
+
+    let counts: HashMap<String, usize> = realm.tag_counts().into_iter().collect();
+    assert_eq!(counts.get("shared"), Some(&1), "only doc1 has shared now");
+    assert_eq!(counts.get("replaced1"), Some(&1));
+    assert_eq!(counts.get("unique1"), None, "unique1 removed by update");
+    assert_eq!(counts.get("unique2"), None, "unique2 removed with doc2");
+}
+
+#[test]
+fn test_lazy_tags_add_after_dirty_update() {
+    let mut realm = RealmIndex::new();
+    let u1 = uri("existing.md");
+    realm.add_document(u1.clone(), make_md_index("# A\n\n#alpha"));
+
+    // Update makes tags dirty
+    realm.update_document(u1.clone(), make_md_index("# A\n\n#beta"));
+
+    // Add new document — must clean tag index first.
+    let u2 = uri("new.md");
+    realm.add_document(u2.clone(), make_md_index("# B\n\n#gamma #beta"));
+
+    let counts: HashMap<String, usize> = realm.tag_counts().into_iter().collect();
+    assert_eq!(counts.get("alpha"), None, "alpha removed by update");
+    assert_eq!(counts.get("beta"), Some(&2), "beta in both docs");
+    assert_eq!(counts.get("gamma"), Some(&1), "gamma in new doc");
+}
+
+#[test]
+fn test_lazy_tags_fast_path_keeps_tags_clean() {
+    let mut realm = RealmIndex::new();
+    let u = uri("fastpath.md");
+    realm.add_document(u.clone(), make_md_index("# H\n\n#rust"));
+
+    // Same structure — fast path, tags should NOT be dirtied.
+    realm.update_document(u.clone(), make_md_index("# H\n\n#rust"));
+
+    // tag_to_docs should still be clean and correct.
+    assert!(!realm.tags_dirty, "fast path should not dirty tags");
+    let counts: HashMap<String, usize> = realm.tag_counts().into_iter().collect();
+    assert_eq!(counts.get("rust"), Some(&1));
 }
