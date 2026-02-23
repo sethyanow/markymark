@@ -430,6 +430,7 @@ pub(super) fn decode_owned_data(
             tag_name,
             is_self_closing: (flags & 0x01) != 0,
             is_unclosed: (flags & 0x02) != 0,
+            is_inline: (flags & 0x04) != 0,
             source_offset,
             end_offset,
             start_line,

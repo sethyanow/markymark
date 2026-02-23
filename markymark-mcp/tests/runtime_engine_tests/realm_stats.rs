@@ -10,11 +10,9 @@ fn realm_stats_returns_aggregate_counts_for_default_realm() {
     let ws = TempWorkspace::new("realm-stats");
     let doc1 = ws.root().join("notes.md");
     let doc2 = ws.root().join("links.md");
-    // XML tags must use block-level HTML (open/close on separate lines) for
-    // the Zig md4c extraction path. Inline `<tag>x</tag>` is not extracted.
     fs::write(
         &doc1,
-        "# Heading A\n\n## Heading B\n\n<agent>\ncontent\n</agent>\n",
+        "# Heading A\n\n## Heading B\n\n<agent>content</agent>\n",
     )
     .expect("doc1 should be created");
     fs::write(

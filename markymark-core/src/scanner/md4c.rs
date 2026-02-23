@@ -292,6 +292,7 @@ impl super::ScanBackend for Md4cScanBackend {
                         end_offset: xt.end_offset,
                         is_self_closing: xt.is_self_closing,
                         is_unclosed: xt.is_unclosed,
+                        is_inline: xt.is_inline,
                     })
                     .collect()
             })
@@ -392,6 +393,7 @@ impl super::ScanBackend for Md4cScanBackend {
                         end_offset: xt.end_offset,
                         is_self_closing: xt.is_self_closing,
                         is_unclosed: xt.is_unclosed,
+                        is_inline: xt.is_inline,
                     })
                     .collect(),
             })

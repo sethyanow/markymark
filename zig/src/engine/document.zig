@@ -495,6 +495,7 @@ pub fn parseAll(
             .end = end_pos,
             .is_self_closing = xt.is_self_closing,
             .is_unclosed = xt.is_unclosed,
+            .is_inline = xt.is_inline,
         }) catch {
             extraction.deinit();
             return error.OutOfMemory;

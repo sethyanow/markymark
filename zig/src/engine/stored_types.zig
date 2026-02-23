@@ -121,4 +121,5 @@ pub const StoredXmlTag = struct {
     end: Position,
     is_self_closing: bool,
     is_unclosed: bool,
+    is_inline: bool,
 };

@@ -190,7 +190,7 @@ pub const BlobProperty = extern struct {
 pub const BlobXmlTag = extern struct {
     tag_name_off: u32 = 0,
     tag_name_len: u16 = 0,
-    flags: u8 = 0, // bit 0 = self_closing, bit 1 = unclosed
+    flags: u8 = 0, // bit 0 = self_closing, bit 1 = unclosed, bit 2 = is_inline
     _pad: u8 = 0,
     raw_html_off: u32 = 0,
     raw_html_len: u16 = 0,

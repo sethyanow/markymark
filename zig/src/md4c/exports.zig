@@ -545,6 +545,7 @@ pub export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResul
             .raw_html_length = raw_html_len,
             .is_self_closing = if (xt.is_self_closing) 1 else 0,
             .is_unclosed = if (xt.is_unclosed) 1 else 0,
+            .is_inline = if (xt.is_inline) 1 else 0,
         };
     }
 

@@ -245,6 +245,7 @@ impl DocumentIndex {
                     attributes: HashMap::new(),
                     is_self_closing: xt.is_self_closing,
                     is_unclosed: xt.is_unclosed,
+                    is_inline: xt.is_inline,
                     range: Range::new(pos, end_pos),
                     start_byte: xt.offset as usize,
                     end_byte: xt.end_offset as usize,

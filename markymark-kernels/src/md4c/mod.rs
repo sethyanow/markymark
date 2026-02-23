@@ -127,7 +127,8 @@ struct CMd4cXmlTag {
     raw_html_length: u32,
     is_self_closing: u8,
     is_unclosed: u8,
-    _pad: [u8; 2],
+    is_inline: u8,
+    _pad: [u8; 1],
 }
 
 #[repr(C)]
@@ -315,6 +316,8 @@ pub struct Md4cXmlTag {
     pub is_self_closing: bool,
     /// Whether this tag was unclosed (no matching close tag found).
     pub is_unclosed: bool,
+    /// Whether this tag was found inline (within a paragraph) rather than block-level.
+    pub is_inline: bool,
 }
 
 /// Results from md4c single-pass extraction.
@@ -719,6 +722,7 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
                 end_offset: xt.end_offset,
                 is_self_closing: xt.is_self_closing != 0,
                 is_unclosed: xt.is_unclosed != 0,
+                is_inline: xt.is_inline != 0,
             });
         }
     }

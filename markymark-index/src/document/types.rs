@@ -143,6 +143,8 @@ pub struct XmlTagOwned {
     pub is_self_closing: bool,
     /// Whether this tag has no matching closing tag.
     pub is_unclosed: bool,
+    /// Whether this tag was found inline (within a paragraph) rather than block-level.
+    pub is_inline: bool,
     /// Source range (line/col).
     pub range: Range,
     /// Start byte offset in the source document.
@@ -301,6 +303,8 @@ pub struct XmlTagEntry<'arena> {
     pub is_self_closing: bool,
     /// Whether this tag has no matching closing tag.
     pub is_unclosed: bool,
+    /// Whether this tag was found inline (within a paragraph) rather than block-level.
+    pub is_inline: bool,
     /// Source range of the entire tag.
     pub range: Range,
     /// Start byte offset in the source document.

@@ -496,6 +496,7 @@ fn test_extract_xml_tag_block_level() {
     );
     assert_eq!(result.xml_tags[0].tag_name, "custom-tag");
     assert!(!result.xml_tags[0].is_self_closing);
+    assert!(!result.xml_tags[0].is_inline, "block-level tags should not be inline");
 }
 
 #[test]
@@ -553,7 +554,8 @@ fn test_extract_xml_tag_convert_result_roundtrip() {
         raw_html_length: 13,
         is_self_closing: 0,
         is_unclosed: 1,
-        _pad: [0, 0],
+        is_inline: 0,
+        _pad: [0],
     };
     let out = CMd4cResult {
         headings: std::ptr::null_mut(),
@@ -589,6 +591,7 @@ fn test_extract_xml_tag_convert_result_roundtrip() {
     assert_eq!(result.xml_tags[0].end_offset, 20);
     assert!(!result.xml_tags[0].is_self_closing);
     assert!(result.xml_tags[0].is_unclosed);
+    assert!(!result.xml_tags[0].is_inline);
 }
 
 #[test]
@@ -607,4 +610,15 @@ fn test_extract_inline_xml_tags_extracted() {
     assert_eq!(result.xml_tags[1].tag_name, "goal");
     assert!(!result.xml_tags[0].is_unclosed);
     assert!(!result.xml_tags[1].is_unclosed);
+    assert!(result.xml_tags[0].is_inline, "inline tags should have is_inline=true");
+    assert!(result.xml_tags[1].is_inline, "inline tags should have is_inline=true");
+}
+
+#[test]
+fn test_extract_block_level_xml_tag_not_inline() {
+    // Block-level HTML tags should have is_inline=false.
+    let input = "\n<custom-tag>\n\nSome content\n\n</custom-tag>\n";
+    let result = extract_md4c(input).unwrap();
+    assert!(!result.xml_tags.is_empty());
+    assert!(!result.xml_tags[0].is_inline, "block-level tags should have is_inline=false");
 }

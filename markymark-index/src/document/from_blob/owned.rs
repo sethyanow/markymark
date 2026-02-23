@@ -143,6 +143,7 @@ pub(super) struct XmlTagData {
     pub(super) tag_name: String,
     pub(super) is_self_closing: bool,
     pub(super) is_unclosed: bool,
+    pub(super) is_inline: bool,
     pub(super) source_offset: u32,
     pub(super) end_offset: u32,
     pub(super) start_line: u32,

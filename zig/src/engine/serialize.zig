@@ -377,6 +377,7 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         var flags: u8 = 0;
         if (xt.is_self_closing) flags |= 0x01;
         if (xt.is_unclosed) flags |= 0x02;
+        if (xt.is_inline) flags |= 0x04;
         const bxt = blob.BlobXmlTag{
             .tag_name_off = pool_off,
             .tag_name_len = @intCast(xt.tag_name.len),

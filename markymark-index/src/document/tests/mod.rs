@@ -133,6 +133,7 @@ fn xml_tag_entry_uses_arena_lifetime() {
         attributes: attrs,
         is_self_closing: false,
         is_unclosed: false,
+        is_inline: false,
         range: Range::new(Position::new(0, 0), Position::new(0, 6)),
         start_byte: 0,
         end_byte: 6,

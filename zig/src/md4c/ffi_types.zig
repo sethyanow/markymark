@@ -126,7 +126,8 @@ pub const CMd4cXmlTag = extern struct {
     raw_html_length: u32,
     is_self_closing: u8,
     is_unclosed: u8,
-    _pad: [2]u8 = .{ 0, 0 },
+    is_inline: u8,
+    _pad: [1]u8 = .{0},
 };
 comptime {
     std.debug.assert(@sizeOf(CMd4cXmlTag) == 28);

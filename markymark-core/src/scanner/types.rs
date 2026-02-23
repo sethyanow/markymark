@@ -190,6 +190,8 @@ pub struct XmlTagResult {
     pub is_self_closing: bool,
     /// Whether this tag was unclosed (no matching close tag found).
     pub is_unclosed: bool,
+    /// Whether this tag was found inline (within a paragraph) rather than block-level.
+    pub is_inline: bool,
 }
 
 /// Combined result from a single-pass scan of headings, links, code spans, tasks, embeds,
