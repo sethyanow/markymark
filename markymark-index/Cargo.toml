@@ -44,3 +44,7 @@ name = "gen_golden_blob"
 name = "memory"
 harness = false
 required-features = ["bench-internals"]
+
+[[bench]]
+name = "realm_update"
+harness = false
