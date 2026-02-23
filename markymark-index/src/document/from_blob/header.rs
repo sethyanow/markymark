@@ -247,7 +247,6 @@ pub(super) struct SectionOffsets {
     pub(super) query_blocks: usize,
     pub(super) link_definitions: usize,
     pub(super) properties: usize,
-    #[allow(dead_code)] // B-7.2 will read xml_tags from blob
     pub(super) xml_tags: usize,
     // line_starts skipped — positions are pre-computed in the blob
     pub(super) text_pool: usize,
