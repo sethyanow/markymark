@@ -184,6 +184,19 @@ in Rust. Net -2,839 lines. The decisions below are historical context only.
 
 ## Key Failure Patterns
 
+### Context window exhaustion from task chaining (fail-context-runaway)
+Agent completed B-6, then marky-eebj refactor, then started marky-j516 — all in one session
+without stopping for user review. Hit context window limit mid-task, leaving from_blob/tests.rs
+split half-done (new files created, old file not deleted = E0761 build break). **Rules:**
+- **ONE task per session turn.** After completing a task, STOP and report. Do not chain into
+  the next task without explicit user approval.
+- **Budget awareness.** If a session has already done substantial work (>2 commits), pause
+  and check in before starting more. Large refactors (file splits, multi-file changes) are
+  especially context-hungry.
+- **Never start a destructive refactor near context limits.** File splits require atomic
+  completion (create new + delete old + test + commit). Starting one without room to finish
+  leaves a broken build.
+
 ### tower-lsp-server v0.23 API mismatch (fail-tower-lsp-types)
 Pre-training has `lsp_types` and `#[async_trait]`. The community fork v0.23 uses `ls_types`
 and native async traits. Always read `docs/rust_crates/tower-lsp.md`.
