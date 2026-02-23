@@ -644,7 +644,7 @@ n7wx is orthogonal: RealmIndex stays Rust regardless. ix3 is the Zig-sink work.
 ~~B-3: Tasks + Embeds — marky-oiw5 (B-3.1 Zig: marky-rd7r, B-3.2 Rust: marky-bmu9)~~ DONE
 ~~B-4: Callouts + Block refs — marky-h9qe (B-4.0: marky-7kmo, B-4.1 Zig: marky-1r0t, B-4.2 Rust: marky-8ac8)~~ DONE
 ~~B-5: Link defs + Query blocks (text scan)~~ DONE
-B-6: Properties (structured parsing)
+~~B-6: Properties (structured parsing) — marky-3uqj (B-6.1: fa98602, B-6.2: 4a86687)~~ DONE
 B-7: XML tags (complex parser migration)
 B-8: MCP batch path migration (from_ast → from_blob)
 B-9: extract.rs cleanup (remove dead code)
