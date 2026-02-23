@@ -235,7 +235,6 @@ impl ServerState {
 
     /// Handle a document being changed: apply changes, re-parse, re-index.
     pub fn change_document(&mut self, uri: &DocumentUri, text: String) {
-        self.realm.remove_document(uri);
         let kind = Self::document_kind_from_uri(uri);
         self.documents
             .insert(uri.as_str().to_string(), text.clone());
@@ -243,9 +242,10 @@ impl ServerState {
         match kind {
             Some(DocumentKind::Markdown) | None => {
                 let index = self.build_markdown_index_via_engine(uri.as_str(), &text);
-                self.realm.add_document(uri.clone(), index);
+                self.realm.update_document(uri.clone(), index);
             }
             Some(kind) => {
+                self.realm.remove_document(uri);
                 if let Ok(ast) = parse_structured(&text, kind) {
                     self.realm.add_structured_document(
                         uri.clone(),
@@ -324,16 +324,16 @@ impl ServerState {
         };
 
         // Phase 2: Re-index with the final text via the engine pipeline
-        self.realm.remove_document(uri);
         let kind = Self::document_kind_from_uri(uri);
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
                 let uri_str = uri.as_str();
                 let index = self.build_markdown_index_via_engine(uri_str, &final_text);
-                self.realm.add_document(uri.clone(), index);
+                self.realm.update_document(uri.clone(), index);
             }
             Some(kind) => {
+                self.realm.remove_document(uri);
                 if let Ok(ast) = parse_structured(&final_text, kind) {
                     self.realm.add_structured_document(
                         uri.clone(),

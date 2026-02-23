@@ -514,10 +514,7 @@ impl RealmIndex {
         }
 
         for &spur in new.tag_names.difference(&old.tag_names) {
-            self.tag_to_docs
-                .entry(spur)
-                .or_default()
-                .push(uri.clone());
+            self.tag_to_docs.entry(spur).or_default().push(uri.clone());
         }
     }
 
@@ -557,12 +554,7 @@ impl RealmIndex {
         }
     }
 
-    fn patch_stem(
-        &mut self,
-        old: &DocContribution,
-        new: &DocContribution,
-        uri: &DocumentUri,
-    ) {
+    fn patch_stem(&mut self, old: &DocContribution, new: &DocContribution, uri: &DocumentUri) {
         if old.stem == new.stem {
             return;
         }

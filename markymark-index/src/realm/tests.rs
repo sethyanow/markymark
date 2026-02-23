@@ -623,30 +623,48 @@ fn test_stem_index_remove_one_of_two_same_stem() {
 fn test_contribution_built_on_add() {
     let mut realm = RealmIndex::new();
     let u = uri("contrib_add.md");
-    realm.add_document(u.clone(), make_md_index("# Intro\n\n#tag1 #tag2\n\n^block1"));
+    realm.add_document(
+        u.clone(),
+        make_md_index("# Intro\n\n#tag1 #tag2\n\n^block1"),
+    );
 
     let key = u.as_str().to_string();
-    let contrib = realm.contributions.get(&key).expect("contribution should be stored on add");
+    let contrib = realm
+        .contributions
+        .get(&key)
+        .expect("contribution should be stored on add");
 
     // Verify heading slugs
     assert!(
-        contrib.heading_slugs.iter().any(|s| realm.interner.resolve(s) == "intro"),
+        contrib
+            .heading_slugs
+            .iter()
+            .any(|s| realm.interner.resolve(s) == "intro"),
         "contribution should contain heading slug 'intro'"
     );
 
     // Verify tag names
     assert!(
-        contrib.tag_names.iter().any(|s| realm.interner.resolve(s) == "tag1"),
+        contrib
+            .tag_names
+            .iter()
+            .any(|s| realm.interner.resolve(s) == "tag1"),
         "contribution should contain tag 'tag1'"
     );
     assert!(
-        contrib.tag_names.iter().any(|s| realm.interner.resolve(s) == "tag2"),
+        contrib
+            .tag_names
+            .iter()
+            .any(|s| realm.interner.resolve(s) == "tag2"),
         "contribution should contain tag 'tag2'"
     );
 
     // Verify block ids
     assert!(
-        contrib.block_ids.iter().any(|s| realm.interner.resolve(s) == "block1"),
+        contrib
+            .block_ids
+            .iter()
+            .any(|s| realm.interner.resolve(s) == "block1"),
         "contribution should contain block id 'block1'"
     );
 }
@@ -658,10 +676,16 @@ fn test_contribution_removed_on_remove() {
     realm.add_document(u.clone(), make_md_index("# Heading\n\n#mytag"));
 
     let key = u.as_str().to_string();
-    assert!(realm.contributions.contains_key(&key), "contribution present after add");
+    assert!(
+        realm.contributions.contains_key(&key),
+        "contribution present after add"
+    );
 
     realm.remove_document(&u);
-    assert!(!realm.contributions.contains_key(&key), "contribution removed after remove");
+    assert!(
+        !realm.contributions.contains_key(&key),
+        "contribution removed after remove"
+    );
 }
 
 #[test]
@@ -669,20 +693,43 @@ fn test_update_no_structural_change() {
     let mut realm = RealmIndex::new();
     let u = uri("update_noop.md");
     // Add doc with 3 headings and 2 tags
-    realm.add_document(u.clone(), make_md_index("# Intro\n\n## Details\n\n### Deep\n\n#rust #zig"));
+    realm.add_document(
+        u.clone(),
+        make_md_index("# Intro\n\n## Details\n\n### Deep\n\n#rust #zig"),
+    );
 
-    let heading_count_before = realm.slug_to_headings.values().map(|v| v.len()).sum::<usize>();
+    let heading_count_before = realm
+        .slug_to_headings
+        .values()
+        .map(|v| v.len())
+        .sum::<usize>();
     let tag_count_before = realm.tag_to_docs.values().map(|v| v.len()).sum::<usize>();
 
     // Update with identical structure but different content (simulating range shift)
-    realm.update_document(u.clone(), make_md_index("# Intro\n\n## Details\n\n### Deep\n\n#rust #zig"));
+    realm.update_document(
+        u.clone(),
+        make_md_index("# Intro\n\n## Details\n\n### Deep\n\n#rust #zig"),
+    );
 
-    let heading_count_after = realm.slug_to_headings.values().map(|v| v.len()).sum::<usize>();
+    let heading_count_after = realm
+        .slug_to_headings
+        .values()
+        .map(|v| v.len())
+        .sum::<usize>();
     let tag_count_after = realm.tag_to_docs.values().map(|v| v.len()).sum::<usize>();
 
-    assert_eq!(heading_count_before, heading_count_after, "heading entries unchanged on no-op update");
-    assert_eq!(tag_count_before, tag_count_after, "tag entries unchanged on no-op update");
-    assert!(realm.docs.contains_key(u.as_str()), "document still in docs");
+    assert_eq!(
+        heading_count_before, heading_count_after,
+        "heading entries unchanged on no-op update"
+    );
+    assert_eq!(
+        tag_count_before, tag_count_after,
+        "tag entries unchanged on no-op update"
+    );
+    assert!(
+        realm.docs.contains_key(u.as_str()),
+        "document still in docs"
+    );
 }
 
 #[test]
@@ -697,11 +744,23 @@ fn test_update_heading_added() {
     let intro_spur = realm.interner.get("intro").expect("intro interned");
     let details_spur = realm.interner.get("details").expect("details interned");
 
-    let intro_entries = realm.slug_to_headings.get(&intro_spur).expect("intro present");
-    assert!(intro_entries.iter().any(|(uri, _)| uri == &u), "intro still has our doc");
+    let intro_entries = realm
+        .slug_to_headings
+        .get(&intro_spur)
+        .expect("intro present");
+    assert!(
+        intro_entries.iter().any(|(uri, _)| uri == &u),
+        "intro still has our doc"
+    );
 
-    let details_entries = realm.slug_to_headings.get(&details_spur).expect("details present");
-    assert!(details_entries.iter().any(|(uri, _)| uri == &u), "details added for our doc");
+    let details_entries = realm
+        .slug_to_headings
+        .get(&details_spur)
+        .expect("details present");
+    assert!(
+        details_entries.iter().any(|(uri, _)| uri == &u),
+        "details added for our doc"
+    );
 }
 
 #[test]
@@ -716,7 +775,10 @@ fn test_update_heading_removed() {
     let intro_spur = realm.interner.get("intro").expect("intro interned");
     let details_spur = realm.interner.get("details").expect("details interned");
 
-    assert!(realm.slug_to_headings.get(&intro_spur).is_some(), "intro still present");
+    assert!(
+        realm.slug_to_headings.contains_key(&intro_spur),
+        "intro still present"
+    );
 
     let details_entries = realm.slug_to_headings.get(&details_spur);
     let has_our_doc = details_entries
@@ -739,14 +801,26 @@ fn test_update_tag_added_removed() {
     let zig_spur = realm.interner.get("zig").expect("zig interned");
 
     assert!(
-        realm.tag_to_docs.get(&rust_spur).map(|v| v.contains(&u)).unwrap_or(false),
+        realm
+            .tag_to_docs
+            .get(&rust_spur)
+            .map(|v| v.contains(&u))
+            .unwrap_or(false),
         "rust tag still present"
     );
     assert!(
-        realm.tag_to_docs.get(&wasm_spur).map(|v| v.contains(&u)).unwrap_or(false),
+        realm
+            .tag_to_docs
+            .get(&wasm_spur)
+            .map(|v| v.contains(&u))
+            .unwrap_or(false),
         "wasm tag added"
     );
-    let has_zig = realm.tag_to_docs.get(&zig_spur).map(|v| v.contains(&u)).unwrap_or(false);
+    let has_zig = realm
+        .tag_to_docs
+        .get(&zig_spur)
+        .map(|v| v.contains(&u))
+        .unwrap_or(false);
     assert!(!has_zig, "zig tag removed");
 }
 
@@ -759,15 +833,18 @@ fn test_update_code_span_added() {
     // Update: add a code span
     realm.update_document(
         u.clone(),
-        make_md_index_with_code_spans(
-            "# H",
-            vec![code_span("HashMap")],
-        ),
+        make_md_index_with_code_spans("# H", vec![code_span("HashMap")]),
     );
 
     let hm_spur = realm.interner.get("HashMap").expect("HashMap interned");
-    let entries = realm.code_span_to_docs.get(&hm_spur).expect("HashMap entry exists");
-    assert!(entries.iter().any(|(uri, _)| uri == &u), "code span added for our doc");
+    let entries = realm
+        .code_span_to_docs
+        .get(&hm_spur)
+        .expect("HashMap entry exists");
+    assert!(
+        entries.iter().any(|(uri, _)| uri == &u),
+        "code span added for our doc"
+    );
 }
 
 #[test]
@@ -808,7 +885,10 @@ fn test_update_preserves_other_docs_entries() {
     let b_still_present = intro_entries
         .map(|entries| entries.iter().any(|(uri, _)| uri == &ub))
         .unwrap_or(false);
-    assert!(b_still_present, "doc B's intro entry preserved after doc A update");
+    assert!(
+        b_still_present,
+        "doc B's intro entry preserved after doc A update"
+    );
 
     let a_removed = intro_entries
         .map(|entries| entries.iter().any(|(uri, _)| uri == &ua))
