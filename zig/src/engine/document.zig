@@ -680,210 +680,33 @@ fn inFenceRange(ranges: []const fence_map_mod.FenceRange, pos: u32) bool {
 
 const serializeState = serialize_mod.serializeState;
 
-// ── Free helpers ────────────────────────────────────────────────────
+// ── Free helpers (re-exported from document_free.zig) ───────────────
 
-pub fn freeHeadings(allocator: Allocator, headings: []StoredHeading) void {
-    for (headings) |h| {
-        allocator.free(h.text);
-        allocator.free(h.slug);
-    }
-    if (headings.len > 0) allocator.free(headings);
-}
-
-pub fn freeLinks(allocator: Allocator, links: []StoredLink) void {
-    for (links) |l| {
-        allocator.free(l.text);
-        allocator.free(l.target);
-    }
-    if (links.len > 0) allocator.free(links);
-}
-
-pub fn freeCodeSpans(allocator: Allocator, code_spans: []StoredCodeSpan) void {
-    for (code_spans) |cs| {
-        allocator.free(cs.text);
-    }
-    if (code_spans.len > 0) allocator.free(code_spans);
-}
-
-pub fn freeTags(allocator: Allocator, tags: []StoredTag) void {
-    for (tags) |t| {
-        allocator.free(t.name);
-    }
-    if (tags.len > 0) allocator.free(tags);
-}
-
-pub fn freeBlockIds(allocator: Allocator, block_ids: []StoredBlockId) void {
-    for (block_ids) |b| {
-        allocator.free(b.id);
-    }
-    if (block_ids.len > 0) allocator.free(block_ids);
-}
-
-pub fn freeTasks(allocator: Allocator, tasks: []StoredTask) void {
-    for (tasks) |t| {
-        allocator.free(t.text);
-    }
-    if (tasks.len > 0) allocator.free(tasks);
-}
-
-pub fn freeEmbeds(allocator: Allocator, embeds: []StoredEmbed) void {
-    for (embeds) |e| {
-        allocator.free(e.target);
-    }
-    if (embeds.len > 0) allocator.free(embeds);
-}
-
-pub fn freeStoredHeadingsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredHeading), free_texts: bool) void {
-    for (list.items) |h| {
-        // h.text was transferred from extraction; only free it when texts_transferred=true
-        // (i.e., after extraction.headings/links slice containers were freed at line 289-290).
-        if (free_texts) allocator.free(h.text);
-        allocator.free(h.slug);
-    }
-    list.deinit(allocator);
-}
-
-pub fn freeStoredLinksList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredLink), free_texts: bool) void {
-    // l.text and l.target were transferred from extraction; free them only when
-    // texts_transferred=true (after extraction slice containers freed at line 289-290).
-    if (free_texts) {
-        for (list.items) |l| {
-            allocator.free(l.text);
-            allocator.free(l.target);
-        }
-    }
-    list.deinit(allocator);
-}
-
-fn freeStoredCodeSpansList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredCodeSpan), free_texts: bool) void {
-    // cs.text was transferred from extraction; free only when texts_transferred=true.
-    if (free_texts) {
-        for (list.items) |cs| {
-            allocator.free(cs.text);
-        }
-    }
-    list.deinit(allocator);
-}
-
-fn freeStoredTagsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredTag)) void {
-    for (list.items) |t| {
-        allocator.free(t.name);
-    }
-    list.deinit(allocator);
-}
-
-fn freeStoredBlockIdsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredBlockId)) void {
-    for (list.items) |b| {
-        allocator.free(b.id);
-    }
-    list.deinit(allocator);
-}
-
-fn freeStoredTasksList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredTask), free_texts: bool) void {
-    if (free_texts) {
-        for (list.items) |t| {
-            allocator.free(t.text);
-        }
-    }
-    list.deinit(allocator);
-}
-
-fn freeStoredEmbedsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredEmbed), free_texts: bool) void {
-    if (free_texts) {
-        for (list.items) |e| {
-            allocator.free(e.target);
-        }
-    }
-    list.deinit(allocator);
-}
-
-pub fn freeCallouts(allocator: Allocator, callouts: []StoredCallout) void {
-    for (callouts) |c| {
-        allocator.free(c.callout_type);
-        if (c.title) |t| allocator.free(t);
-    }
-    if (callouts.len > 0) allocator.free(callouts);
-}
-
-pub fn freeBlockRefs(allocator: Allocator, block_refs: []StoredBlockRef) void {
-    for (block_refs) |br| {
-        allocator.free(br.uuid);
-    }
-    if (block_refs.len > 0) allocator.free(block_refs);
-}
-
-fn freeStoredCalloutsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredCallout), free_texts: bool) void {
-    if (free_texts) {
-        for (list.items) |c| {
-            allocator.free(c.callout_type);
-            if (c.title) |t| allocator.free(t);
-        }
-    }
-    list.deinit(allocator);
-}
-
-fn freeStoredBlockRefsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredBlockRef), free_texts: bool) void {
-    if (free_texts) {
-        for (list.items) |br| {
-            allocator.free(br.uuid);
-        }
-    }
-    list.deinit(allocator);
-}
-
-pub fn freeQueryBlocks(allocator: Allocator, query_blocks: []StoredQueryBlock) void {
-    for (query_blocks) |qb| {
-        allocator.free(qb.query);
-    }
-    if (query_blocks.len > 0) allocator.free(query_blocks);
-}
-
-pub fn freeLinkDefinitions(allocator: Allocator, link_defs: []StoredLinkDefinition) void {
-    for (link_defs) |ld| {
-        allocator.free(ld.label);
-        allocator.free(ld.url);
-        if (ld.title) |t| allocator.free(t);
-    }
-    if (link_defs.len > 0) allocator.free(link_defs);
-}
-
-fn freeStoredQueryBlocksList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredQueryBlock), free_texts: bool) void {
-    if (free_texts) {
-        for (list.items) |qb| {
-            allocator.free(qb.query);
-        }
-    }
-    list.deinit(allocator);
-}
-
-fn freeStoredLinkDefsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredLinkDefinition), free_texts: bool) void {
-    if (free_texts) {
-        for (list.items) |ld| {
-            allocator.free(ld.label);
-            allocator.free(ld.url);
-            if (ld.title) |t| allocator.free(t);
-        }
-    }
-    list.deinit(allocator);
-}
-
-pub fn freeProperties(allocator: Allocator, props: []StoredProperty) void {
-    for (props) |p| {
-        allocator.free(p.key);
-        allocator.free(p.value);
-    }
-    if (props.len > 0) allocator.free(props);
-}
-
-fn freeStoredPropertiesList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredProperty), free_texts: bool) void {
-    if (free_texts) {
-        for (list.items) |p| {
-            allocator.free(p.key);
-            allocator.free(p.value);
-        }
-    }
-    list.deinit(allocator);
-}
+const free_mod = @import("document_free.zig");
+pub const freeHeadings = free_mod.freeHeadings;
+pub const freeLinks = free_mod.freeLinks;
+pub const freeCodeSpans = free_mod.freeCodeSpans;
+pub const freeTags = free_mod.freeTags;
+pub const freeBlockIds = free_mod.freeBlockIds;
+pub const freeTasks = free_mod.freeTasks;
+pub const freeEmbeds = free_mod.freeEmbeds;
+pub const freeCallouts = free_mod.freeCallouts;
+pub const freeBlockRefs = free_mod.freeBlockRefs;
+pub const freeQueryBlocks = free_mod.freeQueryBlocks;
+pub const freeLinkDefinitions = free_mod.freeLinkDefinitions;
+pub const freeProperties = free_mod.freeProperties;
+pub const freeStoredHeadingsList = free_mod.freeStoredHeadingsList;
+pub const freeStoredLinksList = free_mod.freeStoredLinksList;
+const freeStoredCodeSpansList = free_mod.freeStoredCodeSpansList;
+const freeStoredTagsList = free_mod.freeStoredTagsList;
+const freeStoredBlockIdsList = free_mod.freeStoredBlockIdsList;
+const freeStoredTasksList = free_mod.freeStoredTasksList;
+const freeStoredEmbedsList = free_mod.freeStoredEmbedsList;
+const freeStoredCalloutsList = free_mod.freeStoredCalloutsList;
+const freeStoredBlockRefsList = free_mod.freeStoredBlockRefsList;
+const freeStoredQueryBlocksList = free_mod.freeStoredQueryBlocksList;
+const freeStoredLinkDefsList = free_mod.freeStoredLinkDefsList;
+const freeStoredPropertiesList = free_mod.freeStoredPropertiesList;
 
 // ── Tests ───────────────────────────────────────────────────────────
 
