@@ -628,6 +628,11 @@ impl RealmIndex {
             .count()
     }
 
+    /// Number of unique strings held by the interner (slugs, tags, block IDs, code spans, stems).
+    pub fn interner_len(&self) -> usize {
+        self.interner.len()
+    }
+
     /// Total number of key paths across all structured documents.
     pub fn key_path_count(&self) -> usize {
         self.docs

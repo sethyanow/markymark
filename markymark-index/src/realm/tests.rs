@@ -895,3 +895,44 @@ fn test_update_preserves_other_docs_entries() {
         .unwrap_or(false);
     assert!(!a_removed, "doc A's intro entry removed");
 }
+
+#[test]
+fn test_interner_memory_bounded_at_scale() {
+    // Verify interner doesn't grow unboundedly when populating a vault.
+    // Each doc contributes ~14 unique strings (10 heading slugs + 3 tags + 1 block ID).
+    // With 200 docs: ~2800 unique slugs + ~23 shared tags + 200 block IDs ≈ ~3000 unique strings.
+    // Threshold: 15K unique strings for 1000 docs (generous upper bound).
+    let mut realm = RealmIndex::new();
+    let n_docs = 200; // Use 200 for test speed (1000 in benchmarks)
+
+    for i in 0..n_docs {
+        let u = uri(&format!("vault_doc_{i}.md"));
+        // Each doc: 10 headings, 3 tags (some shared), 1 block ID
+        let source = format!(
+            "# Doc {i} heading 0\n\n## Doc {i} heading 1\n\n### Doc {i} heading 2\n\n\
+             # Doc {i} heading 3\n\n## Doc {i} heading 4\n\n### Doc {i} heading 5\n\n\
+             # Doc {i} heading 6\n\n## Doc {i} heading 7\n\n### Doc {i} heading 8\n\n\
+             # Doc {i} heading 9\n\n\
+             text ^block-{i}\n\n\
+             #project #status-{s} #topic-{t}\n",
+            i = i,
+            s = i % 3,
+            t = i % 20
+        );
+        let index = make_md_index(&source);
+        realm.add_document(u, index);
+    }
+
+    let interned = realm.interner_len();
+    // 200 docs × ~14 unique strings ≈ ~2800, plus shared tags ≈ ~23
+    // Allow generous headroom: 200 × 20 = 4000
+    assert!(
+        interned <= 4000,
+        "interner grew beyond expected bound for {n_docs} docs: {interned} strings (expected <= 4000)"
+    );
+    // Sanity: should have at least n_docs × 2 entries (headings + stems)
+    assert!(
+        interned >= n_docs,
+        "interner suspiciously small: {interned} for {n_docs} docs"
+    );
+}
