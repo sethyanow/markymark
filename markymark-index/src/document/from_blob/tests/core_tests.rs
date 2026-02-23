@@ -1,6 +1,8 @@
 // Core from_blob tests — basic engine-backed tests and validation rejection tests.
 
-use super::{blob_for, make_v1_empty_blob, make_v2_empty_blob, BlobError, DocumentIndex};
+use super::super::header::BlobError;
+use super::super::super::DocumentIndex;
+use super::{blob_for, make_v1_empty_blob, make_v2_empty_blob};
 
 // ── Engine-backed tests (tests 1–9, 14–15) ───────────────────────────
 
@@ -224,7 +226,7 @@ fn test_from_blob_v2_empty_document() {
 #[test]
 fn test_from_blob_rejects_truncated_v2() {
     // 80 bytes: enough for v1 header but too small for v2.
-    use super::{BLOB_MAGIC, BLOB_VERSION_V2};
+    use super::super::header::{BLOB_MAGIC, BLOB_VERSION_V2};
     let mut buf = [0u8; 80];
     buf[0..4].copy_from_slice(&BLOB_MAGIC.to_le_bytes());
     buf[4..6].copy_from_slice(&BLOB_VERSION_V2.to_le_bytes());

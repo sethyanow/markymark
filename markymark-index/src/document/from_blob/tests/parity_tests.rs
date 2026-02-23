@@ -1,6 +1,8 @@
 // Parity tests — from_blob vs from_scan comparison, mixed documents, and XML tags.
 
-use super::{blob_for, extract_xml_tags_from_text, DocumentIndex};
+use super::super::extract_xml_tags_from_text;
+use super::super::super::DocumentIndex;
+use super::blob_for;
 
 // ── Parity test (test 14) ─────────────────────────────────────────────
 

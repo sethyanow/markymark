@@ -1,7 +1,8 @@
 // Feature tests — code spans, tasks, embeds, callouts, block refs, and properties.
 
-use super::{blob_for, make_v1_empty_blob, make_v2_empty_blob, DocumentIndex, HEADING_SIZE,
-    V1_HEADER_SIZE};
+use super::super::header::{HEADING_SIZE, V1_HEADER_SIZE};
+use super::super::super::DocumentIndex;
+use super::{blob_for, make_v1_empty_blob, make_v2_empty_blob};
 
 // ── Code span tests (marky-vsh2) ────────────────────────────────────
 

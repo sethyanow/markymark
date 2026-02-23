@@ -1,17 +1,8 @@
 // Test module for from_blob — split into thematic submodules.
 // Helpers and re-exports live here; actual tests in child modules.
 
-use super::super::DocumentIndex;
-use super::*;
+use super::header::{BLOB_MAGIC, BLOB_VERSION_V1, BLOB_VERSION_V2};
 use markymark_kernels::engine::DocumentEngine;
-
-// Re-exports for child test modules (they can't access pub(super) items in from_blob directly)
-pub use super::header::{
-    validate_blob, BlobError, BLOB_MAGIC, BLOB_VERSION_V1, BLOB_VERSION_V2, HEADING_SIZE,
-    V1_HEADER_SIZE,
-};
-pub use super::super::DocumentIndex as ReexportedDocumentIndex;
-pub use super::extract_xml_tags_from_text;
 
 /// Helper: create a blob from markdown text via the real Zig engine.
 pub fn blob_for(text: &str) -> Vec<u8> {
