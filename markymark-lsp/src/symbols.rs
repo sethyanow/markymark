@@ -43,7 +43,10 @@ struct XmlSymbolNode {
 pub(crate) fn xml_tags_to_symbols(xml_tags: &[XmlTagEntry]) -> Vec<DocumentSymbol> {
     let mut sorted: Vec<&XmlTagEntry> = xml_tags.iter().collect();
     sorted.sort_by(|a, b| {
-        a.range.start.cmp(&b.range.start).then(b.range.end.cmp(&a.range.end))
+        a.range
+            .start
+            .cmp(&b.range.start)
+            .then(b.range.end.cmp(&a.range.end))
     });
 
     let mut roots: Vec<XmlSymbolNode> = Vec::new();

@@ -196,8 +196,7 @@ pub(crate) fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
         let uri = DocumentUri::from_file_path(&path);
 
         if kind == DocumentKind::Markdown {
-            let (fm_owned, aliases_owned) =
-                markymark_index::parse_frontmatter_owned(&source);
+            let (fm_owned, aliases_owned) = markymark_index::parse_frontmatter_owned(&source);
 
             // Mask frontmatter block so md4c doesn't misparse `---` as a
             // setext heading underline. Replace non-newline bytes with spaces

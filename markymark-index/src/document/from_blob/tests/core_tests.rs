@@ -1,7 +1,7 @@
 // Core from_blob tests — basic engine-backed tests and validation rejection tests.
 
-use super::super::header::BlobError;
 use super::super::super::DocumentIndex;
+use super::super::header::BlobError;
 use super::{blob_for, make_v1_empty_blob, make_v2_empty_blob};
 
 // ── Engine-backed tests (tests 1–9, 14–15) ───────────────────────────

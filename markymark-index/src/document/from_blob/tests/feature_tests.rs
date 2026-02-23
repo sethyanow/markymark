@@ -1,7 +1,7 @@
 // Feature tests — code spans, tasks, embeds, callouts, block refs, and properties.
 
-use super::super::header::{HEADING_SIZE, V1_HEADER_SIZE};
 use super::super::super::DocumentIndex;
+use super::super::header::{HEADING_SIZE, V1_HEADER_SIZE};
 use super::{blob_for, make_v1_empty_blob, make_v2_empty_blob};
 
 // ── Code span tests (marky-vsh2) ────────────────────────────────────
@@ -280,11 +280,7 @@ fn test_from_blob_block_ref_parity_with_from_scan() {
 
     let blob_refs = blob_idx.block_refs();
     let scan_refs = scan_idx.block_refs();
-    assert_eq!(
-        blob_refs.len(),
-        scan_refs.len(),
-        "block ref count mismatch"
-    );
+    assert_eq!(blob_refs.len(), scan_refs.len(), "block ref count mismatch");
     for (b, s) in blob_refs.iter().zip(scan_refs.iter()) {
         assert_eq!(b.uuid, s.uuid, "block ref uuid mismatch");
     }
@@ -359,7 +355,11 @@ fn test_from_blob_properties_match_from_scan() {
     let scan_idx = DocumentIndex::from_scan(text, &Md4cScanBackend);
     let blob_props = blob_idx.properties();
     let scan_props = scan_idx.properties();
-    assert_eq!(blob_props.len(), scan_props.len(), "property count mismatch");
+    assert_eq!(
+        blob_props.len(),
+        scan_props.len(),
+        "property count mismatch"
+    );
     for (b, s) in blob_props.iter().zip(scan_props.iter()) {
         assert_eq!(b.key, s.key, "property key mismatch");
     }

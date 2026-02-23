@@ -463,6 +463,5 @@ fn from_ast_extracts_code_spans_via_scan() {
 // md4c scan-based construction tests (feature-gated)
 // ---------------------------------------------------------------------------
 
-mod md4c_scan_tests;
 mod incremental_tests;
-
+mod md4c_scan_tests;

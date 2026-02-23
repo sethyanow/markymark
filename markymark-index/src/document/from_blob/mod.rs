@@ -38,9 +38,9 @@ mod decode;
 mod header;
 mod owned;
 use self::decode::decode_owned_data;
+pub use self::header::BlobError;
 use self::header::*;
 use self::owned::DecodedOwnedData;
-pub use self::header::BlobError;
 
 // ---------------------------------------------------------------------------
 // DocumentIndex::from_blob
@@ -393,4 +393,3 @@ impl DocumentIndex {
 
 #[cfg(test)]
 mod tests;
-

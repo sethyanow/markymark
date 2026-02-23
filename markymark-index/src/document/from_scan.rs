@@ -155,15 +155,13 @@ impl DocumentIndex {
                         // e.g. "page#section" → target="page", heading=Some("section")
                         //      "#section"     → target="", heading=Some("section")
                         //      "page"         → target="page", heading=None
-                        let (target_str, heading_str) =
-                            if let Some(hash_pos) = l.target.find('#') {
-                                (&l.target[..hash_pos], Some(&l.target[hash_pos + 1..]))
-                            } else {
-                                (l.target.as_str(), None)
-                            };
+                        let (target_str, heading_str) = if let Some(hash_pos) = l.target.find('#') {
+                            (&l.target[..hash_pos], Some(&l.target[hash_pos + 1..]))
+                        } else {
+                            (l.target.as_str(), None)
+                        };
                         let target = arena_alloc_str(arena_ref, target_str);
-                        let heading =
-                            heading_str.map(|h| arena_alloc_str(arena_ref, h));
+                        let heading = heading_str.map(|h| arena_alloc_str(arena_ref, h));
                         let alias = if l.text != l.target {
                             Some(arena_alloc_str(arena_ref, &l.text))
                         } else {

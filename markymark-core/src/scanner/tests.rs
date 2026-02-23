@@ -357,8 +357,7 @@ mod md4c_tests {
     #[test]
     fn test_scan_all_includes_callouts_block_refs() {
         let backend = Md4cScanBackend;
-        let text =
-            "> [!warning]\n> Watch out\n\nText ((a1b2c3d4-e5f6-7890-abcd-ef1234567890))\n";
+        let text = "> [!warning]\n> Watch out\n\nText ((a1b2c3d4-e5f6-7890-abcd-ef1234567890))\n";
         let all = backend.scan_all(text).unwrap();
         assert_eq!(all.callouts.len(), 1);
         assert_eq!(all.callouts[0].callout_type, "warning");

@@ -518,8 +518,7 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         // SAFETY: embeds pointer is valid for embeds_count elements,
         // allocated by Zig page_allocator.
         // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
-        let c_embeds =
-            unsafe { std::slice::from_raw_parts(out.embeds, out.embeds_count as usize) };
+        let c_embeds = unsafe { std::slice::from_raw_parts(out.embeds, out.embeds_count as usize) };
         for e in c_embeds {
             let target_start = e.target_offset as usize;
             let target = std::str::from_utf8(safe_blob_slice(
@@ -603,10 +602,13 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         };
         for qb in c_query_blocks {
             let query_start = qb.query_offset as usize;
-            let query =
-                std::str::from_utf8(safe_blob_slice(blob, query_start, qb.query_length as usize)?)
-                    .map_err(|_| KernelError::InternalError(-100))?
-                    .to_owned();
+            let query = std::str::from_utf8(safe_blob_slice(
+                blob,
+                query_start,
+                qb.query_length as usize,
+            )?)
+            .map_err(|_| KernelError::InternalError(-100))?
+            .to_owned();
             query_blocks.push(Md4cQueryBlock {
                 query,
                 source_offset: qb.source_offset,
@@ -621,10 +623,7 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         // allocated by Zig page_allocator.
         // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
         let c_link_defs = unsafe {
-            std::slice::from_raw_parts(
-                out.link_definitions,
-                out.link_definitions_count as usize,
-            )
+            std::slice::from_raw_parts(out.link_definitions, out.link_definitions_count as usize)
         };
         for ld in c_link_defs {
             let label_start = ld.label_offset as usize;
@@ -673,21 +672,14 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
             unsafe { std::slice::from_raw_parts(out.properties, out.properties_count as usize) };
         for p in c_properties {
             let key_start = p.key_offset as usize;
-            let key = std::str::from_utf8(safe_blob_slice(
-                blob,
-                key_start,
-                p.key_length as usize,
-            )?)
-            .map_err(|_| KernelError::InternalError(-100))?
-            .to_owned();
+            let key = std::str::from_utf8(safe_blob_slice(blob, key_start, p.key_length as usize)?)
+                .map_err(|_| KernelError::InternalError(-100))?
+                .to_owned();
             let value_start = p.value_offset as usize;
-            let value = std::str::from_utf8(safe_blob_slice(
-                blob,
-                value_start,
-                p.value_length as usize,
-            )?)
-            .map_err(|_| KernelError::InternalError(-100))?
-            .to_owned();
+            let value =
+                std::str::from_utf8(safe_blob_slice(blob, value_start, p.value_length as usize)?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned();
             properties.push(Md4cProperty {
                 key,
                 value,

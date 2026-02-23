@@ -159,21 +159,29 @@ pub(super) fn validate_blob(data: &[u8]) -> Result<BlobHeader, BlobError> {
     let code_span_count = read_u32_le(data, 48);
     // task_count at offset 56, embed_count at offset 52, callout_count at offset 60,
     // block_ref_count at offset 72 (v2 only; v1 → 0).
-    let (embed_count, task_count, callout_count, block_ref_count, query_block_count, link_def_count, property_count, xml_tag_count) =
-        if version >= BLOB_VERSION_V2 {
-            (
-                read_u32_le(data, 52),
-                read_u32_le(data, 56),
-                read_u32_le(data, 60),
-                read_u32_le(data, 72),
-                read_u32_le(data, 64),
-                read_u32_le(data, 68),
-                read_u32_le(data, 76),
-                read_u32_le(data, 80),
-            )
-        } else {
-            (0, 0, 0, 0, 0, 0, 0, 0)
-        };
+    let (
+        embed_count,
+        task_count,
+        callout_count,
+        block_ref_count,
+        query_block_count,
+        link_def_count,
+        property_count,
+        xml_tag_count,
+    ) = if version >= BLOB_VERSION_V2 {
+        (
+            read_u32_le(data, 52),
+            read_u32_le(data, 56),
+            read_u32_le(data, 60),
+            read_u32_le(data, 72),
+            read_u32_le(data, 64),
+            read_u32_le(data, 68),
+            read_u32_le(data, 76),
+            read_u32_le(data, 80),
+        )
+    } else {
+        (0, 0, 0, 0, 0, 0, 0, 0)
+    };
 
     // Compute expected total size via checked arithmetic to prevent overflow.
     let expected = header_size

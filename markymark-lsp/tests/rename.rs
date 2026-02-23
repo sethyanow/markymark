@@ -448,27 +448,27 @@ async fn setup_xml_rename_workspace() -> (
     let uri_b: Uri = "file:///workspace/b.md".parse().unwrap();
 
     let text_a = concat!(
-        "# Doc A\n",           // line 0
-        "\n",                  // line 1
-        "<agent>\n",           // line 2
-        "Agent content.\n",    // line 3
-        "</agent>\n",          // line 4
-        "\n",                  // line 5
-        "<agent>\n",           // line 6
-        "Second agent.\n",     // line 7
-        "</agent>\n",          // line 8
+        "# Doc A\n",        // line 0
+        "\n",               // line 1
+        "<agent>\n",        // line 2
+        "Agent content.\n", // line 3
+        "</agent>\n",       // line 4
+        "\n",               // line 5
+        "<agent>\n",        // line 6
+        "Second agent.\n",  // line 7
+        "</agent>\n",       // line 8
     );
 
     let text_b = concat!(
-        "# Doc B\n",           // line 0
-        "\n",                  // line 1
-        "<agent>\n",           // line 2
-        "Another agent.\n",    // line 3
-        "</agent>\n",          // line 4
-        "\n",                  // line 5
-        "<routing>\n",         // line 6
-        "Some path\n",         // line 7
-        "</routing>\n",        // line 8
+        "# Doc B\n",        // line 0
+        "\n",               // line 1
+        "<agent>\n",        // line 2
+        "Another agent.\n", // line 3
+        "</agent>\n",       // line 4
+        "\n",               // line 5
+        "<routing>\n",      // line 6
+        "Some path\n",      // line 7
+        "</routing>\n",     // line 8
     );
 
     {

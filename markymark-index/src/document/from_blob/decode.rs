@@ -259,8 +259,7 @@ pub(super) fn decode_owned_data(
     //   type_off(4@0) type_len(4@4) title_off(4@8) title_len(4@12)
     //   source_offset(4@16) end_offset(4@20) start_line(4@24) start_col(4@28)
     //   end_line(4@32) end_col(4@36)
-    let mut callouts_owned: Vec<CalloutData> =
-        Vec::with_capacity(header.callout_count as usize);
+    let mut callouts_owned: Vec<CalloutData> = Vec::with_capacity(header.callout_count as usize);
     for i in 0..header.callout_count as usize {
         let base = offsets.callouts + i * CALLOUT_SIZE;
         let type_off = read_u32_le(data, base);
@@ -413,8 +412,7 @@ pub(super) fn decode_owned_data(
     //   raw_html_off(4@8) raw_html_len(2@12) _pad2(2@14)
     //   source_offset(4@16) end_offset(4@20)
     //   start_line(4@24) start_col(4@28) end_line(4@32) end_col(4@36)
-    let mut xml_tags_owned: Vec<XmlTagData> =
-        Vec::with_capacity(header.xml_tag_count as usize);
+    let mut xml_tags_owned: Vec<XmlTagData> = Vec::with_capacity(header.xml_tag_count as usize);
     for i in 0..header.xml_tag_count as usize {
         let base = offsets.xml_tags + i * XML_TAG_SIZE;
         let tag_name_off = read_u32_le(data, base);

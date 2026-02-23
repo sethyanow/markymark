@@ -1,7 +1,7 @@
 // Golden blob roundtrip and BlobError display tests.
 
-use super::super::header::{validate_blob, BlobError};
 use super::super::super::DocumentIndex;
+use super::super::header::{validate_blob, BlobError};
 use super::blob_for;
 
 // ── Golden blob roundtrip test ────────────────────────────────────────

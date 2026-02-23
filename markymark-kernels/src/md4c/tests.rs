@@ -28,8 +28,7 @@ fn test_extract_wiki_link() {
 
 #[test]
 fn test_extract_mixed_document() {
-    let input =
-        "# Title\n\nSome [link](url) text.\n\n## Section\n\nSee [[Wiki]] for details.\n";
+    let input = "# Title\n\nSome [link](url) text.\n\n## Section\n\nSee [[Wiki]] for details.\n";
     let result = extract_md4c(input).unwrap();
     assert_eq!(result.headings.len(), 2);
     assert_eq!(result.headings[0].text, "Title");
@@ -428,8 +427,7 @@ fn test_extract_empty_has_no_callouts_or_block_refs() {
 
 #[test]
 fn test_extract_block_ref_basic() {
-    let result =
-        extract_md4c("Text ((a1b2c3d4-e5f6-7890-abcd-ef1234567890)) more\n").unwrap();
+    let result = extract_md4c("Text ((a1b2c3d4-e5f6-7890-abcd-ef1234567890)) more\n").unwrap();
     assert_eq!(result.block_refs.len(), 1);
     assert_eq!(
         result.block_refs[0].uuid,
@@ -525,7 +523,11 @@ fn test_extract_xml_tags_multiple_block_level() {
     // inline HTML content may point to internal buffers, not source text.
     let input = "# Heading\n\n<agent>\n\ncontent\n\n</agent>\n\n<goal>\n\nwin\n\n</goal>\n";
     let result = extract_md4c(input).unwrap();
-    let names: Vec<&str> = result.xml_tags.iter().map(|t| t.tag_name.as_str()).collect();
+    let names: Vec<&str> = result
+        .xml_tags
+        .iter()
+        .map(|t| t.tag_name.as_str())
+        .collect();
     assert!(
         names.contains(&"agent"),
         "should find 'agent'; got: {:?}",

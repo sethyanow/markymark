@@ -167,4 +167,3 @@ pub(super) struct DecodedOwnedData {
     pub(super) properties: Vec<PropertyData>,
     pub(super) xml_tags: Vec<XmlTagData>,
 }
-

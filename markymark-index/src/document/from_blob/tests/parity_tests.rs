@@ -191,5 +191,8 @@ fn test_from_blob_xml_tags_parity_with_scan() {
 
     let blob_tags: Vec<&str> = blob_idx.xml_tags().iter().map(|xt| xt.tag_name).collect();
     let scan_tags: Vec<&str> = scan_idx.xml_tags().iter().map(|xt| xt.tag_name).collect();
-    assert_eq!(blob_tags, scan_tags, "xml tag names should match between blob and scan");
+    assert_eq!(
+        blob_tags, scan_tags,
+        "xml tag names should match between blob and scan"
+    );
 }
