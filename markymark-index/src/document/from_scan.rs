@@ -40,6 +40,8 @@ impl DocumentIndex {
             scan_embeds,
             scan_callouts,
             scan_block_refs,
+            scan_query_blocks,
+            scan_link_definitions,
         ) = match backend.scan_all(text) {
             Ok(result) => (
                 result.headings,
@@ -49,6 +51,8 @@ impl DocumentIndex {
                 result.embeds,
                 result.callouts,
                 result.block_refs,
+                result.query_blocks,
+                result.link_definitions,
             ),
             Err(_) => (
                 backend.scan_headings(text).unwrap_or_default(),
@@ -58,6 +62,8 @@ impl DocumentIndex {
                 backend.scan_embeds(text).unwrap_or_default(),
                 backend.scan_callouts(text).unwrap_or_default(),
                 backend.scan_block_refs(text).unwrap_or_default(),
+                backend.scan_query_blocks(text).unwrap_or_default(),
+                backend.scan_link_definitions(text).unwrap_or_default(),
             ),
         };
         let scan_tags = backend.scan_tags(text).unwrap_or_default();
@@ -277,11 +283,39 @@ impl DocumentIndex {
             }
             let block_refs = block_refs_builder.into_bump_slice();
 
-            // Query blocks/link definitions: not yet in scan backend
-            let query_blocks =
-                BumpVec::<QueryBlockEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let link_definitions =
-                BumpVec::<LinkDefinitionEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            // --- Query blocks ---
+            let mut query_blocks_builder = BumpVec::new_in(arena_ref);
+            for qb in scan_query_blocks {
+                let query = arena_alloc_str(arena_ref, &qb.query);
+                let pos = helpers::byte_offset_to_position(&line_starts, qb.offset);
+                let end_pos = helpers::byte_offset_to_position(&line_starts, qb.end_offset);
+                query_blocks_builder.push(QueryBlockEntry {
+                    query,
+                    range: Range::new(pos, end_pos),
+                    start_byte: qb.offset as usize,
+                    end_byte: qb.end_offset as usize,
+                });
+            }
+            let query_blocks = query_blocks_builder.into_bump_slice();
+
+            // --- Link definitions ---
+            let mut link_defs_builder = BumpVec::new_in(arena_ref);
+            for ld in scan_link_definitions {
+                let label = arena_alloc_str(arena_ref, &ld.label);
+                let url = arena_alloc_str(arena_ref, &ld.url);
+                let title = ld.title.as_deref().map(|t| arena_alloc_str(arena_ref, t));
+                let pos = helpers::byte_offset_to_position(&line_starts, ld.offset);
+                let end_pos = helpers::byte_offset_to_position(&line_starts, ld.end_offset);
+                link_defs_builder.push(LinkDefinitionEntry {
+                    label,
+                    url,
+                    title,
+                    range: Range::new(pos, end_pos),
+                    start_byte: ld.offset as usize,
+                    end_byte: ld.end_offset as usize,
+                });
+            }
+            let link_definitions = link_defs_builder.into_bump_slice();
 
             DocumentDependent {
                 headings,

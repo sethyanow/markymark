@@ -138,6 +138,32 @@ pub struct BlockRefResult {
     pub offset: u32,
 }
 
+/// A query block found by a scan backend (e.g. `{{query ...}}`).
+#[derive(Debug, Clone)]
+pub struct QueryBlockResult {
+    /// The query text.
+    pub query: String,
+    /// Byte offset of `{{` in source.
+    pub offset: u32,
+    /// Byte offset past `}}` in source.
+    pub end_offset: u32,
+}
+
+/// A link definition found by a scan backend (e.g. `[label]: url "title"`).
+#[derive(Debug, Clone)]
+pub struct LinkDefinitionResult {
+    /// The link label.
+    pub label: String,
+    /// The link URL.
+    pub url: String,
+    /// Optional title.
+    pub title: Option<String>,
+    /// Byte offset of `[` in source.
+    pub offset: u32,
+    /// Byte offset past end of line.
+    pub end_offset: u32,
+}
+
 /// Combined result from a single-pass scan of headings, links, code spans, tasks, embeds,
 /// callouts, and block refs.
 #[derive(Debug, Default)]
@@ -156,4 +182,8 @@ pub struct ScanAllResult {
     pub callouts: Vec<CalloutResult>,
     /// Block references extracted from the document.
     pub block_refs: Vec<BlockRefResult>,
+    /// Query blocks extracted from the document.
+    pub query_blocks: Vec<QueryBlockResult>,
+    /// Link definitions extracted from the document.
+    pub link_definitions: Vec<LinkDefinitionResult>,
 }

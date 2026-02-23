@@ -24,6 +24,8 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         engine.embeds.len > max_u32 or
         engine.callouts.len > max_u32 or
         engine.block_refs.len > max_u32 or
+        engine.query_blocks.len > max_u32 or
+        engine.link_definitions.len > max_u32 or
         engine.line_starts.len > max_u32) return error.OutOfMemory;
 
     // Compute text pool size in u64 to avoid u32 wrap-before-check (C6).
@@ -58,6 +60,14 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
     for (engine.block_refs) |br| {
         text_pool_size += br.uuid.len;
     }
+    for (engine.query_blocks) |qb| {
+        text_pool_size += qb.query.len;
+    }
+    for (engine.link_definitions) |ld| {
+        text_pool_size += ld.label.len;
+        text_pool_size += ld.url.len;
+        if (ld.title) |t| text_pool_size += t.len;
+    }
     if (text_pool_size > std.math.maxInt(u32)) return error.OutOfMemory;
     const text_pool_u32: u32 = @intCast(text_pool_size);
 
@@ -71,6 +81,8 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         @intCast(engine.embeds.len),
         @intCast(engine.callouts.len),
         @intCast(engine.block_refs.len),
+        @intCast(engine.query_blocks.len),
+        @intCast(engine.link_definitions.len),
         @intCast(engine.line_starts.len),
         text_pool_u32,
     ) orelse return error.OutOfMemory;
@@ -94,6 +106,8 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         .embed_count = @intCast(engine.embeds.len),
         .callout_count = @intCast(engine.callouts.len),
         .block_ref_count = @intCast(engine.block_refs.len),
+        .query_block_count = @intCast(engine.query_blocks.len),
+        .link_def_count = @intCast(engine.link_definitions.len),
         .line_count = @intCast(engine.line_starts.len),
         .text_pool_size = text_pool_u32,
         .token_estimate = engine.token_estimate,
@@ -277,6 +291,54 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
 
         @memcpy(buf[offsets.text_pool + pool_off ..][0..br.uuid.len], br.uuid);
         pool_off += @intCast(br.uuid.len);
+    }
+
+    // Write query blocks
+    for (engine.query_blocks, 0..) |qb, i| {
+        const bqb = blob.BlobQueryBlock{
+            .query_off = pool_off,
+            .query_len = @intCast(qb.query.len),
+            .source_offset = qb.source_offset,
+            .end_offset = qb.end_offset,
+            .start_line = qb.start.line,
+            .start_col = qb.start.col,
+            .end_line = qb.end.line,
+            .end_col = qb.end.col,
+        };
+        try blob.writeStruct(blob.BlobQueryBlock, buf, offsets.query_blocks + i * @sizeOf(blob.BlobQueryBlock), bqb);
+
+        @memcpy(buf[offsets.text_pool + pool_off ..][0..qb.query.len], qb.query);
+        pool_off += @intCast(qb.query.len);
+    }
+
+    // Write link definitions
+    for (engine.link_definitions, 0..) |ld, i| {
+        const title_off_val: u32 = if (ld.title != null) pool_off + @as(u32, @intCast(ld.label.len)) + @as(u32, @intCast(ld.url.len)) else 0;
+        const title_len_val: u32 = if (ld.title) |t| @intCast(t.len) else 0;
+        const bld = blob.BlobLinkDefinition{
+            .label_off = pool_off,
+            .label_len = @intCast(ld.label.len),
+            .url_off = pool_off + @as(u32, @intCast(ld.label.len)),
+            .url_len = @intCast(ld.url.len),
+            .title_off = title_off_val,
+            .title_len = title_len_val,
+            .source_offset = ld.source_offset,
+            .end_offset = ld.end_offset,
+            .start_line = ld.start.line,
+            .start_col = ld.start.col,
+            .end_line = ld.end.line,
+            .end_col = ld.end.col,
+        };
+        try blob.writeStruct(blob.BlobLinkDefinition, buf, offsets.link_definitions + i * @sizeOf(blob.BlobLinkDefinition), bld);
+
+        @memcpy(buf[offsets.text_pool + pool_off ..][0..ld.label.len], ld.label);
+        pool_off += @intCast(ld.label.len);
+        @memcpy(buf[offsets.text_pool + pool_off ..][0..ld.url.len], ld.url);
+        pool_off += @intCast(ld.url.len);
+        if (ld.title) |t| {
+            @memcpy(buf[offsets.text_pool + pool_off ..][0..t.len], t);
+            pool_off += @intCast(t.len);
+        }
     }
 
     // Write line_starts

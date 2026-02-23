@@ -14,6 +14,7 @@ const CallbackError = types.CallbackError;
 
 const helpers = @import("./helpers.zig");
 const offsets = @import("./extraction_renderer_offsets.zig");
+const scans = @import("./extraction_renderer_scans.zig");
 const root = @import("./root.zig");
 const parser_mod = @import("./parser.zig");
 
@@ -64,6 +65,20 @@ pub const ExtractedBlockRef = struct {
     offset: u32, // byte offset of first '(' of '((' in source
 };
 
+pub const ExtractedQueryBlock = struct {
+    query: []const u8, // owned, the query text (trimmed)
+    offset: u32, // byte offset of first '{' of '{{' in source
+    end_offset: u32, // byte offset past closing '}}'
+};
+
+pub const ExtractedLinkDefinition = struct {
+    label: []const u8, // owned, the link label
+    url: []const u8, // owned, the URL
+    title: ?[]const u8, // owned, optional title (null if absent)
+    offset: u32, // byte offset of '[' in source
+    end_offset: u32, // byte offset past end of line
+};
+
 pub const ExtractionResult = struct {
     headings: []ExtractedHeading,
     links: []ExtractedLink,
@@ -72,6 +87,8 @@ pub const ExtractionResult = struct {
     embeds: []ExtractedEmbed,
     callouts: []ExtractedCallout,
     block_refs: []ExtractedBlockRef,
+    query_blocks: []ExtractedQueryBlock,
+    link_definitions: []ExtractedLinkDefinition,
     allocator: Allocator,
 
     pub fn deinit(self: *ExtractionResult) void {
@@ -105,6 +122,16 @@ pub const ExtractionResult = struct {
             self.allocator.free(br.uuid);
         }
         self.allocator.free(self.block_refs);
+        for (self.query_blocks) |qb| {
+            self.allocator.free(qb.query);
+        }
+        self.allocator.free(self.query_blocks);
+        for (self.link_definitions) |ld| {
+            self.allocator.free(ld.label);
+            self.allocator.free(ld.url);
+            if (ld.title) |t| self.allocator.free(t);
+        }
+        self.allocator.free(self.link_definitions);
     }
 };
 
@@ -161,6 +188,10 @@ pub const ExtractionRenderer = struct {
     block_refs: std.ArrayListUnmanaged(ExtractedBlockRef) = .{},
     block_ref_scan_cursor: u32 = 0,
 
+    // query block + link definition results (raw source scan, no cursor needed)
+    query_blocks: std.ArrayListUnmanaged(ExtractedQueryBlock) = .{},
+    link_definitions: std.ArrayListUnmanaged(ExtractedLinkDefinition) = .{},
+
     // code block tracking
     in_code_block: bool = false,
 
@@ -215,6 +246,16 @@ pub const ExtractionRenderer = struct {
             self.allocator.free(br.uuid);
         }
         self.block_refs.deinit(self.allocator);
+        for (self.query_blocks.items) |qb| {
+            self.allocator.free(qb.query);
+        }
+        self.query_blocks.deinit(self.allocator);
+        for (self.link_definitions.items) |ld| {
+            self.allocator.free(ld.label);
+            self.allocator.free(ld.url);
+            if (ld.title) |t| self.allocator.free(t);
+        }
+        self.link_definitions.deinit(self.allocator);
     }
 
     pub fn renderer(self: *ExtractionRenderer) Renderer {
@@ -314,6 +355,11 @@ pub const ExtractionRenderer = struct {
                     self.finalizeCallout();
                 }
                 if (self.quote_depth > 0) self.quote_depth -= 1;
+            },
+            .doc => {
+                // Raw source scans for query blocks and link definitions
+                self.scanQueryBlocks();
+                self.scanLinkDefinitions();
             },
             else => {},
         }
@@ -664,6 +710,18 @@ pub const ExtractionRenderer = struct {
         }
         return true;
     }
+
+    /// Scan raw source for `{{query ...}}` patterns, skipping fenced code blocks.
+    fn scanQueryBlocks(self: *ExtractionRenderer) void {
+        if (scans.scanQueryBlocksInSource(self.src_text, self.allocator, &self.query_blocks))
+            self.oom = true;
+    }
+
+    /// Scan raw source for `[label]: url "title"` link definitions, skipping fenced code blocks.
+    fn scanLinkDefinitions(self: *ExtractionRenderer) void {
+        if (scans.scanLinkDefinitionsInSource(self.src_text, self.allocator, &self.link_definitions))
+            self.oom = true;
+    }
 };
 
 // ── Public API ───────────────────────────────────────────────────────
@@ -748,6 +806,20 @@ pub fn extractFromMarkdown(
     const block_refs = ext.block_refs.toOwnedSlice(allocator) catch {
         return error.OutOfMemory;
     };
+    errdefer {
+        for (block_refs) |br| allocator.free(br.uuid);
+        allocator.free(block_refs);
+    }
+    const query_blocks = ext.query_blocks.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
+    errdefer {
+        for (query_blocks) |qb| allocator.free(qb.query);
+        allocator.free(query_blocks);
+    }
+    const link_definitions = ext.link_definitions.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
 
     // Free accumulation buffers only (results transferred)
     ext.heading_text_buf.deinit(allocator);
@@ -765,6 +837,8 @@ pub fn extractFromMarkdown(
     ext.embeds.deinit(allocator);
     ext.callouts.deinit(allocator);
     ext.block_refs.deinit(allocator);
+    ext.query_blocks.deinit(allocator);
+    ext.link_definitions.deinit(allocator);
 
     return .{
         .headings = headings,
@@ -774,6 +848,8 @@ pub fn extractFromMarkdown(
         .embeds = embeds,
         .callouts = callouts,
         .block_refs = block_refs,
+        .query_blocks = query_blocks,
+        .link_definitions = link_definitions,
         .allocator = allocator,
     };
 }

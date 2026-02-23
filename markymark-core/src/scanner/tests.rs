@@ -368,6 +368,48 @@ mod md4c_tests {
             "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
         );
     }
+
+    // --- Query block + Link definition tests (B-5) ---
+
+    #[test]
+    fn test_md4c_scan_link_definitions() {
+        let backend = Md4cScanBackend;
+        let result = backend
+            .scan_link_definitions("[label]: https://example.com\n")
+            .unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].label, "label");
+        assert_eq!(result[0].url, "https://example.com");
+        assert!(result[0].title.is_none());
+    }
+
+    #[test]
+    fn test_md4c_scan_link_definitions_with_title() {
+        let backend = Md4cScanBackend;
+        let result = backend
+            .scan_link_definitions("[label]: https://example.com \"My Title\"\n")
+            .unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].label, "label");
+        assert_eq!(result[0].url, "https://example.com");
+        assert_eq!(result[0].title.as_deref(), Some("My Title"));
+    }
+
+    #[test]
+    fn test_md4c_scan_link_definitions_empty() {
+        let backend = Md4cScanBackend;
+        let result = backend.scan_link_definitions("No link defs\n").unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_scan_all_includes_link_definitions() {
+        let backend = Md4cScanBackend;
+        let text = "# Heading\n\n[label]: https://example.com\n";
+        let all = backend.scan_all(text).unwrap();
+        assert_eq!(all.link_definitions.len(), 1);
+        assert_eq!(all.link_definitions[0].label, "label");
+    }
 }
 
 #[test]
@@ -406,4 +448,29 @@ fn test_default_scan_block_refs_empty() {
         .scan_block_refs("((a1b2c3d4-e5f6-7890-abcd-ef1234567890))")
         .unwrap();
     assert!(result.is_empty());
+}
+
+#[test]
+fn test_default_scan_query_blocks_empty() {
+    let backend = DummyScanBackend;
+    let result = backend.scan_query_blocks("{{query items}}").unwrap();
+    assert!(result.is_empty());
+}
+
+#[test]
+fn test_default_scan_link_definitions_empty() {
+    let backend = DummyScanBackend;
+    let result = backend
+        .scan_link_definitions("[label]: https://example.com")
+        .unwrap();
+    assert!(result.is_empty());
+}
+
+#[test]
+fn test_scan_all_includes_query_blocks_and_link_defs() {
+    // Default scan_all returns empty vecs from default trait impls.
+    let backend = DummyScanBackend;
+    let all = backend.scan_all("").unwrap();
+    assert!(all.query_blocks.is_empty());
+    assert!(all.link_definitions.is_empty());
 }

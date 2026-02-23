@@ -303,7 +303,8 @@ false positive due to not following symlinks (2026-02-20).
 - Use `assert_eq!` not `>=` — `>=` masked a closing-tag rename bug
 - Integration test crate roots (`tests/*.rs`) resolve `mod foo;` in `tests/foo.rs` (sibling), NOT `tests/basename/foo.rs`. Use `#[path = "basename/foo.rs"] mod foo;` for subdirectory splits (marky-a90)
 - Env-gated benchmarks (`MARKYMARK_RUN_100K_BENCH=1`) for checkpoint evidence
-- `scanner.rs` at 971 lines after B-4 (marky-8ac8). Adding scan methods for B-5/B-6 will cross 1000. Plan a split before or during B-5.
+- `scanner.rs` split into submodules during B-5.0 (marky-z4ja): mod.rs (101), types.rs (159), md4c.rs (315), tests.rs (409). Safe to add B-5/B-6 scan methods.
+- `md4c.rs` (markymark-kernels) hit 1084 lines after B-5 additions. P0 refactor issue marky-8y0o created. ~650 production + ~430 tests. Split tests into submodule (same pattern as scanner.rs).
 
 ### Project-Specific
 - Plugin directory: markymark-plugin/.claude-plugin/plugin.json (version must be bumped manually alongside Cargo.toml)
@@ -642,7 +643,7 @@ n7wx is orthogonal: RealmIndex stays Rust regardless. ix3 is the Zig-sink work.
 ~~B-2: DocumentDependent type additions (5 new entry types) — marky-w4d1~~ DONE
 ~~B-3: Tasks + Embeds — marky-oiw5 (B-3.1 Zig: marky-rd7r, B-3.2 Rust: marky-bmu9)~~ DONE
 ~~B-4: Callouts + Block refs — marky-h9qe (B-4.0: marky-7kmo, B-4.1 Zig: marky-1r0t, B-4.2 Rust: marky-8ac8)~~ DONE
-B-5: Link defs + Query blocks (text scan)
+~~B-5: Link defs + Query blocks (text scan)~~ DONE
 B-6: Properties (structured parsing)
 B-7: XML tags (complex parser migration)
 B-8: MCP batch path migration (from_ast → from_blob)

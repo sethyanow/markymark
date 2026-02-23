@@ -108,6 +108,30 @@ pub(super) struct BlockRefData {
     pub(super) end_col: u32,
 }
 
+#[derive(Clone)]
+pub(super) struct QueryBlockData {
+    pub(super) query: String,
+    pub(super) source_offset: u32,
+    pub(super) end_offset: u32,
+    pub(super) start_line: u32,
+    pub(super) start_col: u32,
+    pub(super) end_line: u32,
+    pub(super) end_col: u32,
+}
+
+#[derive(Clone)]
+pub(super) struct LinkDefinitionData {
+    pub(super) label: String,
+    pub(super) url: String,
+    pub(super) title: Option<String>,
+    pub(super) source_offset: u32,
+    pub(super) end_offset: u32,
+    pub(super) start_line: u32,
+    pub(super) start_col: u32,
+    pub(super) end_line: u32,
+    pub(super) end_col: u32,
+}
+
 pub(super) struct DecodedOwnedData {
     pub(super) headings: Vec<HeadingData>,
     pub(super) wiki_links: Vec<WikiData>,
@@ -119,5 +143,7 @@ pub(super) struct DecodedOwnedData {
     pub(super) embeds: Vec<EmbedData>,
     pub(super) callouts: Vec<CalloutData>,
     pub(super) block_refs: Vec<BlockRefData>,
+    pub(super) query_blocks: Vec<QueryBlockData>,
+    pub(super) link_definitions: Vec<LinkDefinitionData>,
 }
 

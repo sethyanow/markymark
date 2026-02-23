@@ -81,6 +81,20 @@ pub trait ScanBackend: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// Scan text for query blocks (e.g. `{{query ...}}`).
+    ///
+    /// Default returns empty (backward compat for backends that don't extract).
+    fn scan_query_blocks(&self, _text: &str) -> Result<Vec<QueryBlockResult>, ScanError> {
+        Ok(Vec::new())
+    }
+
+    /// Scan text for link definitions (e.g. `[label]: url "title"`).
+    ///
+    /// Default returns empty (backward compat for backends that don't extract).
+    fn scan_link_definitions(&self, _text: &str) -> Result<Vec<LinkDefinitionResult>, ScanError> {
+        Ok(Vec::new())
+    }
+
     /// Scan text for headings, links, code spans, tasks, embeds, callouts, and
     /// block refs in a single pass.
     ///
@@ -96,6 +110,8 @@ pub trait ScanBackend: Send + Sync {
             embeds: self.scan_embeds(text)?,
             callouts: self.scan_callouts(text)?,
             block_refs: self.scan_block_refs(text)?,
+            query_blocks: self.scan_query_blocks(text)?,
+            link_definitions: self.scan_link_definitions(text)?,
         })
     }
 }

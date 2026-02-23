@@ -81,6 +81,28 @@ struct CMd4cBlockRef {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
+struct CMd4cQueryBlock {
+    source_offset: u32,
+    end_offset: u32,
+    query_offset: u32,
+    query_length: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CMd4cLinkDefinition {
+    source_offset: u32,
+    end_offset: u32,
+    label_offset: u32,
+    label_length: u32,
+    url_offset: u32,
+    url_length: u32,
+    title_offset: u32,
+    title_length: u32,
+}
+
+#[repr(C)]
 struct CMd4cResult {
     headings: *mut CMd4cHeading,
     links: *mut CMd4cLink,
@@ -89,6 +111,8 @@ struct CMd4cResult {
     embeds: *mut CMd4cEmbed,
     callouts: *mut CMd4cCallout,
     block_refs: *mut CMd4cBlockRef,
+    query_blocks: *mut CMd4cQueryBlock,
+    link_definitions: *mut CMd4cLinkDefinition,
     text_blob: *const u8,
     headings_count: u32,
     links_count: u32,
@@ -97,6 +121,8 @@ struct CMd4cResult {
     embeds_count: u32,
     callouts_count: u32,
     block_refs_count: u32,
+    query_blocks_count: u32,
+    link_definitions_count: u32,
     text_blob_len: u32,
 }
 
@@ -108,7 +134,9 @@ const _: () = assert!(std::mem::size_of::<CMd4cTask>() == 20);
 const _: () = assert!(std::mem::size_of::<CMd4cEmbed>() == 16);
 const _: () = assert!(std::mem::size_of::<CMd4cCallout>() == 24);
 const _: () = assert!(std::mem::size_of::<CMd4cBlockRef>() == 12);
-const _: () = assert!(std::mem::size_of::<CMd4cResult>() == 96);
+const _: () = assert!(std::mem::size_of::<CMd4cQueryBlock>() == 16);
+const _: () = assert!(std::mem::size_of::<CMd4cLinkDefinition>() == 32);
+const _: () = assert!(std::mem::size_of::<CMd4cResult>() == 120);
 
 extern "C" {
     fn marky_md4c_extract(text: *const u8, len: u32, out: *mut CMd4cResult) -> i32;
@@ -200,6 +228,32 @@ pub struct Md4cBlockRef {
     pub source_offset: u32,
 }
 
+/// A query block extracted by the md4c parser (e.g. `{{query ...}}`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Md4cQueryBlock {
+    /// The query text.
+    pub query: String,
+    /// Byte offset of first `{` of `{{query ...}}` in source.
+    pub source_offset: u32,
+    /// Byte offset past closing `}}` in source.
+    pub end_offset: u32,
+}
+
+/// A link definition extracted by the md4c parser (e.g. `[label]: url "title"`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Md4cLinkDefinition {
+    /// The link label.
+    pub label: String,
+    /// The link URL.
+    pub url: String,
+    /// Optional title.
+    pub title: Option<String>,
+    /// Byte offset of `[` in source.
+    pub source_offset: u32,
+    /// Byte offset past end of definition line.
+    pub end_offset: u32,
+}
+
 /// Results from md4c single-pass extraction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Md4cExtraction {
@@ -210,6 +264,8 @@ pub struct Md4cExtraction {
     pub embeds: Vec<Md4cEmbed>,
     pub callouts: Vec<Md4cCallout>,
     pub block_refs: Vec<Md4cBlockRef>,
+    pub query_blocks: Vec<Md4cQueryBlock>,
+    pub link_definitions: Vec<Md4cLinkDefinition>,
 }
 
 // ---------------------------------------------------------------------------
@@ -230,6 +286,8 @@ pub fn extract_md4c(text: &str) -> Result<Md4cExtraction, KernelError> {
             embeds: Vec::new(),
             callouts: Vec::new(),
             block_refs: Vec::new(),
+            query_blocks: Vec::new(),
+            link_definitions: Vec::new(),
         });
     }
 
@@ -468,6 +526,77 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         }
     }
 
+    let mut query_blocks = Vec::with_capacity(out.query_blocks_count as usize);
+    if out.query_blocks_count > 0 && !out.query_blocks.is_null() {
+        // SAFETY: query_blocks pointer is valid for query_blocks_count elements,
+        // allocated by Zig page_allocator.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let c_query_blocks = unsafe {
+            std::slice::from_raw_parts(out.query_blocks, out.query_blocks_count as usize)
+        };
+        for qb in c_query_blocks {
+            let query_start = qb.query_offset as usize;
+            let query =
+                std::str::from_utf8(safe_blob_slice(blob, query_start, qb.query_length as usize)?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned();
+            query_blocks.push(Md4cQueryBlock {
+                query,
+                source_offset: qb.source_offset,
+                end_offset: qb.end_offset,
+            });
+        }
+    }
+
+    let mut link_definitions = Vec::with_capacity(out.link_definitions_count as usize);
+    if out.link_definitions_count > 0 && !out.link_definitions.is_null() {
+        // SAFETY: link_definitions pointer is valid for link_definitions_count elements,
+        // allocated by Zig page_allocator.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let c_link_defs = unsafe {
+            std::slice::from_raw_parts(
+                out.link_definitions,
+                out.link_definitions_count as usize,
+            )
+        };
+        for ld in c_link_defs {
+            let label_start = ld.label_offset as usize;
+            let label = std::str::from_utf8(safe_blob_slice(
+                blob,
+                label_start,
+                ld.label_length as usize,
+            )?)
+            .map_err(|_| KernelError::InternalError(-100))?
+            .to_owned();
+            let url_start = ld.url_offset as usize;
+            let url =
+                std::str::from_utf8(safe_blob_slice(blob, url_start, ld.url_length as usize)?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned();
+            let title = if ld.title_length == 0 {
+                None
+            } else {
+                let title_start = ld.title_offset as usize;
+                Some(
+                    std::str::from_utf8(safe_blob_slice(
+                        blob,
+                        title_start,
+                        ld.title_length as usize,
+                    )?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned(),
+                )
+            };
+            link_definitions.push(Md4cLinkDefinition {
+                label,
+                url,
+                title,
+                source_offset: ld.source_offset,
+                end_offset: ld.end_offset,
+            });
+        }
+    }
+
     Ok(Md4cExtraction {
         headings,
         links,
@@ -476,6 +605,8 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         embeds,
         callouts,
         block_refs,
+        query_blocks,
+        link_definitions,
     })
 }
 
@@ -555,7 +686,9 @@ mod tests {
         assert_eq!(std::mem::size_of::<CMd4cEmbed>(), 16);
         assert_eq!(std::mem::size_of::<CMd4cCallout>(), 24);
         assert_eq!(std::mem::size_of::<CMd4cBlockRef>(), 12);
-        assert_eq!(std::mem::size_of::<CMd4cResult>(), 96);
+        assert_eq!(std::mem::size_of::<CMd4cQueryBlock>(), 16);
+        assert_eq!(std::mem::size_of::<CMd4cLinkDefinition>(), 32);
+        assert_eq!(std::mem::size_of::<CMd4cResult>(), 120);
     }
 
     /// Regression test for T2-11: silent `.unwrap_or("")` masked data corruption.
@@ -582,6 +715,8 @@ mod tests {
             embeds: std::ptr::null_mut(),
             callouts: std::ptr::null_mut(),
             block_refs: std::ptr::null_mut(),
+            query_blocks: std::ptr::null_mut(),
+            link_definitions: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 1,
             links_count: 0,
@@ -590,6 +725,8 @@ mod tests {
             embeds_count: 0,
             callouts_count: 0,
             block_refs_count: 0,
+            query_blocks_count: 0,
+            link_definitions_count: 0,
             text_blob_len: 3,
         };
         // Before fix: returns Ok(headings[0].text == "") — silent data loss.
@@ -622,6 +759,8 @@ mod tests {
             embeds: std::ptr::null_mut(),
             callouts: std::ptr::null_mut(),
             block_refs: std::ptr::null_mut(),
+            query_blocks: std::ptr::null_mut(),
+            link_definitions: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 0,
             links_count: 1,
@@ -630,6 +769,8 @@ mod tests {
             embeds_count: 0,
             callouts_count: 0,
             block_refs_count: 0,
+            query_blocks_count: 0,
+            link_definitions_count: 0,
             text_blob_len: 3,
         };
         let result = convert_result(&out);
@@ -659,6 +800,8 @@ mod tests {
             embeds: std::ptr::null_mut(),
             callouts: std::ptr::null_mut(),
             block_refs: std::ptr::null_mut(),
+            query_blocks: std::ptr::null_mut(),
+            link_definitions: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 1,
             links_count: 0,
@@ -667,6 +810,8 @@ mod tests {
             embeds_count: 0,
             callouts_count: 0,
             block_refs_count: 0,
+            query_blocks_count: 0,
+            link_definitions_count: 0,
             text_blob_len: blob.len() as u32,
         };
         let result = convert_result(&out);
@@ -698,6 +843,8 @@ mod tests {
             embeds: std::ptr::null_mut(),
             callouts: std::ptr::null_mut(),
             block_refs: std::ptr::null_mut(),
+            query_blocks: std::ptr::null_mut(),
+            link_definitions: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 0,
             links_count: 1,
@@ -706,6 +853,8 @@ mod tests {
             embeds_count: 0,
             callouts_count: 0,
             block_refs_count: 0,
+            query_blocks_count: 0,
+            link_definitions_count: 0,
             text_blob_len: blob.len() as u32,
         };
         let result = convert_result(&out);
@@ -735,6 +884,8 @@ mod tests {
             embeds: std::ptr::null_mut(),
             callouts: std::ptr::null_mut(),
             block_refs: std::ptr::null_mut(),
+            query_blocks: std::ptr::null_mut(),
+            link_definitions: std::ptr::null_mut(),
             text_blob: blob.as_ptr(),
             headings_count: 1,
             links_count: 0,
@@ -743,6 +894,8 @@ mod tests {
             embeds_count: 0,
             callouts_count: 0,
             block_refs_count: 0,
+            query_blocks_count: 0,
+            link_definitions_count: 0,
             text_blob_len: blob.len() as u32,
         };
         let result = convert_result(&out);
@@ -890,5 +1043,42 @@ mod tests {
         let result = extract_md4c("Just plain text.\n").unwrap();
         assert!(result.callouts.is_empty());
         assert!(result.block_refs.is_empty());
+    }
+
+    // --- Query block + Link definition tests (B-5) ---
+
+    #[test]
+    fn test_extract_empty_has_no_query_blocks_or_link_defs() {
+        let result = extract_md4c("").unwrap();
+        assert!(result.query_blocks.is_empty());
+        assert!(result.link_definitions.is_empty());
+    }
+
+    #[test]
+    fn test_extract_plain_text_no_query_blocks_or_link_defs() {
+        let result = extract_md4c("Just plain text.\n").unwrap();
+        assert!(result.query_blocks.is_empty());
+        assert!(result.link_definitions.is_empty());
+    }
+
+    #[test]
+    fn test_extract_link_definition_basic() {
+        let result = extract_md4c("[label]: https://example.com\n").unwrap();
+        assert_eq!(result.link_definitions.len(), 1);
+        assert_eq!(result.link_definitions[0].label, "label");
+        assert_eq!(result.link_definitions[0].url, "https://example.com");
+        assert!(result.link_definitions[0].title.is_none());
+    }
+
+    #[test]
+    fn test_extract_link_definition_with_title() {
+        let result = extract_md4c("[label]: https://example.com \"My Title\"\n").unwrap();
+        assert_eq!(result.link_definitions.len(), 1);
+        assert_eq!(result.link_definitions[0].label, "label");
+        assert_eq!(result.link_definitions[0].url, "https://example.com");
+        assert_eq!(
+            result.link_definitions[0].title.as_deref(),
+            Some("My Title")
+        );
     }
 }

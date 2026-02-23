@@ -135,6 +135,8 @@ impl DocumentIndex {
             embeds: embeds_owned,
             callouts: callouts_owned,
             block_refs: block_refs_owned,
+            query_blocks: query_blocks_owned,
+            link_definitions: link_defs_owned,
         } = decode_owned_data(data, &header, &offsets, text_pool)?;
 
         // ── Build DocumentIndex via self_cell ────────────────────────
@@ -352,11 +354,39 @@ impl DocumentIndex {
             }
             let block_refs = block_refs_builder.into_bump_slice();
 
-            // Query blocks/link definitions: not yet in blob format
-            let query_blocks =
-                BumpVec::<QueryBlockEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let link_definitions =
-                BumpVec::<LinkDefinitionEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            // --- Query blocks ---
+            let mut qb_builder = BumpVec::new_in(arena_ref);
+            for qb in &query_blocks_owned {
+                let query = arena_alloc_str(arena_ref, &qb.query);
+                let start_pos = Position::new(qb.start_line, qb.start_col);
+                let end_pos = Position::new(qb.end_line, qb.end_col);
+                qb_builder.push(QueryBlockEntry {
+                    query,
+                    range: Range::new(start_pos, end_pos),
+                    start_byte: qb.source_offset as usize,
+                    end_byte: qb.end_offset as usize,
+                });
+            }
+            let query_blocks = qb_builder.into_bump_slice();
+
+            // --- Link definitions ---
+            let mut ld_builder = BumpVec::new_in(arena_ref);
+            for ld in &link_defs_owned {
+                let label = arena_alloc_str(arena_ref, &ld.label);
+                let url = arena_alloc_str(arena_ref, &ld.url);
+                let title = ld.title.as_deref().map(|t| arena_alloc_str(arena_ref, t));
+                let start_pos = Position::new(ld.start_line, ld.start_col);
+                let end_pos = Position::new(ld.end_line, ld.end_col);
+                ld_builder.push(LinkDefinitionEntry {
+                    label,
+                    url,
+                    title,
+                    range: Range::new(start_pos, end_pos),
+                    start_byte: ld.source_offset as usize,
+                    end_byte: ld.end_offset as usize,
+                });
+            }
+            let link_definitions = ld_builder.into_bump_slice();
 
             DocumentDependent {
                 headings,

@@ -16,6 +16,8 @@ pub(super) const TASK_SIZE: usize = 36;
 pub(super) const EMBED_SIZE: usize = 32;
 pub(super) const CALLOUT_SIZE: usize = 40;
 pub(super) const BLOCK_REF_SIZE: usize = 28;
+pub(super) const QUERY_BLOCK_SIZE: usize = 32;
+pub(super) const LINK_DEF_SIZE: usize = 48;
 
 // ---------------------------------------------------------------------------
 // BlobError
@@ -107,6 +109,8 @@ pub(super) struct BlobHeader {
     pub(super) embed_count: u32,
     pub(super) callout_count: u32,
     pub(super) block_ref_count: u32,
+    pub(super) query_block_count: u32,
+    pub(super) link_def_count: u32,
     pub(super) line_count: u32,
     pub(super) text_pool_size: u32,
 }
@@ -151,16 +155,19 @@ pub(super) fn validate_blob(data: &[u8]) -> Result<BlobHeader, BlobError> {
     let code_span_count = read_u32_le(data, 48);
     // task_count at offset 56, embed_count at offset 52, callout_count at offset 60,
     // block_ref_count at offset 72 (v2 only; v1 → 0).
-    let (embed_count, task_count, callout_count, block_ref_count) = if version >= BLOB_VERSION_V2 {
-        (
-            read_u32_le(data, 52),
-            read_u32_le(data, 56),
-            read_u32_le(data, 60),
-            read_u32_le(data, 72),
-        )
-    } else {
-        (0, 0, 0, 0)
-    };
+    let (embed_count, task_count, callout_count, block_ref_count, query_block_count, link_def_count) =
+        if version >= BLOB_VERSION_V2 {
+            (
+                read_u32_le(data, 52),
+                read_u32_le(data, 56),
+                read_u32_le(data, 60),
+                read_u32_le(data, 72),
+                read_u32_le(data, 64),
+                read_u32_le(data, 68),
+            )
+        } else {
+            (0, 0, 0, 0, 0, 0)
+        };
 
     // Compute expected total size via checked arithmetic to prevent overflow.
     let expected = header_size
@@ -177,6 +184,8 @@ pub(super) fn validate_blob(data: &[u8]) -> Result<BlobHeader, BlobError> {
         .and_then(|s| s.checked_add((embed_count as usize).checked_mul(EMBED_SIZE)?))
         .and_then(|s| s.checked_add((callout_count as usize).checked_mul(CALLOUT_SIZE)?))
         .and_then(|s| s.checked_add((block_ref_count as usize).checked_mul(BLOCK_REF_SIZE)?))
+        .and_then(|s| s.checked_add((query_block_count as usize).checked_mul(QUERY_BLOCK_SIZE)?))
+        .and_then(|s| s.checked_add((link_def_count as usize).checked_mul(LINK_DEF_SIZE)?))
         .and_then(|s| s.checked_add((line_count as usize).checked_mul(4)?))
         .and_then(|s| s.checked_add(text_pool_size as usize))
         .ok_or(BlobError::SizeMismatch)?;
@@ -196,6 +205,8 @@ pub(super) fn validate_blob(data: &[u8]) -> Result<BlobHeader, BlobError> {
         embed_count,
         callout_count,
         block_ref_count,
+        query_block_count,
+        link_def_count,
         line_count,
         text_pool_size,
     })
@@ -215,6 +226,8 @@ pub(super) struct SectionOffsets {
     pub(super) embeds: usize,
     pub(super) callouts: usize,
     pub(super) block_refs: usize,
+    pub(super) query_blocks: usize,
+    pub(super) link_definitions: usize,
     // line_starts skipped — positions are pre-computed in the blob
     pub(super) text_pool: usize,
 }
@@ -229,7 +242,9 @@ pub(super) fn compute_offsets(h: &BlobHeader) -> SectionOffsets {
     let embeds = tasks + h.task_count as usize * TASK_SIZE;
     let callouts = embeds + h.embed_count as usize * EMBED_SIZE;
     let block_refs = callouts + h.callout_count as usize * CALLOUT_SIZE;
-    let line_starts = block_refs + h.block_ref_count as usize * BLOCK_REF_SIZE;
+    let query_blocks = block_refs + h.block_ref_count as usize * BLOCK_REF_SIZE;
+    let link_definitions = query_blocks + h.query_block_count as usize * QUERY_BLOCK_SIZE;
+    let line_starts = link_definitions + h.link_def_count as usize * LINK_DEF_SIZE;
     let text_pool = line_starts + h.line_count as usize * 4;
     SectionOffsets {
         headings,
@@ -241,6 +256,8 @@ pub(super) fn compute_offsets(h: &BlobHeader) -> SectionOffsets {
         embeds,
         callouts,
         block_refs,
+        query_blocks,
+        link_definitions,
         text_pool,
     }
 }

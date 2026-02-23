@@ -1,11 +1,11 @@
 use super::header::{
     pool_str, read_u32_le, read_u8, BlobError, BlobHeader, SectionOffsets, BLOCK_ID_SIZE,
-    BLOCK_REF_SIZE, CALLOUT_SIZE, CODE_SPAN_SIZE, EMBED_SIZE, HEADING_SIZE, LINK_SIZE, TAG_SIZE,
-    TASK_SIZE,
+    BLOCK_REF_SIZE, CALLOUT_SIZE, CODE_SPAN_SIZE, EMBED_SIZE, HEADING_SIZE, LINK_DEF_SIZE,
+    LINK_SIZE, QUERY_BLOCK_SIZE, TAG_SIZE, TASK_SIZE,
 };
 use super::owned::{
     BlockData, BlockRefData, CalloutData, CodeSpanData, DecodedOwnedData, EmbedData, HeadingData,
-    MarkdownData, TagData, TaskData, WikiData,
+    LinkDefinitionData, MarkdownData, QueryBlockData, TagData, TaskData, WikiData,
 };
 
 pub(super) fn decode_owned_data(
@@ -315,6 +315,75 @@ pub(super) fn decode_owned_data(
         });
     }
 
+    // ── Query Blocks ──────────────────────────────────────────────
+    // BlobQueryBlock layout (32 bytes):
+    //   query_off(4@0) query_len(4@4) source_offset(4@8) end_offset(4@12)
+    //   start_line(4@16) start_col(4@20) end_line(4@24) end_col(4@28)
+    let mut query_blocks_owned: Vec<QueryBlockData> =
+        Vec::with_capacity(header.query_block_count as usize);
+    for i in 0..header.query_block_count as usize {
+        let base = offsets.query_blocks + i * QUERY_BLOCK_SIZE;
+        let query_off = read_u32_le(data, base);
+        let query_len = read_u32_le(data, base + 4);
+        let source_offset = read_u32_le(data, base + 8);
+        let end_offset = read_u32_le(data, base + 12);
+        let start_line = read_u32_le(data, base + 16);
+        let start_col = read_u32_le(data, base + 20);
+        let end_line = read_u32_le(data, base + 24);
+        let end_col = read_u32_le(data, base + 28);
+        let query = pool_str(text_pool, query_off, query_len)?.to_owned();
+        query_blocks_owned.push(QueryBlockData {
+            query,
+            source_offset,
+            end_offset,
+            start_line,
+            start_col,
+            end_line,
+            end_col,
+        });
+    }
+
+    // ── Link Definitions ─────────────────────────────────────────
+    // BlobLinkDefinition layout (48 bytes):
+    //   label_off(4@0) label_len(4@4) url_off(4@8) url_len(4@12)
+    //   title_off(4@16) title_len(4@20) source_offset(4@24) end_offset(4@28)
+    //   start_line(4@32) start_col(4@36) end_line(4@40) end_col(4@44)
+    let mut link_defs_owned: Vec<LinkDefinitionData> =
+        Vec::with_capacity(header.link_def_count as usize);
+    for i in 0..header.link_def_count as usize {
+        let base = offsets.link_definitions + i * LINK_DEF_SIZE;
+        let label_off = read_u32_le(data, base);
+        let label_len = read_u32_le(data, base + 4);
+        let url_off = read_u32_le(data, base + 8);
+        let url_len = read_u32_le(data, base + 12);
+        let title_off = read_u32_le(data, base + 16);
+        let title_len = read_u32_le(data, base + 20);
+        let source_offset = read_u32_le(data, base + 24);
+        let end_offset = read_u32_le(data, base + 28);
+        let start_line = read_u32_le(data, base + 32);
+        let start_col = read_u32_le(data, base + 36);
+        let end_line = read_u32_le(data, base + 40);
+        let end_col = read_u32_le(data, base + 44);
+        let label = pool_str(text_pool, label_off, label_len)?.to_owned();
+        let url = pool_str(text_pool, url_off, url_len)?.to_owned();
+        let title = if title_len == 0 {
+            None
+        } else {
+            Some(pool_str(text_pool, title_off, title_len)?.to_owned())
+        };
+        link_defs_owned.push(LinkDefinitionData {
+            label,
+            url,
+            title,
+            source_offset,
+            end_offset,
+            start_line,
+            start_col,
+            end_line,
+            end_col,
+        });
+    }
+
     Ok(DecodedOwnedData {
         headings: headings_owned,
         wiki_links: wiki_owned,
@@ -326,5 +395,7 @@ pub(super) fn decode_owned_data(
         embeds: embeds_owned,
         callouts: callouts_owned,
         block_refs: block_refs_owned,
+        query_blocks: query_blocks_owned,
+        link_definitions: link_defs_owned,
     })
 }

@@ -229,6 +229,40 @@ impl super::ScanBackend for Md4cScanBackend {
             .map_err(|e| ScanError::InternalError(e.to_string()))
     }
 
+    fn scan_query_blocks(&self, text: &str) -> Result<Vec<QueryBlockResult>, ScanError> {
+        markymark_kernels::md4c::extract_md4c(text)
+            .map(|extraction| {
+                extraction
+                    .query_blocks
+                    .into_iter()
+                    .map(|qb| QueryBlockResult {
+                        query: qb.query,
+                        offset: qb.source_offset,
+                        end_offset: qb.end_offset,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
+    fn scan_link_definitions(&self, text: &str) -> Result<Vec<LinkDefinitionResult>, ScanError> {
+        markymark_kernels::md4c::extract_md4c(text)
+            .map(|extraction| {
+                extraction
+                    .link_definitions
+                    .into_iter()
+                    .map(|ld| LinkDefinitionResult {
+                        label: ld.label,
+                        url: ld.url,
+                        title: ld.title,
+                        offset: ld.source_offset,
+                        end_offset: ld.end_offset,
+                    })
+                    .collect()
+            })
+            .map_err(|e| ScanError::InternalError(e.to_string()))
+    }
+
     fn scan_all(&self, text: &str) -> Result<ScanAllResult, ScanError> {
         markymark_kernels::md4c::extract_md4c(text)
             .map(|extraction| ScanAllResult {
@@ -282,6 +316,26 @@ impl super::ScanBackend for Md4cScanBackend {
                     .map(|br| BlockRefResult {
                         uuid: br.uuid,
                         offset: br.source_offset,
+                    })
+                    .collect(),
+                query_blocks: extraction
+                    .query_blocks
+                    .into_iter()
+                    .map(|qb| QueryBlockResult {
+                        query: qb.query,
+                        offset: qb.source_offset,
+                        end_offset: qb.end_offset,
+                    })
+                    .collect(),
+                link_definitions: extraction
+                    .link_definitions
+                    .into_iter()
+                    .map(|ld| LinkDefinitionResult {
+                        label: ld.label,
+                        url: ld.url,
+                        title: ld.title,
+                        offset: ld.source_offset,
+                        end_offset: ld.end_offset,
                     })
                     .collect(),
             })

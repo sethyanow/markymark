@@ -104,6 +104,24 @@ pub const StoredBlockRef = struct {
     end: Position,
 };
 
+pub const StoredQueryBlock = struct {
+    query: []const u8, // owned, the query text
+    source_offset: u32,
+    end_offset: u32,
+    start: Position,
+    end: Position,
+};
+
+pub const StoredLinkDefinition = struct {
+    label: []const u8, // owned, the link label
+    url: []const u8, // owned, the URL
+    title: ?[]const u8, // owned, optional title
+    source_offset: u32,
+    end_offset: u32,
+    start: Position,
+    end: Position,
+};
+
 // ── DocumentEngine ──────────────────────────────────────────────────
 
 pub const DocumentEngine = struct {
@@ -118,6 +136,8 @@ pub const DocumentEngine = struct {
     embeds: []StoredEmbed = &.{},
     callouts: []StoredCallout = &.{},
     block_refs: []StoredBlockRef = &.{},
+    query_blocks: []StoredQueryBlock = &.{},
+    link_definitions: []StoredLinkDefinition = &.{},
     line_starts: []u32 = &.{},
 
     token_estimate: u32 = 0,
@@ -155,6 +175,8 @@ pub const DocumentEngine = struct {
         var new_embeds: []StoredEmbed = &.{};
         var new_callouts: []StoredCallout = &.{};
         var new_block_refs: []StoredBlockRef = &.{};
+        var new_query_blocks: []StoredQueryBlock = &.{};
+        var new_link_definitions: []StoredLinkDefinition = &.{};
         var new_line_starts: []u32 = &.{};
         var new_token_estimate: u32 = 0;
         var new_content_hash: u64 = 0;
@@ -171,6 +193,8 @@ pub const DocumentEngine = struct {
             &new_embeds,
             &new_callouts,
             &new_block_refs,
+            &new_query_blocks,
+            &new_link_definitions,
             &new_line_starts,
             &new_token_estimate,
             &new_content_hash,
@@ -187,6 +211,8 @@ pub const DocumentEngine = struct {
         self.embeds = new_embeds;
         self.callouts = new_callouts;
         self.block_refs = new_block_refs;
+        self.query_blocks = new_query_blocks;
+        self.link_definitions = new_link_definitions;
         self.line_starts = new_line_starts;
         self.token_estimate = new_token_estimate;
         self.content_hash = new_content_hash;
@@ -223,6 +249,8 @@ pub const DocumentEngine = struct {
             &self.embeds,
             &self.callouts,
             &self.block_refs,
+            &self.query_blocks,
+            &self.link_definitions,
             &self.line_starts,
             &self.token_estimate,
             &self.content_hash,
@@ -248,6 +276,10 @@ pub const DocumentEngine = struct {
         self.callouts = &.{};
         freeBlockRefs(self.allocator, self.block_refs);
         self.block_refs = &.{};
+        freeQueryBlocks(self.allocator, self.query_blocks);
+        self.query_blocks = &.{};
+        freeLinkDefinitions(self.allocator, self.link_definitions);
+        self.link_definitions = &.{};
         if (self.line_starts.len > 0) {
             self.allocator.free(self.line_starts);
             self.line_starts = &.{};
@@ -273,6 +305,8 @@ pub fn parseAll(
     out_embeds: *[]StoredEmbed,
     out_callouts: *[]StoredCallout,
     out_block_refs: *[]StoredBlockRef,
+    out_query_blocks: *[]StoredQueryBlock,
+    out_link_definitions: *[]StoredLinkDefinition,
     out_line_starts: *[]u32,
     out_token_estimate: *u32,
     out_content_hash: *u64,
@@ -294,6 +328,8 @@ pub fn parseAll(
     var stored_embeds_list = std.ArrayListUnmanaged(StoredEmbed){};
     var stored_callouts_list = std.ArrayListUnmanaged(StoredCallout){};
     var stored_block_refs_list = std.ArrayListUnmanaged(StoredBlockRef){};
+    var stored_query_blocks_list = std.ArrayListUnmanaged(StoredQueryBlock){};
+    var stored_link_defs_list = std.ArrayListUnmanaged(StoredLinkDefinition){};
 
     // Tracks whether h.text/l.text/l.target/cs.text have been transferred from extraction
     // into the stored lists (i.e., after extraction.headings/links/code_spans slice containers
@@ -313,6 +349,8 @@ pub fn parseAll(
         freeStoredEmbedsList(allocator, &stored_embeds_list, texts_transferred);
         freeStoredCalloutsList(allocator, &stored_callouts_list, texts_transferred);
         freeStoredBlockRefsList(allocator, &stored_block_refs_list, texts_transferred);
+        freeStoredQueryBlocksList(allocator, &stored_query_blocks_list, texts_transferred);
+        freeStoredLinkDefsList(allocator, &stored_link_defs_list, texts_transferred);
     }
 
     // 2. Compute line_starts
@@ -462,9 +500,42 @@ pub fn parseAll(
         };
     }
 
-    // OWNERSHIP: The string data (h.text, l.text, l.target, cs.text, t.text, e.target,
-    // c.callout_type, c.title, br.uuid) from extraction_renderer's arrays has been moved
-    // into the stored lists by the loops above (steps 4-5f). Only the slice containers
+    // 5g. Process query blocks: positions
+    for (extraction.query_blocks) |qb| {
+        const start_pos = byteOffsetToPosition(line_starts, qb.offset);
+        const end_pos = byteOffsetToPosition(line_starts, qb.end_offset);
+        stored_query_blocks_list.append(allocator, .{
+            .query = qb.query,
+            .source_offset = qb.offset,
+            .end_offset = qb.end_offset,
+            .start = start_pos,
+            .end = end_pos,
+        }) catch {
+            extraction.deinit();
+            return error.OutOfMemory;
+        };
+    }
+
+    // 5h. Process link definitions: positions
+    for (extraction.link_definitions) |ld| {
+        const start_pos = byteOffsetToPosition(line_starts, ld.offset);
+        const end_pos = byteOffsetToPosition(line_starts, ld.end_offset);
+        stored_link_defs_list.append(allocator, .{
+            .label = ld.label,
+            .url = ld.url,
+            .title = ld.title,
+            .source_offset = ld.offset,
+            .end_offset = ld.end_offset,
+            .start = start_pos,
+            .end = end_pos,
+        }) catch {
+            extraction.deinit();
+            return error.OutOfMemory;
+        };
+    }
+
+    // OWNERSHIP: The string data from extraction_renderer's arrays has been moved
+    // into the stored lists by the loops above (steps 4-5h). Only the slice containers
     // are freed here — NOT the string contents. The strings are now owned by stored lists.
     allocator.free(extraction.headings);
     allocator.free(extraction.links);
@@ -473,6 +544,8 @@ pub fn parseAll(
     allocator.free(extraction.embeds);
     allocator.free(extraction.callouts);
     allocator.free(extraction.block_refs);
+    allocator.free(extraction.query_blocks);
+    allocator.free(extraction.link_definitions);
     // From this point, the errdefer must free string data from the stored lists directly.
     texts_transferred = true;
 
@@ -561,8 +634,12 @@ pub fn parseAll(
     errdefer freeEmbeds(allocator, out_embeds.*);
     out_callouts.* = stored_callouts_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
     errdefer freeCallouts(allocator, out_callouts.*);
-    // No errdefer for block_refs: nothing allocates after this point.
     out_block_refs.* = stored_block_refs_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
+    errdefer freeBlockRefs(allocator, out_block_refs.*);
+    out_query_blocks.* = stored_query_blocks_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
+    errdefer freeQueryBlocks(allocator, out_query_blocks.*);
+    // No errdefer for link_defs: nothing allocates after this point.
+    out_link_definitions.* = stored_link_defs_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
     out_line_starts.* = line_starts;
     out_token_estimate.* = token_est;
     out_content_hash.* = c_hash;
@@ -809,6 +886,42 @@ fn freeStoredBlockRefsList(allocator: Allocator, list: *std.ArrayListUnmanaged(S
     if (free_texts) {
         for (list.items) |br| {
             allocator.free(br.uuid);
+        }
+    }
+    list.deinit(allocator);
+}
+
+pub fn freeQueryBlocks(allocator: Allocator, query_blocks: []StoredQueryBlock) void {
+    for (query_blocks) |qb| {
+        allocator.free(qb.query);
+    }
+    if (query_blocks.len > 0) allocator.free(query_blocks);
+}
+
+pub fn freeLinkDefinitions(allocator: Allocator, link_defs: []StoredLinkDefinition) void {
+    for (link_defs) |ld| {
+        allocator.free(ld.label);
+        allocator.free(ld.url);
+        if (ld.title) |t| allocator.free(t);
+    }
+    if (link_defs.len > 0) allocator.free(link_defs);
+}
+
+fn freeStoredQueryBlocksList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredQueryBlock), free_texts: bool) void {
+    if (free_texts) {
+        for (list.items) |qb| {
+            allocator.free(qb.query);
+        }
+    }
+    list.deinit(allocator);
+}
+
+fn freeStoredLinkDefsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredLinkDefinition), free_texts: bool) void {
+    if (free_texts) {
+        for (list.items) |ld| {
+            allocator.free(ld.label);
+            allocator.free(ld.url);
+            if (ld.title) |t| allocator.free(t);
         }
     }
     list.deinit(allocator);
