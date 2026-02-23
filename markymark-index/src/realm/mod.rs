@@ -40,6 +40,10 @@ pub struct RealmIndex {
     tag_to_docs: HashMap<Spur, Vec<DocumentUri>>,
     /// Code span text → (uri, code span) for cross-doc code span lookups.
     code_span_to_docs: HashMap<Spur, Vec<(DocumentUri, ResolvedCodeSpan)>>,
+    /// File stem → URIs. Stems are lowercased before interning for case-insensitive lookup.
+    /// Multiple URIs can share a stem (e.g., /a/readme.md and /b/readme.md).
+    /// find_uri_by_stem returns the first entry (insertion order).
+    stem_to_uris: HashMap<Spur, Vec<DocumentUri>>,
     /// Key path → URIs of structured docs containing it.
     key_path_to_docs: HashMap<String, Vec<DocumentUri>>,
     /// Journal date → list of URIs for that date (BTreeMap enables range queries by month).
@@ -49,6 +53,15 @@ pub struct RealmIndex {
     /// Optional semantic index for embedding-based search.
     #[cfg(feature = "embeddings")]
     semantic_index: Option<SemanticIndex>,
+}
+
+/// Extract the file stem from a DocumentUri, lowercase it, and intern via Rodeo.
+/// Returns None for URIs without a valid file path or stem (e.g., untitled: URIs).
+fn intern_stem(interner: &mut Rodeo, uri: &DocumentUri) -> Option<Spur> {
+    let path = uri.to_file_path()?;
+    let stem = path.file_stem()?.to_str()?;
+    let lowered = stem.to_ascii_lowercase();
+    Some(interner.get_or_intern(&lowered))
 }
 
 impl RealmIndex {
@@ -61,6 +74,7 @@ impl RealmIndex {
             block_to_location: HashMap::new(),
             tag_to_docs: HashMap::new(),
             code_span_to_docs: HashMap::new(),
+            stem_to_uris: HashMap::new(),
             key_path_to_docs: HashMap::new(),
             date_to_docs: BTreeMap::new(),
             uri_to_date: HashMap::new(),
@@ -143,6 +157,14 @@ impl RealmIndex {
             }
         }
 
+        // Populate stem index for wiki link resolution (Spur-keyed, case-insensitive).
+        if let Some(stem_spur) = intern_stem(&mut self.interner, &uri) {
+            self.stem_to_uris
+                .entry(stem_spur)
+                .or_default()
+                .push(uri.clone());
+        }
+
         #[cfg(feature = "embeddings")]
         if let Some(semantic) = &mut self.semantic_index {
             if let Err(err) = semantic.add_document(uri.clone(), &index) {
@@ -179,6 +201,14 @@ impl RealmIndex {
                 .push(uri.clone());
         }
 
+        // Populate stem index for structured documents too.
+        if let Some(stem_spur) = intern_stem(&mut self.interner, &uri) {
+            self.stem_to_uris
+                .entry(stem_spur)
+                .or_default()
+                .push(uri.clone());
+        }
+
         self.docs
             .insert(key, (uri, AnyDocumentIndex::Structured(index)));
     }
@@ -196,9 +226,24 @@ impl RealmIndex {
 
     /// Remove a document's entries from cross-doc indexes by URI key.
     fn remove_from_cross_doc_indexes(&mut self, key: &str) {
-        let Some((_uri, index)) = self.docs.get(key) else {
+        let Some((uri, index)) = self.docs.get(key) else {
             return;
         };
+
+        // Remove from stem index (applies to both markdown and structured docs).
+        if let Some(path) = uri.to_file_path() {
+            if let Some(stem_str) = path.file_stem().and_then(|s| s.to_str()) {
+                let lowered = stem_str.to_ascii_lowercase();
+                if let Some(spur) = self.interner.get(&lowered) {
+                    if let Some(uris) = self.stem_to_uris.get_mut(&spur) {
+                        uris.retain(|u| u.as_str() != key);
+                        if uris.is_empty() {
+                            self.stem_to_uris.remove(&spur);
+                        }
+                    }
+                }
+            }
+        }
 
         match index {
             AnyDocumentIndex::Markdown(md_idx) => {
@@ -384,17 +429,13 @@ impl RealmIndex {
     }
 
     /// Find a document URI by matching its file stem against a target name.
+    /// O(1) via stem_to_uris index. Returns first-added URI when multiple docs share a stem.
     pub(crate) fn find_uri_by_stem(&self, target: &str) -> Option<DocumentUri> {
-        for (uri, _index) in self.docs.values() {
-            if let Some(path) = uri.to_file_path() {
-                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    if stem.eq_ignore_ascii_case(target) {
-                        return Some(uri.clone());
-                    }
-                }
-            }
-        }
-        None
+        let lowered = target.to_ascii_lowercase();
+        self.interner
+            .get(&lowered)
+            .and_then(|spur| self.stem_to_uris.get(&spur))
+            .and_then(|uris| uris.first().cloned())
     }
 
     /// Find a document URI by resolving `relative_url` relative to `from_uri`'s directory.

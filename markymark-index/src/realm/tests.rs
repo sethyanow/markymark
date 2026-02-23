@@ -498,3 +498,121 @@ fn test_lookup_code_span_not_found() {
         "empty realm should return no results"
     );
 }
+
+// ── Stem index tests (Layer 2: marky-e2nu) ───────────────────────────────
+
+#[test]
+fn test_stem_index_basic_lookup() {
+    let mut realm = RealmIndex::new();
+    let u = uri("notes.md");
+    realm.add_document(u.clone(), make_md_index("# Hello"));
+
+    let result = realm.find_uri_by_stem("notes");
+    assert_eq!(
+        result,
+        Some(u),
+        "basic stem lookup should find the document"
+    );
+}
+
+#[test]
+fn test_stem_index_case_insensitive() {
+    let mut realm = RealmIndex::new();
+    let u = DocumentUri::from_file_path(&PathBuf::from("/vault/MyPage.md"));
+    realm.add_document(u.clone(), make_md_index("# Page"));
+
+    assert_eq!(
+        realm.find_uri_by_stem("mypage"),
+        Some(u.clone()),
+        "lowercase query should match mixed-case stem"
+    );
+    assert_eq!(
+        realm.find_uri_by_stem("MYPAGE"),
+        Some(u),
+        "uppercase query should match mixed-case stem"
+    );
+}
+
+#[test]
+fn test_stem_index_cross_doc_same_stem() {
+    let mut realm = RealmIndex::new();
+    let u1 = DocumentUri::from_file_path(&PathBuf::from("/vault/a/readme.md"));
+    let u2 = DocumentUri::from_file_path(&PathBuf::from("/vault/b/readme.md"));
+    realm.add_document(u1.clone(), make_md_index("# A"));
+    realm.add_document(u2.clone(), make_md_index("# B"));
+
+    let result = realm.find_uri_by_stem("readme");
+    assert_eq!(
+        result,
+        Some(u1),
+        "same-stem collision should return first-added document"
+    );
+}
+
+#[test]
+fn test_stem_index_remove_then_lookup() {
+    let mut realm = RealmIndex::new();
+    let u = uri("page.md");
+    realm.add_document(u.clone(), make_md_index("# Page"));
+    assert!(realm.find_uri_by_stem("page").is_some());
+
+    realm.remove_document(&u);
+    assert_eq!(
+        realm.find_uri_by_stem("page"),
+        None,
+        "stem lookup should return None after document removal"
+    );
+}
+
+#[test]
+fn test_stem_index_replace_document() {
+    let mut realm = RealmIndex::new();
+    let u = uri("page.md");
+    realm.add_document(u.clone(), make_md_index("# Old"));
+    realm.add_document(u.clone(), make_md_index("# New"));
+
+    let result = realm.find_uri_by_stem("page");
+    assert_eq!(
+        result,
+        Some(u),
+        "stem lookup should work after document replacement (no duplicates)"
+    );
+}
+
+#[test]
+fn test_stem_index_structured_document() {
+    let mut realm = RealmIndex::new();
+    let u = uri("settings.json");
+    realm.add_structured_document(
+        u.clone(),
+        make_structured_index(
+            DocumentKind::Json,
+            vec![test_key("theme", "theme", 0, ValueKind::String)],
+        ),
+    );
+
+    let result = realm.find_uri_by_stem("settings");
+    assert_eq!(
+        result,
+        Some(u),
+        "stem lookup should find structured documents too"
+    );
+}
+
+#[test]
+fn test_stem_index_remove_one_of_two_same_stem() {
+    let mut realm = RealmIndex::new();
+    let u1 = DocumentUri::from_file_path(&PathBuf::from("/vault/a/readme.md"));
+    let u2 = DocumentUri::from_file_path(&PathBuf::from("/vault/b/readme.md"));
+    realm.add_document(u1.clone(), make_md_index("# A"));
+    realm.add_document(u2.clone(), make_md_index("# B"));
+
+    realm.remove_document(&u1);
+
+    let result = realm.find_uri_by_stem("readme");
+    assert_eq!(
+        result,
+        Some(u2),
+        "after removing first doc, stem should resolve to remaining doc"
+    );
+}
