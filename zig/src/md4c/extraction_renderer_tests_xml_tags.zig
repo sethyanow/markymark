@@ -240,16 +240,22 @@ test "xml_tags: FFI roundtrip via marky_md4c_extract" {
 
 // ── Multiple tags on same line (block-level HTML) ───────────────────
 
-test "xml_tags: inline HTML tags not extracted (not block-level)" {
-    // <agent>content</agent> on one line is inline HTML (not block-level).
-    // md4c's inline HTML content may point to internal buffers, not source text.
-    // These tags are correctly skipped by the block-level HTML extraction pipeline.
+test "xml_tags: inline HTML tags extracted from paragraphs" {
+    // Inline HTML: tags within paragraph text, not on their own block lines.
+    // md4c fires TextType.html for inline HTML with internal buffer pointers.
+    // processInlineHtmlFragments recovers byte offsets via source text scan.
     const input = "# Heading\n\n<agent>content</agent>\n\n<goal>win</goal>\n";
     var result = try extractFromMarkdown(input, testing.allocator);
     defer result.deinit();
 
-    // Inline HTML tags are NOT extracted — only block-level HTML is
-    try testing.expectEqual(@as(usize, 0), result.xml_tags.len);
+    // Inline HTML tags ARE now extracted with correct offsets
+    try testing.expectEqual(@as(usize, 2), result.xml_tags.len);
+    try testing.expectEqualStrings("agent", result.xml_tags[0].tag_name);
+    try testing.expectEqualStrings("goal", result.xml_tags[1].tag_name);
+    try testing.expect(!result.xml_tags[0].is_unclosed);
+    try testing.expect(!result.xml_tags[1].is_unclosed);
+    try testing.expect(result.xml_tags[0].is_inline);
+    try testing.expect(result.xml_tags[1].is_inline);
 }
 
 test "xml_tags: multiple block-level tags on separate lines" {
@@ -261,6 +267,130 @@ test "xml_tags: multiple block-level tags on separate lines" {
     try testing.expectEqual(@as(usize, 2), result.xml_tags.len);
     try testing.expectEqualStrings("agent", result.xml_tags[0].tag_name);
     try testing.expectEqualStrings("goal", result.xml_tags[1].tag_name);
+}
+
+// ── Inline XML tag extraction ────────────────────────────────────────
+
+test "xml_tags: inline single tag pair in paragraph" {
+    const input = "Paragraph with <agent>content</agent> text.\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.xml_tags.len);
+    try testing.expectEqualStrings("agent", result.xml_tags[0].tag_name);
+    try testing.expect(!result.xml_tags[0].is_self_closing);
+    try testing.expect(!result.xml_tags[0].is_unclosed);
+    try testing.expect(result.xml_tags[0].is_inline);
+}
+
+test "xml_tags: inline tag offset accuracy" {
+    const input = "Hello <agent>content</agent> world\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.xml_tags.len);
+    // <agent> starts at byte 6 in "Hello <agent>content</agent> world"
+    try testing.expectEqual(@as(u32, 6), result.xml_tags[0].offset);
+    // </agent> ends at byte 27: "Hello <agent>content</agent>"
+    //                             0123456789012345678901234567
+    try testing.expectEqual(@as(u32, 28), result.xml_tags[0].end_offset);
+}
+
+test "xml_tags: inline self-closing tag" {
+    const input = "Text with <br/> inline break.\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.xml_tags.len);
+    try testing.expectEqualStrings("br", result.xml_tags[0].tag_name);
+    try testing.expect(result.xml_tags[0].is_self_closing);
+    try testing.expect(result.xml_tags[0].is_inline);
+}
+
+test "xml_tags: inline nested tags" {
+    const input = "Text <outer><inner>deep</inner></outer> end\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 2), result.xml_tags.len);
+    // Inner tag is closed first (innermost match)
+    try testing.expectEqualStrings("inner", result.xml_tags[0].tag_name);
+    try testing.expectEqualStrings("outer", result.xml_tags[1].tag_name);
+    try testing.expect(!result.xml_tags[0].is_unclosed);
+    try testing.expect(!result.xml_tags[1].is_unclosed);
+    try testing.expect(result.xml_tags[0].is_inline);
+    try testing.expect(result.xml_tags[1].is_inline);
+}
+
+test "xml_tags: inline unclosed tag" {
+    const input = "Paragraph with <orphan> tag that never closes.\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.xml_tags.len);
+    try testing.expectEqualStrings("orphan", result.xml_tags[0].tag_name);
+    try testing.expect(result.xml_tags[0].is_unclosed);
+    try testing.expect(result.xml_tags[0].is_inline);
+}
+
+test "xml_tags: inline tag in code span not extracted" {
+    // Inline code `<tag>` should NOT be treated as HTML
+    const input = "Use `<agent>` to mark agents.\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 0), result.xml_tags.len);
+}
+
+test "xml_tags: inline tag in fenced code block not extracted" {
+    const input = "```\nParagraph with <agent>content</agent>\n```\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 0), result.xml_tags.len);
+}
+
+test "xml_tags: mixed inline and block-level extraction" {
+    // Block-level tag (blank lines around) + inline tag in paragraph
+    const input = "<div>\n\nblock content\n\n</div>\n\nParagraph with <span>inline</span> tag.\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 2), result.xml_tags.len);
+    // Block-level tag first
+    try testing.expectEqualStrings("div", result.xml_tags[0].tag_name);
+    try testing.expect(!result.xml_tags[0].is_inline);
+    // Inline tag second
+    try testing.expectEqualStrings("span", result.xml_tags[1].tag_name);
+    try testing.expect(result.xml_tags[1].is_inline);
+}
+
+test "xml_tags: inline tags skip fenced code in source scan" {
+    // Fenced code block contains same tag name, then actual inline usage
+    const input = "```\n<agent>code</agent>\n```\n\nParagraph with <agent>real</agent> tag.\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.xml_tags.len);
+    try testing.expectEqualStrings("agent", result.xml_tags[0].tag_name);
+    try testing.expect(!result.xml_tags[0].is_unclosed);
+    try testing.expect(result.xml_tags[0].is_inline);
+    // Offset should point to the inline occurrence, not the one in the code block
+    // "```\n<agent>code</agent>\n```\n\n" = 28 bytes
+    // "Paragraph with " = 15 bytes → <agent> at offset 43
+    try testing.expect(result.xml_tags[0].offset >= 28);
+}
+
+test "xml_tags: multiple inline tags on same line" {
+    const input = "Tags: <a>first</a> and <b>second</b> end.\n";
+    var result = try extractFromMarkdown(input, testing.allocator);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 2), result.xml_tags.len);
+    try testing.expectEqualStrings("a", result.xml_tags[0].tag_name);
+    try testing.expectEqualStrings("b", result.xml_tags[1].tag_name);
+    try testing.expect(result.xml_tags[0].is_inline);
+    try testing.expect(result.xml_tags[1].is_inline);
 }
 
 // ── Investigation: md4c inline HTML callback behavior ────────────────

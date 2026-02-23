@@ -76,6 +76,7 @@ pub const ExtractedXmlTag = struct {
     end_offset: u32, // end byte (includes closing tag if matched)
     is_self_closing: bool,
     is_unclosed: bool,
+    is_inline: bool = false, // true for inline HTML tags (within paragraphs)
 };
 
 pub const ExtractionResult = struct {

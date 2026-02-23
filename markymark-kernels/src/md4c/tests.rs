@@ -592,14 +592,19 @@ fn test_extract_xml_tag_convert_result_roundtrip() {
 }
 
 #[test]
-fn test_extract_inline_xml_tags_not_extracted() {
-    // Inline HTML (<tag>content</tag> on one line) is NOT extracted.
-    // md4c's inline HTML content may point to internal buffers, not source text.
+fn test_extract_inline_xml_tags_extracted() {
+    // Inline HTML tags are now extracted via source-text offset recovery (marky-s64n).
+    // md4c fires TextType.html for inline HTML with internal buffer pointers;
+    // processInlineHtmlFragments scans source text to recover byte offsets.
     let input = "<agent>content</agent>\n\n<goal>win</goal>\n";
     let result = extract_md4c(input).unwrap();
     assert_eq!(
         result.xml_tags.len(),
-        0,
-        "inline HTML tags should not be extracted"
+        2,
+        "inline HTML tags should be extracted"
     );
+    assert_eq!(result.xml_tags[0].tag_name, "agent");
+    assert_eq!(result.xml_tags[1].tag_name, "goal");
+    assert!(!result.xml_tags[0].is_unclosed);
+    assert!(!result.xml_tags[1].is_unclosed);
 }
