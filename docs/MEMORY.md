@@ -304,7 +304,7 @@ false positive due to not following symlinks (2026-02-20).
 - Integration test crate roots (`tests/*.rs`) resolve `mod foo;` in `tests/foo.rs` (sibling), NOT `tests/basename/foo.rs`. Use `#[path = "basename/foo.rs"] mod foo;` for subdirectory splits (marky-a90)
 - Env-gated benchmarks (`MARKYMARK_RUN_100K_BENCH=1`) for checkpoint evidence
 - `scanner.rs` split into submodules during B-5.0 (marky-z4ja): mod.rs (101), types.rs (159), md4c.rs (315), tests.rs (409). Safe to add B-5/B-6 scan methods.
-- `md4c.rs` (markymark-kernels) hit 1084 lines after B-5 additions. P0 refactor issue marky-8y0o created. ~650 production + ~430 tests. Split tests into submodule (same pattern as scanner.rs).
+- `md4c.rs` (markymark-kernels) split into md4c/mod.rs (614) + md4c/tests.rs (465) during marky-8y0o. Same pattern as scanner.rs split. Safe to add B-6/B-7 scan methods.
 
 ### Project-Specific
 - Plugin directory: markymark-plugin/.claude-plugin/plugin.json (version must be bumped manually alongside Cargo.toml)
