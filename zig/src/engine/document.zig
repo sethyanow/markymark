@@ -19,114 +19,23 @@ const content_hash_mod = @import("../kernels/content_hash.zig");
 const helpers = @import("../md4c/helpers.zig");
 const serialize_mod = @import("serialize.zig");
 
-/// Maximum number of fenced code block ranges tracked on the stack.
-/// Limits stack allocation to ~2 KB (256 × 8 bytes). Documents with more
-/// than 256 fenced blocks will have tags/block-ids inside excess fences
-/// silently included — a benign false positive on extreme inputs.
-pub const FENCE_MAP_MAX: u32 = 256;
+// ── Stored types (re-exported from stored_types.zig) ────────────────
 
-// ── Stored types (engine-internal) ──────────────────────────────────
-
-pub const Position = struct {
-    line: u32,
-    col: u32,
-};
-
-pub const StoredHeading = struct {
-    text: []const u8, // owned
-    slug: []const u8, // owned
-    source_offset: u32,
-    start: Position,
-    end: Position,
-    level: u8,
-};
-
-pub const StoredLink = struct {
-    text: []const u8, // owned
-    target: []const u8, // owned
-    source_offset: u32,
-    start: Position,
-    end: Position,
-    is_wiki: bool,
-};
-
-pub const StoredTag = struct {
-    name: []const u8, // owned
-    source_offset: u32,
-    start: Position,
-};
-
-pub const StoredCodeSpan = struct {
-    text: []const u8, // owned decoded text
-    source_offset: u32, // byte offset of opening backtick
-    end_offset: u32, // byte offset past closing backtick
-    start: Position, // line:col of opening backtick
-    end: Position, // line:col past closing backtick
-};
-
-pub const StoredBlockId = struct {
-    id: []const u8, // owned
-    source_offset: u32,
-    start: Position,
-    end: Position,
-};
-
-pub const StoredTask = struct {
-    state: u8,
-    text: []const u8, // owned
-    source_offset: u32,
-    end_offset: u32,
-    start: Position,
-    end: Position,
-};
-
-pub const StoredEmbed = struct {
-    target: []const u8, // owned
-    source_offset: u32,
-    end_offset: u32,
-    start: Position,
-    end: Position,
-};
-
-pub const StoredCallout = struct {
-    callout_type: []const u8, // owned, lowercase alpha
-    title: ?[]const u8, // owned, null if no title
-    source_offset: u32,
-    end_offset: u32,
-    start: Position,
-    end: Position,
-};
-
-pub const StoredBlockRef = struct {
-    uuid: []const u8, // owned, 36-char UUID
-    source_offset: u32,
-    start: Position,
-    end: Position,
-};
-
-pub const StoredQueryBlock = struct {
-    query: []const u8, // owned, the query text
-    source_offset: u32,
-    end_offset: u32,
-    start: Position,
-    end: Position,
-};
-
-pub const StoredLinkDefinition = struct {
-    label: []const u8, // owned, the link label
-    url: []const u8, // owned, the URL
-    title: ?[]const u8, // owned, optional title
-    source_offset: u32,
-    end_offset: u32,
-    start: Position,
-    end: Position,
-};
-
-pub const StoredProperty = struct {
-    key: []const u8, // owned, the property key
-    value: []const u8, // owned, the raw value text
-    value_type: u8, // 0=string, 1=list, 2=page_ref
-};
+const stored_types = @import("stored_types.zig");
+pub const FENCE_MAP_MAX = stored_types.FENCE_MAP_MAX;
+pub const Position = stored_types.Position;
+pub const StoredHeading = stored_types.StoredHeading;
+pub const StoredLink = stored_types.StoredLink;
+pub const StoredTag = stored_types.StoredTag;
+pub const StoredCodeSpan = stored_types.StoredCodeSpan;
+pub const StoredBlockId = stored_types.StoredBlockId;
+pub const StoredTask = stored_types.StoredTask;
+pub const StoredEmbed = stored_types.StoredEmbed;
+pub const StoredCallout = stored_types.StoredCallout;
+pub const StoredBlockRef = stored_types.StoredBlockRef;
+pub const StoredQueryBlock = stored_types.StoredQueryBlock;
+pub const StoredLinkDefinition = stored_types.StoredLinkDefinition;
+pub const StoredProperty = stored_types.StoredProperty;
 
 // ── DocumentEngine ──────────────────────────────────────────────────
 
