@@ -455,7 +455,7 @@ false positive due to not following symlinks (2026-02-20).
 - **Zero-copy blob borrowing** — investigated, not worth it. Breaks DocumentIndex lifetime model for ~1-2ms.
 - **Edit range support in engine.update()** — prerequisite for incremental md4c, no longer premature.
 
-### RealmIndex v2 (marky-n7wx) — Layers 1-3 DONE, Layer 4 IN PROGRESS
+### RealmIndex v2 (marky-n7wx) — ALL 4 LAYERS DONE
 
 Investigation revealed the real post-Epic-H bottleneck is **RealmIndex cross-doc indexing**, not
 the engine pipeline. On every 75ms edit: remove_document allocates N+B+T Strings for HashMap
@@ -465,11 +465,13 @@ Epic marky-n7wx addresses this in 4 layers:
 1. **String interning** (marky-2yzz, DONE) — lasso Rodeo interner, Spur-keyed HashMaps.
 2. **Stem index** (marky-e2nu, DONE) — O(1) wiki link resolution via Spur-keyed HashMap.
 3. **Incremental cross-doc updates** (marky-c9dm, DONE) — diff old vs new contributions, patch only changes.
-4. **Lazy cold indexes** (marky-tuxu, IN PROGRESS) — tag_to_docs, key_path_to_docs built on first query, not every edit. **Required** for gigantic file editing.
+4. **Lazy cold indexes** (marky-tuxu, DONE) — tags_dirty flag defers tag_to_docs patching. tag_counts() computes from contributions when dirty (read-only, no interior mutability). key_path_to_docs already lazy (never touched by update_document). old_contrib.clone() eliminated. Quadratic patch_headings fixed.
 
-**Layer 3 known issues to fix in Layer 4 task:**
-- `old_contrib.clone()` at `mod.rs:216` — allocates 4 HashSets on every structural edit
-- `patch_headings` at `mod.rs:452` — O(H) scan per new slug, quadratic for bulk paste
+**Layer 4 threading design:** ServerState behind Arc<tokio::RwLock>. tag_counts(&self) called from LSP completion with read lock. Changing to &mut self would block concurrent reads. Solution: when dirty, compute from contributions (O(D * avg_tags), microseconds for 1000-doc vault). &mut self paths call ensure_tags_clean() which rebuilds tag_to_docs.
+
+**Layer 3 issues fixed in Layer 4 (e75b624):**
+- `old_contrib.clone()` — replaced with contributions.remove() for owned access (no 4-HashSet clone)
+- `patch_headings` quadratic scan — slug-to-entries HashMap built once, O(N*H) → O(N+H)
 
 Key design decisions (SRE review, 2026-02-19):
 - **Rodeo not ThreadedRodeo** — RealmIndex is single-threaded, simpler API.
