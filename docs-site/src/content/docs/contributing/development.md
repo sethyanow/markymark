@@ -2,3 +2,109 @@
 title: Development Setup
 description: How to build, test, and run markymark locally for contribution
 ---
+
+## Prerequisites
+
+| Tool | Minimum version | Purpose |
+|------|----------------|---------|
+| Rust | 1.80 | Compiler and cargo |
+| Zig | 0.15 | SIMD kernels and md4c bindings |
+| Bun | latest | Docs site tooling |
+| cargo-nextest | latest | Test runner |
+| lefthook | latest | Pre-commit hooks |
+
+Install cargo-nextest and lefthook if you don't have them:
+
+```bash
+cargo install cargo-nextest --locked
+brew install lefthook   # macOS; see lefthook.run for others
+lefthook install
+```
+
+## Clone and build
+
+```bash
+git clone https://github.com/sethyanow/markymark.git
+cd markymark
+cargo build
+```
+
+For a release-optimized build (slower compile, faster binary):
+
+```bash
+cargo build --release
+```
+
+The Zig kernels compile automatically via `build.rs` when the `zig-kernels` feature
+is enabled (it is by default). If you don't have Zig installed, you can build without
+kernels, but the pre-commit hooks will fail on the Zig build step.
+
+## Run tests
+
+```bash
+cargo nextest run                      # all tests
+cargo nextest run -p markymark-core    # single crate
+cargo nextest run -p markymark-index   # integration tests live here
+```
+
+The project uses cargo-nextest instead of `cargo test` for parallel execution and
+better output. Integration tests live in each crate's `tests/` directory alongside unit tests
+in source files (`#[cfg(test)]` modules).
+
+Zig tests run separately:
+
+```bash
+cd zig && zig build test
+```
+
+## Lint
+
+```bash
+cargo fmt --all -- --check    # formatting
+cargo clippy --workspace --all-targets -- -D warnings   # lints
+cargo audit                   # dependency vulnerabilities
+```
+
+All three must pass before committing. The pre-commit hooks run these automatically.
+
+## Run locally
+
+Start the LSP server (editors connect over stdin/stdout):
+
+```bash
+cargo run -- --lsp
+```
+
+Start the MCP server (AI agents connect over stdin/stdout):
+
+```bash
+cargo run -- --mcp /path/to/your/workspace
+```
+
+## Pre-commit hooks
+
+The project uses [lefthook](https://github.com/evilmartians/lefthook) to run
+checks before each commit. After cloning, install the hooks:
+
+```bash
+lefthook install
+```
+
+The hook sequence runs in order:
+
+1. `cargo fmt` — formatting check
+2. `cargo clippy` — lint with `-D warnings`
+3. `cargo-audit` — dependency vulnerability scan
+4. `gitleaks` — secret detection on staged files
+5. `zig build` — Zig kernel compilation check
+
+If a hook fails, the commit is blocked. Fix the issue and try again.
+
+## Build the docs site
+
+```bash
+cd docs-site
+bun install
+bun run dev     # local preview at localhost:4321
+bun run build   # production build
+```
