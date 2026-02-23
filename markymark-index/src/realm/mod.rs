@@ -10,7 +10,7 @@ pub use types::{AnyDocumentIndex, ResolvedBlock, ResolvedCodeSpan, ResolvedHeadi
 
 use helpers::{detect_journal_date, resolve_relative_path};
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 #[cfg(feature = "embeddings")]
 use std::sync::Arc;
 
@@ -40,6 +40,8 @@ pub struct RealmIndex {
     tag_to_docs: HashMap<Spur, Vec<DocumentUri>>,
     /// Code span text → (uri, code span) for cross-doc code span lookups.
     code_span_to_docs: HashMap<Spur, Vec<(DocumentUri, ResolvedCodeSpan)>>,
+    /// Per-document contribution metadata for incremental cross-doc index updates.
+    contributions: HashMap<String, DocContribution>,
     /// File stem → URIs. Stems are lowercased before interning for case-insensitive lookup.
     /// Multiple URIs can share a stem (e.g., /a/readme.md and /b/readme.md).
     /// find_uri_by_stem returns the first entry (insertion order).
@@ -64,12 +66,61 @@ fn intern_stem(interner: &mut Rodeo, uri: &DocumentUri) -> Option<Spur> {
     Some(interner.get_or_intern(&lowered))
 }
 
+/// Tracks what Spur keys a document contributed to each cross-doc index.
+/// Used to diff old vs new contributions on update, patching only changed entries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DocContribution {
+    heading_slugs: HashSet<Spur>,
+    block_ids: HashSet<Spur>,
+    tag_names: HashSet<Spur>,
+    code_span_texts: HashSet<Spur>,
+    stem: Option<Spur>,
+    journal_date: Option<(u16, u8, u8)>,
+}
+
+impl DocContribution {
+    fn build(interner: &mut Rodeo, index: &DocumentIndex, uri: &DocumentUri) -> Self {
+        let mut heading_slugs = HashSet::new();
+        for entry in index.headings() {
+            heading_slugs.insert(interner.get_or_intern(entry.slug));
+        }
+
+        let mut block_ids = HashSet::new();
+        for id in index.block_ids() {
+            block_ids.insert(interner.get_or_intern(id));
+        }
+
+        let mut tag_names = HashSet::new();
+        for tag in index.tags() {
+            tag_names.insert(interner.get_or_intern(tag.name));
+        }
+
+        let mut code_span_texts = HashSet::new();
+        for cs in index.code_spans() {
+            code_span_texts.insert(interner.get_or_intern(cs.text));
+        }
+
+        let stem = intern_stem(interner, uri);
+        let journal_date = detect_journal_date(uri.as_str());
+
+        Self {
+            heading_slugs,
+            block_ids,
+            tag_names,
+            code_span_texts,
+            stem,
+            journal_date,
+        }
+    }
+}
+
 impl RealmIndex {
     /// Create an empty realm index.
     pub fn new() -> Self {
         Self {
             interner: Rodeo::default(),
             docs: HashMap::new(),
+            contributions: HashMap::new(),
             slug_to_headings: HashMap::new(),
             block_to_location: HashMap::new(),
             tag_to_docs: HashMap::new(),
@@ -99,71 +150,7 @@ impl RealmIndex {
         // If replacing, clear old doc from cross-doc indexes first
         self.remove_from_cross_doc_indexes(&key);
 
-        // Populate cross-doc heading index (Spur-keyed, zero allocation for HashMap key)
-        for entry in index.headings() {
-            let slug_spur = self.interner.get_or_intern(entry.slug);
-            let resolved = ResolvedHeading {
-                text: entry.text.to_string(),
-                slug: entry.slug.to_string(),
-                level: entry.level,
-                range: entry.range,
-            };
-            self.slug_to_headings
-                .entry(slug_spur)
-                .or_default()
-                .push((uri.clone(), resolved));
-        }
-
-        // Populate cross-doc block index (Spur-keyed)
-        for id in index.block_ids() {
-            if let Some(block) = index.block_by_id(id) {
-                let id_spur = self.interner.get_or_intern(id);
-                self.block_to_location.entry(id_spur).or_default().push((
-                    uri.clone(),
-                    ResolvedBlock {
-                        id: id.to_string(),
-                        range: block.range,
-                    },
-                ));
-            }
-        }
-
-        // Populate cross-doc tag index (Spur-keyed)
-        let mut seen_tags = HashMap::new();
-        for tag in index.tags() {
-            if seen_tags.insert(tag.name, ()).is_none() {
-                let tag_spur = self.interner.get_or_intern(tag.name);
-                self.tag_to_docs
-                    .entry(tag_spur)
-                    .or_default()
-                    .push(uri.clone());
-            }
-        }
-
-        // Populate cross-doc code span index (Spur-keyed, dedup by text per document).
-        let mut seen_code_spans = HashMap::new();
-        for cs in index.code_spans() {
-            if seen_code_spans.insert(cs.text, ()).is_none() {
-                let text_spur = self.interner.get_or_intern(cs.text);
-                self.code_span_to_docs.entry(text_spur).or_default().push((
-                    uri.clone(),
-                    ResolvedCodeSpan {
-                        text: cs.text.to_string(),
-                        range: cs.range,
-                        start_byte: cs.start_byte,
-                        end_byte: cs.end_byte,
-                    },
-                ));
-            }
-        }
-
-        // Populate stem index for wiki link resolution (Spur-keyed, case-insensitive).
-        if let Some(stem_spur) = intern_stem(&mut self.interner, &uri) {
-            self.stem_to_uris
-                .entry(stem_spur)
-                .or_default()
-                .push(uri.clone());
-        }
+        self.populate_cross_doc_indexes(&uri, &index);
 
         #[cfg(feature = "embeddings")]
         if let Some(semantic) = &mut self.semantic_index {
@@ -175,11 +162,9 @@ impl RealmIndex {
             }
         }
 
-        // Detect and index journal pages by date pattern in URI filename.
-        if let Some(date) = detect_journal_date(uri.as_str()) {
-            self.date_to_docs.entry(date).or_default().push(uri.clone());
-            self.uri_to_date.insert(uri.as_str().to_string(), date);
-        }
+        // Store contribution metadata for incremental updates (Layer 3).
+        let contrib = DocContribution::build(&mut self.interner, &index, &uri);
+        self.contributions.insert(key.clone(), contrib);
 
         self.docs
             .insert(key, (uri, AnyDocumentIndex::Markdown(index)));
@@ -213,6 +198,47 @@ impl RealmIndex {
             .insert(key, (uri, AnyDocumentIndex::Structured(index)));
     }
 
+    /// Incrementally update a markdown document's cross-doc indexes.
+    ///
+    /// Diffs old vs new contributions (heading slugs, block IDs, tags, code spans)
+    /// and patches only the changed entries. For the common case (single-char edit
+    /// that doesn't change structure), this skips all cross-doc index operations.
+    pub fn update_document(&mut self, uri: DocumentUri, new_index: DocumentIndex) {
+        let key = uri.as_str().to_string();
+        let new_contrib = DocContribution::build(&mut self.interner, &new_index, &uri);
+
+        if let Some(old_contrib) = self.contributions.get(&key) {
+            if old_contrib == &new_contrib {
+                // Fast path: contribution sets identical — skip cross-doc index ops.
+                // Just swap the stored DocumentIndex.
+            } else {
+                // Slow path: diff and patch only changed entries.
+                let old_contrib = old_contrib.clone();
+                self.patch_headings(&key, &uri, &old_contrib, &new_contrib, &new_index);
+                self.patch_blocks(&key, &uri, &old_contrib, &new_contrib, &new_index);
+                self.patch_tags(&key, &uri, &old_contrib, &new_contrib);
+                self.patch_code_spans(&key, &uri, &old_contrib, &new_contrib, &new_index);
+                self.patch_stem(&old_contrib, &new_contrib, &uri);
+                self.patch_journal_date(&key, &uri, &old_contrib, &new_contrib);
+            }
+        } else {
+            // First add (no prior contribution): full population.
+            self.populate_cross_doc_indexes(&uri, &new_index);
+        }
+
+        #[cfg(feature = "embeddings")]
+        if let Some(semantic) = &mut self.semantic_index {
+            semantic.remove_document(&uri);
+            if let Err(err) = semantic.add_document(uri.clone(), &new_index) {
+                log::warn!("semantic indexing failed for {}: {err}", uri.as_str());
+            }
+        }
+
+        self.contributions.insert(key.clone(), new_contrib);
+        self.docs
+            .insert(key, (uri, AnyDocumentIndex::Markdown(new_index)));
+    }
+
     /// Remove a document from the realm index.
     pub fn remove_document(&mut self, uri: &DocumentUri) {
         let key = uri.as_str().to_string();
@@ -221,6 +247,7 @@ impl RealmIndex {
             semantic.remove_document(uri);
         }
         self.remove_from_cross_doc_indexes(&key);
+        self.contributions.remove(&key);
         self.docs.remove(&key);
     }
 
@@ -320,6 +347,271 @@ impl RealmIndex {
                     self.date_to_docs.remove(&date);
                 }
             }
+        }
+    }
+
+    /// Populate all cross-doc indexes for a markdown document (full add).
+    /// Used by both add_document and update_document's first-add fallback.
+    fn populate_cross_doc_indexes(&mut self, uri: &DocumentUri, index: &DocumentIndex) {
+        // Headings (Spur-keyed)
+        for entry in index.headings() {
+            let slug_spur = self.interner.get_or_intern(entry.slug);
+            let resolved = ResolvedHeading {
+                text: entry.text.to_string(),
+                slug: entry.slug.to_string(),
+                level: entry.level,
+                range: entry.range,
+            };
+            self.slug_to_headings
+                .entry(slug_spur)
+                .or_default()
+                .push((uri.clone(), resolved));
+        }
+
+        // Blocks (Spur-keyed)
+        for id in index.block_ids() {
+            if let Some(block) = index.block_by_id(id) {
+                let id_spur = self.interner.get_or_intern(id);
+                self.block_to_location.entry(id_spur).or_default().push((
+                    uri.clone(),
+                    ResolvedBlock {
+                        id: id.to_string(),
+                        range: block.range,
+                    },
+                ));
+            }
+        }
+
+        // Tags (Spur-keyed, dedup per document)
+        let mut seen_tags = HashMap::new();
+        for tag in index.tags() {
+            if seen_tags.insert(tag.name, ()).is_none() {
+                let tag_spur = self.interner.get_or_intern(tag.name);
+                self.tag_to_docs
+                    .entry(tag_spur)
+                    .or_default()
+                    .push(uri.clone());
+            }
+        }
+
+        // Code spans (Spur-keyed, dedup by text per document)
+        let mut seen_code_spans = HashMap::new();
+        for cs in index.code_spans() {
+            if seen_code_spans.insert(cs.text, ()).is_none() {
+                let text_spur = self.interner.get_or_intern(cs.text);
+                self.code_span_to_docs.entry(text_spur).or_default().push((
+                    uri.clone(),
+                    ResolvedCodeSpan {
+                        text: cs.text.to_string(),
+                        range: cs.range,
+                        start_byte: cs.start_byte,
+                        end_byte: cs.end_byte,
+                    },
+                ));
+            }
+        }
+
+        // Stem index for wiki link resolution (Spur-keyed, case-insensitive)
+        if let Some(stem_spur) = intern_stem(&mut self.interner, uri) {
+            self.stem_to_uris
+                .entry(stem_spur)
+                .or_default()
+                .push(uri.clone());
+        }
+
+        // Journal date index
+        if let Some(date) = detect_journal_date(uri.as_str()) {
+            self.date_to_docs.entry(date).or_default().push(uri.clone());
+            self.uri_to_date.insert(uri.as_str().to_string(), date);
+        }
+    }
+
+    // ── Patch helpers for incremental update_document (Layer 3) ──
+
+    fn patch_headings(
+        &mut self,
+        key: &str,
+        uri: &DocumentUri,
+        old: &DocContribution,
+        new: &DocContribution,
+        new_index: &DocumentIndex,
+    ) {
+        // Remove entries for deleted slugs
+        for &spur in old.heading_slugs.difference(&new.heading_slugs) {
+            if let Some(entries) = self.slug_to_headings.get_mut(&spur) {
+                entries.retain(|(u, _)| u.as_str() != key);
+                if entries.is_empty() {
+                    self.slug_to_headings.remove(&spur);
+                }
+            }
+        }
+
+        // Add entries for new slugs
+        for &spur in new.heading_slugs.difference(&old.heading_slugs) {
+            let slug_str = self.interner.resolve(&spur);
+            for entry in new_index.headings() {
+                if entry.slug == slug_str {
+                    let resolved = ResolvedHeading {
+                        text: entry.text.to_string(),
+                        slug: entry.slug.to_string(),
+                        level: entry.level,
+                        range: entry.range,
+                    };
+                    self.slug_to_headings
+                        .entry(spur)
+                        .or_default()
+                        .push((uri.clone(), resolved));
+                }
+            }
+        }
+    }
+
+    fn patch_blocks(
+        &mut self,
+        key: &str,
+        uri: &DocumentUri,
+        old: &DocContribution,
+        new: &DocContribution,
+        new_index: &DocumentIndex,
+    ) {
+        for &spur in old.block_ids.difference(&new.block_ids) {
+            if let Some(entries) = self.block_to_location.get_mut(&spur) {
+                entries.retain(|(u, _)| u.as_str() != key);
+                if entries.is_empty() {
+                    self.block_to_location.remove(&spur);
+                }
+            }
+        }
+
+        for &spur in new.block_ids.difference(&old.block_ids) {
+            let id_str = self.interner.resolve(&spur);
+            if let Some(block) = new_index.block_by_id(id_str) {
+                self.block_to_location.entry(spur).or_default().push((
+                    uri.clone(),
+                    ResolvedBlock {
+                        id: id_str.to_string(),
+                        range: block.range,
+                    },
+                ));
+            }
+        }
+    }
+
+    fn patch_tags(
+        &mut self,
+        key: &str,
+        uri: &DocumentUri,
+        old: &DocContribution,
+        new: &DocContribution,
+    ) {
+        for &spur in old.tag_names.difference(&new.tag_names) {
+            if let Some(uris) = self.tag_to_docs.get_mut(&spur) {
+                uris.retain(|u| u.as_str() != key);
+                if uris.is_empty() {
+                    self.tag_to_docs.remove(&spur);
+                }
+            }
+        }
+
+        for &spur in new.tag_names.difference(&old.tag_names) {
+            self.tag_to_docs
+                .entry(spur)
+                .or_default()
+                .push(uri.clone());
+        }
+    }
+
+    fn patch_code_spans(
+        &mut self,
+        key: &str,
+        uri: &DocumentUri,
+        old: &DocContribution,
+        new: &DocContribution,
+        new_index: &DocumentIndex,
+    ) {
+        for &spur in old.code_span_texts.difference(&new.code_span_texts) {
+            if let Some(entries) = self.code_span_to_docs.get_mut(&spur) {
+                entries.retain(|(u, _)| u.as_str() != key);
+                if entries.is_empty() {
+                    self.code_span_to_docs.remove(&spur);
+                }
+            }
+        }
+
+        for &spur in new.code_span_texts.difference(&old.code_span_texts) {
+            let text_str = self.interner.resolve(&spur);
+            for cs in new_index.code_spans() {
+                if cs.text == text_str {
+                    self.code_span_to_docs.entry(spur).or_default().push((
+                        uri.clone(),
+                        ResolvedCodeSpan {
+                            text: cs.text.to_string(),
+                            range: cs.range,
+                            start_byte: cs.start_byte,
+                            end_byte: cs.end_byte,
+                        },
+                    ));
+                    break; // dedup: one entry per unique text per doc
+                }
+            }
+        }
+    }
+
+    fn patch_stem(
+        &mut self,
+        old: &DocContribution,
+        new: &DocContribution,
+        uri: &DocumentUri,
+    ) {
+        if old.stem == new.stem {
+            return;
+        }
+        let key = uri.as_str();
+        // Remove old stem entry
+        if let Some(old_spur) = old.stem {
+            if let Some(uris) = self.stem_to_uris.get_mut(&old_spur) {
+                uris.retain(|u| u.as_str() != key);
+                if uris.is_empty() {
+                    self.stem_to_uris.remove(&old_spur);
+                }
+            }
+        }
+        // Add new stem entry
+        if let Some(new_spur) = new.stem {
+            self.stem_to_uris
+                .entry(new_spur)
+                .or_default()
+                .push(uri.clone());
+        }
+    }
+
+    fn patch_journal_date(
+        &mut self,
+        key: &str,
+        uri: &DocumentUri,
+        old: &DocContribution,
+        new: &DocContribution,
+    ) {
+        if old.journal_date == new.journal_date {
+            return;
+        }
+        // Remove old date entry
+        if let Some(old_date) = old.journal_date {
+            self.uri_to_date.remove(key);
+            if let Some(uris) = self.date_to_docs.get_mut(&old_date) {
+                uris.retain(|u| u.as_str() != key);
+                if uris.is_empty() {
+                    self.date_to_docs.remove(&old_date);
+                }
+            }
+        }
+        // Add new date entry
+        if let Some(new_date) = new.journal_date {
+            self.date_to_docs
+                .entry(new_date)
+                .or_default()
+                .push(uri.clone());
+            self.uri_to_date.insert(key.to_string(), new_date);
         }
     }
 
