@@ -771,7 +771,7 @@ Subsequent tasks created iteratively via executing-plans.
 
 ---
 
-## Incremental md4c Block-Level Reparse (Research, 2026-02-23)
+## Incremental md4c Block-Level Reparse (Research Complete, 2026-02-23)
 
 ### Motivation
 
@@ -783,6 +783,28 @@ The old Rust incremental system (deleted in marky-n78f, tag `fixed-incremental`)
 wrong problem at the wrong layer — it did **merge after parse** (re-running regex extractors
 on edit regions, then splicing results). The right approach is **parse less** by making the
 md4c block analyzer itself incremental.
+
+### Research Findings (2026-02-23)
+
+Comprehensive SOTA research completed and documented in `/docs/research/incremental-parsing-sota-2026.md`.
+
+**Key findings:**
+1. **No production markdown parser implements incremental reparse** — md4c, cmark, pulldown-cmark all parse full document. Lezer is the only production incremental markdown parser (used by Obsidian, CodeMirror).
+2. **tree-sitter's incremental: CST node reuse via byte-range tracking** — Edit ranges identify affected nodes, unmodified nodes reused via Arc. Achieves ~99% node sharing. Cost: GLR parser machinery.
+3. **Block-level incremental is feasible via safe boundaries** — Blank lines, ATX headings, thematic breaks, code fences are guaranteed convergence points. Parser state resets deterministically there.
+4. **SIMD boundaries + sqrt decomposition chunks = sweet spot for markymark**
+   - Reuse existing kernels (fence_map, heading_scan) for boundary detection
+   - Chunk tree: O(√N) reparse cost per edit
+   - Convergence detection: if exit_state matches next chunk's entry_state, stop propagating
+   - Expected 3-5x speedup on typical edits, 10x+ on structural edits
+5. **Production systems use complementary strategies**
+   - Zed: rope + SumTree (O(log N) coordinate queries) + tree-sitter incremental
+   - Roslyn: red-green trees (99% node reuse, designed for compiled languages)
+   - Obsidian: Lezer + context hashing + per-document caching + cross-doc indexing
+6. **Two-phase architecture (CommonMark spec) supports chunking**
+   - Phase 1 (block structure) can be incremental per chunk
+   - Phase 2 (inline) is fast, can remain stateless per-block
+   - Link ref defs are global but can be extracted per-chunk and merged
 
 ### Architecture Analysis: blocks.zig
 
