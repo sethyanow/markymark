@@ -232,6 +232,13 @@ CLAUDE.md "Project Overview" said "Six crates" and omitted `markymark-kernels`. 
 the kernels crate was added. Lesson: when adding a crate to the workspace, update CLAUDE.md
 crate table in the same PR. Now fixed (Seven crates, kernels included).
 
+### Agent searched filesystem for plugin skills (fail-plugin-skill-filesystem-search)
+Plugin skills (`hyperpowers:*`, `pensive:*`, `beads:*`, `scribe:*`, etc. — anything with
+a `:` separator) are served by the plugin system, not local files. The `Skill` tool
+invocation IS the loading mechanism. Never search `~/.claude/skills/` or use `find`/`Glob`
+looking for plugin skill `.md` files — they don't exist on disk. Only user/project skills
+(no `:` prefix, e.g. `CORE`, `HandoffPrompt`) have local files.
+
 ### docs/modules and docs/zig_agent_docs are symlinks to forge repo (info-docs-symlinks)
 `docs/modules` → `../../../forge/docs/modules/` and `docs/zig_agent_docs` →
 `../../../forge/docs/zig_agent_docs` are **symlinks** to the forge repo. The `ASM-AGENTS-MD`
