@@ -27,6 +27,7 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         engine.query_blocks.len > max_u32 or
         engine.link_definitions.len > max_u32 or
         engine.properties.len > max_u32 or
+        engine.xml_tags.len > max_u32 or
         engine.line_starts.len > max_u32) return error.OutOfMemory;
 
     // Compute text pool size in u64 to avoid u32 wrap-before-check (C6).
@@ -73,6 +74,10 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         text_pool_size += p.key.len;
         text_pool_size += p.value.len;
     }
+    for (engine.xml_tags) |xt| {
+        text_pool_size += xt.tag_name.len;
+        text_pool_size += xt.raw_html.len;
+    }
     if (text_pool_size > std.math.maxInt(u32)) return error.OutOfMemory;
     const text_pool_u32: u32 = @intCast(text_pool_size);
 
@@ -89,6 +94,7 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         @intCast(engine.query_blocks.len),
         @intCast(engine.link_definitions.len),
         @intCast(engine.properties.len),
+        @intCast(engine.xml_tags.len),
         @intCast(engine.line_starts.len),
         text_pool_u32,
     ) orelse return error.OutOfMemory;
@@ -115,6 +121,7 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         .query_block_count = @intCast(engine.query_blocks.len),
         .link_def_count = @intCast(engine.link_definitions.len),
         .property_count = @intCast(engine.properties.len),
+        .xml_tag_count = @intCast(engine.xml_tags.len),
         .line_count = @intCast(engine.line_starts.len),
         .text_pool_size = text_pool_u32,
         .token_estimate = engine.token_estimate,
@@ -363,6 +370,32 @@ pub fn serializeState(engine: *const DocumentEngine) ![]u8 {
         pool_off += @intCast(p.key.len);
         @memcpy(buf[offsets.text_pool + pool_off ..][0..p.value.len], p.value);
         pool_off += @intCast(p.value.len);
+    }
+
+    // Write XML tags
+    for (engine.xml_tags, 0..) |xt, i| {
+        var flags: u8 = 0;
+        if (xt.is_self_closing) flags |= 0x01;
+        if (xt.is_unclosed) flags |= 0x02;
+        const bxt = blob.BlobXmlTag{
+            .tag_name_off = pool_off,
+            .tag_name_len = @intCast(xt.tag_name.len),
+            .flags = flags,
+            .raw_html_off = pool_off + @as(u32, @intCast(xt.tag_name.len)),
+            .raw_html_len = @intCast(xt.raw_html.len),
+            .source_offset = xt.source_offset,
+            .end_offset = xt.end_offset,
+            .start_line = xt.start.line,
+            .start_col = xt.start.col,
+            .end_line = xt.end.line,
+            .end_col = xt.end.col,
+        };
+        try blob.writeStruct(blob.BlobXmlTag, buf, offsets.xml_tags + i * @sizeOf(blob.BlobXmlTag), bxt);
+
+        @memcpy(buf[offsets.text_pool + pool_off ..][0..xt.tag_name.len], xt.tag_name);
+        pool_off += @intCast(xt.tag_name.len);
+        @memcpy(buf[offsets.text_pool + pool_off ..][0..xt.raw_html.len], xt.raw_html);
+        pool_off += @intCast(xt.raw_html.len);
     }
 
     // Write line_starts

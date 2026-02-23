@@ -69,6 +69,15 @@ pub const ExtractedProperty = struct {
     value_type: u8, // 0=string, 1=list, 2=page_ref
 };
 
+pub const ExtractedXmlTag = struct {
+    tag_name: []const u8, // owned (duped from src_text)
+    raw_html: []const u8, // owned (opening tag HTML for attribute parsing)
+    offset: u32, // start byte in source
+    end_offset: u32, // end byte (includes closing tag if matched)
+    is_self_closing: bool,
+    is_unclosed: bool,
+};
+
 pub const ExtractionResult = struct {
     headings: []ExtractedHeading,
     links: []ExtractedLink,
@@ -80,6 +89,7 @@ pub const ExtractionResult = struct {
     query_blocks: []ExtractedQueryBlock,
     link_definitions: []ExtractedLinkDefinition,
     properties: []ExtractedProperty,
+    xml_tags: []ExtractedXmlTag,
     allocator: Allocator,
 
     pub fn deinit(self: *ExtractionResult) void {
@@ -128,5 +138,10 @@ pub const ExtractionResult = struct {
             self.allocator.free(p.value);
         }
         self.allocator.free(self.properties);
+        for (self.xml_tags) |xt| {
+            self.allocator.free(xt.tag_name);
+            self.allocator.free(xt.raw_html);
+        }
+        self.allocator.free(self.xml_tags);
     }
 };

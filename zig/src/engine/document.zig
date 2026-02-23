@@ -36,6 +36,7 @@ pub const StoredBlockRef = stored_types.StoredBlockRef;
 pub const StoredQueryBlock = stored_types.StoredQueryBlock;
 pub const StoredLinkDefinition = stored_types.StoredLinkDefinition;
 pub const StoredProperty = stored_types.StoredProperty;
+pub const StoredXmlTag = stored_types.StoredXmlTag;
 
 // ── DocumentEngine ──────────────────────────────────────────────────
 
@@ -54,6 +55,7 @@ pub const DocumentEngine = struct {
     query_blocks: []StoredQueryBlock = &.{},
     link_definitions: []StoredLinkDefinition = &.{},
     properties: []StoredProperty = &.{},
+    xml_tags: []StoredXmlTag = &.{},
     line_starts: []u32 = &.{},
 
     token_estimate: u32 = 0,
@@ -94,6 +96,7 @@ pub const DocumentEngine = struct {
         var new_query_blocks: []StoredQueryBlock = &.{};
         var new_link_definitions: []StoredLinkDefinition = &.{};
         var new_properties: []StoredProperty = &.{};
+        var new_xml_tags: []StoredXmlTag = &.{};
         var new_line_starts: []u32 = &.{};
         var new_token_estimate: u32 = 0;
         var new_content_hash: u64 = 0;
@@ -113,6 +116,7 @@ pub const DocumentEngine = struct {
             &new_query_blocks,
             &new_link_definitions,
             &new_properties,
+            &new_xml_tags,
             &new_line_starts,
             &new_token_estimate,
             &new_content_hash,
@@ -132,6 +136,7 @@ pub const DocumentEngine = struct {
         self.query_blocks = new_query_blocks;
         self.link_definitions = new_link_definitions;
         self.properties = new_properties;
+        self.xml_tags = new_xml_tags;
         self.line_starts = new_line_starts;
         self.token_estimate = new_token_estimate;
         self.content_hash = new_content_hash;
@@ -171,6 +176,7 @@ pub const DocumentEngine = struct {
             &self.query_blocks,
             &self.link_definitions,
             &self.properties,
+            &self.xml_tags,
             &self.line_starts,
             &self.token_estimate,
             &self.content_hash,
@@ -202,6 +208,8 @@ pub const DocumentEngine = struct {
         self.link_definitions = &.{};
         freeProperties(self.allocator, self.properties);
         self.properties = &.{};
+        freeXmlTags(self.allocator, self.xml_tags);
+        self.xml_tags = &.{};
         if (self.line_starts.len > 0) {
             self.allocator.free(self.line_starts);
             self.line_starts = &.{};
@@ -230,6 +238,7 @@ pub fn parseAll(
     out_query_blocks: *[]StoredQueryBlock,
     out_link_definitions: *[]StoredLinkDefinition,
     out_properties: *[]StoredProperty,
+    out_xml_tags: *[]StoredXmlTag,
     out_line_starts: *[]u32,
     out_token_estimate: *u32,
     out_content_hash: *u64,
@@ -254,6 +263,7 @@ pub fn parseAll(
     var stored_query_blocks_list = std.ArrayListUnmanaged(StoredQueryBlock){};
     var stored_link_defs_list = std.ArrayListUnmanaged(StoredLinkDefinition){};
     var stored_properties_list = std.ArrayListUnmanaged(StoredProperty){};
+    var stored_xml_tags_list = std.ArrayListUnmanaged(StoredXmlTag){};
 
     // Tracks whether h.text/l.text/l.target/cs.text have been transferred from extraction
     // into the stored lists (i.e., after extraction.headings/links/code_spans slice containers
@@ -276,6 +286,7 @@ pub fn parseAll(
         freeStoredQueryBlocksList(allocator, &stored_query_blocks_list, texts_transferred);
         freeStoredLinkDefsList(allocator, &stored_link_defs_list, texts_transferred);
         freeStoredPropertiesList(allocator, &stored_properties_list, texts_transferred);
+        freeStoredXmlTagsList(allocator, &stored_xml_tags_list, texts_transferred);
     }
 
     // 2. Compute line_starts
@@ -471,8 +482,27 @@ pub fn parseAll(
         };
     }
 
+    // 5j. Process XML tags: positions
+    for (extraction.xml_tags) |xt| {
+        const start_pos = byteOffsetToPosition(line_starts, xt.offset);
+        const end_pos = byteOffsetToPosition(line_starts, xt.end_offset);
+        stored_xml_tags_list.append(allocator, .{
+            .tag_name = xt.tag_name,
+            .raw_html = xt.raw_html,
+            .source_offset = xt.offset,
+            .end_offset = xt.end_offset,
+            .start = start_pos,
+            .end = end_pos,
+            .is_self_closing = xt.is_self_closing,
+            .is_unclosed = xt.is_unclosed,
+        }) catch {
+            extraction.deinit();
+            return error.OutOfMemory;
+        };
+    }
+
     // OWNERSHIP: The string data from extraction_renderer's arrays has been moved
-    // into the stored lists by the loops above (steps 4-5h). Only the slice containers
+    // into the stored lists by the loops above (steps 4-5j). Only the slice containers
     // are freed here — NOT the string contents. The strings are now owned by stored lists.
     allocator.free(extraction.headings);
     allocator.free(extraction.links);
@@ -484,6 +514,7 @@ pub fn parseAll(
     allocator.free(extraction.query_blocks);
     allocator.free(extraction.link_definitions);
     allocator.free(extraction.properties);
+    allocator.free(extraction.xml_tags);
     // From this point, the errdefer must free string data from the stored lists directly.
     texts_transferred = true;
 
@@ -578,8 +609,10 @@ pub fn parseAll(
     errdefer freeQueryBlocks(allocator, out_query_blocks.*);
     out_link_definitions.* = stored_link_defs_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
     errdefer freeLinkDefinitions(allocator, out_link_definitions.*);
-    // No errdefer for properties: nothing allocates after this point.
     out_properties.* = stored_properties_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
+    errdefer freeProperties(allocator, out_properties.*);
+    // No errdefer for xml_tags: nothing allocates after this point.
+    out_xml_tags.* = stored_xml_tags_list.toOwnedSlice(allocator) catch return error.OutOfMemory;
     out_line_starts.* = line_starts;
     out_token_estimate.* = token_est;
     out_content_hash.* = c_hash;
@@ -611,6 +644,7 @@ pub const freeBlockRefs = free_mod.freeBlockRefs;
 pub const freeQueryBlocks = free_mod.freeQueryBlocks;
 pub const freeLinkDefinitions = free_mod.freeLinkDefinitions;
 pub const freeProperties = free_mod.freeProperties;
+pub const freeXmlTags = free_mod.freeXmlTags;
 pub const freeStoredHeadingsList = free_mod.freeStoredHeadingsList;
 pub const freeStoredLinksList = free_mod.freeStoredLinksList;
 const freeStoredCodeSpansList = free_mod.freeStoredCodeSpansList;
@@ -623,6 +657,7 @@ const freeStoredBlockRefsList = free_mod.freeStoredBlockRefsList;
 const freeStoredQueryBlocksList = free_mod.freeStoredQueryBlocksList;
 const freeStoredLinkDefsList = free_mod.freeStoredLinkDefsList;
 const freeStoredPropertiesList = free_mod.freeStoredPropertiesList;
+const freeStoredXmlTagsList = free_mod.freeStoredXmlTagsList;
 
 // ── Tests ───────────────────────────────────────────────────────────
 

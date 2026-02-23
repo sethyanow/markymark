@@ -71,7 +71,9 @@ fn test_struct_sizes_match_zig() {
     assert_eq!(std::mem::size_of::<CMd4cQueryBlock>(), 16);
     assert_eq!(std::mem::size_of::<CMd4cLinkDefinition>(), 32);
     assert_eq!(std::mem::size_of::<CMd4cProperty>(), 20);
-    assert_eq!(std::mem::size_of::<CMd4cResult>(), 136);
+    assert_eq!(std::mem::size_of::<CMd4cXmlTag>(), 28);
+    // 12 pointers (96) + 12 u32 counts (48) = 144
+    assert_eq!(std::mem::size_of::<CMd4cResult>(), 144);
 }
 
 /// Regression test for T2-11: silent `.unwrap_or("")` masked data corruption.
@@ -101,6 +103,7 @@ fn test_invalid_utf8_in_heading_blob_returns_error() {
         query_blocks: std::ptr::null_mut(),
         link_definitions: std::ptr::null_mut(),
         properties: std::ptr::null_mut(),
+        xml_tags: std::ptr::null_mut(),
         text_blob: blob.as_ptr(),
         headings_count: 1,
         links_count: 0,
@@ -112,6 +115,7 @@ fn test_invalid_utf8_in_heading_blob_returns_error() {
         query_blocks_count: 0,
         link_definitions_count: 0,
         properties_count: 0,
+        xml_tags_count: 0,
         text_blob_len: 3,
     };
     // Before fix: returns Ok(headings[0].text == "") — silent data loss.
@@ -147,6 +151,7 @@ fn test_invalid_utf8_in_link_blob_returns_error() {
         query_blocks: std::ptr::null_mut(),
         link_definitions: std::ptr::null_mut(),
         properties: std::ptr::null_mut(),
+        xml_tags: std::ptr::null_mut(),
         text_blob: blob.as_ptr(),
         headings_count: 0,
         links_count: 1,
@@ -158,6 +163,7 @@ fn test_invalid_utf8_in_link_blob_returns_error() {
         query_blocks_count: 0,
         link_definitions_count: 0,
         properties_count: 0,
+        xml_tags_count: 0,
         text_blob_len: 3,
     };
     let result = convert_result(&out);
@@ -190,6 +196,7 @@ fn test_oob_heading_offset_returns_error() {
         query_blocks: std::ptr::null_mut(),
         link_definitions: std::ptr::null_mut(),
         properties: std::ptr::null_mut(),
+        xml_tags: std::ptr::null_mut(),
         text_blob: blob.as_ptr(),
         headings_count: 1,
         links_count: 0,
@@ -201,6 +208,7 @@ fn test_oob_heading_offset_returns_error() {
         query_blocks_count: 0,
         link_definitions_count: 0,
         properties_count: 0,
+        xml_tags_count: 0,
         text_blob_len: blob.len() as u32,
     };
     let result = convert_result(&out);
@@ -235,6 +243,7 @@ fn test_oob_link_offset_returns_error() {
         query_blocks: std::ptr::null_mut(),
         link_definitions: std::ptr::null_mut(),
         properties: std::ptr::null_mut(),
+        xml_tags: std::ptr::null_mut(),
         text_blob: blob.as_ptr(),
         headings_count: 0,
         links_count: 1,
@@ -246,6 +255,7 @@ fn test_oob_link_offset_returns_error() {
         query_blocks_count: 0,
         link_definitions_count: 0,
         properties_count: 0,
+        xml_tags_count: 0,
         text_blob_len: blob.len() as u32,
     };
     let result = convert_result(&out);
@@ -278,6 +288,7 @@ fn test_overflow_offset_returns_error() {
         query_blocks: std::ptr::null_mut(),
         link_definitions: std::ptr::null_mut(),
         properties: std::ptr::null_mut(),
+        xml_tags: std::ptr::null_mut(),
         text_blob: blob.as_ptr(),
         headings_count: 1,
         links_count: 0,
@@ -289,6 +300,7 @@ fn test_overflow_offset_returns_error() {
         query_blocks_count: 0,
         link_definitions_count: 0,
         properties_count: 0,
+        xml_tags_count: 0,
         text_blob_len: blob.len() as u32,
     };
     let result = convert_result(&out);
@@ -473,4 +485,86 @@ fn test_extract_link_definition_with_title() {
         result.link_definitions[0].title.as_deref(),
         Some("My Title")
     );
+}
+
+#[test]
+fn test_extract_xml_tag_block_level() {
+    // Block-level HTML: tag on its own line with blank lines around it.
+    let input = "\n<custom-tag>\n\nSome content\n\n</custom-tag>\n";
+    let result = extract_md4c(input).unwrap();
+    assert!(
+        !result.xml_tags.is_empty(),
+        "should extract at least one XML tag from block-level HTML"
+    );
+    assert_eq!(result.xml_tags[0].tag_name, "custom-tag");
+    assert!(!result.xml_tags[0].is_self_closing);
+}
+
+#[test]
+fn test_extract_xml_tag_self_closing() {
+    let input = "\n<br />\n";
+    let result = extract_md4c(input).unwrap();
+    assert!(
+        !result.xml_tags.is_empty(),
+        "should extract self-closing XML tag"
+    );
+    assert_eq!(result.xml_tags[0].tag_name, "br");
+    assert!(result.xml_tags[0].is_self_closing);
+}
+
+#[test]
+fn test_extract_xml_tags_empty_document() {
+    let result = extract_md4c("# Just a heading\n").unwrap();
+    assert!(result.xml_tags.is_empty(), "no XML tags in plain markdown");
+}
+
+#[test]
+fn test_extract_xml_tag_convert_result_roundtrip() {
+    // Construct a CMd4cResult with xml_tags to test convert_result path.
+    let blob = b"divraw html here";
+    let xml_tag = CMd4cXmlTag {
+        source_offset: 0,
+        end_offset: 20,
+        tag_name_offset: 0,
+        tag_name_length: 3,
+        raw_html_offset: 3,
+        raw_html_length: 13,
+        is_self_closing: 0,
+        is_unclosed: 1,
+        _pad: [0, 0],
+    };
+    let out = CMd4cResult {
+        headings: std::ptr::null_mut(),
+        links: std::ptr::null_mut(),
+        code_spans: std::ptr::null_mut(),
+        tasks: std::ptr::null_mut(),
+        embeds: std::ptr::null_mut(),
+        callouts: std::ptr::null_mut(),
+        block_refs: std::ptr::null_mut(),
+        query_blocks: std::ptr::null_mut(),
+        link_definitions: std::ptr::null_mut(),
+        properties: std::ptr::null_mut(),
+        xml_tags: &xml_tag as *const _ as *mut _,
+        text_blob: blob.as_ptr(),
+        headings_count: 0,
+        links_count: 0,
+        code_spans_count: 0,
+        tasks_count: 0,
+        embeds_count: 0,
+        callouts_count: 0,
+        block_refs_count: 0,
+        query_blocks_count: 0,
+        link_definitions_count: 0,
+        properties_count: 0,
+        xml_tags_count: 1,
+        text_blob_len: blob.len() as u32,
+    };
+    let result = convert_result(&out).unwrap();
+    assert_eq!(result.xml_tags.len(), 1);
+    assert_eq!(result.xml_tags[0].tag_name, "div");
+    assert_eq!(result.xml_tags[0].raw_html, "raw html here");
+    assert_eq!(result.xml_tags[0].source_offset, 0);
+    assert_eq!(result.xml_tags[0].end_offset, 20);
+    assert!(!result.xml_tags[0].is_self_closing);
+    assert!(result.xml_tags[0].is_unclosed);
 }

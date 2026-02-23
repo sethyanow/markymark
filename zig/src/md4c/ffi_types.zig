@@ -117,6 +117,21 @@ comptime {
     std.debug.assert(@sizeOf(CMd4cProperty) == 20);
 }
 
+pub const CMd4cXmlTag = extern struct {
+    source_offset: u32,
+    end_offset: u32,
+    tag_name_offset: u32, // offset into text_blob
+    tag_name_length: u32,
+    raw_html_offset: u32, // offset into text_blob
+    raw_html_length: u32,
+    is_self_closing: u8,
+    is_unclosed: u8,
+    _pad: [2]u8 = .{ 0, 0 },
+};
+comptime {
+    std.debug.assert(@sizeOf(CMd4cXmlTag) == 28);
+}
+
 // Pointers grouped first, then u32 counts — avoids internal padding on 64-bit.
 pub const CMd4cResult = extern struct {
     headings: ?[*]CMd4cHeading, // Zig-allocated array, freed by marky_md4c_free
@@ -129,6 +144,7 @@ pub const CMd4cResult = extern struct {
     query_blocks: ?[*]CMd4cQueryBlock, // Zig-allocated array, freed by marky_md4c_free
     link_definitions: ?[*]CMd4cLinkDefinition, // Zig-allocated array, freed by marky_md4c_free
     properties: ?[*]CMd4cProperty, // Zig-allocated array, freed by marky_md4c_free
+    xml_tags: ?[*]CMd4cXmlTag, // Zig-allocated array, freed by marky_md4c_free
     text_blob: ?[*]const u8, // concatenated decoded texts, freed by marky_md4c_free
     headings_count: u32,
     links_count: u32,
@@ -140,9 +156,10 @@ pub const CMd4cResult = extern struct {
     query_blocks_count: u32,
     link_definitions_count: u32,
     properties_count: u32,
+    xml_tags_count: u32,
     text_blob_len: u32,
 };
 comptime {
-    // 11 pointers (88) + 11 u32 (44) + 4 padding = 136
-    std.debug.assert(@sizeOf(CMd4cResult) == 136);
+    // 12 pointers (96) + 12 u32 (48) = 144
+    std.debug.assert(@sizeOf(CMd4cResult) == 144);
 }

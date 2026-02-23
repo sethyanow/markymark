@@ -117,6 +117,20 @@ struct CMd4cProperty {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
+struct CMd4cXmlTag {
+    source_offset: u32,
+    end_offset: u32,
+    tag_name_offset: u32,
+    tag_name_length: u32,
+    raw_html_offset: u32,
+    raw_html_length: u32,
+    is_self_closing: u8,
+    is_unclosed: u8,
+    _pad: [u8; 2],
+}
+
+#[repr(C)]
 struct CMd4cResult {
     headings: *mut CMd4cHeading,
     links: *mut CMd4cLink,
@@ -128,6 +142,7 @@ struct CMd4cResult {
     query_blocks: *mut CMd4cQueryBlock,
     link_definitions: *mut CMd4cLinkDefinition,
     properties: *mut CMd4cProperty,
+    xml_tags: *mut CMd4cXmlTag,
     text_blob: *const u8,
     headings_count: u32,
     links_count: u32,
@@ -139,6 +154,7 @@ struct CMd4cResult {
     query_blocks_count: u32,
     link_definitions_count: u32,
     properties_count: u32,
+    xml_tags_count: u32,
     text_blob_len: u32,
 }
 
@@ -153,7 +169,9 @@ const _: () = assert!(std::mem::size_of::<CMd4cBlockRef>() == 12);
 const _: () = assert!(std::mem::size_of::<CMd4cQueryBlock>() == 16);
 const _: () = assert!(std::mem::size_of::<CMd4cLinkDefinition>() == 32);
 const _: () = assert!(std::mem::size_of::<CMd4cProperty>() == 20);
-const _: () = assert!(std::mem::size_of::<CMd4cResult>() == 136);
+const _: () = assert!(std::mem::size_of::<CMd4cXmlTag>() == 28);
+// 12 pointers (96) + 12 u32 counts (48) = 144
+const _: () = assert!(std::mem::size_of::<CMd4cResult>() == 144);
 
 extern "C" {
     fn marky_md4c_extract(text: *const u8, len: u32, out: *mut CMd4cResult) -> i32;
@@ -282,6 +300,23 @@ pub struct Md4cProperty {
     pub value_type: u8,
 }
 
+/// An XML tag extracted by md4c.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Md4cXmlTag {
+    /// The tag name (e.g. "div", "custom-tag").
+    pub tag_name: String,
+    /// The raw opening tag HTML (e.g. `<tag attr="val">`).
+    pub raw_html: String,
+    /// Start byte offset in source.
+    pub source_offset: u32,
+    /// End byte offset (includes closing tag if matched).
+    pub end_offset: u32,
+    /// Whether this is a self-closing or void element.
+    pub is_self_closing: bool,
+    /// Whether this tag was unclosed (no matching close tag found).
+    pub is_unclosed: bool,
+}
+
 /// Results from md4c single-pass extraction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Md4cExtraction {
@@ -295,6 +330,7 @@ pub struct Md4cExtraction {
     pub query_blocks: Vec<Md4cQueryBlock>,
     pub link_definitions: Vec<Md4cLinkDefinition>,
     pub properties: Vec<Md4cProperty>,
+    pub xml_tags: Vec<Md4cXmlTag>,
 }
 
 // ---------------------------------------------------------------------------
@@ -318,6 +354,7 @@ pub fn extract_md4c(text: &str) -> Result<Md4cExtraction, KernelError> {
             query_blocks: Vec::new(),
             link_definitions: Vec::new(),
             properties: Vec::new(),
+            xml_tags: Vec::new(),
         });
     }
 
@@ -659,6 +696,41 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         }
     }
 
+    let mut xml_tags = Vec::with_capacity(out.xml_tags_count as usize);
+    if out.xml_tags_count > 0 && !out.xml_tags.is_null() {
+        // SAFETY: xml_tags pointer is valid for xml_tags_count elements,
+        // allocated by Zig page_allocator.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let c_xml_tags =
+            unsafe { std::slice::from_raw_parts(out.xml_tags, out.xml_tags_count as usize) };
+        for xt in c_xml_tags {
+            let tag_name_start = xt.tag_name_offset as usize;
+            let tag_name = std::str::from_utf8(safe_blob_slice(
+                blob,
+                tag_name_start,
+                xt.tag_name_length as usize,
+            )?)
+            .map_err(|_| KernelError::InternalError(-100))?
+            .to_owned();
+            let raw_html_start = xt.raw_html_offset as usize;
+            let raw_html = std::str::from_utf8(safe_blob_slice(
+                blob,
+                raw_html_start,
+                xt.raw_html_length as usize,
+            )?)
+            .map_err(|_| KernelError::InternalError(-100))?
+            .to_owned();
+            xml_tags.push(Md4cXmlTag {
+                tag_name,
+                raw_html,
+                source_offset: xt.source_offset,
+                end_offset: xt.end_offset,
+                is_self_closing: xt.is_self_closing != 0,
+                is_unclosed: xt.is_unclosed != 0,
+            });
+        }
+    }
+
     Ok(Md4cExtraction {
         headings,
         links,
@@ -670,5 +742,6 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         query_blocks,
         link_definitions,
         properties,
+        xml_tags,
     })
 }

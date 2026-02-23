@@ -19,6 +19,7 @@ const StoredBlockRef = stored_types.StoredBlockRef;
 const StoredQueryBlock = stored_types.StoredQueryBlock;
 const StoredLinkDefinition = stored_types.StoredLinkDefinition;
 const StoredProperty = stored_types.StoredProperty;
+const StoredXmlTag = stored_types.StoredXmlTag;
 
 // ── Slice free helpers ──────────────────────────────────────────────
 
@@ -110,6 +111,14 @@ pub fn freeProperties(allocator: Allocator, props: []StoredProperty) void {
         allocator.free(p.value);
     }
     if (props.len > 0) allocator.free(props);
+}
+
+pub fn freeXmlTags(allocator: Allocator, xml_tags: []StoredXmlTag) void {
+    for (xml_tags) |xt| {
+        allocator.free(xt.tag_name);
+        allocator.free(xt.raw_html);
+    }
+    if (xml_tags.len > 0) allocator.free(xml_tags);
 }
 
 // ── ArrayList free helpers ──────────────────────────────────────────
@@ -222,6 +231,16 @@ pub fn freeStoredPropertiesList(allocator: Allocator, list: *std.ArrayListUnmana
         for (list.items) |p| {
             allocator.free(p.key);
             allocator.free(p.value);
+        }
+    }
+    list.deinit(allocator);
+}
+
+pub fn freeStoredXmlTagsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredXmlTag), free_texts: bool) void {
+    if (free_texts) {
+        for (list.items) |xt| {
+            allocator.free(xt.tag_name);
+            allocator.free(xt.raw_html);
         }
     }
     list.deinit(allocator);

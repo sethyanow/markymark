@@ -24,6 +24,7 @@ pub const CMd4cBlockRef = ffi_types.CMd4cBlockRef;
 pub const CMd4cQueryBlock = ffi_types.CMd4cQueryBlock;
 pub const CMd4cLinkDefinition = ffi_types.CMd4cLinkDefinition;
 pub const CMd4cProperty = ffi_types.CMd4cProperty;
+pub const CMd4cXmlTag = ffi_types.CMd4cXmlTag;
 pub const CMd4cResult = ffi_types.CMd4cResult;
 
 // ── C ABI Functions ──────────────────────────────────────────────────
@@ -68,6 +69,7 @@ pub export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResul
     const query_block_count = result.query_blocks.len;
     const link_definition_count = result.link_definitions.len;
     const property_count = result.properties.len;
+    const xml_tag_count = result.xml_tags.len;
 
     // Calculate text blob size
     var blob_size: usize = 0;
@@ -105,6 +107,10 @@ pub export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResul
     for (result.properties) |p| {
         blob_size += p.key.len;
         blob_size += p.value.len;
+    }
+    for (result.xml_tags) |xt| {
+        blob_size += xt.tag_name.len;
+        blob_size += xt.raw_html.len;
     }
 
     // T1-3: blob_offset is u32 — guard against wrapping for documents whose total
@@ -254,6 +260,26 @@ pub export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResul
     var c_properties: ?[]CMd4cProperty = null;
     if (property_count > 0) {
         c_properties = ffi_allocator.alloc(CMd4cProperty, property_count) catch {
+            if (c_link_definitions) |ld| ffi_allocator.free(ld);
+            if (c_query_blocks) |qb| ffi_allocator.free(qb);
+            if (c_block_refs) |br| ffi_allocator.free(br);
+            if (c_callouts) |cl| ffi_allocator.free(cl);
+            if (c_embeds) |em| ffi_allocator.free(em);
+            if (c_tasks) |tk| ffi_allocator.free(tk);
+            if (c_code_spans) |cs| ffi_allocator.free(cs);
+            if (c_links) |l| ffi_allocator.free(l);
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate XML tag array
+    var c_xml_tags: ?[]CMd4cXmlTag = null;
+    if (xml_tag_count > 0) {
+        c_xml_tags = ffi_allocator.alloc(CMd4cXmlTag, xml_tag_count) catch {
+            if (c_properties) |pr| ffi_allocator.free(pr);
             if (c_link_definitions) |ld| ffi_allocator.free(ld);
             if (c_query_blocks) |qb| ffi_allocator.free(qb);
             if (c_block_refs) |br| ffi_allocator.free(br);
@@ -493,6 +519,35 @@ pub export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResul
         };
     }
 
+    for (result.xml_tags, 0..) |xt, i| {
+        const tag_name_len: u32 = @intCast(xt.tag_name.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, tag_name_len) <= b.len);
+            @memcpy(b[blob_offset..][0..tag_name_len], xt.tag_name);
+        }
+        const tag_name_off = blob_offset;
+        blob_offset += tag_name_len;
+
+        const raw_html_len: u32 = @intCast(xt.raw_html.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, raw_html_len) <= b.len);
+            @memcpy(b[blob_offset..][0..raw_html_len], xt.raw_html);
+        }
+        const raw_html_off = blob_offset;
+        blob_offset += raw_html_len;
+
+        c_xml_tags.?[i] = .{
+            .source_offset = xt.offset,
+            .end_offset = xt.end_offset,
+            .tag_name_offset = tag_name_off,
+            .tag_name_length = tag_name_len,
+            .raw_html_offset = raw_html_off,
+            .raw_html_length = raw_html_len,
+            .is_self_closing = if (xt.is_self_closing) 1 else 0,
+            .is_unclosed = if (xt.is_unclosed) 1 else 0,
+        };
+    }
+
     // Free ExtractionResult (owned strings — already copied to blob)
     result.deinit();
 
@@ -518,6 +573,8 @@ pub export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResul
         .link_definitions_count = @intCast(link_definition_count),
         .properties = if (c_properties) |pr| pr.ptr else null,
         .properties_count = @intCast(property_count),
+        .xml_tags = if (c_xml_tags) |xt| xt.ptr else null,
+        .xml_tags_count = @intCast(xml_tag_count),
         .text_blob = blob_ptr,
         .text_blob_len = blob_offset,
     };
@@ -580,6 +637,11 @@ pub export fn marky_md4c_free(result: ?*CMd4cResult) void {
     if (r.properties) |properties_ptr| {
         if (r.properties_count > 0) {
             ffi_allocator.free(properties_ptr[0..r.properties_count]);
+        }
+    }
+    if (r.xml_tags) |xml_tags_ptr| {
+        if (r.xml_tags_count > 0) {
+            ffi_allocator.free(xml_tags_ptr[0..r.xml_tags_count]);
         }
     }
     if (r.text_blob) |blob_ptr| {

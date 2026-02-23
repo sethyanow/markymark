@@ -111,3 +111,14 @@ pub const StoredProperty = struct {
     value: []const u8, // owned, the raw value text
     value_type: u8, // 0=string, 1=list, 2=page_ref
 };
+
+pub const StoredXmlTag = struct {
+    tag_name: []const u8, // owned
+    raw_html: []const u8, // owned, opening tag HTML for attribute parsing
+    source_offset: u32,
+    end_offset: u32,
+    start: Position,
+    end: Position,
+    is_self_closing: bool,
+    is_unclosed: bool,
+};
