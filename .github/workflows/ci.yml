@@ -40,11 +40,18 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.cache/zig
+            .zig-cache
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}-${{ hashFiles('zig/**/*.zig', 'zig/build.zig', 'zig/build.zig.zon') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}-
             ${{ runner.os }}-cargo-
+
+      # Zig 0.15.2 bug: reusing .zig-cache while overwriting the same .a file
+      # can produce a truncated archive.  Purge any cached Zig build outputs so
+      # build.rs always produces a fresh library from a clean install prefix.
+      - name: Purge stale Zig build artifacts
+        run: rm -rf target/debug/build/markymark-kernels-*/out/lib target/release/build/markymark-kernels-*/out/lib
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -121,11 +128,15 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.cache/zig
+            .zig-cache
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}-${{ hashFiles('zig/**/*.zig', 'zig/build.zig', 'zig/build.zig.zon') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}-
             ${{ runner.os }}-cargo-
+
+      - name: Purge stale Zig build artifacts
+        run: rm -rf target/debug/build/markymark-kernels-*/out/lib target/release/build/markymark-kernels-*/out/lib
 
       - name: Check marksman availability
         id: marksman-check
@@ -166,11 +177,15 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.cache/zig
+            .zig-cache
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}-${{ hashFiles('zig/**/*.zig', 'zig/build.zig', 'zig/build.zig.zon') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}-
             ${{ runner.os }}-cargo-
+
+      - name: Purge stale Zig build artifacts
+        run: rm -rf target/debug/build/markymark-kernels-*/out/lib target/release/build/markymark-kernels-*/out/lib
 
       - name: Build release binary
         run: cargo build --release -p markymark-cli
