@@ -27,7 +27,8 @@ The LSP flow:
 
 [Tree-sitter](https://tree-sitter.github.io/) provides a full syntax tree for:
 
-- **MCP batch indexing** — parsing entire workspaces on startup via `from_ast()`
+- **MCP batch indexing** — `from_ast()` extracts frontmatter via tree-sitter,
+  then delegates all content extraction to the Zig scan backend
 - **Hover and go-to-definition** — precise AST node positions
 
 The `Parser` struct in `markymark-parser/src/lib.rs` wraps tree-sitter and
@@ -50,6 +51,10 @@ Both parsers extract the same symbol types into `DocumentIndex`:
 | Embeds | `![[target]]` |
 | Frontmatter | YAML/TOML key-value pairs |
 | Properties | `key:: value` (Logseq) |
+| Callouts | `> [!type] Title` (Obsidian) |
+| Query blocks | `{{query ...}}` (Logseq) |
+| Link definitions | `[label]: url "title"` |
+| Block references | `((uuid))` (Logseq) |
 
 XML tags are a special case — md4c treats HTML as pass-through, so XML extraction
 runs as a separate scan step after parsing.

@@ -18,6 +18,28 @@ Logseq conventions.
 
 Markdown files are the primary format — every LSP and MCP capability is available.
 
+### Extracted elements
+
+markymark extracts these elements from markdown during indexing:
+
+| Element | Syntax | Notes |
+|---------|--------|-------|
+| Headings | `## Title` | Level, slug, and position tracked |
+| Wiki links | `[[page]]`, `[[page\|alias]]` | Obsidian/Logseq syntax, optional heading anchor |
+| Markdown links | `[text](url#anchor)` | Optional heading anchor for cross-references |
+| Tags | `#tag` | Logseq-style inline tags |
+| XML tags | `<agent>...</agent>` | Custom semantic elements with attributes |
+| Block IDs | `^block-id` | Obsidian document-internal anchors |
+| Block references | `((uuid))` | Logseq cross-document block refs |
+| Code spans | `` `symbol` `` | Inline code cross-references with optional symbol kind |
+| Tasks | `- [ ]` / `- [x]` | Checkbox state and description tracked |
+| Embeds | `![[target]]` | Obsidian file transclusion |
+| Callouts | `> [!note] Title` | Admonition type and optional title |
+| Query blocks | `{{query ...}}` | Logseq datalog queries |
+| Link definitions | `[label]: url "title"` | Reference-style link targets |
+| Frontmatter | YAML / TOML block | Document metadata key-value pairs |
+| Properties | `key:: value` | Logseq inline properties |
+
 ## Structured formats
 
 Structured documents share a common set of features: document outline (symbol
