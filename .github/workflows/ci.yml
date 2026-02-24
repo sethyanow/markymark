@@ -40,7 +40,6 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            .zig-cache
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}-${{ hashFiles('zig/**/*.zig', 'zig/build.zig', 'zig/build.zig.zon') }}
           restore-keys: |
@@ -51,7 +50,7 @@ jobs:
       # can produce a truncated archive.  Purge any cached Zig build outputs so
       # build.rs always produces a fresh library from a clean install prefix.
       - name: Purge stale Zig build artifacts
-        run: rm -rf target/debug/build/markymark-kernels-*/out/lib target/release/build/markymark-kernels-*/out/lib
+        run: rm -rf target/debug/build/markymark-kernels-*/out target/release/build/markymark-kernels-*/out
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -125,7 +124,6 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            .zig-cache
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}-${{ hashFiles('zig/**/*.zig', 'zig/build.zig', 'zig/build.zig.zon') }}
           restore-keys: |
@@ -133,7 +131,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Purge stale Zig build artifacts
-        run: rm -rf target/debug/build/markymark-kernels-*/out/lib target/release/build/markymark-kernels-*/out/lib
+        run: rm -rf target/debug/build/markymark-kernels-*/out target/release/build/markymark-kernels-*/out
 
       - name: Check marksman availability
         id: marksman-check
@@ -174,7 +172,6 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            .zig-cache
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}-${{ hashFiles('zig/**/*.zig', 'zig/build.zig', 'zig/build.zig.zon') }}
           restore-keys: |
@@ -182,7 +179,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Purge stale Zig build artifacts
-        run: rm -rf target/debug/build/markymark-kernels-*/out/lib target/release/build/markymark-kernels-*/out/lib
+        run: rm -rf target/debug/build/markymark-kernels-*/out target/release/build/markymark-kernels-*/out
 
       - name: Build release binary
         run: cargo build --release -p markymark-cli

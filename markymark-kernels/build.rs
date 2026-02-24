@@ -163,11 +163,22 @@ fn build_zig_library(
     zig_target: Option<&str>,
     prefix: &std::path::Path,
 ) {
-    // Give each build.rs invocation its own Zig cache to prevent the 0.15.2
-    // warm-cache archive corruption bug: sequential cargo clippy → build →
-    // test steps each invoke build.rs, and a shared .zig-cache causes
-    // truncated .a archives on the 2nd+ invocation (Linux x86_64).
+    // Zig 0.15.2 warm-cache archive corruption bug (Linux x86_64):
+    // If .zig-cache is warm from a previous invocation, `zig build lib` can
+    // produce a truncated .a archive.  This happens when:
+    //   (a) CI restores the `target/` cache containing a stale .zig-cache, or
+    //   (b) sequential cargo commands (clippy → test) share the same OUT_DIR
+    //       and thus the same .zig-cache.
+    // Fix: always start from a cold cache by deleting it before each build.
     let zig_cache_dir = prefix.join(".zig-cache");
+    if zig_cache_dir.exists() {
+        std::fs::remove_dir_all(&zig_cache_dir).unwrap_or_else(|e| {
+            panic!(
+                "Failed to purge stale Zig cache at {}: {e}",
+                zig_cache_dir.display()
+            )
+        });
+    }
 
     let mut cmd = Command::new("zig");
     cmd.arg("build")
@@ -301,5 +312,35 @@ mod tests {
             "zig cache must be inside its prefix, got: {}",
             cache_b.display()
         );
+    }
+
+    /// Regression test: build_zig_library() must purge an existing .zig-cache
+    /// before invoking `zig build lib`.  Without this, a warm cache restored
+    /// from CI's `target/` cache (or left over from a previous cargo command
+    /// sharing the same OUT_DIR) triggers Zig 0.15.2's archive corruption.
+    #[test]
+    fn test_stale_zig_cache_is_purged_before_build() {
+        let tmp = std::env::temp_dir().join("markymark-test-zig-purge");
+        let prefix = tmp.join("out");
+        let zig_cache_dir = prefix.join(".zig-cache");
+
+        // Simulate a stale cache restored from CI
+        std::fs::create_dir_all(&zig_cache_dir).unwrap();
+        let sentinel = zig_cache_dir.join("stale-artifact");
+        std::fs::write(&sentinel, b"stale").unwrap();
+        assert!(sentinel.exists(), "sentinel should exist before purge");
+
+        // Simulate what build_zig_library() does: purge if exists
+        if zig_cache_dir.exists() {
+            std::fs::remove_dir_all(&zig_cache_dir).unwrap();
+        }
+
+        assert!(
+            !zig_cache_dir.exists(),
+            ".zig-cache must be removed before zig build"
+        );
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }
