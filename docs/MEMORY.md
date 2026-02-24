@@ -663,6 +663,42 @@ false positives — do not re-triage. Same pattern may apply to other verbatim s
 
 ---
 
+## PR #44 Code Review Triage (2026-02-23)
+
+Release v0.6.0 (fresh PR after #43 close+rebase). 100 changed files, +16.9k/-7.7k.
+Reviewers: Copilot (5 inline, 82/100 files), CodeRabbit (16 inline + 7 nitpicks + 1
+outside-diff), GHAS/Semgrep (30 comments, 2 rules × 15 sites), Greptile (clean pass).
+CI: Build & Test FAILURE (linker), Security/CodeQL/Audit all pass.
+
+**Dismissed:** (5 tracks)
+- **Semgrep unsafe-usage/unsafe-block (30 comments)** — FFI module must use unsafe.
+  Already has nosemgrep annotations. Same class dismissed in PR #40/#41.
+- **Copilot: circular dependency claim (markymark-index↔kernels)** — FALSE. kernels→index
+  is dev-dependency only. Dev-deps don't create cycles in Cargo.
+- **CodeRabbit: scan_tests.rs:98 xml_tags empty assertion** — CORRECT test. Input
+  `<goal>Ship</goal>` is inline HTML (single line), md4c only extracts block-level.
+  Per MEMORY.md: "Test fixtures must use block-level HTML for XML tag extraction".
+- **CodeRabbit: md4c/mod.rs u32 truncation** — Already dismissed in PR #40 and #41.
+- **CodeRabbit: from_blob XML tag attributes empty** — Already documented in MEMORY.md
+  as accepted trade-off.
+
+**Valid findings (8 beads created):**
+- **marky-whvn (P1):** CI linker failure — `libmarky_kernels.a` truncated/malformed on
+  Linux x86_64. Blocks PR from passing CI.
+- **marky-ab5g (P2):** realm/tests.rs at 994 lines — 6 from 1000-line hard stop.
+- **marky-e7i3 (P2):** frontmatter.rs — property scan past non-property lines + CRLF.
+- **marky-mh1p (P2):** LSP fallback scan drops frontmatter (state/mod.rs).
+- **marky-a4k9 (P3):** Loose `>= 2` test assertions in scan_tests.rs and core_tests.rs.
+- **marky-r5p3 (P3):** from_blob magic numbers + empty list items not filtered.
+- **marky-85ii (P4):** Docs cleanup batch (absolute paths, style, stale comments).
+- **marky-2pyo (P4):** Code quality batch (glob imports, workspace deps, cfg guard).
+
+**Patterns recorded:**
+- Copilot misidentifies dev-dependencies as circular dependencies — dismiss these.
+- CodeRabbit doesn't understand md4c inline vs block-level HTML distinction for XML tags.
+
+---
+
 ## Cross-Language Symbol Bridging (Epic marky-ix3) — COMPLETE
 
 All 11 markdown-content extractors migrated from extract.rs regex to Zig ExtractionRenderer.
