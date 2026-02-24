@@ -586,8 +586,7 @@ fn test_frontmatter_preserved_via_scan_fallback_path() {
     // Reproduce the exact fallback_scan_with_frontmatter logic:
     let (fm, aliases) = parse_frontmatter_owned(text);
     let masked = mask_frontmatter(text);
-    let index =
-        DocumentIndex::from_scan_with_frontmatter(&masked, &Md4cScanBackend, fm, aliases);
+    let index = DocumentIndex::from_scan_with_frontmatter(&masked, &Md4cScanBackend, fm, aliases);
 
     // Frontmatter must be present with correct key/value.
     assert!(

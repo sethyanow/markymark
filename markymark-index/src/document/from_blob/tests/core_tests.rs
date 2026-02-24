@@ -2,8 +2,8 @@
 
 use super::super::super::{DocumentIndex, FrontmatterOwnedEntry, FrontmatterValueOwned};
 use super::super::header::BlobError;
-use super::{blob_for, make_v1_empty_blob, make_v2_empty_blob};
 use super::super::helpers::mask_frontmatter;
+use super::{blob_for, make_v1_empty_blob, make_v2_empty_blob};
 
 // ── Engine-backed tests (tests 1–9, 14–15) ───────────────────────────
 
@@ -298,7 +298,11 @@ fn test_from_blob_with_frontmatter_populates_entries() {
         .expect("from_blob_with_frontmatter failed");
 
     // Frontmatter entries populated
-    assert_eq!(index.frontmatter().len(), 2, "should have 2 frontmatter entries");
+    assert_eq!(
+        index.frontmatter().len(),
+        2,
+        "should have 2 frontmatter entries"
+    );
     assert_eq!(index.frontmatter()[0].key, "title");
     assert_eq!(index.frontmatter()[1].key, "tags");
 

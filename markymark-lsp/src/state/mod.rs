@@ -10,8 +10,8 @@ use markymark_core::scanner::Md4cScanBackend;
 use markymark_core::structured::DocumentKind;
 use markymark_core::DocumentUri;
 use markymark_index::{
-    AnyDocumentIndex, DocumentIndex, RealmIndex, StructuredDocumentIndex,
-    mask_frontmatter, parse_frontmatter_owned,
+    mask_frontmatter, parse_frontmatter_owned, AnyDocumentIndex, DocumentIndex, RealmIndex,
+    StructuredDocumentIndex,
 };
 use markymark_kernels::engine::DocumentEngine;
 use markymark_parser::structured::parse_structured;
@@ -170,11 +170,7 @@ impl ServerState {
             match engine.update(&masked) {
                 Ok(()) => match engine.get_blob() {
                     Ok(blob) => {
-                        match DocumentIndex::from_blob_with_frontmatter(
-                            blob.data(),
-                            fm,
-                            aliases,
-                        ) {
+                        match DocumentIndex::from_blob_with_frontmatter(blob.data(), fm, aliases) {
                             Ok(index) => return index,
                             Err(e) => {
                                 log::warn!(
@@ -203,11 +199,7 @@ impl ServerState {
             match DocumentEngine::new(&masked) {
                 Ok(engine) => match engine.get_blob() {
                     Ok(blob) => {
-                        match DocumentIndex::from_blob_with_frontmatter(
-                            blob.data(),
-                            fm,
-                            aliases,
-                        ) {
+                        match DocumentIndex::from_blob_with_frontmatter(blob.data(), fm, aliases) {
                             Ok(index) => {
                                 self.engines
                                     .insert(uri_str.to_string(), std::sync::Mutex::new(engine));
@@ -222,10 +214,8 @@ impl ServerState {
                                 // Engine is valid (only blob parsing failed); store it so
                                 // future calls can do cheap delta updates via engine.update()
                                 // instead of recreating from scratch.
-                                self.engines.insert(
-                                    uri_str.to_string(),
-                                    std::sync::Mutex::new(engine),
-                                );
+                                self.engines
+                                    .insert(uri_str.to_string(), std::sync::Mutex::new(engine));
                                 return Self::fallback_scan_with_frontmatter(text);
                             }
                         }

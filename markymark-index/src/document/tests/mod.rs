@@ -491,7 +491,10 @@ fn mask_frontmatter_crlf() {
     let source = "---\r\ntitle: Hello\r\n---\r\nBody\r\n";
     let masked = helpers::mask_frontmatter(source);
     // The frontmatter region should be masked (no dashes or letters, only spaces/CR/LF)
-    assert!(!masked.starts_with("---"), "frontmatter delimiters should be masked");
+    assert!(
+        !masked.starts_with("---"),
+        "frontmatter delimiters should be masked"
+    );
     // Body should be preserved
     assert!(masked.contains("Body"), "body content should be preserved");
 }
@@ -500,7 +503,10 @@ fn mask_frontmatter_crlf() {
 fn mask_frontmatter_lf_still_works() {
     let source = "---\ntitle: Hello\n---\nBody\n";
     let masked = helpers::mask_frontmatter(source);
-    assert!(!masked.starts_with("---"), "LF frontmatter should be masked");
+    assert!(
+        !masked.starts_with("---"),
+        "LF frontmatter should be masked"
+    );
     assert!(masked.contains("Body"), "body should be preserved");
 }
 

@@ -153,9 +153,14 @@ fn rust_target_to_zig_target(rust_target: &str) -> Option<String> {
 ///
 /// Zig requires -Dtarget=value as a single argument; passing -Dtarget and
 /// value separately fails.
-fn build_zig_library(zig_dir: &std::path::Path, zig_target: Option<&str>, prefix: &std::path::Path) {
+fn build_zig_library(
+    zig_dir: &std::path::Path,
+    zig_target: Option<&str>,
+    prefix: &std::path::Path,
+) {
     let mut cmd = Command::new("zig");
-    cmd.arg("build").arg("lib")
+    cmd.arg("build")
+        .arg("lib")
         .arg("-p")
         .arg(prefix)
         .current_dir(zig_dir);

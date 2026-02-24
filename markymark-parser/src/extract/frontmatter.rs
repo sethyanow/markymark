@@ -139,7 +139,8 @@ mod tests {
     #[test]
     fn property_scan_stops_at_non_property_line() {
         let arena = Bump::new();
-        let source = "title:: My Page\ntags:: rust, code\nThis is body text.\nlater:: not-a-property\n";
+        let source =
+            "title:: My Page\ntags:: rust, code\nThis is body text.\nlater:: not-a-property\n";
         let props = extract_page_properties(&[], source, &arena).unwrap();
         let keys: Vec<_> = props.iter().map(|(k, _)| k).collect();
         assert_eq!(keys.len(), 2);
