@@ -332,7 +332,7 @@ pub fn mask_frontmatter(source: &str) -> String {
             *b = b' ';
         }
     }
-    // Frontmatter is ASCII (YAML keys/values/delimiters), so replacing
-    // non-newline bytes with spaces maintains valid UTF-8.
+    // Replacing every non-newline byte with 0x20 (space) always produces valid
+    // UTF-8: multi-byte sequences have all bytes replaced, yielding ASCII spaces.
     String::from_utf8(bytes).unwrap_or_else(|_| source.to_string())
 }

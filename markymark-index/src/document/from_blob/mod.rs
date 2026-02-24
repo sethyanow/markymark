@@ -30,9 +30,9 @@ use markymark_core::{Position, Range};
 use super::{
     helpers, BlockEntry, BlockRefEntry, CalloutEntry, CodeSpanEntry, DocumentDependent,
     DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry,
-    FrontmatterValueEntry, FrontmatterValueOwned, HeadingEntry, LinkDefinitionEntry,
-    MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry, TagEntry, TaskEntry,
-    WikiLinkEntry, XmlTagEntry,
+    FrontmatterOwnedEntry, FrontmatterValueEntry, FrontmatterValueOwned, HeadingEntry,
+    LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry,
+    TagEntry, TaskEntry, WikiLinkEntry, XmlTagEntry,
 };
 
 mod decode;
@@ -79,7 +79,7 @@ impl DocumentIndex {
     /// index built from a blob.
     pub fn from_blob_with_frontmatter(
         data: &[u8],
-        frontmatter: Vec<super::FrontmatterOwnedEntry>,
+        frontmatter: Vec<FrontmatterOwnedEntry>,
         aliases: Vec<String>,
     ) -> Result<Self, BlobError> {
         Self::from_blob_inner(data, frontmatter, aliases)
@@ -87,7 +87,7 @@ impl DocumentIndex {
 
     fn from_blob_inner(
         data: &[u8],
-        fm_owned: Vec<super::FrontmatterOwnedEntry>,
+        fm_owned: Vec<FrontmatterOwnedEntry>,
         aliases_owned: Vec<String>,
     ) -> Result<Self, BlobError> {
         let header = validate_blob(data)?;
