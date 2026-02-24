@@ -8,7 +8,7 @@ description: How to build, test, and run markymark locally for contribution
 | Tool | Minimum version | Purpose |
 |------|----------------|---------|
 | Rust | 1.80 | Compiler and cargo |
-| Zig | 0.15 | SIMD kernels and md4c bindings |
+| Zig | 0.15.2 | SIMD kernels and md4c bindings |
 | Bun | latest | Docs site tooling |
 | cargo-nextest | latest | Test runner |
 | lefthook | latest | Pre-commit hooks |
@@ -35,9 +35,9 @@ For a release-optimized build (slower compile, faster binary):
 cargo build --release
 ```
 
-The Zig kernels compile automatically via `build.rs` when the `zig-kernels` feature
-is enabled (it is by default). If you don't have Zig installed, you can build without
-kernels, but the pre-commit hooks will fail on the Zig build step.
+The Zig kernels compile automatically via `build.rs`. Zig 0.15.2+ is required for all
+builds — the kernel library is statically linked into the binary. The build will fail
+if Zig is not installed or is below the minimum version.
 
 ## Run tests
 

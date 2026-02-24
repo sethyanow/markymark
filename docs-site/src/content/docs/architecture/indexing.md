@@ -17,7 +17,7 @@ It can be built through three construction paths:
 |------|--------|---------|
 | `from_blob()` | Zig Document Engine binary blob | LSP (real-time) |
 | `from_scan()` | `ScanBackend` trait calls | Standalone scanning |
-| `from_ast()` | Tree-sitter AST + regex extraction | MCP batch indexing |
+| `from_ast()` | Tree-sitter frontmatter + Zig scan backend | MCP batch indexing |
 
 All three produce the same `DocumentDependent` structure — typed entry slices for
 headings, wiki links, markdown links, tags, XML tags, code spans, tasks, embeds,

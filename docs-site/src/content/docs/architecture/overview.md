@@ -32,12 +32,12 @@ sharing the same core indexing engine.
                       |
                 markymark-core
                       |
-             markymark-kernels (optional)
+             markymark-kernels
 ```
 
 The dependency graph is strictly layered — no circular dependencies. `markymark-kernels`
-is feature-gated (`zig-kernels`) so the project can build without a Zig toolchain, falling
-back to pure Rust implementations.
+requires a Zig 0.15.2+ toolchain — the `zig-kernels` feature is always enabled and the
+kernel library is statically linked into the final binary.
 
 ## Dual-server architecture
 

@@ -33,7 +33,7 @@ for the full dependency graph.
 |-------|-----------|-----------------|
 | **cli** | `src/main.rs` | Argument parsing, LSP vs MCP mode selection |
 | **core** | `src/engine.rs`, `src/scanner.rs` | `CoreEngine` trait, `CoreOperation` enum, `ScanBackend` trait |
-| **parser** | `src/lib.rs`, `src/extract.rs` | Tree-sitter setup, symbol extraction from ASTs |
+| **parser** | `src/lib.rs`, `src/extract/` | Tree-sitter parsing, frontmatter extraction |
 | **index** | `src/document/`, `src/realm/` | Per-document index, cross-document realm index, resolution |
 | **lsp** | `src/server.rs`, `src/state/` | LSP protocol handlers, server state management |
 | **mcp** | `src/lib.rs`, `src/tools/` | MCP tool definitions, engine operation handlers |
