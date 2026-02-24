@@ -227,6 +227,22 @@ pub(super) fn extract_frontmatter_from_ast(
     (frontmatter_owned, aliases_owned)
 }
 
+/// Find the earliest frontmatter close delimiter (`\n---\n` or `\n---\r\n`).
+///
+/// Returns `(byte_position, delimiter_len)` or `None`. Using `min()` instead
+/// of `or_else()` prevents picking a later CRLF close over an earlier LF close
+/// in mixed-ending files.
+fn find_frontmatter_close(rest: &str) -> Option<(usize, usize)> {
+    let lf = rest.find("\n---\n").map(|p| (p, 5));
+    let crlf = rest.find("\n---\r\n").map(|p| (p, 6));
+    match (lf, crlf) {
+        (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
+        (a @ Some(_), None) => a,
+        (None, b @ Some(_)) => b,
+        (None, None) => None,
+    }
+}
+
 /// Parse frontmatter from raw markdown source text as owned data.
 ///
 /// Standalone parser that doesn't require a tree-sitter AST. Replicates
@@ -242,8 +258,8 @@ pub fn parse_frontmatter_owned(source: &str) -> (Vec<FrontmatterOwnedEntry>, Vec
         return (Vec::new(), Vec::new());
     };
 
-    let yaml_content = match rest.find("\n---\r\n").or_else(|| rest.find("\n---\n")) {
-        Some(end_pos) => &rest[..end_pos],
+    let yaml_content = match find_frontmatter_close(rest) {
+        Some((end_pos, _)) => &rest[..end_pos],
         None => return (Vec::new(), Vec::new()),
     };
 
@@ -305,12 +321,9 @@ pub fn mask_frontmatter(source: &str) -> String {
     } else {
         return source.to_string();
     };
-    let (close_len, close_pos) = if let Some(pos) = rest.find("\n---\r\n") {
-        (6, pos) // "\n---\r\n"
-    } else if let Some(pos) = rest.find("\n---\n") {
-        (5, pos) // "\n---\n"
-    } else {
-        return source.to_string();
+    let (close_pos, close_len) = match find_frontmatter_close(rest) {
+        Some(v) => v,
+        None => return source.to_string(),
     };
     let fm_end = prefix_len + close_pos + close_len;
     let mut bytes: Vec<u8> = source.bytes().collect();

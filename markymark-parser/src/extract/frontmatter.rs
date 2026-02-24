@@ -17,9 +17,11 @@ pub fn extract_frontmatter<'a>(
         return None;
     };
 
-    // Find the closing --- (handle both LF and CRLF)
-    let end_pos = rest.find("\n---\r\n")
-        .or_else(|| rest.find("\n---\n"));
+    // Find the earliest closing --- (handle both LF and CRLF, pick min position)
+    let end_pos = [rest.find("\n---\r\n"), rest.find("\n---\n")]
+        .into_iter()
+        .flatten()
+        .min();
     if let Some(end_pos) = end_pos {
         let yaml_content = &rest[..end_pos];
         return Some(parse_simple_yaml(yaml_content, arena));
@@ -199,5 +201,22 @@ mod tests {
         let arena = Bump::new();
         let source = "---\ntitle: Hello\nNo closing delimiter\n";
         assert!(extract_frontmatter(&[], source, &arena).is_none());
+    }
+
+    #[test]
+    fn extract_frontmatter_mixed_endings_picks_earliest_close() {
+        // LF close comes first, but CRLF "---" appears later in body.
+        // Bug: find(CRLF).or_else(find(LF)) picks CRLF at 19 instead of LF at 8,
+        //      treating "bogus: B" as a frontmatter entry.
+        let source = "---\ntitle: A\n---\nbogus: B\r\n---\r\nMore\n";
+        let arena = Bump::new();
+        let fm = extract_frontmatter(&[], source, &arena);
+        assert!(fm.is_some(), "should parse frontmatter");
+        let fm = fm.unwrap();
+        assert!(fm.get_string("title").is_some(), "should find 'title'");
+        assert!(
+            fm.get_string("bogus").is_none(),
+            "body content must not leak into frontmatter"
+        );
     }
 }
