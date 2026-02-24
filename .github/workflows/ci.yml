@@ -46,11 +46,12 @@ jobs:
             ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}-
             ${{ runner.os }}-cargo-
 
-      # Zig 0.15.2 bug: reusing .zig-cache while overwriting the same .a file
-      # can produce a truncated archive.  Purge any cached Zig build outputs so
-      # build.rs always produces a fresh library from a clean install prefix.
+      # Zig 0.15.2 bug: warm .zig-cache produces truncated archives on Linux
+      # x86_64.  Purge ALL Zig caches and build outputs to force cold builds.
+      # build.rs also purges before each invocation, but this catches caches
+      # restored from CI's target/ cache that build.rs wouldn't see.
       - name: Purge stale Zig build artifacts
-        run: rm -rf target/debug/build/markymark-kernels-*/out target/release/build/markymark-kernels-*/out
+        run: rm -rf zig/.zig-cache target/debug/build/markymark-kernels-*/out target/release/build/markymark-kernels-*/out
 
       - name: Check formatting
         run: cargo fmt --all -- --check

@@ -164,20 +164,26 @@ fn build_zig_library(
     prefix: &std::path::Path,
 ) {
     // Zig 0.15.2 warm-cache archive corruption bug (Linux x86_64):
-    // If .zig-cache is warm from a previous invocation, `zig build lib` can
-    // produce a truncated .a archive.  This happens when:
-    //   (a) CI restores the `target/` cache containing a stale .zig-cache, or
-    //   (b) sequential cargo commands (clippy → test) share the same OUT_DIR
-    //       and thus the same .zig-cache.
-    // Fix: always start from a cold cache by deleting it before each build.
+    // `zig build lib` with a warm .zig-cache can produce a truncated .a
+    // archive.  This happens when sequential cargo commands (clippy → test)
+    // share the same OUT_DIR, or when CI restores a cached target/ directory.
+    //
+    // Fix: force a cold Zig cache for every invocation.
+    //  1. Purge the default local cache (zig_dir/.zig-cache) — this is where
+    //     `zig build` actually reads/writes its cache when run with current_dir.
+    //  2. Purge any cache inside OUT_DIR from a previous invocation.
+    //  3. Pass --cache-dir and --global-cache-dir CLI flags (authoritative;
+    //     env vars ZIG_LOCAL_CACHE_DIR were ignored by the build runner).
     let zig_cache_dir = prefix.join(".zig-cache");
-    if zig_cache_dir.exists() {
-        std::fs::remove_dir_all(&zig_cache_dir).unwrap_or_else(|e| {
-            panic!(
-                "Failed to purge stale Zig cache at {}: {e}",
-                zig_cache_dir.display()
-            )
-        });
+    for cache_path in [zig_dir.join(".zig-cache"), zig_cache_dir.clone()] {
+        if cache_path.exists() {
+            std::fs::remove_dir_all(&cache_path).unwrap_or_else(|e| {
+                panic!(
+                    "Failed to purge Zig cache at {}: {e}",
+                    cache_path.display()
+                )
+            });
+        }
     }
 
     let mut cmd = Command::new("zig");
@@ -185,8 +191,10 @@ fn build_zig_library(
         .arg("lib")
         .arg("-p")
         .arg(prefix)
-        .env("ZIG_LOCAL_CACHE_DIR", &zig_cache_dir)
-        .env("ZIG_GLOBAL_CACHE_DIR", &zig_cache_dir)
+        .arg("--cache-dir")
+        .arg(&zig_cache_dir)
+        .arg("--global-cache-dir")
+        .arg(&zig_cache_dir)
         .current_dir(zig_dir);
     if let Some(t) = zig_target {
         cmd.arg(format!("-Dtarget={t}"));
