@@ -8,33 +8,17 @@ Completed work details live in git history, not here.
 
 ---
 
-## Current State (2026-02-23)
+## Current State (2026-02-24)
 
-### PR #43 needs redo — merge main into dev first
+### PR #44 (v0.6.0, dev→main) — blocked on CI
 
-PR #43 (Release v0.6.0, dev→main) has a stale merge base from Feb 13. Despite only ~95 files
-actually changed, GitHub shows 378 changed files because main diverged (10 commits from release
-docs/skill fixes not on dev). Copilot only reviewed 133/378 files. Close #43, merge main into
-dev, then open a fresh PR.
-
-**Effective diff is ~95 files, ~16.8k ins / 7.6k del.** 36 of those are test files. Large
-chunks are module splits (scanner.rs→4 files, from_blob.rs→7 files, realm.rs→3 files) that
-inflate raw line counts.
-
-**If the diff is still too large for review bots, split into 3 stacked PRs:**
-
-| PR | Branch at commit | Scope | Incremental size |
-|----|-----------------|-------|-----------------|
-| A | `8714e68` | ix3 B-1→B-5: scanner/from_blob splits, types, extraction pipeline | ~53 files, ~11.6k/5.3k |
-| B | `59ccd72` | ix3 B-6→B-9 + inline XML: properties, XML tags, MCP migration | ~35 files, ~942/328 |
-| C | `86d68df` (HEAD) | n7wx RealmIndex v2: interner, stem index, incremental updates, lazy tags | ~8 files, ~1.3k/223 |
-
-Note: stacked PRs require rebasing each branch onto main after the merge, since later work
-modifies the same files. May be easier to just do one PR and accept the review bot limitations.
+PR #43 was closed (stale merge base). Main was merged into dev, and PR #44 opened as the fresh
+release PR. CI is failing with Zig 0.15.2 warm-cache archive corruption (see Known Bugs below).
+Three fix attempts pushed so far; waiting for CI run on `da3a91f`.
 
 **Codex pre-triage findings (beads created):**
-- marky-vxgg (P2): select-binary.sh missing .exe handling for Windows — download fallback 404s
-- marky-e3if (P3): binary.ts PATH fallback comment/code mismatch — returns absolute path, not bare name
+- marky-vxgg (P2): select-binary.sh missing .exe handling for Windows
+- marky-e3if (P3): binary.ts PATH fallback — fixed in #34223
 
 ---
 
@@ -54,7 +38,29 @@ Known issue: XML tag false positives in code blocks (marky-8la).
 
 ### Known Bugs
 
-(none currently)
+#### Zig 0.15.2 warm-cache archive corruption (CI blocker, 2026-02-24)
+
+`zig build lib` on Linux x86_64 with a warm `.zig-cache` produces a truncated
+`libmarky_kernels.a` archive. The linker sees: `Archive::children failed: truncated
+or malformed archive (offset to next archive member past the end of the archive
+after member c_adapter.o)`.
+
+**Root cause:** Sequential cargo commands (clippy -> test) both invoke build.rs,
+which calls `zig build lib`. The second invocation finds a warm cache and produces
+a corrupted archive. The bug is in Zig's archive writer, not in our code.
+
+**Fix attempts and learnings (3 iterations):**
+
+| Commit | Approach | Why it failed |
+|--------|----------|---------------|
+| `d5fbd4e` | Purge `out/lib` in CI, cache key includes zig sources | Only purged output, not cache; cache restored warm from CI |
+| `cf6dcd0` | Per-invocation `.zig-cache` via `ZIG_LOCAL_CACHE_DIR` env var | `zig build` ignores env vars; uses its own `.zig-cache` in CWD |
+| `e547dca` | `rm_dir_all` on `prefix/.zig-cache` before build | Purged wrong cache dir; real cache is at `zig/.zig-cache/` |
+| `da3a91f` | `--cache-dir` CLI flags + purge `zig/.zig-cache/` | **Current fix** — CLI flags are authoritative; purges both caches |
+
+**Key insight:** `zig build` creates `.zig-cache/` in its `current_dir` (the `zig/`
+directory). The `ZIG_LOCAL_CACHE_DIR` env var is NOT respected by the build runner.
+Only `--cache-dir` and `--global-cache-dir` CLI arguments override it reliably.
 
 ### Zig errdefer + explicit deinit = double-free pattern (2026-02-20, marky-gmny)
 
@@ -236,6 +242,7 @@ in Rust. Net -2,839 lines. The decisions below are historical context only.
 - **build.rs invokes zig build lib via std::process::Command, zero build-dependencies** (dec-brza-een-001).
 - **rerun-if-changed enumerates individual .zig files** (dec-brza-een-002). Directory-level watch only triggers on add/remove.
 - **PIC required for Zig static libraries on Linux x86_64** (suc-021).
+- **`zig build` ignores `ZIG_LOCAL_CACHE_DIR` env var** — must use `--cache-dir` CLI flag to override cache location. build.rs purges both `zig/.zig-cache/` and `prefix/.zig-cache/` before each invocation to prevent warm-cache archive corruption (Zig 0.15.2 bug).
 
 ---
 
