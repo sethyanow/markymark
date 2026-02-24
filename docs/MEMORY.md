@@ -8,6 +8,36 @@ Completed work details live in git history, not here.
 
 ---
 
+## Current State (2026-02-23)
+
+### PR #43 needs redo — merge main into dev first
+
+PR #43 (Release v0.6.0, dev→main) has a stale merge base from Feb 13. Despite only ~95 files
+actually changed, GitHub shows 378 changed files because main diverged (10 commits from release
+docs/skill fixes not on dev). Copilot only reviewed 133/378 files. Close #43, merge main into
+dev, then open a fresh PR.
+
+**Effective diff is ~95 files, ~16.8k ins / 7.6k del.** 36 of those are test files. Large
+chunks are module splits (scanner.rs→4 files, from_blob.rs→7 files, realm.rs→3 files) that
+inflate raw line counts.
+
+**If the diff is still too large for review bots, split into 3 stacked PRs:**
+
+| PR | Branch at commit | Scope | Incremental size |
+|----|-----------------|-------|-----------------|
+| A | `8714e68` | ix3 B-1→B-5: scanner/from_blob splits, types, extraction pipeline | ~53 files, ~11.6k/5.3k |
+| B | `59ccd72` | ix3 B-6→B-9 + inline XML: properties, XML tags, MCP migration | ~35 files, ~942/328 |
+| C | `86d68df` (HEAD) | n7wx RealmIndex v2: interner, stem index, incremental updates, lazy tags | ~8 files, ~1.3k/223 |
+
+Note: stacked PRs require rebasing each branch onto main after the merge, since later work
+modifies the same files. May be easier to just do one PR and accept the review bot limitations.
+
+**Codex pre-triage findings (beads created):**
+- marky-vxgg (P2): select-binary.sh missing .exe handling for Windows — download fallback 404s
+- marky-e3if (P3): binary.ts PATH fallback comment/code mismatch — returns absolute path, not bare name
+
+---
+
 ## Project Architecture
 
 ### Crate Structure
