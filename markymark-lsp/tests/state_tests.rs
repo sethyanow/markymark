@@ -538,3 +538,84 @@ fn test_engine_lifecycle_open_and_close() {
         "index should be gone after close"
     );
 }
+
+/// Regression test for marky-mh1p: frontmatter must be preserved even when
+/// the engine fallback path is used (from_scan), and the `---` delimiter must
+/// not be misparsed as a setext heading.
+#[test]
+fn test_frontmatter_preserved_in_index() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/fm.md").unwrap();
+    let text = "---\ntitle: Hello World\ntags: [rust, test]\n---\n\n# Real Heading\n";
+    state.open_document(uri.clone(), text.to_string());
+
+    let index = state.get_document_index(&uri).unwrap();
+    assert!(
+        !index.frontmatter().is_empty(),
+        "frontmatter should be present in index"
+    );
+    let title_entry = index
+        .frontmatter()
+        .iter()
+        .find(|e| e.key == "title")
+        .expect("frontmatter should contain 'title' key");
+    assert!(
+        matches!(&title_entry.value, markymark_index::FrontmatterValueEntry::String(s) if *s == "Hello World"),
+        "title value should be 'Hello World'"
+    );
+
+    // The `---` closing delimiter must NOT appear as a setext heading.
+    assert_eq!(
+        index.headings().len(),
+        1,
+        "only the ATX heading should be indexed, not a setext from ---"
+    );
+    assert_eq!(index.headings()[0].text, "Real Heading");
+}
+
+/// Regression test for marky-mh1p: the scan-based fallback path (used when the
+/// Zig engine fails) must also preserve frontmatter and mask `---` delimiters.
+/// This directly exercises `fallback_scan_with_frontmatter`'s logic.
+#[test]
+fn test_frontmatter_preserved_via_scan_fallback_path() {
+    use markymark_core::scanner::Md4cScanBackend;
+    use markymark_index::{mask_frontmatter, parse_frontmatter_owned, DocumentIndex};
+
+    let text = "---\ntitle: Fallback Test\naliases: [fb1, fb2]\ntags: [scan, fallback]\n---\n\n# Only Heading\n\nSome body text.\n";
+
+    // Reproduce the exact fallback_scan_with_frontmatter logic:
+    let (fm, aliases) = parse_frontmatter_owned(text);
+    let masked = mask_frontmatter(text);
+    let index =
+        DocumentIndex::from_scan_with_frontmatter(&masked, &Md4cScanBackend, fm, aliases);
+
+    // Frontmatter must be present with correct key/value.
+    assert!(
+        !index.frontmatter().is_empty(),
+        "fallback path should preserve frontmatter"
+    );
+    let title = index
+        .frontmatter()
+        .iter()
+        .find(|e| e.key == "title")
+        .expect("fallback should contain 'title' key");
+    assert!(
+        matches!(&title.value, markymark_index::FrontmatterValueEntry::String(s) if *s == "Fallback Test"),
+        "title should be 'Fallback Test'"
+    );
+
+    // Aliases must be extracted.
+    assert_eq!(
+        index.aliases(),
+        &["fb1", "fb2"],
+        "aliases should be parsed from frontmatter"
+    );
+
+    // `---` closing delimiter must NOT produce a setext heading.
+    assert_eq!(
+        index.headings().len(),
+        1,
+        "only the ATX heading should be indexed, not setext from ---"
+    );
+    assert_eq!(index.headings()[0].text, "Only Heading");
+}

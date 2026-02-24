@@ -466,3 +466,67 @@ fn from_ast_extracts_code_spans_via_scan() {
 
 mod incremental_tests;
 mod md4c_scan_tests;
+
+// ---------------------------------------------------------------------------
+// CRLF frontmatter handling (marky-e7i3)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn parse_frontmatter_owned_crlf() {
+    let source = "---\r\ntitle: Hello\r\ntags: [a, b]\r\n---\r\nBody\r\n";
+    let (fm, _aliases) = helpers::parse_frontmatter_owned(source);
+    assert!(!fm.is_empty(), "CRLF frontmatter should be parsed");
+    assert!(fm.iter().any(|e| e.key == "title"), "should find 'title'");
+}
+
+#[test]
+fn parse_frontmatter_owned_lf_still_works() {
+    let source = "---\ntitle: Hello\n---\nBody\n";
+    let (fm, _aliases) = helpers::parse_frontmatter_owned(source);
+    assert!(!fm.is_empty(), "LF frontmatter should still work");
+}
+
+#[test]
+fn mask_frontmatter_crlf() {
+    let source = "---\r\ntitle: Hello\r\n---\r\nBody\r\n";
+    let masked = helpers::mask_frontmatter(source);
+    // The frontmatter region should be masked (no dashes or letters, only spaces/CR/LF)
+    assert!(!masked.starts_with("---"), "frontmatter delimiters should be masked");
+    // Body should be preserved
+    assert!(masked.contains("Body"), "body content should be preserved");
+}
+
+#[test]
+fn mask_frontmatter_lf_still_works() {
+    let source = "---\ntitle: Hello\n---\nBody\n";
+    let masked = helpers::mask_frontmatter(source);
+    assert!(!masked.starts_with("---"), "LF frontmatter should be masked");
+    assert!(masked.contains("Body"), "body should be preserved");
+}
+
+// ---------------------------------------------------------------------------
+// Mixed-ending frontmatter regression (marky-0nch)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn parse_frontmatter_owned_mixed_endings_picks_earliest_close() {
+    // LF close at byte 8 of rest, CRLF close at byte 19 of rest.
+    // Bug: find(CRLF).or_else(find(LF)) returns 19, treating "bogus: B" as yaml.
+    // Fix: min(8, 19) = 8, only "title: A" is yaml.
+    let source = "---\ntitle: A\n---\nbogus: B\r\n---\r\nMore\n";
+    let (fm, _) = helpers::parse_frontmatter_owned(source);
+    assert_eq!(fm.len(), 1, "should find exactly 1 key (not 2)");
+    assert_eq!(fm[0].key, "title");
+}
+
+#[test]
+fn mask_frontmatter_mixed_endings_picks_earliest_close() {
+    // Same mixed-ending structure: LF close before CRLF close.
+    // Bug: mask extends to CRLF close, swallowing body content.
+    let source = "---\ntitle: A\n---\nbogus: B\r\n---\r\nMore\n";
+    let masked = helpers::mask_frontmatter(source);
+    assert!(
+        masked.contains("bogus"),
+        "body content after LF close must be preserved, not masked"
+    );
+}

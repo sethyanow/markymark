@@ -546,6 +546,110 @@ test_marketplace_plugin_source_exists() {
     fi
 }
 
+# ─── Helper: create mock uname for Windows simulation ─────────────
+create_mock_uname() {
+    local mock_dir="$1"
+    local mock_os="${2:-MINGW64_NT-10.0-19045}"
+    local mock_arch="${3:-x86_64}"
+    cat > "${mock_dir}/uname" << MOCK_UNAME
+#!/usr/bin/env bash
+for arg in "\$@"; do
+    case "\${arg}" in
+        -s) echo "${mock_os}"; exit 0 ;;
+        -m) echo "${mock_arch}"; exit 0 ;;
+    esac
+done
+# No flags — uname with no args prints kernel name
+echo "${mock_os}"
+MOCK_UNAME
+    chmod +x "${mock_dir}/uname"
+}
+
+# ─── Test: Windows binary path gets .exe suffix ───────────────────
+# Regression test for marky-vxgg: On Windows, bin/markymark should be
+# bin/markymark.exe. Without .exe, the bundled check fails and the
+# download constructs an incorrect URL.
+test_windows_binary_has_exe_suffix() {
+    setup_test_env
+
+    # Create mock uname that reports Windows (MINGW64) and mock curl to
+    # prevent real network requests if binary path resolution fails
+    mkdir -p "${TEST_DIR}/mock-bin"
+    create_mock_uname "${TEST_DIR}/mock-bin" "MINGW64_NT-10.0-19045" "x86_64"
+    printf '#!/usr/bin/env bash\nexit 1\n' > "${TEST_DIR}/mock-bin/curl"
+    chmod +x "${TEST_DIR}/mock-bin/curl"
+
+    # Place a binary at bin/markymark.exe (what CI produces)
+    local mock_binary="${TEST_DIR}/bin/markymark.exe"
+    printf '#!/usr/bin/env bash\necho "WINDOWS_EXE"\n' > "${mock_binary}"
+    chmod +x "${mock_binary}"
+
+    local output
+    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
+
+    if [[ "${output}" == "WINDOWS_EXE" ]]; then
+        pass "Windows binary path uses .exe suffix"
+    else
+        fail "Windows binary path uses .exe suffix" "WINDOWS_EXE" "${output}"
+    fi
+
+    cleanup_test_env
+}
+
+# ─── Test: Windows download URL has .exe suffix ───────────────────
+# Regression test for marky-vxgg: Download URL must end in .exe for
+# Windows targets, otherwise GitHub release asset 404s.
+test_windows_download_url_has_exe_suffix() {
+    setup_test_env
+
+    # Mock uname as Windows
+    mkdir -p "${TEST_DIR}/mock-bin"
+    create_mock_uname "${TEST_DIR}/mock-bin" "MINGW64_NT-10.0-19045" "x86_64"
+
+    # Mock curl that logs URL and fails
+    printf '#!/usr/bin/env bash\necho "CURL_URL: $*" >&2\nexit 1\n' > "${TEST_DIR}/mock-bin/curl"
+    chmod +x "${TEST_DIR}/mock-bin/curl"
+
+    # Do NOT create bin/markymark.exe so download path triggers
+    local output
+    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
+
+    if [[ "${output}" == *"markymark-x86_64-pc-windows-msvc.exe"* ]]; then
+        pass "Windows download URL includes .exe suffix"
+    else
+        fail "Windows download URL includes .exe suffix" \
+            "*markymark-x86_64-pc-windows-msvc.exe*" "${output}"
+    fi
+
+    cleanup_test_env
+}
+
+# ─── Test: Non-Windows binary path has no .exe suffix ─────────────
+# Ensures the .exe fix doesn't break macOS/Linux paths.
+test_non_windows_binary_no_exe_suffix() {
+    setup_test_env
+
+    # Mock uname as Linux
+    mkdir -p "${TEST_DIR}/mock-bin"
+    create_mock_uname "${TEST_DIR}/mock-bin" "Linux" "x86_64"
+
+    # Place binary at bin/markymark (no .exe)
+    local mock_binary="${TEST_DIR}/bin/markymark"
+    printf '#!/usr/bin/env bash\necho "LINUX_BIN"\n' > "${mock_binary}"
+    chmod +x "${mock_binary}"
+
+    local output
+    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
+
+    if [[ "${output}" == "LINUX_BIN" ]]; then
+        pass "Non-Windows binary path has no .exe suffix"
+    else
+        fail "Non-Windows binary path has no .exe suffix" "LINUX_BIN" "${output}"
+    fi
+
+    cleanup_test_env
+}
+
 # ─── Run all tests ───────────────────────────────────────────────
 echo "=== markymark-plugin tests (bundled binary model) ==="
 echo ""
@@ -567,6 +671,9 @@ test_download_url_has_correct_target
 test_error_suggests_platform_archive
 test_makes_binary_executable
 test_ignores_platform_specific_binaries
+test_windows_binary_has_exe_suffix
+test_windows_download_url_has_exe_suffix
+test_non_windows_binary_no_exe_suffix
 
 echo ""
 echo "─────────────────────────────"

@@ -80,7 +80,7 @@ fn test_from_scan_wiki_links() {
 #[test]
 fn test_from_scan_tags() {
     let index = build_index_from_scan("text #topic #project\n");
-    assert!(index.tags().len() >= 2);
+    assert_eq!(index.tags().len(), 2);
     assert!(index.tags().iter().any(|t| t.name == "topic"));
     assert!(index.tags().iter().any(|t| t.name == "project"));
 }

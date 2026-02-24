@@ -227,20 +227,39 @@ pub(super) fn extract_frontmatter_from_ast(
     (frontmatter_owned, aliases_owned)
 }
 
+/// Find the earliest frontmatter close delimiter (`\n---\n` or `\n---\r\n`).
+///
+/// Returns `(byte_position, delimiter_len)` or `None`. Using `min()` instead
+/// of `or_else()` prevents picking a later CRLF close over an earlier LF close
+/// in mixed-ending files.
+fn find_frontmatter_close(rest: &str) -> Option<(usize, usize)> {
+    let lf = rest.find("\n---\n").map(|p| (p, 5));
+    let crlf = rest.find("\n---\r\n").map(|p| (p, 6));
+    match (lf, crlf) {
+        (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
+        (a @ Some(_), None) => a,
+        (None, b @ Some(_)) => b,
+        (None, None) => None,
+    }
+}
+
 /// Parse frontmatter from raw markdown source text as owned data.
 ///
 /// Standalone parser that doesn't require a tree-sitter AST. Replicates
 /// the simple YAML parsing from `markymark_parser::extract_frontmatter`.
 /// Returns `(frontmatter_entries, aliases)`.
 pub fn parse_frontmatter_owned(source: &str) -> (Vec<FrontmatterOwnedEntry>, Vec<String>) {
-    // Check for YAML frontmatter delimiters
-    if !source.starts_with("---\n") {
+    // Check for YAML frontmatter delimiters (LF or CRLF)
+    let rest = if let Some(r) = source.strip_prefix("---\r\n") {
+        r
+    } else if let Some(r) = source.strip_prefix("---\n") {
+        r
+    } else {
         return (Vec::new(), Vec::new());
-    }
+    };
 
-    let rest = &source[4..];
-    let yaml_content = match rest.find("\n---\n") {
-        Some(end_pos) => &rest[..end_pos],
+    let yaml_content = match find_frontmatter_close(rest) {
+        Some((end_pos, _)) => &rest[..end_pos],
         None => return (Vec::new(), Vec::new()),
     };
 
@@ -294,21 +313,26 @@ pub fn parse_frontmatter_owned(source: &str) -> (Vec<FrontmatterOwnedEntry>, Vec
 /// preserving line counting and byte offsets for the scan backend. Returns the
 /// original string unchanged if no frontmatter is present.
 pub fn mask_frontmatter(source: &str) -> String {
-    if !source.starts_with("---\n") {
+    // Handle both LF and CRLF line endings
+    let (prefix_len, rest) = if let Some(r) = source.strip_prefix("---\r\n") {
+        (5, r)
+    } else if let Some(r) = source.strip_prefix("---\n") {
+        (4, r)
+    } else {
         return source.to_string();
-    }
-    let rest = &source[4..];
-    let fm_end = match rest.find("\n---\n") {
-        Some(pos) => 4 + pos + 5, // "---\n" + content + "\n---\n"
+    };
+    let (close_pos, close_len) = match find_frontmatter_close(rest) {
+        Some(v) => v,
         None => return source.to_string(),
     };
+    let fm_end = prefix_len + close_pos + close_len;
     let mut bytes: Vec<u8> = source.bytes().collect();
     for b in &mut bytes[..fm_end] {
-        if *b != b'\n' {
+        if *b != b'\n' && *b != b'\r' {
             *b = b' ';
         }
     }
-    // Frontmatter is ASCII (YAML keys/values/delimiters), so replacing
-    // non-newline bytes with spaces maintains valid UTF-8.
+    // Replacing every non-newline byte with 0x20 (space) always produces valid
+    // UTF-8: multi-byte sequences have all bytes replaced, yielding ASCII spaces.
     String::from_utf8(bytes).unwrap_or_else(|_| source.to_string())
 }
