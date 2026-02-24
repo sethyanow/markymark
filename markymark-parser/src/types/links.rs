@@ -16,6 +16,7 @@ pub struct WikiLink<'arena> {
 
 impl<'arena> WikiLink<'arena> {
     /// Create a new wiki link
+    #[cfg(test)]
     pub(crate) fn new(
         target: &'arena str,
         alias: Option<&'arena str>,
@@ -85,6 +86,7 @@ pub struct MarkdownLink<'arena> {
 
 impl<'arena> MarkdownLink<'arena> {
     /// Create a new markdown link
+    #[cfg(test)]
     pub(crate) fn new(
         text: &'arena str,
         url: &'arena str,
@@ -146,6 +148,7 @@ pub struct LinkDefinition<'arena> {
 
 impl<'arena> LinkDefinition<'arena> {
     /// Create a new link definition
+    #[cfg(test)]
     pub(crate) fn new(label: &'arena str, url: &'arena str, title: Option<&'arena str>) -> Self {
         Self { label, url, title }
     }

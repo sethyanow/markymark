@@ -4,6 +4,9 @@
 //! to provide safe Rust access to the single-pass md4c extraction pipeline.
 //! Created for marky-6zl8.
 
+#[cfg(test)]
+mod tests;
+
 use crate::scan::KernelError;
 
 // ---------------------------------------------------------------------------
@@ -62,18 +65,97 @@ struct CMd4cEmbed {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
+struct CMd4cCallout {
+    source_offset: u32,
+    end_offset: u32,
+    type_offset: u32,
+    type_length: u32,
+    title_offset: u32,
+    title_length: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CMd4cBlockRef {
+    source_offset: u32,
+    uuid_offset: u32,
+    uuid_length: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CMd4cQueryBlock {
+    source_offset: u32,
+    end_offset: u32,
+    query_offset: u32,
+    query_length: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CMd4cLinkDefinition {
+    source_offset: u32,
+    end_offset: u32,
+    label_offset: u32,
+    label_length: u32,
+    url_offset: u32,
+    url_length: u32,
+    title_offset: u32,
+    title_length: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CMd4cProperty {
+    key_offset: u32,
+    key_length: u32,
+    value_offset: u32,
+    value_length: u32,
+    value_type: u8,
+    _pad: [u8; 3],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CMd4cXmlTag {
+    source_offset: u32,
+    end_offset: u32,
+    tag_name_offset: u32,
+    tag_name_length: u32,
+    raw_html_offset: u32,
+    raw_html_length: u32,
+    is_self_closing: u8,
+    is_unclosed: u8,
+    is_inline: u8,
+    _pad: [u8; 1],
+}
+
+#[repr(C)]
 struct CMd4cResult {
     headings: *mut CMd4cHeading,
     links: *mut CMd4cLink,
     code_spans: *mut CMd4cCodeSpan,
     tasks: *mut CMd4cTask,
     embeds: *mut CMd4cEmbed,
+    callouts: *mut CMd4cCallout,
+    block_refs: *mut CMd4cBlockRef,
+    query_blocks: *mut CMd4cQueryBlock,
+    link_definitions: *mut CMd4cLinkDefinition,
+    properties: *mut CMd4cProperty,
+    xml_tags: *mut CMd4cXmlTag,
     text_blob: *const u8,
     headings_count: u32,
     links_count: u32,
     code_spans_count: u32,
     tasks_count: u32,
     embeds_count: u32,
+    callouts_count: u32,
+    block_refs_count: u32,
+    query_blocks_count: u32,
+    link_definitions_count: u32,
+    properties_count: u32,
+    xml_tags_count: u32,
     text_blob_len: u32,
 }
 
@@ -83,7 +165,14 @@ const _: () = assert!(std::mem::size_of::<CMd4cLink>() == 24);
 const _: () = assert!(std::mem::size_of::<CMd4cCodeSpan>() == 16);
 const _: () = assert!(std::mem::size_of::<CMd4cTask>() == 20);
 const _: () = assert!(std::mem::size_of::<CMd4cEmbed>() == 16);
-const _: () = assert!(std::mem::size_of::<CMd4cResult>() == 72);
+const _: () = assert!(std::mem::size_of::<CMd4cCallout>() == 24);
+const _: () = assert!(std::mem::size_of::<CMd4cBlockRef>() == 12);
+const _: () = assert!(std::mem::size_of::<CMd4cQueryBlock>() == 16);
+const _: () = assert!(std::mem::size_of::<CMd4cLinkDefinition>() == 32);
+const _: () = assert!(std::mem::size_of::<CMd4cProperty>() == 20);
+const _: () = assert!(std::mem::size_of::<CMd4cXmlTag>() == 28);
+// 12 pointers (96) + 12 u32 counts (48) = 144
+const _: () = assert!(std::mem::size_of::<CMd4cResult>() == 144);
 
 extern "C" {
     fn marky_md4c_extract(text: *const u8, len: u32, out: *mut CMd4cResult) -> i32;
@@ -153,6 +242,84 @@ pub struct Md4cEmbed {
     pub end_offset: u32,
 }
 
+/// A callout extracted by the md4c single-pass parser (e.g. `> [!note] Title`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Md4cCallout {
+    /// Callout type (e.g. "note", "warning", "tip").
+    pub callout_type: String,
+    /// Optional callout title.
+    pub title: Option<String>,
+    /// Byte offset of `>` in source.
+    pub source_offset: u32,
+    /// Byte offset past the callout block.
+    pub end_offset: u32,
+}
+
+/// A block reference extracted by the md4c single-pass parser (e.g. `((uuid))`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Md4cBlockRef {
+    /// The UUID string.
+    pub uuid: String,
+    /// Byte offset of `(` in `((uuid))` in source.
+    pub source_offset: u32,
+}
+
+/// A query block extracted by the md4c parser (e.g. `{{query ...}}`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Md4cQueryBlock {
+    /// The query text.
+    pub query: String,
+    /// Byte offset of first `{` of `{{query ...}}` in source.
+    pub source_offset: u32,
+    /// Byte offset past closing `}}` in source.
+    pub end_offset: u32,
+}
+
+/// A link definition extracted by the md4c parser (e.g. `[label]: url "title"`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Md4cLinkDefinition {
+    /// The link label.
+    pub label: String,
+    /// The link URL.
+    pub url: String,
+    /// Optional title.
+    pub title: Option<String>,
+    /// Byte offset of `[` in source.
+    pub source_offset: u32,
+    /// Byte offset past end of definition line.
+    pub end_offset: u32,
+}
+
+/// A YAML frontmatter property extracted by md4c.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Md4cProperty {
+    /// The property key.
+    pub key: String,
+    /// The raw property value text.
+    pub value: String,
+    /// Property value type: 0=string, 1=list, 2=page_ref.
+    pub value_type: u8,
+}
+
+/// An XML tag extracted by md4c.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Md4cXmlTag {
+    /// The tag name (e.g. "div", "custom-tag").
+    pub tag_name: String,
+    /// The raw opening tag HTML (e.g. `<tag attr="val">`).
+    pub raw_html: String,
+    /// Start byte offset in source.
+    pub source_offset: u32,
+    /// End byte offset (includes closing tag if matched).
+    pub end_offset: u32,
+    /// Whether this is a self-closing or void element.
+    pub is_self_closing: bool,
+    /// Whether this tag was unclosed (no matching close tag found).
+    pub is_unclosed: bool,
+    /// Whether this tag was found inline (within a paragraph) rather than block-level.
+    pub is_inline: bool,
+}
+
 /// Results from md4c single-pass extraction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Md4cExtraction {
@@ -161,6 +328,12 @@ pub struct Md4cExtraction {
     pub code_spans: Vec<Md4cCodeSpan>,
     pub tasks: Vec<Md4cTask>,
     pub embeds: Vec<Md4cEmbed>,
+    pub callouts: Vec<Md4cCallout>,
+    pub block_refs: Vec<Md4cBlockRef>,
+    pub query_blocks: Vec<Md4cQueryBlock>,
+    pub link_definitions: Vec<Md4cLinkDefinition>,
+    pub properties: Vec<Md4cProperty>,
+    pub xml_tags: Vec<Md4cXmlTag>,
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +352,12 @@ pub fn extract_md4c(text: &str) -> Result<Md4cExtraction, KernelError> {
             code_spans: Vec::new(),
             tasks: Vec::new(),
             embeds: Vec::new(),
+            callouts: Vec::new(),
+            block_refs: Vec::new(),
+            query_blocks: Vec::new(),
+            link_definitions: Vec::new(),
+            properties: Vec::new(),
+            xml_tags: Vec::new(),
         });
     }
 
@@ -360,346 +539,205 @@ fn convert_result(out: &CMd4cResult) -> Result<Md4cExtraction, KernelError> {
         }
     }
 
+    let mut callouts = Vec::with_capacity(out.callouts_count as usize);
+    if out.callouts_count > 0 && !out.callouts.is_null() {
+        // SAFETY: callouts pointer is valid for callouts_count elements,
+        // allocated by Zig page_allocator.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let c_callouts =
+            unsafe { std::slice::from_raw_parts(out.callouts, out.callouts_count as usize) };
+        for c in c_callouts {
+            let type_start = c.type_offset as usize;
+            let callout_type =
+                std::str::from_utf8(safe_blob_slice(blob, type_start, c.type_length as usize)?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned();
+            let title = if c.title_length == 0 {
+                None
+            } else {
+                let title_start = c.title_offset as usize;
+                Some(
+                    std::str::from_utf8(safe_blob_slice(
+                        blob,
+                        title_start,
+                        c.title_length as usize,
+                    )?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned(),
+                )
+            };
+            callouts.push(Md4cCallout {
+                callout_type,
+                title,
+                source_offset: c.source_offset,
+                end_offset: c.end_offset,
+            });
+        }
+    }
+
+    let mut block_refs = Vec::with_capacity(out.block_refs_count as usize);
+    if out.block_refs_count > 0 && !out.block_refs.is_null() {
+        // SAFETY: block_refs pointer is valid for block_refs_count elements,
+        // allocated by Zig page_allocator.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let c_block_refs =
+            unsafe { std::slice::from_raw_parts(out.block_refs, out.block_refs_count as usize) };
+        for br in c_block_refs {
+            let uuid_start = br.uuid_offset as usize;
+            let uuid =
+                std::str::from_utf8(safe_blob_slice(blob, uuid_start, br.uuid_length as usize)?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned();
+            block_refs.push(Md4cBlockRef {
+                uuid,
+                source_offset: br.source_offset,
+            });
+        }
+    }
+
+    let mut query_blocks = Vec::with_capacity(out.query_blocks_count as usize);
+    if out.query_blocks_count > 0 && !out.query_blocks.is_null() {
+        // SAFETY: query_blocks pointer is valid for query_blocks_count elements,
+        // allocated by Zig page_allocator.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let c_query_blocks = unsafe {
+            std::slice::from_raw_parts(out.query_blocks, out.query_blocks_count as usize)
+        };
+        for qb in c_query_blocks {
+            let query_start = qb.query_offset as usize;
+            let query = std::str::from_utf8(safe_blob_slice(
+                blob,
+                query_start,
+                qb.query_length as usize,
+            )?)
+            .map_err(|_| KernelError::InternalError(-100))?
+            .to_owned();
+            query_blocks.push(Md4cQueryBlock {
+                query,
+                source_offset: qb.source_offset,
+                end_offset: qb.end_offset,
+            });
+        }
+    }
+
+    let mut link_definitions = Vec::with_capacity(out.link_definitions_count as usize);
+    if out.link_definitions_count > 0 && !out.link_definitions.is_null() {
+        // SAFETY: link_definitions pointer is valid for link_definitions_count elements,
+        // allocated by Zig page_allocator.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let c_link_defs = unsafe {
+            std::slice::from_raw_parts(out.link_definitions, out.link_definitions_count as usize)
+        };
+        for ld in c_link_defs {
+            let label_start = ld.label_offset as usize;
+            let label = std::str::from_utf8(safe_blob_slice(
+                blob,
+                label_start,
+                ld.label_length as usize,
+            )?)
+            .map_err(|_| KernelError::InternalError(-100))?
+            .to_owned();
+            let url_start = ld.url_offset as usize;
+            let url =
+                std::str::from_utf8(safe_blob_slice(blob, url_start, ld.url_length as usize)?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned();
+            let title = if ld.title_length == 0 {
+                None
+            } else {
+                let title_start = ld.title_offset as usize;
+                Some(
+                    std::str::from_utf8(safe_blob_slice(
+                        blob,
+                        title_start,
+                        ld.title_length as usize,
+                    )?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned(),
+                )
+            };
+            link_definitions.push(Md4cLinkDefinition {
+                label,
+                url,
+                title,
+                source_offset: ld.source_offset,
+                end_offset: ld.end_offset,
+            });
+        }
+    }
+
+    let mut properties = Vec::with_capacity(out.properties_count as usize);
+    if out.properties_count > 0 && !out.properties.is_null() {
+        // SAFETY: properties pointer is valid for properties_count elements,
+        // allocated by Zig page_allocator.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let c_properties =
+            unsafe { std::slice::from_raw_parts(out.properties, out.properties_count as usize) };
+        for p in c_properties {
+            let key_start = p.key_offset as usize;
+            let key = std::str::from_utf8(safe_blob_slice(blob, key_start, p.key_length as usize)?)
+                .map_err(|_| KernelError::InternalError(-100))?
+                .to_owned();
+            let value_start = p.value_offset as usize;
+            let value =
+                std::str::from_utf8(safe_blob_slice(blob, value_start, p.value_length as usize)?)
+                    .map_err(|_| KernelError::InternalError(-100))?
+                    .to_owned();
+            properties.push(Md4cProperty {
+                key,
+                value,
+                value_type: p.value_type,
+            });
+        }
+    }
+
+    let mut xml_tags = Vec::with_capacity(out.xml_tags_count as usize);
+    if out.xml_tags_count > 0 && !out.xml_tags.is_null() {
+        // SAFETY: xml_tags pointer is valid for xml_tags_count elements,
+        // allocated by Zig page_allocator.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let c_xml_tags =
+            unsafe { std::slice::from_raw_parts(out.xml_tags, out.xml_tags_count as usize) };
+        for xt in c_xml_tags {
+            let tag_name_start = xt.tag_name_offset as usize;
+            let tag_name = std::str::from_utf8(safe_blob_slice(
+                blob,
+                tag_name_start,
+                xt.tag_name_length as usize,
+            )?)
+            .map_err(|_| KernelError::InternalError(-100))?
+            .to_owned();
+            let raw_html_start = xt.raw_html_offset as usize;
+            let raw_html = std::str::from_utf8(safe_blob_slice(
+                blob,
+                raw_html_start,
+                xt.raw_html_length as usize,
+            )?)
+            .map_err(|_| KernelError::InternalError(-100))?
+            .to_owned();
+            xml_tags.push(Md4cXmlTag {
+                tag_name,
+                raw_html,
+                source_offset: xt.source_offset,
+                end_offset: xt.end_offset,
+                is_self_closing: xt.is_self_closing != 0,
+                is_unclosed: xt.is_unclosed != 0,
+                is_inline: xt.is_inline != 0,
+            });
+        }
+    }
+
     Ok(Md4cExtraction {
         headings,
         links,
         code_spans,
         tasks,
         embeds,
+        callouts,
+        block_refs,
+        query_blocks,
+        link_definitions,
+        properties,
+        xml_tags,
     })
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_extract_heading() {
-        let result = extract_md4c("# Hello\n").unwrap();
-        assert_eq!(result.headings.len(), 1);
-        assert_eq!(result.headings[0].text, "Hello");
-        assert_eq!(result.headings[0].level, 1);
-        assert_eq!(result.headings[0].source_offset, 0);
-    }
-
-    #[test]
-    fn test_extract_link() {
-        let result = extract_md4c("[click](https://example.com)\n").unwrap();
-        assert_eq!(result.links.len(), 1);
-        assert_eq!(result.links[0].text, "click");
-        assert_eq!(result.links[0].target, "https://example.com");
-        assert!(!result.links[0].is_wiki);
-    }
-
-    #[test]
-    fn test_extract_wiki_link() {
-        let result = extract_md4c("[[Target]]\n").unwrap();
-        assert_eq!(result.links.len(), 1);
-        assert!(result.links[0].is_wiki);
-        assert_eq!(result.links[0].target, "Target");
-    }
-
-    #[test]
-    fn test_extract_mixed_document() {
-        let input =
-            "# Title\n\nSome [link](url) text.\n\n## Section\n\nSee [[Wiki]] for details.\n";
-        let result = extract_md4c(input).unwrap();
-        assert_eq!(result.headings.len(), 2);
-        assert_eq!(result.headings[0].text, "Title");
-        assert_eq!(result.headings[1].text, "Section");
-        assert_eq!(result.links.len(), 2);
-        assert!(!result.links[0].is_wiki);
-        assert!(result.links[1].is_wiki);
-    }
-
-    #[test]
-    fn test_extract_empty_input() {
-        let result = extract_md4c("").unwrap();
-        assert!(result.headings.is_empty());
-        assert!(result.links.is_empty());
-    }
-
-    #[test]
-    fn test_extract_entity_decoded() {
-        // ExtractionRenderer decodes HTML entities to UTF-8 (marky-yfh7)
-        let result = extract_md4c("# Hello &amp; World\n").unwrap();
-        assert_eq!(result.headings[0].text, "Hello & World");
-    }
-
-    #[test]
-    fn test_text_is_valid_utf8() {
-        let result = extract_md4c("# Héllo Wörld\n").unwrap();
-        assert_eq!(result.headings[0].text, "Héllo Wörld");
-    }
-
-    #[test]
-    fn test_struct_sizes_match_zig() {
-        assert_eq!(std::mem::size_of::<CMd4cHeading>(), 16);
-        assert_eq!(std::mem::size_of::<CMd4cLink>(), 24);
-        assert_eq!(std::mem::size_of::<CMd4cCodeSpan>(), 16);
-        assert_eq!(std::mem::size_of::<CMd4cTask>(), 20);
-        assert_eq!(std::mem::size_of::<CMd4cEmbed>(), 16);
-        assert_eq!(std::mem::size_of::<CMd4cResult>(), 72);
-    }
-
-    /// Regression test for T2-11: silent `.unwrap_or("")` masked data corruption.
-    ///
-    /// If the blob contains invalid UTF-8 (e.g. due to Zig packing bugs), the
-    /// old code silently returned an empty string. The fixed code returns
-    /// `KernelError::InternalError(-100)` so callers can detect corruption.
-    #[test]
-    fn test_invalid_utf8_in_heading_blob_returns_error() {
-        // 0xFF 0xFE is invalid UTF-8.
-        let blob = [0xFF_u8, 0xFE, b'!'];
-        let heading = CMd4cHeading {
-            source_offset: 0,
-            text_offset: 0,
-            text_length: 3,
-            level: 1,
-            _padding: [0, 0, 0],
-        };
-        let out = CMd4cResult {
-            headings: &heading as *const _ as *mut _,
-            links: std::ptr::null_mut(),
-            code_spans: std::ptr::null_mut(),
-            tasks: std::ptr::null_mut(),
-            embeds: std::ptr::null_mut(),
-            text_blob: blob.as_ptr(),
-            headings_count: 1,
-            links_count: 0,
-            code_spans_count: 0,
-            tasks_count: 0,
-            embeds_count: 0,
-            text_blob_len: 3,
-        };
-        // Before fix: returns Ok(headings[0].text == "") — silent data loss.
-        // After fix: returns Err(KernelError::InternalError(-100)).
-        let result = convert_result(&out);
-        assert!(
-            result.is_err(),
-            "invalid UTF-8 in blob must return Err, not silently produce empty string"
-        );
-    }
-
-    /// Regression test for T2-11: invalid UTF-8 in link target blob.
-    #[test]
-    fn test_invalid_utf8_in_link_blob_returns_error() {
-        let blob = [b'o', b'k', 0xFF_u8]; // "ok" text, invalid target
-        let link = CMd4cLink {
-            source_offset: 0,
-            text_offset: 0,
-            target_offset: 2,
-            text_length: 2,
-            target_length: 1,
-            is_wiki: 0,
-            _padding: [0, 0, 0],
-        };
-        let out = CMd4cResult {
-            headings: std::ptr::null_mut(),
-            links: &link as *const _ as *mut _,
-            code_spans: std::ptr::null_mut(),
-            tasks: std::ptr::null_mut(),
-            embeds: std::ptr::null_mut(),
-            text_blob: blob.as_ptr(),
-            headings_count: 0,
-            links_count: 1,
-            code_spans_count: 0,
-            tasks_count: 0,
-            embeds_count: 0,
-            text_blob_len: 3,
-        };
-        let result = convert_result(&out);
-        assert!(
-            result.is_err(),
-            "invalid UTF-8 in link target blob must return Err"
-        );
-    }
-
-    /// Regression test for marky-ta07: heading text_offset beyond blob end must
-    /// return KernelError, not panic with OOB slice.
-    #[test]
-    fn test_oob_heading_offset_returns_error() {
-        let blob = [b'h', b'i']; // 2-byte blob
-        let heading = CMd4cHeading {
-            source_offset: 0,
-            text_offset: 5, // past end of 2-byte blob
-            text_length: 3,
-            level: 1,
-            _padding: [0, 0, 0],
-        };
-        let out = CMd4cResult {
-            headings: &heading as *const _ as *mut _,
-            links: std::ptr::null_mut(),
-            code_spans: std::ptr::null_mut(),
-            tasks: std::ptr::null_mut(),
-            embeds: std::ptr::null_mut(),
-            text_blob: blob.as_ptr(),
-            headings_count: 1,
-            links_count: 0,
-            code_spans_count: 0,
-            tasks_count: 0,
-            embeds_count: 0,
-            text_blob_len: blob.len() as u32,
-        };
-        let result = convert_result(&out);
-        assert!(
-            matches!(result, Err(KernelError::InternalError(-101))),
-            "OOB heading offset must return InternalError(-101), got: {result:?}"
-        );
-    }
-
-    /// Regression test for marky-ta07: link target_offset beyond blob end must
-    /// return KernelError, not panic with OOB slice.
-    #[test]
-    fn test_oob_link_offset_returns_error() {
-        let blob = [b'o', b'k']; // 2-byte blob
-        let link = CMd4cLink {
-            source_offset: 0,
-            text_offset: 0,
-            target_offset: 10, // past end of 2-byte blob
-            text_length: 2,
-            target_length: 3,
-            is_wiki: 0,
-            _padding: [0, 0, 0],
-        };
-        let out = CMd4cResult {
-            headings: std::ptr::null_mut(),
-            links: &link as *const _ as *mut _,
-            code_spans: std::ptr::null_mut(),
-            tasks: std::ptr::null_mut(),
-            embeds: std::ptr::null_mut(),
-            text_blob: blob.as_ptr(),
-            headings_count: 0,
-            links_count: 1,
-            code_spans_count: 0,
-            tasks_count: 0,
-            embeds_count: 0,
-            text_blob_len: blob.len() as u32,
-        };
-        let result = convert_result(&out);
-        assert!(
-            matches!(result, Err(KernelError::InternalError(-101))),
-            "OOB link target offset must return InternalError(-101), got: {result:?}"
-        );
-    }
-
-    /// Regression test for marky-ta07: offset + length that overflows usize must
-    /// return KernelError, not panic or wrap.
-    #[test]
-    fn test_overflow_offset_returns_error() {
-        let blob = [b'x'; 4];
-        let heading = CMd4cHeading {
-            source_offset: 0,
-            text_offset: u32::MAX, // usize::MAX addition would overflow
-            text_length: 1,
-            level: 1,
-            _padding: [0, 0, 0],
-        };
-        let out = CMd4cResult {
-            headings: &heading as *const _ as *mut _,
-            links: std::ptr::null_mut(),
-            code_spans: std::ptr::null_mut(),
-            tasks: std::ptr::null_mut(),
-            embeds: std::ptr::null_mut(),
-            text_blob: blob.as_ptr(),
-            headings_count: 1,
-            links_count: 0,
-            code_spans_count: 0,
-            tasks_count: 0,
-            embeds_count: 0,
-            text_blob_len: blob.len() as u32,
-        };
-        let result = convert_result(&out);
-        assert!(
-            matches!(result, Err(KernelError::InternalError(-101))),
-            "overflow offset must return InternalError(-101), got: {result:?}"
-        );
-    }
-
-    // --- Code span tests (marky-pdyo) ---
-
-    #[test]
-    fn test_extract_code_span() {
-        let result = extract_md4c("here is `hello` world\n").unwrap();
-        assert_eq!(result.code_spans.len(), 1);
-        assert_eq!(result.code_spans[0].text, "hello");
-        assert_eq!(result.code_spans[0].source_offset, 8);
-        assert_eq!(result.code_spans[0].end_offset, 15);
-    }
-
-    #[test]
-    fn test_extract_code_span_mixed_document() {
-        let result = extract_md4c("# Title `code` [link](url)\n").unwrap();
-        assert_eq!(result.headings.len(), 1);
-        assert_eq!(result.links.len(), 1);
-        assert_eq!(result.code_spans.len(), 1);
-        assert_eq!(result.code_spans[0].text, "code");
-    }
-
-    #[test]
-    fn test_extract_no_code_spans() {
-        let result = extract_md4c("Just plain text.\n").unwrap();
-        assert!(result.code_spans.is_empty());
-    }
-
-    #[test]
-    fn test_extract_multiple_code_spans() {
-        let result = extract_md4c("`a` then `b`\n").unwrap();
-        assert_eq!(result.code_spans.len(), 2);
-        assert_eq!(result.code_spans[0].text, "a");
-        assert_eq!(result.code_spans[1].text, "b");
-        assert!(result.code_spans[1].source_offset > result.code_spans[0].source_offset);
-    }
-
-    // --- Task/Embed tests (marky-bmu9) ---
-
-    #[test]
-    fn test_extract_task_unchecked() {
-        let result = extract_md4c("- [ ] Todo\n").unwrap();
-        assert_eq!(result.tasks.len(), 1);
-        assert_eq!(result.tasks[0].state, "unchecked");
-        assert_eq!(result.tasks[0].text, "Todo");
-    }
-
-    #[test]
-    fn test_extract_task_checked() {
-        let result = extract_md4c("- [x] Done\n").unwrap();
-        assert_eq!(result.tasks.len(), 1);
-        assert_eq!(result.tasks[0].state, "checked");
-        assert_eq!(result.tasks[0].text, "Done");
-    }
-
-    #[test]
-    fn test_extract_embed() {
-        let result = extract_md4c("![[target]]\n").unwrap();
-        assert_eq!(result.embeds.len(), 1);
-        assert_eq!(result.embeds[0].target, "target");
-        // Also a wiki link
-        assert_eq!(result.links.len(), 1);
-    }
-
-    #[test]
-    fn test_extract_no_embed_for_wikilink() {
-        let result = extract_md4c("[[link]]\n").unwrap();
-        assert!(result.embeds.is_empty());
-        assert_eq!(result.links.len(), 1);
-    }
-
-    #[test]
-    fn test_extract_empty_has_no_tasks_or_embeds() {
-        let result = extract_md4c("").unwrap();
-        assert!(result.tasks.is_empty());
-        assert!(result.embeds.is_empty());
-    }
-
-    #[test]
-    fn test_extract_plain_text_no_tasks_or_embeds() {
-        let result = extract_md4c("Just plain text.\n").unwrap();
-        assert!(result.tasks.is_empty());
-        assert!(result.embeds.is_empty());
-    }
 }

@@ -4,22 +4,15 @@ mod helpers;
 mod types;
 
 mod from_ast;
-
-#[cfg(feature = "zig-kernels")]
 mod from_blob;
-
-#[cfg(feature = "zig-kernels")]
 mod from_scan;
 
 #[cfg(test)]
 mod tests;
 
-pub use helpers::slugify;
+pub use helpers::{mask_frontmatter, parse_frontmatter_owned, slugify};
 pub use types::*;
 
-#[cfg(feature = "zig-kernels")]
-pub use from_blob::extract_xml_tags_from_text;
-#[cfg(feature = "zig-kernels")]
 pub use from_blob::BlobError;
 
 use hashbrown::HashMap;

@@ -105,10 +105,7 @@ pub struct TagEntry<'arena> {
     pub name: &'arena str,
 }
 
-/// Owned tag payload used by incremental merge paths before arena allocation.
-///
-/// Note: `Tag` in the parser has no source range, so tags cannot be incrementally
-/// merged. Always pass `None` for `IncrementalOverrides::tags`.
+/// Owned tag payload used by scan-to-index construction before arena allocation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TagOwned {
     /// Tag name (without leading `#`).
@@ -146,6 +143,8 @@ pub struct XmlTagOwned {
     pub is_self_closing: bool,
     /// Whether this tag has no matching closing tag.
     pub is_unclosed: bool,
+    /// Whether this tag was found inline (within a paragraph) rather than block-level.
+    pub is_inline: bool,
     /// Source range (line/col).
     pub range: Range,
     /// Start byte offset in the source document.
@@ -205,39 +204,6 @@ pub struct CodeSpanOwned {
     pub end_byte: usize,
 }
 
-/// Overrides for each independent extractor used by the incremental index path.
-///
-/// `None` means: extract fresh from the AST (no reuse).
-/// `Some(vec)` means: use the provided owned data instead of re-extracting.
-///
-/// `tags` is always `None` because [`Tag`][markymark_parser] has no source range
-/// and cannot be incrementally merged. It is included for API completeness only.
-#[derive(Debug, Default)]
-pub struct IncrementalOverrides {
-    /// Merged wiki-links from the incremental path, or `None` to re-extract.
-    pub wiki_links: Option<Vec<WikiLinkOwned>>,
-    /// Merged block IDs from the incremental path, or `None` to re-extract.
-    pub blocks: Option<Vec<BlockOwned>>,
-    /// Always `None` — tags have no range, cannot be incrementally merged.
-    pub tags: Option<Vec<TagOwned>>,
-    /// Merged markdown links from the incremental path, or `None` to re-extract.
-    pub markdown_links: Option<Vec<MarkdownLinkOwned>>,
-    /// Merged XML tags from the incremental path, or `None` to re-extract.
-    pub xml_tags: Option<Vec<XmlTagOwned>>,
-    /// Merged code spans from the incremental path, or `None` to re-extract.
-    pub code_spans: Option<Vec<CodeSpanOwned>>,
-    /// Merged embeds from the incremental path, or `None` to re-extract.
-    pub embeds: Option<Vec<EmbedOwned>>,
-    /// Merged tasks from the incremental path, or `None` to re-extract.
-    pub tasks: Option<Vec<TaskOwned>>,
-    /// Merged callouts from the incremental path, or `None` to re-extract.
-    pub callouts: Option<Vec<CalloutOwned>>,
-    /// Merged query blocks from the incremental path, or `None` to re-extract.
-    pub query_blocks: Option<Vec<QueryBlockOwned>>,
-    /// Merged link definitions from the incremental path, or `None` to re-extract.
-    pub link_definitions: Option<Vec<LinkDefinitionOwned>>,
-}
-
 /// A markdown link entry stored in the index.
 #[derive(Debug, Clone)]
 pub struct MarkdownLinkEntry<'arena> {
@@ -271,6 +237,24 @@ pub struct FrontmatterEntry<'arena> {
     pub key: &'arena str,
     /// The value.
     pub value: FrontmatterValueEntry<'arena>,
+}
+
+/// An owned frontmatter value for cross-module transfer (not arena-allocated).
+#[derive(Debug, Clone)]
+pub enum FrontmatterValueOwned {
+    /// A simple string value.
+    String(String),
+    /// A list of string values.
+    List(Vec<String>),
+}
+
+/// An owned frontmatter key-value entry for cross-module transfer (not arena-allocated).
+#[derive(Debug, Clone)]
+pub struct FrontmatterOwnedEntry {
+    /// The key.
+    pub key: String,
+    /// The value.
+    pub value: FrontmatterValueOwned,
 }
 
 /// A Logseq property value stored in the index.
@@ -319,6 +303,8 @@ pub struct XmlTagEntry<'arena> {
     pub is_self_closing: bool,
     /// Whether this tag has no matching closing tag.
     pub is_unclosed: bool,
+    /// Whether this tag was found inline (within a paragraph) rather than block-level.
+    pub is_inline: bool,
     /// Source range of the entire tag.
     pub range: Range,
     /// Start byte offset in the source document.

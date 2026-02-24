@@ -177,7 +177,7 @@ pub(crate) fn handle_semantic_search(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use markymark_index::{CodeSpanOwned, DocumentIndex, IncrementalOverrides};
+    use markymark_index::DocumentIndex;
     use std::path::PathBuf;
 
     fn uri(name: &str) -> DocumentUri {
@@ -193,33 +193,23 @@ mod tests {
         }
     }
 
-    fn code_span(text: &str) -> CodeSpanOwned {
-        CodeSpanOwned {
-            text: text.to_string(),
-            range: Range::new(
-                markymark_core::Position::new(0, 0),
-                markymark_core::Position::new(0, 0),
-            ),
-            start_byte: 0,
-            end_byte: text.len(),
+    /// Build a DocumentIndex with code spans by embedding backtick references in source.
+    fn make_index_with_code_spans(code_span_texts: &[&str]) -> DocumentIndex {
+        let mut source = String::from("# Types\n\n");
+        for text in code_span_texts {
+            source.push('`');
+            source.push_str(text);
+            source.push_str("` ");
         }
-    }
-
-    fn make_index_with_code_spans(source: &str, spans: Vec<CodeSpanOwned>) -> DocumentIndex {
-        let ast = markymark_parser::parse(source).unwrap();
-        DocumentIndex::from_ast_with_overrides_opt(
-            ast,
-            IncrementalOverrides {
-                code_spans: Some(spans),
-                ..Default::default()
-            },
-        )
+        source.push('\n');
+        let ast = markymark_parser::parse(&source).unwrap();
+        DocumentIndex::from_ast(ast)
     }
 
     #[test]
     fn search_symbols_includes_code_span_candidates() {
         let mut realm = RealmIndex::new();
-        let index = make_index_with_code_spans("# Types\n", vec![code_span("HashMap")]);
+        let index = make_index_with_code_spans(&["HashMap"]);
         realm.add_document(uri("types.md"), index);
 
         let names = symbol_names(handle_search_symbols(&realm, "HashMap".to_string()));
@@ -232,14 +222,8 @@ mod tests {
     #[test]
     fn search_symbols_dedup_code_spans_per_document() {
         let mut realm = RealmIndex::new();
-        let index = make_index_with_code_spans(
-            "# Doc\n",
-            vec![
-                code_span("Result"),
-                code_span("Result"),
-                code_span("Result"),
-            ],
-        );
+        // Build source with 3 occurrences of `Result` — dedup should produce 1 entry
+        let index = make_index_with_code_spans(&["Result", "Result", "Result"]);
         realm.add_document(uri("results.md"), index);
 
         let names = symbol_names(handle_search_symbols(&realm, "Result".to_string()));

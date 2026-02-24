@@ -16,6 +16,7 @@ pub struct BlockId<'arena> {
 
 impl<'arena> BlockId<'arena> {
     /// Create a new block ID with its source range and byte offsets.
+    #[cfg(test)]
     pub(crate) fn new(id: &'arena str, range: Range, start_byte: usize, end_byte: usize) -> Self {
         Self {
             id,
@@ -56,6 +57,7 @@ pub struct BlockRef<'arena> {
 
 impl<'arena> BlockRef<'arena> {
     /// Create a new block reference
+    #[cfg(test)]
     pub(crate) fn new(uuid: &'arena str, range: Range) -> Self {
         Self { uuid, range }
     }
@@ -79,6 +81,7 @@ pub struct Tag<'arena> {
 
 impl<'arena> Tag<'arena> {
     /// Create a new tag
+    #[cfg(test)]
     pub(crate) fn new(name: &'arena str) -> Self {
         Self { name }
     }
@@ -102,6 +105,7 @@ pub struct Embed<'arena> {
 
 impl<'arena> Embed<'arena> {
     /// Create a new embed
+    #[cfg(test)]
     pub(crate) fn new(target: &'arena str) -> Self {
         Self { target }
     }
@@ -125,6 +129,7 @@ pub struct Task<'arena> {
 
 impl<'arena> Task<'arena> {
     /// Create a new task
+    #[cfg(test)]
     pub(crate) fn new(state: TaskState<'arena>) -> Self {
         Self { state }
     }
@@ -143,6 +148,7 @@ pub struct TaskState<'arena> {
 
 impl<'arena> TaskState<'arena> {
     /// Create a new task state
+    #[cfg(test)]
     pub(crate) fn new(name: &'arena str) -> Self {
         Self { name }
     }
@@ -162,6 +168,7 @@ pub struct Callout<'arena> {
 
 impl<'arena> Callout<'arena> {
     /// Create a new callout
+    #[cfg(test)]
     pub(crate) fn new(callout_type: &'arena str, title: Option<&'arena str>) -> Self {
         Self {
             callout_type,
@@ -188,6 +195,7 @@ pub struct QueryBlock<'arena> {
 
 impl<'arena> QueryBlock<'arena> {
     /// Create a new query block
+    #[cfg(test)]
     pub(crate) fn new(query: &'arena str) -> Self {
         Self { query }
     }

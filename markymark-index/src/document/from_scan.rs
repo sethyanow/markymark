@@ -1,9 +1,8 @@
 //! [`DocumentIndex::from_scan`] — construct index from a Zig SIMD scan backend.
 //!
 //! Uses byte-offset based scanning instead of AST parsing. The scan backend
-//! provides heading, link, tag, block-id, and code span extraction via SIMD
-//! kernels. Frontmatter, properties, and block-refs are not available from
-//! the scan path and return empty slices.
+//! provides heading, link, tag, block-id, code span, and XML tag extraction
+//! via SIMD kernels.
 
 use bumpalo::collections::Vec as BumpVec;
 use hashbrown::HashMap;
@@ -14,41 +13,89 @@ use std::collections::HashMap as StdHashMap;
 
 use super::{
     helpers, BlockEntry, BlockRefEntry, CalloutEntry, CodeSpanEntry, DocumentDependent,
-    DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry, HeadingEntry,
-    LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry, QueryBlockEntry, TagEntry, TaskEntry,
-    WikiLinkEntry, XmlTagEntry,
+    DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry,
+    FrontmatterOwnedEntry, FrontmatterValueEntry, FrontmatterValueOwned, HeadingEntry,
+    LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry,
+    TagEntry, TaskEntry, WikiLinkEntry, XmlTagEntry,
 };
 
 impl DocumentIndex {
     /// Build a document index from a scan backend (Zig SIMD path).
     ///
     /// Uses byte-offset based scanning instead of AST parsing. The scan backend
-    /// provides heading, link, tag, and block-id extraction via SIMD kernels.
-    /// XML tags are not supported by the scan path (returns empty slice).
+    /// provides heading, link, tag, block-id, and XML tag extraction via SIMD
+    /// kernels. Frontmatter is not available and returns empty slices.
     pub fn from_scan(text: &str, backend: &dyn ScanBackend) -> Self {
+        Self::from_scan_inner(text, backend, Vec::new(), Vec::new())
+    }
+
+    /// Build a document index from a scan backend with pre-parsed frontmatter.
+    ///
+    /// Same as [`from_scan`] but accepts owned frontmatter entries and aliases
+    /// (typically extracted from the source text independently). This allows
+    /// the MCP batch indexing path to get full Zig extraction while preserving
+    /// frontmatter data that the scan backend cannot provide.
+    pub fn from_scan_with_frontmatter(
+        text: &str,
+        backend: &dyn ScanBackend,
+        frontmatter: Vec<FrontmatterOwnedEntry>,
+        aliases: Vec<String>,
+    ) -> Self {
+        Self::from_scan_inner(text, backend, frontmatter, aliases)
+    }
+
+    fn from_scan_inner(
+        text: &str,
+        backend: &dyn ScanBackend,
+        fm_owned: Vec<FrontmatterOwnedEntry>,
+        aliases_owned: Vec<String>,
+    ) -> Self {
         // Pre-compute line starts for byte-offset → Position conversion
         let line_starts = helpers::byte_offset_line_starts(text);
 
         // Collect owned data from scan backend before entering self_cell closure.
         // Fall back to independent scans if scan_all fails so that headings
         // and links are never both silently dropped due to one-sided error.
-        let (scan_headings, scan_links, scan_code_spans, scan_tasks, scan_embeds) =
-            match backend.scan_all(text) {
-                Ok(result) => (
-                    result.headings,
-                    result.links,
-                    result.code_spans,
-                    result.tasks,
-                    result.embeds,
-                ),
-                Err(_) => (
-                    backend.scan_headings(text).unwrap_or_default(),
-                    backend.scan_links(text).unwrap_or_default(),
-                    backend.scan_code_spans(text).unwrap_or_default(),
-                    backend.scan_tasks(text).unwrap_or_default(),
-                    backend.scan_embeds(text).unwrap_or_default(),
-                ),
-            };
+        let (
+            scan_headings,
+            scan_links,
+            scan_code_spans,
+            scan_tasks,
+            scan_embeds,
+            scan_callouts,
+            scan_block_refs,
+            scan_query_blocks,
+            scan_link_definitions,
+            scan_properties,
+            scan_xml_tags,
+        ) = match backend.scan_all(text) {
+            Ok(result) => (
+                result.headings,
+                result.links,
+                result.code_spans,
+                result.tasks,
+                result.embeds,
+                result.callouts,
+                result.block_refs,
+                result.query_blocks,
+                result.link_definitions,
+                result.properties,
+                result.xml_tags,
+            ),
+            Err(_) => (
+                backend.scan_headings(text).unwrap_or_default(),
+                backend.scan_links(text).unwrap_or_default(),
+                backend.scan_code_spans(text).unwrap_or_default(),
+                backend.scan_tasks(text).unwrap_or_default(),
+                backend.scan_embeds(text).unwrap_or_default(),
+                backend.scan_callouts(text).unwrap_or_default(),
+                backend.scan_block_refs(text).unwrap_or_default(),
+                backend.scan_query_blocks(text).unwrap_or_default(),
+                backend.scan_link_definitions(text).unwrap_or_default(),
+                backend.scan_properties(text).unwrap_or_default(),
+                backend.scan_xml_tags(text).unwrap_or_default(),
+            ),
+        };
         let scan_tags = backend.scan_tags(text).unwrap_or_default();
         let scan_blocks = backend.scan_block_ids(text).unwrap_or_default();
 
@@ -104,7 +151,17 @@ impl DocumentIndex {
 
                 match l.link_type {
                     ScanLinkType::Wiki => {
-                        let target = arena_alloc_str(arena_ref, &l.target);
+                        // Split target on '#' to extract heading portion.
+                        // e.g. "page#section" → target="page", heading=Some("section")
+                        //      "#section"     → target="", heading=Some("section")
+                        //      "page"         → target="page", heading=None
+                        let (target_str, heading_str) = if let Some(hash_pos) = l.target.find('#') {
+                            (&l.target[..hash_pos], Some(&l.target[hash_pos + 1..]))
+                        } else {
+                            (l.target.as_str(), None)
+                        };
+                        let target = arena_alloc_str(arena_ref, target_str);
+                        let heading = heading_str.map(|h| arena_alloc_str(arena_ref, h));
                         let alias = if l.text != l.target {
                             Some(arena_alloc_str(arena_ref, &l.text))
                         } else {
@@ -113,7 +170,7 @@ impl DocumentIndex {
                         wiki_links_builder.push(WikiLinkEntry {
                             target,
                             alias,
-                            heading: None,
+                            heading,
                             range,
                             start_byte: l.offset as usize,
                             end_byte: end_offset as usize,
@@ -177,8 +234,24 @@ impl DocumentIndex {
             let toc = helpers::build_toc(arena_ref, headings);
             let outline = helpers::build_outline(arena_ref, headings);
 
-            // XML tags: not supported by scan backend
-            let xml_tags = BumpVec::<XmlTagEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            // --- XML Tags ---
+            let mut xml_tags_builder = BumpVec::new_in(arena_ref);
+            for xt in scan_xml_tags {
+                let tag_name = arena_alloc_str(arena_ref, &xt.tag_name);
+                let pos = helpers::byte_offset_to_position(&line_starts, xt.offset);
+                let end_pos = helpers::byte_offset_to_position(&line_starts, xt.end_offset);
+                xml_tags_builder.push(XmlTagEntry {
+                    tag_name,
+                    attributes: HashMap::new(),
+                    is_self_closing: xt.is_self_closing,
+                    is_unclosed: xt.is_unclosed,
+                    is_inline: xt.is_inline,
+                    range: Range::new(pos, end_pos),
+                    start_byte: xt.offset as usize,
+                    end_byte: xt.end_offset as usize,
+                });
+            }
+            let xml_tags = xml_tags_builder.into_bump_slice();
 
             // --- Code spans ---
             let mut cs_builder = BumpVec::new_in(arena_ref);
@@ -197,11 +270,56 @@ impl DocumentIndex {
             }
             let code_spans = cs_builder.into_bump_slice();
 
-            // Frontmatter/properties/block-refs: not available from scan backend
-            let frontmatter = BumpVec::<FrontmatterEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let aliases = BumpVec::<&str>::new_in(arena_ref).into_bump_slice();
-            let properties = BumpVec::<PropertyEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let block_refs = BumpVec::<BlockRefEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            // Arena-allocate frontmatter entries from owned data.
+            let mut frontmatter_builder = BumpVec::new_in(arena_ref);
+            for fm in fm_owned {
+                let key = arena_alloc_str(arena_ref, &fm.key);
+                let value = match fm.value {
+                    FrontmatterValueOwned::String(s) => {
+                        FrontmatterValueEntry::String(arena_alloc_str(arena_ref, &s))
+                    }
+                    FrontmatterValueOwned::List(items) => {
+                        let mut list = BumpVec::new_in(arena_ref);
+                        for item in items {
+                            list.push(arena_alloc_str(arena_ref, &item));
+                        }
+                        FrontmatterValueEntry::List(list.into_bump_slice())
+                    }
+                };
+                frontmatter_builder.push(FrontmatterEntry { key, value });
+            }
+            let frontmatter = frontmatter_builder.into_bump_slice();
+
+            let mut aliases_builder = BumpVec::new_in(arena_ref);
+            for alias in aliases_owned {
+                aliases_builder.push(arena_alloc_str(arena_ref, &alias));
+            }
+            let aliases = aliases_builder.into_bump_slice();
+
+            // --- Properties ---
+            let mut props_builder = BumpVec::new_in(arena_ref);
+            for p in &scan_properties {
+                let key = arena_alloc_str(arena_ref, &p.key);
+                let value = match p.value_type {
+                    1 => {
+                        // List: split on comma, trim items
+                        let items: Vec<&str> = p.value.split(',').map(|s| s.trim()).collect();
+                        let mut bump_items = BumpVec::new_in(arena_ref);
+                        for item in items {
+                            bump_items.push(arena_alloc_str(arena_ref, item));
+                        }
+                        PropertyValueEntry::List(bump_items.into_bump_slice())
+                    }
+                    2 => {
+                        // PageRef: strip [[ and ]]
+                        let inner = p.value.trim_start_matches("[[").trim_end_matches("]]");
+                        PropertyValueEntry::PageRef(arena_alloc_str(arena_ref, inner))
+                    }
+                    _ => PropertyValueEntry::String(arena_alloc_str(arena_ref, &p.value)),
+                };
+                props_builder.push(PropertyEntry { key, value });
+            }
+            let properties = props_builder.into_bump_slice();
 
             // --- Tasks ---
             let mut tasks_builder = BumpVec::new_in(arena_ref);
@@ -235,11 +353,71 @@ impl DocumentIndex {
             }
             let embeds = embeds_builder.into_bump_slice();
 
-            // Callouts/query_blocks/link_definitions: not yet in scan backend
-            let callouts = BumpVec::<CalloutEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let query_blocks = BumpVec::<QueryBlockEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let link_definitions =
-                BumpVec::<LinkDefinitionEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            // --- Callouts ---
+            let mut callouts_builder = BumpVec::new_in(arena_ref);
+            for c in scan_callouts {
+                let callout_type = arena_alloc_str(arena_ref, &c.callout_type);
+                let title = c.title.as_deref().map(|t| arena_alloc_str(arena_ref, t));
+                let pos = helpers::byte_offset_to_position(&line_starts, c.offset);
+                let end_pos = helpers::byte_offset_to_position(&line_starts, c.end_offset);
+                callouts_builder.push(CalloutEntry {
+                    callout_type,
+                    title,
+                    range: Range::new(pos, end_pos),
+                    start_byte: c.offset as usize,
+                    end_byte: c.end_offset as usize,
+                });
+            }
+            let callouts = callouts_builder.into_bump_slice();
+
+            // --- Block refs ---
+            let mut block_refs_builder = BumpVec::new_in(arena_ref);
+            for br in scan_block_refs {
+                let uuid = arena_alloc_str(arena_ref, &br.uuid);
+                let pos = helpers::byte_offset_to_position(&line_starts, br.offset);
+                // ((uuid)) = 2 + uuid.len() + 2 = uuid.len() + 4
+                let end_offset = br.offset + br.uuid.len() as u32 + 4;
+                let end_pos = helpers::byte_offset_to_position(&line_starts, end_offset);
+                block_refs_builder.push(BlockRefEntry {
+                    uuid,
+                    range: Range::new(pos, end_pos),
+                });
+            }
+            let block_refs = block_refs_builder.into_bump_slice();
+
+            // --- Query blocks ---
+            let mut query_blocks_builder = BumpVec::new_in(arena_ref);
+            for qb in scan_query_blocks {
+                let query = arena_alloc_str(arena_ref, &qb.query);
+                let pos = helpers::byte_offset_to_position(&line_starts, qb.offset);
+                let end_pos = helpers::byte_offset_to_position(&line_starts, qb.end_offset);
+                query_blocks_builder.push(QueryBlockEntry {
+                    query,
+                    range: Range::new(pos, end_pos),
+                    start_byte: qb.offset as usize,
+                    end_byte: qb.end_offset as usize,
+                });
+            }
+            let query_blocks = query_blocks_builder.into_bump_slice();
+
+            // --- Link definitions ---
+            let mut link_defs_builder = BumpVec::new_in(arena_ref);
+            for ld in scan_link_definitions {
+                let label = arena_alloc_str(arena_ref, &ld.label);
+                let url = arena_alloc_str(arena_ref, &ld.url);
+                let title = ld.title.as_deref().map(|t| arena_alloc_str(arena_ref, t));
+                let pos = helpers::byte_offset_to_position(&line_starts, ld.offset);
+                let end_pos = helpers::byte_offset_to_position(&line_starts, ld.end_offset);
+                link_defs_builder.push(LinkDefinitionEntry {
+                    label,
+                    url,
+                    title,
+                    range: Range::new(pos, end_pos),
+                    start_byte: ld.offset as usize,
+                    end_byte: ld.end_offset as usize,
+                });
+            }
+            let link_definitions = link_defs_builder.into_bump_slice();
 
             DocumentDependent {
                 headings,

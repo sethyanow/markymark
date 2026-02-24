@@ -30,50 +30,17 @@ use markymark_core::{Position, Range};
 use super::{
     helpers, BlockEntry, BlockRefEntry, CalloutEntry, CodeSpanEntry, DocumentDependent,
     DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry, HeadingEntry,
-    LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry, QueryBlockEntry, TagEntry, TaskEntry,
-    WikiLinkEntry, XmlTagEntry, XmlTagOwned,
+    LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry,
+    TagEntry, TaskEntry, WikiLinkEntry, XmlTagEntry,
 };
 
+mod decode;
 mod header;
+mod owned;
+use self::decode::decode_owned_data;
 pub use self::header::BlobError;
 use self::header::*;
-
-// ---------------------------------------------------------------------------
-// XML tag extraction from raw text (standalone, no tree-sitter needed)
-// ---------------------------------------------------------------------------
-
-/// Extract XML/HTML tags from raw markdown text as owned data.
-///
-/// This uses the single-pass stack-based tokenizer from `markymark_parser`
-/// (which does NOT require tree-sitter). Code fences are skipped, and tags
-/// with attributes, self-closing tags, and unclosed tags are all handled.
-///
-/// Used by the engine pipeline (from_blob) to supplement the blob with XML
-/// tags that the Zig engine does not extract.
-pub fn extract_xml_tags_from_text(source: &str) -> Vec<XmlTagOwned> {
-    let arena = bumpalo::Bump::new();
-    let tags = markymark_parser::extract_xml_tags(&[], source, &arena);
-    tags.into_iter()
-        .map(|xt| {
-            let mut attributes: Vec<(String, String)> = xt
-                .attributes()
-                .iter()
-                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
-                .collect();
-            attributes.sort_by(|a, b| a.0.cmp(&b.0));
-            let (start_byte, end_byte) = xt.byte_range();
-            XmlTagOwned {
-                tag_name: xt.tag_name().to_string(),
-                attributes,
-                is_self_closing: xt.is_self_closing(),
-                is_unclosed: xt.is_unclosed(),
-                range: xt.range(),
-                start_byte,
-                end_byte,
-            }
-        })
-        .collect()
-}
+use self::owned::DecodedOwnedData;
 
 // ---------------------------------------------------------------------------
 // DocumentIndex::from_blob
@@ -85,8 +52,8 @@ impl DocumentIndex {
     /// Produces a [`DocumentIndex`] equivalent to [`from_scan`] for the same
     /// input text. The blob is the output of `DocumentEngine::get_blob()`.
     ///
-    /// XML tags are not extracted by the Zig engine; use
-    /// [`from_blob_with_xml_tags`] to include them.
+    /// XML tags are read directly from the blob (v2 format). V1 blobs
+    /// produce zero XML tags.
     ///
     /// # Errors
     ///
@@ -99,349 +66,28 @@ impl DocumentIndex {
     /// - [`BlobError::InvalidUtf8`] — text pool contains invalid UTF-8
     ///
     /// [`from_scan`]: DocumentIndex::from_scan
-    /// [`from_blob_with_xml_tags`]: DocumentIndex::from_blob_with_xml_tags
     pub fn from_blob(data: &[u8]) -> Result<Self, BlobError> {
-        Self::from_blob_with_xml_tags(data, Vec::new())
-    }
-
-    /// Build a document index from a Zig engine binary blob with XML tags.
-    ///
-    /// Identical to [`from_blob`] but also populates the XML tag entries from
-    /// the provided owned data. Use [`extract_xml_tags_from_text`] to obtain
-    /// the XML tags from the source text.
-    ///
-    /// [`from_blob`]: DocumentIndex::from_blob
-    pub fn from_blob_with_xml_tags(
-        data: &[u8],
-        xml_tags_in: Vec<XmlTagOwned>,
-    ) -> Result<Self, BlobError> {
         let header = validate_blob(data)?;
         let offsets = compute_offsets(&header);
         let text_pool =
             &data[offsets.text_pool..offsets.text_pool + header.text_pool_size as usize];
 
-        // Owned intermediate structs — collected before entering self_cell closure.
-
-        struct HeadingData {
-            text: String,
-            slug: String,
-            start_line: u32,
-            start_col: u32,
-            end_line: u32,
-            end_col: u32,
-            level: u8,
-        }
-
-        struct WikiData {
-            target: String,
-            alias: Option<String>,
-            heading: Option<String>,
-            source_offset: u32,
-            text_len: u32,   // display/alias text length (for end_byte)
-            target_len: u32, // page name length (for end_byte)
-            start_line: u32,
-            start_col: u32,
-            end_line: u32,
-            end_col: u32,
-        }
-
-        struct MarkdownData {
-            text: String,
-            url: String,
-            anchor: Option<String>,
-            source_offset: u32,
-            text_len: u32,   // link text length (for end_byte)
-            target_len: u32, // full target length incl. #frag (for end_byte)
-            start_line: u32,
-            start_col: u32,
-            end_line: u32,
-            end_col: u32,
-        }
-
-        struct TagData {
-            name: String,
-        }
-
-        struct BlockData {
-            id: String,
-            source_offset: u32,
-            id_len: u32,
-            start_line: u32,
-            start_col: u32,
-            end_line: u32,
-            end_col: u32,
-        }
-
-        struct CodeSpanData {
-            text: String,
-            source_offset: u32,
-            end_offset: u32,
-            start_line: u32,
-            start_col: u32,
-            end_line: u32,
-            end_col: u32,
-        }
-
-        let mut headings_owned: Vec<HeadingData> =
-            Vec::with_capacity(header.heading_count as usize);
-        let mut wiki_owned: Vec<WikiData> = Vec::with_capacity(header.link_count as usize);
-        let mut markdown_owned: Vec<MarkdownData> = Vec::with_capacity(header.link_count as usize);
-        let mut tags_owned: Vec<TagData> = Vec::with_capacity(header.tag_count as usize);
-        let mut blocks_owned: Vec<BlockData> = Vec::with_capacity(header.block_id_count as usize);
-        let mut code_spans_owned: Vec<CodeSpanData> =
-            Vec::with_capacity(header.code_span_count as usize);
-
-        struct TaskData {
-            state: String,
-            text: String,
-            source_offset: u32,
-            end_offset: u32,
-            start_line: u32,
-            start_col: u32,
-            end_line: u32,
-            end_col: u32,
-        }
-
-        struct EmbedData {
-            target: String,
-            source_offset: u32,
-            end_offset: u32,
-            start_line: u32,
-            start_col: u32,
-            end_line: u32,
-            end_col: u32,
-        }
-
-        let mut tasks_owned: Vec<TaskData> = Vec::with_capacity(header.task_count as usize);
-        let mut embeds_owned: Vec<EmbedData> = Vec::with_capacity(header.embed_count as usize);
-
-        // ── Headings ────────────────────────────────────────────────
-        // BlobHeading layout (40 bytes):
-        //   text_off(4@0) text_len(4@4) slug_off(4@8) slug_len(4@12)
-        //   source_offset(4@16) start_line(4@20) start_col(4@24)
-        //   end_line(4@28) end_col(4@32) level(1@36) _pad(3@37)
-        for i in 0..header.heading_count as usize {
-            let base = offsets.headings + i * HEADING_SIZE;
-            let text_off = read_u32_le(data, base);
-            let text_len = read_u32_le(data, base + 4);
-            let slug_off = read_u32_le(data, base + 8);
-            let slug_len = read_u32_le(data, base + 12);
-            let start_line = read_u32_le(data, base + 20);
-            let start_col = read_u32_le(data, base + 24);
-            let end_line = read_u32_le(data, base + 28);
-            let end_col = read_u32_le(data, base + 32);
-            let level = read_u8(data, base + 36);
-
-            let text = pool_str(text_pool, text_off, text_len)?.to_owned();
-            let slug = pool_str(text_pool, slug_off, slug_len)?.to_owned();
-
-            headings_owned.push(HeadingData {
-                text,
-                slug,
-                start_line,
-                start_col,
-                end_line,
-                end_col,
-                level,
-            });
-        }
-
-        // ── Links ───────────────────────────────────────────────────
-        // BlobLink layout (40 bytes):
-        //   text_off(4@0) text_len(4@4) target_off(4@8) target_len(4@12)
-        //   source_offset(4@16) start_line(4@20) start_col(4@24)
-        //   end_line(4@28) end_col(4@32) is_wiki(1@36) _pad(3@37)
-        for i in 0..header.link_count as usize {
-            let base = offsets.links + i * LINK_SIZE;
-            let text_off = read_u32_le(data, base);
-            let text_len = read_u32_le(data, base + 4);
-            let target_off = read_u32_le(data, base + 8);
-            let target_len = read_u32_le(data, base + 12);
-            let source_offset = read_u32_le(data, base + 16);
-            let start_line = read_u32_le(data, base + 20);
-            let start_col = read_u32_le(data, base + 24);
-            let end_line = read_u32_le(data, base + 28);
-            let end_col = read_u32_le(data, base + 32);
-            let is_wiki = read_u8(data, base + 36);
-
-            let text = pool_str(text_pool, text_off, text_len)?;
-            let target = pool_str(text_pool, target_off, target_len)?;
-
-            if is_wiki != 0 {
-                // Wiki link: text is the display/alias, target may contain
-                // a heading anchor (e.g. "page#heading"). Split on '#'.
-                let (page, heading) = if let Some(hash_pos) = target.find('#') {
-                    (&target[..hash_pos], Some(target[hash_pos + 1..].to_owned()))
-                } else {
-                    (target, None)
-                };
-                // Alias is present only when text ≠ full target (before anchor strip).
-                // Comparing against `page` (anchor-stripped) was wrong: [[p#h|p]] would
-                // see text="p" == page="p" and produce alias=None. marky-d7hh.
-                let alias = if text != target {
-                    Some(text.to_owned())
-                } else {
-                    None
-                };
-                wiki_owned.push(WikiData {
-                    alias,
-                    heading,
-                    target: page.to_owned(),
-                    source_offset,
-                    text_len,
-                    target_len,
-                    start_line,
-                    start_col,
-                    end_line,
-                    end_col,
-                });
-            } else {
-                // Markdown link: split target on '#' for url + anchor.
-                let (url, anchor) = if let Some(hash_pos) = target.find('#') {
-                    (
-                        target[..hash_pos].to_owned(),
-                        Some(target[hash_pos + 1..].to_owned()),
-                    )
-                } else {
-                    (target.to_owned(), None)
-                };
-                markdown_owned.push(MarkdownData {
-                    text: text.to_owned(),
-                    url,
-                    anchor,
-                    source_offset,
-                    text_len,
-                    target_len,
-                    start_line,
-                    start_col,
-                    end_line,
-                    end_col,
-                });
-            }
-        }
-
-        // ── Tags ────────────────────────────────────────────────────
-        // BlobTag layout (24 bytes):
-        //   name_off(4@0) name_len(4@4) source_offset(4@8)
-        //   start_line(4@12) start_col(4@16) _pad(4@20)
-        for i in 0..header.tag_count as usize {
-            let base = offsets.tags + i * TAG_SIZE;
-            let name_off = read_u32_le(data, base);
-            let name_len = read_u32_le(data, base + 4);
-            let name = pool_str(text_pool, name_off, name_len)?.to_owned();
-            tags_owned.push(TagData { name });
-        }
-
-        // ── Block IDs ───────────────────────────────────────────────
-        // BlobBlockId layout (28 bytes):
-        //   id_off(4@0) id_len(4@4) source_offset(4@8)
-        //   start_line(4@12) start_col(4@16) end_line(4@20) end_col(4@24)
-        for i in 0..header.block_id_count as usize {
-            let base = offsets.block_ids + i * BLOCK_ID_SIZE;
-            let id_off = read_u32_le(data, base);
-            let id_len = read_u32_le(data, base + 4);
-            let source_offset = read_u32_le(data, base + 8);
-            let start_line = read_u32_le(data, base + 12);
-            let start_col = read_u32_le(data, base + 16);
-            let end_line = read_u32_le(data, base + 20);
-            let end_col = read_u32_le(data, base + 24);
-            let id = pool_str(text_pool, id_off, id_len)?.to_owned();
-            blocks_owned.push(BlockData {
-                id,
-                source_offset,
-                id_len,
-                start_line,
-                start_col,
-                end_line,
-                end_col,
-            });
-        }
-
-        // ── Code Spans ────────────────────────────────────────────────
-        // BlobCodeSpan layout (32 bytes):
-        //   text_off(4@0) text_len(4@4) source_offset(4@8) end_offset(4@12)
-        //   start_line(4@16) start_col(4@20) end_line(4@24) end_col(4@28)
-        for i in 0..header.code_span_count as usize {
-            let base = offsets.code_spans + i * CODE_SPAN_SIZE;
-            let text_off = read_u32_le(data, base);
-            let text_len = read_u32_le(data, base + 4);
-            let source_offset = read_u32_le(data, base + 8);
-            let end_offset = read_u32_le(data, base + 12);
-            let start_line = read_u32_le(data, base + 16);
-            let start_col = read_u32_le(data, base + 20);
-            let end_line = read_u32_le(data, base + 24);
-            let end_col = read_u32_le(data, base + 28);
-            let text = pool_str(text_pool, text_off, text_len)?.to_owned();
-            code_spans_owned.push(CodeSpanData {
-                text,
-                source_offset,
-                end_offset,
-                start_line,
-                start_col,
-                end_line,
-                end_col,
-            });
-        }
-
-        // ── Tasks ──────────────────────────────────────────────────
-        // BlobTask layout (36 bytes):
-        //   text_off(4@0) text_len(4@4) source_offset(4@8) end_offset(4@12)
-        //   start_line(4@16) start_col(4@20) end_line(4@24) end_col(4@28)
-        //   state(1@32) _pad(3@33)
-        for i in 0..header.task_count as usize {
-            let base = offsets.tasks + i * TASK_SIZE;
-            let text_off = read_u32_le(data, base);
-            let text_len = read_u32_le(data, base + 4);
-            let source_offset = read_u32_le(data, base + 8);
-            let end_offset = read_u32_le(data, base + 12);
-            let start_line = read_u32_le(data, base + 16);
-            let start_col = read_u32_le(data, base + 20);
-            let end_line = read_u32_le(data, base + 24);
-            let end_col = read_u32_le(data, base + 28);
-            let state_byte = read_u8(data, base + 32);
-            let text = pool_str(text_pool, text_off, text_len)?.to_owned();
-            let state = match state_byte {
-                b'x' | b'X' => "checked",
-                _ => "unchecked",
-            }
-            .to_owned();
-            tasks_owned.push(TaskData {
-                state,
-                text,
-                source_offset,
-                end_offset,
-                start_line,
-                start_col,
-                end_line,
-                end_col,
-            });
-        }
-
-        // ── Embeds ────────────────────────────────────────────────────
-        // BlobEmbed layout (32 bytes):
-        //   target_off(4@0) target_len(4@4) source_offset(4@8) end_offset(4@12)
-        //   start_line(4@16) start_col(4@20) end_line(4@24) end_col(4@28)
-        for i in 0..header.embed_count as usize {
-            let base = offsets.embeds + i * EMBED_SIZE;
-            let target_off = read_u32_le(data, base);
-            let target_len = read_u32_le(data, base + 4);
-            let source_offset = read_u32_le(data, base + 8);
-            let end_offset = read_u32_le(data, base + 12);
-            let start_line = read_u32_le(data, base + 16);
-            let start_col = read_u32_le(data, base + 20);
-            let end_line = read_u32_le(data, base + 24);
-            let end_col = read_u32_le(data, base + 28);
-            let target = pool_str(text_pool, target_off, target_len)?.to_owned();
-            embeds_owned.push(EmbedData {
-                target,
-                source_offset,
-                end_offset,
-                start_line,
-                start_col,
-                end_line,
-                end_col,
-            });
-        }
+        let DecodedOwnedData {
+            headings: headings_owned,
+            wiki_links: wiki_owned,
+            markdown_links: markdown_owned,
+            tags: tags_owned,
+            blocks: blocks_owned,
+            code_spans: code_spans_owned,
+            tasks: tasks_owned,
+            embeds: embeds_owned,
+            callouts: callouts_owned,
+            block_refs: block_refs_owned,
+            query_blocks: query_blocks_owned,
+            link_definitions: link_defs_owned,
+            properties: properties_owned,
+            xml_tags: xml_tags_owned,
+        } = decode_owned_data(data, &header, &offsets, text_pool)?;
 
         // ── Build DocumentIndex via self_cell ────────────────────────
         let owner = DocumentOwner {
@@ -555,22 +201,21 @@ impl DocumentIndex {
                 );
             }
 
-            // --- XML Tags (from supplementary extraction, not in blob) ---
+            // --- XML Tags (decoded from blob v2) ---
             let mut xt_builder = BumpVec::new_in(arena_ref);
-            for xt in &xml_tags_in {
+            for xt in &xml_tags_owned {
                 let tag_name = arena_alloc_str(arena_ref, &xt.tag_name);
-                let mut attributes = hashbrown::HashMap::new();
-                for (k, v) in &xt.attributes {
-                    attributes.insert(arena_alloc_str(arena_ref, k), arena_alloc_str(arena_ref, v));
-                }
+                let start_pos = Position::new(xt.start_line, xt.start_col);
+                let end_pos = Position::new(xt.end_line, xt.end_col);
                 xt_builder.push(XmlTagEntry {
                     tag_name,
-                    attributes,
+                    attributes: hashbrown::HashMap::new(),
                     is_self_closing: xt.is_self_closing,
                     is_unclosed: xt.is_unclosed,
-                    range: xt.range,
-                    start_byte: xt.start_byte,
-                    end_byte: xt.end_byte,
+                    is_inline: xt.is_inline,
+                    range: Range::new(start_pos, end_pos),
+                    start_byte: xt.source_offset as usize,
+                    end_byte: xt.end_offset as usize,
                 });
             }
             let xml_tags = xt_builder.into_bump_slice();
@@ -594,8 +239,31 @@ impl DocumentIndex {
 
             let frontmatter = BumpVec::<FrontmatterEntry<'_>>::new_in(arena_ref).into_bump_slice();
             let aliases = BumpVec::<&str>::new_in(arena_ref).into_bump_slice();
-            let properties = BumpVec::<PropertyEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let block_refs = BumpVec::<BlockRefEntry<'_>>::new_in(arena_ref).into_bump_slice();
+
+            // --- Properties ---
+            let mut props_builder = BumpVec::new_in(arena_ref);
+            for pd in &properties_owned {
+                let key = arena_alloc_str(arena_ref, &pd.key);
+                let value = match pd.value_type {
+                    1 => {
+                        // List: split on comma, trim items
+                        let items: Vec<&str> = pd.value.split(',').map(|s| s.trim()).collect();
+                        let mut bump_items = BumpVec::new_in(arena_ref);
+                        for item in items {
+                            bump_items.push(arena_alloc_str(arena_ref, item));
+                        }
+                        PropertyValueEntry::List(bump_items.into_bump_slice())
+                    }
+                    2 => {
+                        // PageRef: strip [[ and ]]
+                        let inner = pd.value.trim_start_matches("[[").trim_end_matches("]]");
+                        PropertyValueEntry::PageRef(arena_alloc_str(arena_ref, inner))
+                    }
+                    _ => PropertyValueEntry::String(arena_alloc_str(arena_ref, &pd.value)),
+                };
+                props_builder.push(PropertyEntry { key, value });
+            }
+            let properties = props_builder.into_bump_slice();
 
             // --- Tasks ---
             let mut tasks_builder = BumpVec::new_in(arena_ref);
@@ -629,11 +297,69 @@ impl DocumentIndex {
             }
             let embeds = embeds_builder.into_bump_slice();
 
-            // Callouts/query_blocks/link_definitions: not yet in blob format
-            let callouts = BumpVec::<CalloutEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let query_blocks = BumpVec::<QueryBlockEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let link_definitions =
-                BumpVec::<LinkDefinitionEntry<'_>>::new_in(arena_ref).into_bump_slice();
+            // --- Callouts ---
+            let mut callouts_builder = BumpVec::new_in(arena_ref);
+            for cd in &callouts_owned {
+                let callout_type = arena_alloc_str(arena_ref, &cd.callout_type);
+                let title = cd.title.as_deref().map(|t| arena_alloc_str(arena_ref, t));
+                let start_pos = Position::new(cd.start_line, cd.start_col);
+                let end_pos = Position::new(cd.end_line, cd.end_col);
+                callouts_builder.push(CalloutEntry {
+                    callout_type,
+                    title,
+                    range: Range::new(start_pos, end_pos),
+                    start_byte: cd.source_offset as usize,
+                    end_byte: cd.end_offset as usize,
+                });
+            }
+            let callouts = callouts_builder.into_bump_slice();
+
+            // --- Block refs ---
+            let mut block_refs_builder = BumpVec::new_in(arena_ref);
+            for br in &block_refs_owned {
+                let uuid = arena_alloc_str(arena_ref, &br.uuid);
+                let start_pos = Position::new(br.start_line, br.start_col);
+                let end_pos = Position::new(br.end_line, br.end_col);
+                block_refs_builder.push(BlockRefEntry {
+                    uuid,
+                    range: Range::new(start_pos, end_pos),
+                });
+            }
+            let block_refs = block_refs_builder.into_bump_slice();
+
+            // --- Query blocks ---
+            let mut qb_builder = BumpVec::new_in(arena_ref);
+            for qb in &query_blocks_owned {
+                let query = arena_alloc_str(arena_ref, &qb.query);
+                let start_pos = Position::new(qb.start_line, qb.start_col);
+                let end_pos = Position::new(qb.end_line, qb.end_col);
+                qb_builder.push(QueryBlockEntry {
+                    query,
+                    range: Range::new(start_pos, end_pos),
+                    start_byte: qb.source_offset as usize,
+                    end_byte: qb.end_offset as usize,
+                });
+            }
+            let query_blocks = qb_builder.into_bump_slice();
+
+            // --- Link definitions ---
+            let mut ld_builder = BumpVec::new_in(arena_ref);
+            for ld in &link_defs_owned {
+                let label = arena_alloc_str(arena_ref, &ld.label);
+                let url = arena_alloc_str(arena_ref, &ld.url);
+                let title = ld.title.as_deref().map(|t| arena_alloc_str(arena_ref, t));
+                let start_pos = Position::new(ld.start_line, ld.start_col);
+                let end_pos = Position::new(ld.end_line, ld.end_col);
+                ld_builder.push(LinkDefinitionEntry {
+                    label,
+                    url,
+                    title,
+                    range: Range::new(start_pos, end_pos),
+                    start_byte: ld.source_offset as usize,
+                    end_byte: ld.end_offset as usize,
+                });
+            }
+            let link_definitions = ld_builder.into_bump_slice();
 
             DocumentDependent {
                 headings,

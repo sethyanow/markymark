@@ -129,6 +129,80 @@ pub const BlobCodeSpan = extern struct {
     end_col: u32 = 0,
 };
 
+pub const BlobCallout = extern struct {
+    type_off: u32 = 0, // callout type text offset in text pool
+    type_len: u32 = 0,
+    title_off: u32 = 0, // title offset (0/0 sentinel for None)
+    title_len: u32 = 0,
+    source_offset: u32 = 0,
+    end_offset: u32 = 0,
+    start_line: u32 = 0,
+    start_col: u32 = 0,
+    end_line: u32 = 0,
+    end_col: u32 = 0,
+};
+
+pub const BlobBlockRef = extern struct {
+    uuid_off: u32 = 0, // UUID text offset in text pool
+    uuid_len: u32 = 0,
+    source_offset: u32 = 0,
+    start_line: u32 = 0,
+    start_col: u32 = 0,
+    end_line: u32 = 0,
+    end_col: u32 = 0,
+};
+
+pub const BlobQueryBlock = extern struct {
+    query_off: u32 = 0, // query text offset in text pool
+    query_len: u32 = 0,
+    source_offset: u32 = 0,
+    end_offset: u32 = 0,
+    start_line: u32 = 0,
+    start_col: u32 = 0,
+    end_line: u32 = 0,
+    end_col: u32 = 0,
+};
+
+pub const BlobLinkDefinition = extern struct {
+    label_off: u32 = 0, // label text offset in text pool
+    label_len: u32 = 0,
+    url_off: u32 = 0, // URL text offset in text pool
+    url_len: u32 = 0,
+    title_off: u32 = 0, // title offset (0/0 sentinel for None)
+    title_len: u32 = 0,
+    source_offset: u32 = 0,
+    end_offset: u32 = 0,
+    start_line: u32 = 0,
+    start_col: u32 = 0,
+    end_line: u32 = 0,
+    end_col: u32 = 0,
+};
+
+pub const BlobProperty = extern struct {
+    key_off: u32 = 0, // key text offset in text pool
+    key_len: u32 = 0,
+    value_off: u32 = 0, // raw value text offset in text pool
+    value_len: u32 = 0,
+    value_type: u8 = 0, // 0=string, 1=list, 2=page_ref
+    _pad: [3]u8 = .{ 0, 0, 0 },
+};
+
+pub const BlobXmlTag = extern struct {
+    tag_name_off: u32 = 0,
+    tag_name_len: u16 = 0,
+    flags: u8 = 0, // bit 0 = self_closing, bit 1 = unclosed, bit 2 = is_inline
+    _pad: u8 = 0,
+    raw_html_off: u32 = 0,
+    raw_html_len: u16 = 0,
+    _pad2: u16 = 0,
+    source_offset: u32 = 0,
+    end_offset: u32 = 0,
+    start_line: u32 = 0,
+    start_col: u32 = 0,
+    end_line: u32 = 0,
+    end_col: u32 = 0,
+};
+
 // ── Comptime size assertions ────────────────────────────────────────
 
 comptime {
@@ -140,6 +214,12 @@ comptime {
     std.debug.assert(@sizeOf(BlobTask) == 36);
     std.debug.assert(@sizeOf(BlobEmbed) == 32);
     std.debug.assert(@sizeOf(BlobCodeSpan) == 32);
+    std.debug.assert(@sizeOf(BlobCallout) == 40);
+    std.debug.assert(@sizeOf(BlobBlockRef) == 28);
+    std.debug.assert(@sizeOf(BlobQueryBlock) == 32);
+    std.debug.assert(@sizeOf(BlobLinkDefinition) == 48);
+    std.debug.assert(@sizeOf(BlobProperty) == 20);
+    std.debug.assert(@sizeOf(BlobXmlTag) == 40);
 }
 
 // ── Blob size computation ───────────────────────────────────────────
@@ -153,6 +233,12 @@ pub fn computeBlobSize(
     code_span_count: u32,
     task_count: u32,
     embed_count: u32,
+    callout_count: u32,
+    block_ref_count: u32,
+    query_block_count: u32,
+    link_def_count: u32,
+    property_count: u32,
+    xml_tag_count: u32,
     line_count: u32,
     text_pool_size: u32,
 ) ?u32 {
@@ -164,6 +250,12 @@ pub fn computeBlobSize(
         @as(u64, code_span_count) * @sizeOf(BlobCodeSpan) +
         @as(u64, task_count) * @sizeOf(BlobTask) +
         @as(u64, embed_count) * @sizeOf(BlobEmbed) +
+        @as(u64, callout_count) * @sizeOf(BlobCallout) +
+        @as(u64, block_ref_count) * @sizeOf(BlobBlockRef) +
+        @as(u64, query_block_count) * @sizeOf(BlobQueryBlock) +
+        @as(u64, link_def_count) * @sizeOf(BlobLinkDefinition) +
+        @as(u64, property_count) * @sizeOf(BlobProperty) +
+        @as(u64, xml_tag_count) * @sizeOf(BlobXmlTag) +
         @as(u64, line_count) * @sizeOf(u32) +
         @as(u64, text_pool_size);
 
@@ -180,6 +272,12 @@ pub const SectionOffsets = struct {
     code_spans: u32,
     tasks: u32,
     embeds: u32,
+    callouts: u32,
+    block_refs: u32,
+    query_blocks: u32,
+    link_definitions: u32,
+    properties: u32,
+    xml_tags: u32,
     line_starts: u32,
     text_pool: u32,
 };
@@ -199,6 +297,12 @@ pub fn computeSectionOffsets(header: ScanBlobHeader) ?SectionOffsets {
         header.code_span_count,
         header.task_count,
         header.embed_count,
+        header.callout_count,
+        header.block_ref_count,
+        header.query_block_count,
+        header.link_def_count,
+        header.property_count,
+        header.xml_tag_count,
         header.line_count,
         header.text_pool_size,
     ) == null) return null;
@@ -210,7 +314,13 @@ pub fn computeSectionOffsets(header: ScanBlobHeader) ?SectionOffsets {
     const code_spans = block_ids + header.block_id_count * @sizeOf(BlobBlockId);
     const tasks = code_spans + header.code_span_count * @sizeOf(BlobCodeSpan);
     const embeds = tasks + header.task_count * @sizeOf(BlobTask);
-    const line_starts = embeds + header.embed_count * @sizeOf(BlobEmbed);
+    const callouts = embeds + header.embed_count * @sizeOf(BlobEmbed);
+    const block_refs = callouts + header.callout_count * @sizeOf(BlobCallout);
+    const query_blocks = block_refs + header.block_ref_count * @sizeOf(BlobBlockRef);
+    const link_definitions = query_blocks + header.query_block_count * @sizeOf(BlobQueryBlock);
+    const properties = link_definitions + header.link_def_count * @sizeOf(BlobLinkDefinition);
+    const xml_tags = properties + header.property_count * @sizeOf(BlobProperty);
+    const line_starts = xml_tags + header.xml_tag_count * @sizeOf(BlobXmlTag);
     const text_pool = line_starts + header.line_count * @sizeOf(u32);
     return .{
         .headings = headings,
@@ -220,6 +330,12 @@ pub fn computeSectionOffsets(header: ScanBlobHeader) ?SectionOffsets {
         .code_spans = code_spans,
         .tasks = tasks,
         .embeds = embeds,
+        .callouts = callouts,
+        .block_refs = block_refs,
+        .query_blocks = query_blocks,
+        .link_definitions = link_definitions,
+        .properties = properties,
+        .xml_tags = xml_tags,
         .line_starts = line_starts,
         .text_pool = text_pool,
     };
@@ -254,6 +370,12 @@ pub fn validateBlob(data: []const u8) BlobError!ScanBlobHeader {
         header.code_span_count,
         header.task_count,
         header.embed_count,
+        header.callout_count,
+        header.block_ref_count,
+        header.query_block_count,
+        header.link_def_count,
+        header.property_count,
+        header.xml_tag_count,
         header.line_count,
         header.text_pool_size,
     ) orelse return error.OutOfRange;
@@ -330,33 +452,40 @@ test "v2 header includes all planned count fields" {
 }
 
 test "computeBlobSize empty document" {
-    const size = computeBlobSize(0, 0, 0, 0, 0, 0, 0, 0, 0);
+    const size = computeBlobSize(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     try testing.expectEqual(@as(?u32, 128), size);
 }
 
 test "computeBlobSize with counts" {
-    // 1 heading (40) + 1 link (40) + 1 tag (24) + 1 block_id (28) + 0 code_spans + 0 tasks + 0 embeds + 2 lines (8) + 10 text
-    const size = computeBlobSize(1, 1, 1, 1, 0, 0, 0, 2, 10);
+    // 1 heading (40) + 1 link (40) + 1 tag (24) + 1 block_id (28) + 0 code_spans + 0 tasks + 0 embeds + 0 callouts + 0 block_refs + 2 lines (8) + 10 text
+    const size = computeBlobSize(1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 10);
     const expected: u32 = 128 + 40 + 40 + 24 + 28 + 8 + 10;
     try testing.expectEqual(@as(?u32, expected), size);
 }
 
 test "computeBlobSize with code spans" {
-    // 1 heading (40) + 1 link (40) + 1 tag (24) + 1 block_id (28) + 2 code_spans (64) + 0 tasks + 0 embeds + 2 lines (8) + 10 text
-    const size = computeBlobSize(1, 1, 1, 1, 2, 0, 0, 2, 10);
+    // 1 heading (40) + 1 link (40) + 1 tag (24) + 1 block_id (28) + 2 code_spans (64) + 0 tasks + 0 embeds + 0 callouts + 0 block_refs + 2 lines (8) + 10 text
+    const size = computeBlobSize(1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 10);
     const expected: u32 = 128 + 40 + 40 + 24 + 28 + 64 + 8 + 10;
     try testing.expectEqual(@as(?u32, expected), size);
 }
 
 test "computeBlobSize with tasks and embeds" {
-    // 0 headings + 0 links + 0 tags + 0 block_ids + 0 code_spans + 1 task (36) + 1 embed (32) + 0 lines + 5 text
-    const size = computeBlobSize(0, 0, 0, 0, 0, 1, 1, 0, 5);
+    // 0 headings + 0 links + 0 tags + 0 block_ids + 0 code_spans + 1 task (36) + 1 embed (32) + 0 callouts + 0 block_refs + 0 lines + 5 text
+    const size = computeBlobSize(0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 5);
     const expected: u32 = 128 + 36 + 32 + 5;
     try testing.expectEqual(@as(?u32, expected), size);
 }
 
+test "computeBlobSize with callouts and block refs" {
+    // 0 headings + 0 links + 0 tags + 0 block_ids + 0 code_spans + 0 tasks + 0 embeds + 1 callout (40) + 1 block_ref (28) + 0 lines + 10 text
+    const size = computeBlobSize(0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 10);
+    const expected: u32 = 128 + 40 + 28 + 10;
+    try testing.expectEqual(@as(?u32, expected), size);
+}
+
 test "computeBlobSize overflow returns null" {
-    const size = computeBlobSize(std.math.maxInt(u32), 0, 0, 0, 0, 0, 0, 0, 0);
+    const size = computeBlobSize(std.math.maxInt(u32), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     try testing.expectEqual(@as(?u32, null), size);
 }
 

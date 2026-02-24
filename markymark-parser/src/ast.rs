@@ -50,6 +50,12 @@ pub struct Ast {
 }
 
 impl Ast {
+    /// Get a reference to the original source text.
+    #[inline]
+    pub fn source(&self) -> &str {
+        &self.cell.borrow_owner().source
+    }
+
     /// Get a reference to the inner bump allocator.
     ///
     /// Callers (e.g. `DocumentIndex`) use this to allocate into the parser's
@@ -119,71 +125,6 @@ impl Ast {
         self.cell.borrow_dependent().root_elements.as_slice()
     }
 
-    /// Extract all wiki links from the document
-    pub fn extract_wiki_links<'a>(&'a self) -> Vec<WikiLink<'a>> {
-        self.cell.with_dependent(|owner, dep| {
-            crate::extract::extract_wiki_links(
-                &dep.root_elements,
-                &owner.source,
-                owner.arena.bump(),
-            )
-        })
-    }
-
-    /// Extract all markdown links
-    pub fn extract_markdown_links<'a>(&'a self) -> Vec<MarkdownLink<'a>> {
-        self.cell.with_dependent(|owner, dep| {
-            crate::extract::extract_markdown_links(
-                &dep.root_elements,
-                &owner.source,
-                owner.arena.bump(),
-            )
-        })
-    }
-
-    /// Extract all link definitions
-    pub fn extract_link_definitions<'a>(&'a self) -> Vec<LinkDefinition<'a>> {
-        self.cell.with_dependent(|owner, dep| {
-            crate::extract::extract_link_definitions(
-                &dep.root_elements,
-                &owner.source,
-                owner.arena.bump(),
-            )
-        })
-    }
-
-    /// Extract all block IDs (Obsidian)
-    pub fn extract_block_ids<'a>(&'a self) -> Vec<BlockId<'a>> {
-        self.cell.with_dependent(|owner, dep| {
-            crate::extract::extract_block_ids(&dep.root_elements, &owner.source, owner.arena.bump())
-        })
-    }
-
-    /// Extract all block references (Logseq)
-    pub fn extract_block_refs<'a>(&'a self) -> Vec<BlockRef<'a>> {
-        self.cell.with_dependent(|owner, dep| {
-            crate::extract::extract_block_refs(
-                &dep.root_elements,
-                &owner.source,
-                owner.arena.bump(),
-            )
-        })
-    }
-
-    /// Extract all tags
-    pub fn extract_tags<'a>(&'a self) -> Vec<Tag<'a>> {
-        self.cell.with_dependent(|owner, dep| {
-            crate::extract::extract_tags(&dep.root_elements, &owner.source, owner.arena.bump())
-        })
-    }
-
-    /// Extract all embeds
-    pub fn extract_embeds<'a>(&'a self) -> Vec<Embed<'a>> {
-        self.cell.with_dependent(|owner, dep| {
-            crate::extract::extract_embeds(&dep.root_elements, &owner.source, owner.arena.bump())
-        })
-    }
-
     /// Extract all list items as references into the arena (avoids cloning ArenaHashMap).
     ///
     /// Returns an empty vec if the tree has been taken via [`take_md_tree`](Self::take_md_tree).
@@ -209,31 +150,6 @@ impl Ast {
         self.md_tree.take()
     }
 
-    /// Extract all tasks
-    pub fn extract_tasks<'a>(&'a self) -> Vec<Task<'a>> {
-        self.cell.with_dependent(|owner, dep| {
-            crate::extract::extract_tasks(&dep.root_elements, &owner.source, owner.arena.bump())
-        })
-    }
-
-    /// Extract all callouts (Obsidian)
-    pub fn extract_callouts<'a>(&'a self) -> Vec<Callout<'a>> {
-        self.cell.with_dependent(|owner, dep| {
-            crate::extract::extract_callouts(&dep.root_elements, &owner.source, owner.arena.bump())
-        })
-    }
-
-    /// Extract all query blocks (Logseq)
-    pub fn extract_query_blocks<'a>(&'a self) -> Vec<QueryBlock<'a>> {
-        self.cell.with_dependent(|owner, dep| {
-            crate::extract::extract_query_blocks(
-                &dep.root_elements,
-                &owner.source,
-                owner.arena.bump(),
-            )
-        })
-    }
-
     /// Get frontmatter if present
     pub fn frontmatter<'a>(&'a self) -> Option<Frontmatter<'a>> {
         self.cell.with_dependent(|owner, dep| {
@@ -253,13 +169,6 @@ impl Ast {
                 &owner.source,
                 owner.arena.bump(),
             )
-        })
-    }
-
-    /// Extract all XML/HTML tags from the document
-    pub fn extract_xml_tags<'a>(&'a self) -> Vec<XmlTag<'a>> {
-        self.cell.with_dependent(|owner, dep| {
-            crate::extract::extract_xml_tags(&dep.root_elements, &owner.source, owner.arena.bump())
         })
     }
 }

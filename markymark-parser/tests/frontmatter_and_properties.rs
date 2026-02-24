@@ -61,27 +61,6 @@ fn extract_inline_properties() {
 }
 
 #[test]
-fn parse_task_states() {
-    let mut parser = Parser::new().unwrap();
-    let markdown = r#"- [ ] Unchecked task
-- [x] Checked task
-- [/] In progress task
-- TODO A todo item
-- DONE A completed item
-"#;
-
-    let ast = parser.parse(markdown).unwrap();
-    let tasks = ast.extract_tasks();
-
-    assert_eq!(tasks.len(), 5);
-    assert_eq!(tasks[0].state().as_str(), "unchecked");
-    assert_eq!(tasks[1].state().as_str(), "checked");
-    assert_eq!(tasks[2].state().as_str(), "in_progress");
-    assert_eq!(tasks[3].state().as_str(), "todo");
-    assert_eq!(tasks[4].state().as_str(), "done");
-}
-
-#[test]
 fn parse_deep_nested_lists() {
     let mut parser = Parser::new().unwrap();
     let markdown = r#"- Level 1
@@ -117,34 +96,6 @@ fn parse_deep_nested_lists() {
     }
 
     assert_eq!(depth, 10, "Should support 10 levels of nesting");
-}
-
-#[test]
-fn extract_obsidian_callouts() {
-    let mut parser = Parser::new().unwrap();
-    let markdown = r#"> [!info] Information
-> This is informative content.
-"#;
-
-    let ast = parser.parse(markdown).unwrap();
-    let callouts = ast.extract_callouts();
-
-    assert_eq!(callouts.len(), 1);
-    assert_eq!(callouts[0].callout_type(), "info");
-    assert_eq!(callouts[0].title(), Some("Information"));
-}
-
-#[test]
-fn extract_logseq_query_blocks() {
-    let mut parser = Parser::new().unwrap();
-    let markdown = r#"{{query (and [[project]] (task DOING))}}
-"#;
-
-    let ast = parser.parse(markdown).unwrap();
-    let queries = ast.extract_query_blocks();
-
-    assert_eq!(queries.len(), 1);
-    assert_eq!(queries[0].query_text(), "(and [[project]] (task DOING))");
 }
 
 #[test]

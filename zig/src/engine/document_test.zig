@@ -481,6 +481,12 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
         var out_block_ids: []StoredBlockId = &.{};
         var out_tasks: []doc.StoredTask = &.{};
         var out_embeds: []doc.StoredEmbed = &.{};
+        var out_callouts: []doc.StoredCallout = &.{};
+        var out_block_refs: []doc.StoredBlockRef = &.{};
+        var out_query_blocks: []doc.StoredQueryBlock = &.{};
+        var out_link_defs: []doc.StoredLinkDefinition = &.{};
+        var out_properties: []doc.StoredProperty = &.{};
+        var out_xml_tags: []doc.StoredXmlTag = &.{};
         var out_line_starts: []u32 = &.{};
         var out_token_estimate: u32 = 0;
         var out_content_hash: u64 = 0;
@@ -495,6 +501,12 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
             &out_block_ids,
             &out_tasks,
             &out_embeds,
+            &out_callouts,
+            &out_block_refs,
+            &out_query_blocks,
+            &out_link_defs,
+            &out_properties,
+            &out_xml_tags,
             &out_line_starts,
             &out_token_estimate,
             &out_content_hash,
@@ -509,6 +521,12 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
             freeBlockIds(failing.allocator(), out_block_ids);
             doc.freeTasks(failing.allocator(), out_tasks);
             doc.freeEmbeds(failing.allocator(), out_embeds);
+            doc.freeCallouts(failing.allocator(), out_callouts);
+            doc.freeBlockRefs(failing.allocator(), out_block_refs);
+            doc.freeQueryBlocks(failing.allocator(), out_query_blocks);
+            doc.freeLinkDefinitions(failing.allocator(), out_link_defs);
+            doc.freeProperties(failing.allocator(), out_properties);
+            doc.freeXmlTags(failing.allocator(), out_xml_tags);
             if (out_line_starts.len > 0) failing.allocator().free(out_line_starts);
             consecutive_successes += 1;
         } else |_| {
@@ -609,4 +627,49 @@ test "engine update preserves code spans" {
     try testing.expectEqual(@as(usize, 2), engine.code_spans.len);
     try testing.expectEqualStrings("b", engine.code_spans[0].text);
     try testing.expectEqualStrings("c", engine.code_spans[1].text);
+}
+
+// ── XML tag tests ──────────────────────────────────────────────────
+
+test "engine extracts XML tags from block-level HTML" {
+    const engine = try DocumentEngine.create("<wrapper>\n\ncontent\n\n</wrapper>\n", testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 1), engine.xml_tags.len);
+    try testing.expectEqualStrings("wrapper", engine.xml_tags[0].tag_name);
+    try testing.expect(!engine.xml_tags[0].is_self_closing);
+    try testing.expect(!engine.xml_tags[0].is_unclosed);
+    // Position info populated
+    try testing.expect(engine.xml_tags[0].end.line > 0 or engine.xml_tags[0].end.col > 0);
+}
+
+test "engine xml_tags blob serialization roundtrip" {
+    const blob_mod = @import("blob.zig");
+
+    var engine = try DocumentEngine.create("<tag>\n\ntext\n\n</tag>\n", testing.allocator);
+    defer engine.destroy();
+
+    const blob_data = try engine.getBlob();
+    const header = blob_mod.readHeader(blob_data);
+    try testing.expectEqual(@as(u32, 1), header.xml_tag_count);
+}
+
+test "engine xml_tags empty document has no xml_tags" {
+    const engine = try DocumentEngine.create("# Just a heading\n", testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 0), engine.xml_tags.len);
+}
+
+test "engine xml_tags update replaces old xml_tags" {
+    var engine = try DocumentEngine.create("<div>\n\ntext\n\n</div>\n", testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 1), engine.xml_tags.len);
+    try testing.expectEqualStrings("div", engine.xml_tags[0].tag_name);
+
+    // Update with different content
+    try engine.update("<span>\n\nnew\n\n</span>\n");
+    try testing.expectEqual(@as(usize, 1), engine.xml_tags.len);
+    try testing.expectEqualStrings("span", engine.xml_tags[0].tag_name);
 }

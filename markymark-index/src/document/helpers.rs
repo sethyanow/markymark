@@ -6,7 +6,6 @@ use std::collections::HashMap as StdHashMap;
 
 use super::types::*;
 
-#[cfg(feature = "zig-kernels")]
 use markymark_core::prelude::Position;
 
 /// Convert heading text to a URL-safe slug.
@@ -166,7 +165,6 @@ pub(crate) fn build_outline<'arena>(
 
 /// Build a sorted list of byte offsets where each line starts.
 /// Line 0 starts at offset 0. Line N starts after the N-th newline.
-#[cfg(feature = "zig-kernels")]
 pub(super) fn byte_offset_line_starts(text: &str) -> Vec<u32> {
     let mut starts = vec![0u32];
     for (i, b) in text.bytes().enumerate() {
@@ -178,7 +176,6 @@ pub(super) fn byte_offset_line_starts(text: &str) -> Vec<u32> {
 }
 
 /// Convert a byte offset to a Position (0-based line, 0-based character).
-#[cfg(feature = "zig-kernels")]
 pub(super) fn byte_offset_to_position(line_starts: &[u32], offset: u32) -> Position {
     let line = match line_starts.binary_search(&offset) {
         Ok(exact) => exact,
@@ -186,4 +183,132 @@ pub(super) fn byte_offset_to_position(line_starts: &[u32], offset: u32) -> Posit
     };
     let col = offset - line_starts[line];
     Position::new(line as u32, col)
+}
+
+/// Extract frontmatter from a parsed AST as owned data.
+///
+/// Returns `(frontmatter_entries, aliases)` where aliases are extracted from the
+/// `aliases` frontmatter key. Used by both `from_ast` and `from_scan_with_frontmatter`.
+pub(super) fn extract_frontmatter_from_ast(
+    ast: &markymark_parser::Ast,
+) -> (Vec<FrontmatterOwnedEntry>, Vec<String>) {
+    let mut frontmatter_owned = Vec::new();
+    let mut aliases_owned = Vec::new();
+
+    if let Some(fm) = ast.frontmatter() {
+        use markymark_parser::FrontmatterValue;
+        for (key, value) in fm.iter() {
+            let key_str = (*key).to_string();
+            let value_owned = match value {
+                FrontmatterValue::String(s) => FrontmatterValueOwned::String((*s).to_string()),
+                FrontmatterValue::List(items) => {
+                    FrontmatterValueOwned::List(items.iter().map(|s| s.to_string()).collect())
+                }
+            };
+            if key_str == "aliases" {
+                match &value_owned {
+                    FrontmatterValueOwned::String(s) => {
+                        if !s.is_empty() {
+                            aliases_owned.push(s.clone());
+                        }
+                    }
+                    FrontmatterValueOwned::List(items) => {
+                        aliases_owned.extend(items.iter().cloned());
+                    }
+                }
+            }
+            frontmatter_owned.push(FrontmatterOwnedEntry {
+                key: key_str,
+                value: value_owned,
+            });
+        }
+    }
+
+    (frontmatter_owned, aliases_owned)
+}
+
+/// Parse frontmatter from raw markdown source text as owned data.
+///
+/// Standalone parser that doesn't require a tree-sitter AST. Replicates
+/// the simple YAML parsing from `markymark_parser::extract_frontmatter`.
+/// Returns `(frontmatter_entries, aliases)`.
+pub fn parse_frontmatter_owned(source: &str) -> (Vec<FrontmatterOwnedEntry>, Vec<String>) {
+    // Check for YAML frontmatter delimiters
+    if !source.starts_with("---\n") {
+        return (Vec::new(), Vec::new());
+    }
+
+    let rest = &source[4..];
+    let yaml_content = match rest.find("\n---\n") {
+        Some(end_pos) => &rest[..end_pos],
+        None => return (Vec::new(), Vec::new()),
+    };
+
+    let mut frontmatter = Vec::new();
+    let mut aliases = Vec::new();
+
+    for line in yaml_content.lines() {
+        let mut parts = line.splitn(2, ':');
+        if let (Some(raw_key), Some(raw_value)) = (parts.next(), parts.next()) {
+            let key = raw_key.trim().to_string();
+            if key.is_empty() {
+                continue;
+            }
+            let value_str = raw_value.trim();
+
+            let value = if value_str.starts_with('[') && value_str.ends_with(']') {
+                let inner = &value_str[1..value_str.len() - 1];
+                let items: Vec<String> = inner
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                FrontmatterValueOwned::List(items)
+            } else {
+                FrontmatterValueOwned::String(value_str.to_string())
+            };
+
+            if key == "aliases" {
+                match &value {
+                    FrontmatterValueOwned::String(s) => {
+                        if !s.is_empty() {
+                            aliases.push(s.clone());
+                        }
+                    }
+                    FrontmatterValueOwned::List(items) => {
+                        aliases.extend(items.iter().cloned());
+                    }
+                }
+            }
+
+            frontmatter.push(FrontmatterOwnedEntry { key, value });
+        }
+    }
+
+    (frontmatter, aliases)
+}
+
+/// Mask YAML frontmatter so md4c doesn't misparse `---` as a setext heading.
+///
+/// Replaces all non-newline bytes in the `---\n...\n---\n` block with spaces,
+/// preserving line counting and byte offsets for the scan backend. Returns the
+/// original string unchanged if no frontmatter is present.
+pub fn mask_frontmatter(source: &str) -> String {
+    if !source.starts_with("---\n") {
+        return source.to_string();
+    }
+    let rest = &source[4..];
+    let fm_end = match rest.find("\n---\n") {
+        Some(pos) => 4 + pos + 5, // "---\n" + content + "\n---\n"
+        None => return source.to_string(),
+    };
+    let mut bytes: Vec<u8> = source.bytes().collect();
+    for b in &mut bytes[..fm_end] {
+        if *b != b'\n' {
+            *b = b' ';
+        }
+    }
+    // Frontmatter is ASCII (YAML keys/values/delimiters), so replacing
+    // non-newline bytes with spaces maintains valid UTF-8.
+    String::from_utf8(bytes).unwrap_or_else(|_| source.to_string())
 }

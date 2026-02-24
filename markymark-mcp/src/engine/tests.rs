@@ -386,6 +386,71 @@ fn hash_embedding_rejects_zero_dims() {
     );
 }
 
+/// MCP batch-indexed markdown documents must have code spans extracted.
+///
+/// This tests the B-8 migration: from_ast → from_scan for MCP batch indexing.
+/// The `from_scan` path (Zig extraction) extracts inline code spans, while
+/// `from_ast` does not. After migration, searching for code span text should
+/// return results.
+#[test]
+fn batch_indexed_docs_have_code_spans() {
+    let dir = make_temp_realm_dir("code-spans");
+    fs::write(
+        dir.path().join("doc.md"),
+        "# Code Spans Test\n\nThe `HashMap` type is a key-value store.\n\nUse `Vec<T>` for lists.\n",
+    )
+    .unwrap();
+    let engine = make_engine_with_custom_realm("code-spans-realm", dir.path());
+
+    // Search for code span text — should find matches if code spans are extracted
+    let result = engine.execute(CoreOperation::SearchSymbols {
+        query: "HashMap".to_string(),
+        realm: Some("code-spans-realm".to_string()),
+    });
+    if let CoreOperationResult::Symbols(matches) = result {
+        assert!(
+            !matches.is_empty(),
+            "batch-indexed docs should have code spans: searching for 'HashMap' should find the backtick code span"
+        );
+    } else {
+        panic!("expected Symbols result, got {result:?}");
+    }
+}
+
+/// MCP batch-indexed markdown documents must preserve frontmatter.
+///
+/// After B-8 migration to from_scan, frontmatter must still be accessible
+/// for search filtering, preview, and export. This tests that the
+/// `from_scan_with_frontmatter` constructor correctly preserves frontmatter.
+#[test]
+fn batch_indexed_docs_preserve_frontmatter() {
+    let dir = make_temp_realm_dir("frontmatter-preservation");
+    fs::write(
+        dir.path().join("doc.md"),
+        "---\ntitle: Test Document\ntags: [rust, zig]\n---\n\n# Content\n\nSome text here.\n",
+    )
+    .unwrap();
+    let engine = make_engine_with_custom_realm("fm-realm", dir.path());
+
+    // Search with frontmatter filter should find the document
+    let result = engine.execute(CoreOperation::SearchWorkspace {
+        query: None,
+        realm: Some("fm-realm".to_string()),
+        frontmatter_filter: Some(("title".to_string(), "Test Document".to_string())),
+        property_filter: None,
+        tag_filter: None,
+        limit: 10,
+    });
+    if let CoreOperationResult::WorkspaceSearchResults { results, .. } = result {
+        assert!(
+            !results.is_empty(),
+            "frontmatter filtering should find the document after from_scan migration"
+        );
+    } else {
+        panic!("expected WorkspaceSearchResults, got {result:?}");
+    }
+}
+
 #[test]
 fn collect_documents_markdown_unchanged() {
     let dir = tempfile::tempdir().expect("failed to create temp dir");

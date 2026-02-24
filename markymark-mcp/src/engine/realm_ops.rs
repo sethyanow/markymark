@@ -5,7 +5,6 @@ use std::path::PathBuf;
 
 use markymark_core::engine::CoreOperationResult;
 use markymark_core::CoreError;
-use markymark_parser::Parser;
 
 use super::{helpers, index_root_into_realm, unindex_root_from_realm, RealmData, DEFAULT_REALM};
 
@@ -82,16 +81,7 @@ pub(crate) fn handle_add_root(
         }
     }
 
-    let mut parser = match Parser::new() {
-        Ok(p) => p,
-        Err(err) => {
-            return CoreOperationResult::Error(CoreError::Message(format!(
-                "failed to create parser: {err}"
-            )));
-        }
-    };
-
-    index_root_into_realm(&mut parser, &root, realm_data);
+    index_root_into_realm(&root, realm_data);
     realm_data.roots.push(root);
 
     CoreOperationResult::RealmInfo {
