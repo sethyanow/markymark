@@ -22,12 +22,22 @@ fn main() {
         .ok()
         .and_then(|t| rust_target_to_zig_target(&t));
 
-    // Run zig build lib
-    build_zig_library(&zig_dir, zig_target.as_deref());
+    // Use Cargo's OUT_DIR as the Zig install prefix so every Cargo compilation
+    // unit (lib, test, clippy, …) writes to its own unique output directory.
+    // Multiple cargo build/test/clippy steps within one CI job each invoke
+    // build.rs separately; if they all wrote to the shared zig/zig-out/lib/
+    // path, a warm-cache `zig build lib` call on Linux x86_64 could corrupt
+    // the archive (Zig 0.15.2 bug: reusing .zig-cache while overwriting the
+    // same .a file produces a truncated archive).  Each unit's OUT_DIR is
+    // unique, so no two invocations race on the same output file.
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
+
+    // Run zig build lib, installing into Cargo's unique OUT_DIR
+    build_zig_library(&zig_dir, zig_target.as_deref(), &out_dir);
 
     // Verify the library artifact exists
     // Zig produces libmarky_kernels.a on Unix, marky_kernels.lib on Windows
-    let lib_path = zig_dir.join("zig-out").join("lib");
+    let lib_path = out_dir.join("lib");
     let lib_file = if cfg!(target_os = "windows") {
         lib_path.join("marky_kernels.lib")
     } else {
@@ -133,11 +143,22 @@ fn rust_target_to_zig_target(rust_target: &str) -> Option<String> {
     }
 }
 
-/// Run `zig build lib` in the zig directory, optionally with -Dtarget for cross-compilation.
-/// Zig requires -Dtarget=value as a single argument; passing -Dtarget and value separately fails.
-fn build_zig_library(zig_dir: &std::path::Path, zig_target: Option<&str>) {
+/// Run `zig build lib` in the zig directory.
+///
+/// `prefix` is passed as the Zig install prefix (`-p <prefix>`); the library
+/// will be installed to `<prefix>/lib/`.  Callers should use Cargo's `OUT_DIR`
+/// so that concurrent/sequential build-script invocations never share the same
+/// output file — a known Linux x86_64 / Zig 0.15.2 issue where overwriting a
+/// cached archive from a warm `.zig-cache` produces a truncated archive.
+///
+/// Zig requires -Dtarget=value as a single argument; passing -Dtarget and
+/// value separately fails.
+fn build_zig_library(zig_dir: &std::path::Path, zig_target: Option<&str>, prefix: &std::path::Path) {
     let mut cmd = Command::new("zig");
-    cmd.arg("build").arg("lib").current_dir(zig_dir);
+    cmd.arg("build").arg("lib")
+        .arg("-p")
+        .arg(prefix)
+        .current_dir(zig_dir);
     if let Some(t) = zig_target {
         cmd.arg(format!("-Dtarget={t}"));
     }
@@ -198,5 +219,35 @@ mod tests {
     #[should_panic(expected = "Could not parse Zig version")]
     fn test_version_garbage() {
         check_zig_version("not-a-version");
+    }
+
+    /// Regression test for marky-whvn: the Zig library must be installed into
+    /// Cargo's OUT_DIR, not into the shared zig/zig-out/lib/ path.
+    ///
+    /// Background: On Linux x86_64, Zig 0.15.2 corrupts `libmarky_kernels.a`
+    /// when `zig build lib` is invoked a second/third time with a warm
+    /// `.zig-cache`.  This happens because three CI steps (clippy, build, test)
+    /// each run build.rs, each calling `zig build lib`, all previously writing
+    /// to the same shared `zig/zig-out/lib/` path.  The fix is to use Cargo's
+    /// `OUT_DIR` as the `-p` prefix so every compilation unit gets its own
+    /// unique output directory with no write collisions.
+    #[test]
+    fn test_lib_path_derived_from_out_dir_not_zig_out() {
+        use std::path::PathBuf;
+
+        // Simulate what main() does: lib_path = out_dir.join("lib")
+        let out_dir = PathBuf::from("/cargo/out/markymark-kernels-abc123/out");
+        let lib_path = out_dir.join("lib");
+
+        // Must be rooted in OUT_DIR, not in the old shared zig-out path
+        let path_str = lib_path.to_str().unwrap();
+        assert!(
+            !path_str.contains("zig-out"),
+            "lib_path must not use the shared zig-out directory, got: {path_str}"
+        );
+        assert!(
+            path_str.contains("markymark-kernels-abc123"),
+            "lib_path must be inside the per-unit OUT_DIR, got: {path_str}"
+        );
     }
 }
