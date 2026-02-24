@@ -14,10 +14,10 @@ default = []
 semantic-search = ["markymark-index/embeddings"]
 
 [dependencies]
-markymark-core = { version = "0.5.1", path = "../markymark-core" }
-markymark-parser = { version = "0.5.1", path = "../markymark-parser" }
-markymark-index = { version = "0.5.1", path = "../markymark-index" }
-markymark-kernels = { version = "0.5.1", path = "../markymark-kernels" }
+markymark-core = { version = "0.6.0", path = "../markymark-core" }
+markymark-parser = { version = "0.6.0", path = "../markymark-parser" }
+markymark-index = { version = "0.6.0", path = "../markymark-index" }
+markymark-kernels = { version = "0.6.0", path = "../markymark-kernels" }
 rmcp = { workspace = true }
 regex = { workspace = true }
 tokio = { workspace = true }
