@@ -128,6 +128,15 @@ impl ServerState {
         }
     }
 
+    /// Build a [`DocumentIndex`] from raw text via the scan fallback path,
+    /// parsing and masking frontmatter so md4c doesn't misparse `---`
+    /// delimiters as setext headings.
+    fn fallback_scan_with_frontmatter(text: &str) -> DocumentIndex {
+        let (fm, aliases) = parse_frontmatter_owned(text);
+        let masked = mask_frontmatter(text);
+        DocumentIndex::from_scan_with_frontmatter(&masked, &Md4cScanBackend, fm, aliases)
+    }
+
     /// Build a markdown document index via the stateful Zig DocumentEngine.
     ///
     /// If an engine for the URI exists, updates it; otherwise creates one.
@@ -138,15 +147,6 @@ impl ServerState {
     /// all text into its own bumpalo arena immediately, so the `DocumentIndex`
     /// does NOT hold references to the blob after `from_blob()` returns. The
     /// blob can safely drop and the engine can be mutated or stored.
-    /// Build a [`DocumentIndex`] from raw text via the scan fallback path,
-    /// parsing and masking frontmatter so md4c doesn't misparse `---`
-    /// delimiters as setext headings.
-    fn fallback_scan_with_frontmatter(text: &str) -> DocumentIndex {
-        let (fm, aliases) = parse_frontmatter_owned(text);
-        let masked = mask_frontmatter(text);
-        DocumentIndex::from_scan_with_frontmatter(&masked, &Md4cScanBackend, fm, aliases)
-    }
-
     fn build_markdown_index_via_engine(&mut self, uri_str: &str, text: &str) -> DocumentIndex {
         // Parse frontmatter and mask it so md4c doesn't misparse `---`
         // delimiters as setext headings. Masking preserves byte offsets.
