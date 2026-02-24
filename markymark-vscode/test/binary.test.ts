@@ -41,16 +41,12 @@ describe('resolveBinaryPath', () => {
     );
   });
 
-  it('win32 unknown arch falls back to markymark.exe', () => {
-    expect(resolveBinaryPath(EXT, 'win32', 'ia32')).toBe(
-      path.join(EXT, 'bin', 'markymark.exe'),
-    );
+  it('win32 unknown arch returns bare markymark.exe for PATH lookup', () => {
+    expect(resolveBinaryPath(EXT, 'win32', 'ia32')).toBe('markymark.exe');
   });
 
-  it('unknown platform falls back to bare markymark', () => {
-    expect(resolveBinaryPath(EXT, 'freebsd', 'x64')).toBe(
-      path.join(EXT, 'bin', 'markymark'),
-    );
+  it('unknown platform returns bare markymark for PATH lookup', () => {
+    expect(resolveBinaryPath(EXT, 'freebsd', 'x64')).toBe('markymark');
   });
 
   it('configPath override takes precedence over platform detection', () => {
