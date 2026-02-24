@@ -29,9 +29,10 @@ use markymark_core::{Position, Range};
 
 use super::{
     helpers, BlockEntry, BlockRefEntry, CalloutEntry, CodeSpanEntry, DocumentDependent,
-    DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry, HeadingEntry,
-    LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry,
-    TagEntry, TaskEntry, WikiLinkEntry, XmlTagEntry,
+    DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry,
+    FrontmatterValueEntry, FrontmatterValueOwned, HeadingEntry, LinkDefinitionEntry,
+    MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry, TagEntry, TaskEntry,
+    WikiLinkEntry, XmlTagEntry,
 };
 
 mod decode;
@@ -67,6 +68,28 @@ impl DocumentIndex {
     ///
     /// [`from_scan`]: DocumentIndex::from_scan
     pub fn from_blob(data: &[u8]) -> Result<Self, BlobError> {
+        Self::from_blob_inner(data, Vec::new(), Vec::new())
+    }
+
+    /// Build a document index from a blob with pre-parsed frontmatter.
+    ///
+    /// Same as [`from_blob`] but accepts owned frontmatter entries and aliases
+    /// parsed from the original source text. The blob format does not carry
+    /// frontmatter, so this is the only way to populate frontmatter in an
+    /// index built from a blob.
+    pub fn from_blob_with_frontmatter(
+        data: &[u8],
+        frontmatter: Vec<super::FrontmatterOwnedEntry>,
+        aliases: Vec<String>,
+    ) -> Result<Self, BlobError> {
+        Self::from_blob_inner(data, frontmatter, aliases)
+    }
+
+    fn from_blob_inner(
+        data: &[u8],
+        fm_owned: Vec<super::FrontmatterOwnedEntry>,
+        aliases_owned: Vec<String>,
+    ) -> Result<Self, BlobError> {
         let header = validate_blob(data)?;
         let offsets = compute_offsets(&header);
         let text_pool =
@@ -237,8 +260,30 @@ impl DocumentIndex {
             }
             let code_spans = cs_builder.into_bump_slice();
 
-            let frontmatter = BumpVec::<FrontmatterEntry<'_>>::new_in(arena_ref).into_bump_slice();
-            let aliases = BumpVec::<&str>::new_in(arena_ref).into_bump_slice();
+            let mut frontmatter_builder = BumpVec::new_in(arena_ref);
+            for fm in fm_owned {
+                let key = arena_alloc_str(arena_ref, &fm.key);
+                let value = match fm.value {
+                    FrontmatterValueOwned::String(s) => {
+                        FrontmatterValueEntry::String(arena_alloc_str(arena_ref, &s))
+                    }
+                    FrontmatterValueOwned::List(items) => {
+                        let mut list = BumpVec::new_in(arena_ref);
+                        for item in items {
+                            list.push(arena_alloc_str(arena_ref, &item));
+                        }
+                        FrontmatterValueEntry::List(list.into_bump_slice())
+                    }
+                };
+                frontmatter_builder.push(FrontmatterEntry { key, value });
+            }
+            let frontmatter = frontmatter_builder.into_bump_slice();
+
+            let mut aliases_builder = BumpVec::new_in(arena_ref);
+            for alias in aliases_owned {
+                aliases_builder.push(arena_alloc_str(arena_ref, &alias));
+            }
+            let aliases = aliases_builder.into_bump_slice();
 
             // --- Properties ---
             let mut props_builder = BumpVec::new_in(arena_ref);

@@ -9,7 +9,10 @@ use std::collections::HashMap;
 use markymark_core::scanner::Md4cScanBackend;
 use markymark_core::structured::DocumentKind;
 use markymark_core::DocumentUri;
-use markymark_index::{AnyDocumentIndex, DocumentIndex, RealmIndex, StructuredDocumentIndex};
+use markymark_index::{
+    AnyDocumentIndex, DocumentIndex, RealmIndex, StructuredDocumentIndex,
+    mask_frontmatter, parse_frontmatter_owned,
+};
 use markymark_kernels::engine::DocumentEngine;
 use markymark_parser::structured::parse_structured;
 
@@ -136,6 +139,11 @@ impl ServerState {
     /// does NOT hold references to the blob after `from_blob()` returns. The
     /// blob can safely drop and the engine can be mutated or stored.
     fn build_markdown_index_via_engine(&mut self, uri_str: &str, text: &str) -> DocumentIndex {
+        // Parse frontmatter and mask it so md4c doesn't misparse `---`
+        // delimiters as setext headings. Masking preserves byte offsets.
+        let (fm, aliases) = parse_frontmatter_owned(text);
+        let masked = mask_frontmatter(text);
+
         if let Some(engine_mutex) = self.engines.get(uri_str) {
             // Engine exists — update it. The mutex is uncontested here because
             // build_markdown_index_via_engine takes &mut self.
@@ -147,19 +155,34 @@ impl ServerState {
                         "engine mutex poisoned for {}, falling back to from_scan",
                         uri_str
                     );
-                    return DocumentIndex::from_scan(text, &Md4cScanBackend);
+                    return DocumentIndex::from_scan_with_frontmatter(
+                        &masked, &Md4cScanBackend, fm, aliases,
+                    );
                 }
             };
-            match engine.update(text) {
+            match engine.update(&masked) {
                 Ok(()) => match engine.get_blob() {
-                    Ok(blob) => match DocumentIndex::from_blob(blob.data()) {
-                        Ok(index) => return index,
-                        Err(e) => log::warn!(
-                            target: "markymark_lsp",
-                            "from_blob failed for {}: {:?}, falling back to from_scan",
-                            uri_str, e
-                        ),
-                    },
+                    Ok(blob) => {
+                        match DocumentIndex::from_blob_with_frontmatter(
+                            blob.data(),
+                            fm,
+                            aliases,
+                        ) {
+                            Ok(index) => return index,
+                            Err(e) => {
+                                log::warn!(
+                                    target: "markymark_lsp",
+                                    "from_blob failed for {}: {:?}, falling back to from_scan",
+                                    uri_str, e
+                                );
+                                let (fm2, aliases2) = parse_frontmatter_owned(text);
+                                let masked2 = mask_frontmatter(text);
+                                return DocumentIndex::from_scan_with_frontmatter(
+                                    &masked2, &Md4cScanBackend, fm2, aliases2,
+                                );
+                            }
+                        }
+                    }
                     Err(e) => log::warn!(
                         target: "markymark_lsp",
                         "get_blob failed for {}: {:?}, falling back to from_scan",
@@ -173,21 +196,34 @@ impl ServerState {
                 ),
             }
         } else {
-            // No engine yet — create one
-            match DocumentEngine::new(text) {
+            // No engine yet — create one with masked text
+            match DocumentEngine::new(&masked) {
                 Ok(engine) => match engine.get_blob() {
-                    Ok(blob) => match DocumentIndex::from_blob(blob.data()) {
-                        Ok(index) => {
-                            self.engines
-                                .insert(uri_str.to_string(), std::sync::Mutex::new(engine));
-                            return index;
+                    Ok(blob) => {
+                        match DocumentIndex::from_blob_with_frontmatter(
+                            blob.data(),
+                            fm,
+                            aliases,
+                        ) {
+                            Ok(index) => {
+                                self.engines
+                                    .insert(uri_str.to_string(), std::sync::Mutex::new(engine));
+                                return index;
+                            }
+                            Err(e) => {
+                                log::warn!(
+                                    target: "markymark_lsp",
+                                    "from_blob failed (new engine) for {}: {:?}, falling back to from_scan",
+                                    uri_str, e
+                                );
+                                let (fm2, aliases2) = parse_frontmatter_owned(text);
+                                let masked2 = mask_frontmatter(text);
+                                return DocumentIndex::from_scan_with_frontmatter(
+                                    &masked2, &Md4cScanBackend, fm2, aliases2,
+                                );
+                            }
                         }
-                        Err(e) => log::warn!(
-                            target: "markymark_lsp",
-                            "from_blob failed (new engine) for {}: {:?}, falling back to from_scan",
-                            uri_str, e
-                        ),
-                    },
+                    }
                     Err(e) => log::warn!(
                         target: "markymark_lsp",
                         "get_blob failed (new engine) for {}: {:?}, falling back to from_scan",
@@ -203,7 +239,9 @@ impl ServerState {
         }
 
         // Fallback: from_scan with Md4cScanBackend. Never panics.
-        DocumentIndex::from_scan(text, &Md4cScanBackend)
+        let (fm, aliases) = parse_frontmatter_owned(text);
+        let masked = mask_frontmatter(text);
+        DocumentIndex::from_scan_with_frontmatter(&masked, &Md4cScanBackend, fm, aliases)
     }
 
     /// Detect document kind from URI file extension.

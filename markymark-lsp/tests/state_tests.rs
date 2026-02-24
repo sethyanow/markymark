@@ -538,3 +538,37 @@ fn test_engine_lifecycle_open_and_close() {
         "index should be gone after close"
     );
 }
+
+/// Regression test for marky-mh1p: frontmatter must be preserved even when
+/// the engine fallback path is used (from_scan), and the `---` delimiter must
+/// not be misparsed as a setext heading.
+#[test]
+fn test_frontmatter_preserved_in_index() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/fm.md").unwrap();
+    let text = "---\ntitle: Hello World\ntags: [rust, test]\n---\n\n# Real Heading\n";
+    state.open_document(uri.clone(), text.to_string());
+
+    let index = state.get_document_index(&uri).unwrap();
+    assert!(
+        !index.frontmatter().is_empty(),
+        "frontmatter should be present in index"
+    );
+    let title_entry = index
+        .frontmatter()
+        .iter()
+        .find(|e| e.key == "title")
+        .expect("frontmatter should contain 'title' key");
+    assert!(
+        matches!(&title_entry.value, markymark_index::FrontmatterValueEntry::String(s) if *s == "Hello World"),
+        "title value should be 'Hello World'"
+    );
+
+    // The `---` closing delimiter must NOT appear as a setext heading.
+    assert_eq!(
+        index.headings().len(),
+        1,
+        "only the ATX heading should be indexed, not a setext from ---"
+    );
+    assert_eq!(index.headings()[0].text, "Real Heading");
+}
