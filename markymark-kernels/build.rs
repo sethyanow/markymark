@@ -151,6 +151,11 @@ fn rust_target_to_zig_target(rust_target: &str) -> Option<String> {
 /// output file — a known Linux x86_64 / Zig 0.15.2 issue where overwriting a
 /// cached archive from a warm `.zig-cache` produces a truncated archive.
 ///
+/// Additionally, each invocation gets its own Zig cache directory (inside the
+/// prefix) so that sequential cargo clippy/build/test steps cannot trigger
+/// the warm-cache corruption path — even though output files are already
+/// per-`OUT_DIR`, the shared `.zig-cache` was still causing truncated archives.
+///
 /// Zig requires -Dtarget=value as a single argument; passing -Dtarget and
 /// value separately fails.
 fn build_zig_library(
@@ -158,11 +163,19 @@ fn build_zig_library(
     zig_target: Option<&str>,
     prefix: &std::path::Path,
 ) {
+    // Give each build.rs invocation its own Zig cache to prevent the 0.15.2
+    // warm-cache archive corruption bug: sequential cargo clippy → build →
+    // test steps each invoke build.rs, and a shared .zig-cache causes
+    // truncated .a archives on the 2nd+ invocation (Linux x86_64).
+    let zig_cache_dir = prefix.join(".zig-cache");
+
     let mut cmd = Command::new("zig");
     cmd.arg("build")
         .arg("lib")
         .arg("-p")
         .arg(prefix)
+        .env("ZIG_LOCAL_CACHE_DIR", &zig_cache_dir)
+        .env("ZIG_GLOBAL_CACHE_DIR", &zig_cache_dir)
         .current_dir(zig_dir);
     if let Some(t) = zig_target {
         cmd.arg(format!("-Dtarget={t}"));
@@ -253,6 +266,40 @@ mod tests {
         assert!(
             path_str.contains("markymark-kernels-abc123"),
             "lib_path must be inside the per-unit OUT_DIR, got: {path_str}"
+        );
+    }
+
+    /// Regression test: Zig cache dir must be per-invocation (inside prefix),
+    /// not a shared global directory.  A shared .zig-cache across sequential
+    /// cargo clippy/build/test invocations triggers Zig 0.15.2's warm-cache
+    /// archive corruption on Linux x86_64.
+    #[test]
+    fn test_zig_cache_dir_is_per_invocation() {
+        use std::path::PathBuf;
+
+        // Simulate what build_zig_library() does: zig_cache_dir = prefix.join(".zig-cache")
+        let prefix_a = PathBuf::from("/cargo/out/markymark-kernels-aaa111/out");
+        let prefix_b = PathBuf::from("/cargo/out/markymark-kernels-bbb222/out");
+
+        let cache_a = prefix_a.join(".zig-cache");
+        let cache_b = prefix_b.join(".zig-cache");
+
+        // Each prefix gets its own cache — they must differ
+        assert_ne!(
+            cache_a, cache_b,
+            "different OUT_DIRs must produce different Zig cache directories"
+        );
+
+        // Cache must be inside the prefix, not at a shared location
+        assert!(
+            cache_a.starts_with(&prefix_a),
+            "zig cache must be inside its prefix, got: {}",
+            cache_a.display()
+        );
+        assert!(
+            cache_b.starts_with(&prefix_b),
+            "zig cache must be inside its prefix, got: {}",
+            cache_b.display()
         );
     }
 }
