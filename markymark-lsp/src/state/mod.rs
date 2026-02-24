@@ -219,6 +219,13 @@ impl ServerState {
                                     "from_blob failed (new engine) for {}: {:?}, falling back to from_scan",
                                     uri_str, e
                                 );
+                                // Engine is valid (only blob parsing failed); store it so
+                                // future calls can do cheap delta updates via engine.update()
+                                // instead of recreating from scratch.
+                                self.engines.insert(
+                                    uri_str.to_string(),
+                                    std::sync::Mutex::new(engine),
+                                );
                                 return Self::fallback_scan_with_frontmatter(text);
                             }
                         }
