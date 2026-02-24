@@ -53,7 +53,8 @@ detect_target() {
 download_binary() {
     local target="$1"
     local dest="$2"
-    local asset_name="markymark-${target}"
+    local suffix="${3:-}"
+    local asset_name="markymark-${target}${suffix}"
     local url="https://github.com/${REPO}/releases/latest/download/${asset_name}"
 
     echo "Downloading markymark for ${target}..." >&2
@@ -61,7 +62,9 @@ download_binary() {
     mkdir -p "$(dirname "${dest}")"
 
     if curl -fsSL --retry 2 --retry-delay 1 -o "${dest}" "${url}"; then
-        chmod +x "${dest}"
+        if [[ -z "${suffix}" ]]; then
+            chmod +x "${dest}"
+        fi
         echo "Downloaded successfully." >&2
         return 0
     else
@@ -72,13 +75,21 @@ download_binary() {
 
 main() {
     local binary="${BIN_DIR}/markymark"
+    local exe_suffix=""
+
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*|Windows_NT)
+            exe_suffix=".exe"
+            binary="${binary}.exe"
+            ;;
+    esac
 
     if [[ ! -f "${binary}" ]]; then
         local target
         target="$(detect_target)"
 
         # Attempt auto-download from GitHub Releases
-        if ! download_binary "${target}" "${binary}"; then
+        if ! download_binary "${target}" "${binary}" "${exe_suffix}"; then
             echo "error: download failed and binary not found: ${binary}" >&2
             echo "hint: download markymark-plugin-${target}.tar.gz from GitHub Releases" >&2
             echo "      https://github.com/${REPO}/releases" >&2
@@ -86,7 +97,7 @@ main() {
         fi
     fi
 
-    if [[ ! -x "${binary}" ]]; then
+    if [[ -z "${exe_suffix}" ]] && [[ ! -x "${binary}" ]]; then
         chmod +x "${binary}"
     fi
 
