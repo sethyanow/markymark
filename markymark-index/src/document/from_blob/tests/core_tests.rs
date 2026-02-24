@@ -135,7 +135,7 @@ fn test_from_blob_markdown_link_with_anchor() {
 fn test_from_blob_tags() {
     let blob = blob_for("text #alpha #beta\n");
     let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
-    assert!(index.tags().len() >= 2);
+    assert_eq!(index.tags().len(), 2);
     assert!(index.tags().iter().any(|t| t.name == "alpha"));
     assert!(index.tags().iter().any(|t| t.name == "beta"));
 }
