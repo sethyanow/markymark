@@ -35,7 +35,7 @@ fn main() {
     // Run zig build lib, installing into Cargo's unique OUT_DIR
     build_zig_library(&zig_dir, zig_target.as_deref(), &out_dir);
 
-    // Verify the library artifact exists
+    // Verify the library artifact exists and is not corrupt
     // Zig produces libmarky_kernels.a on Unix, marky_kernels.lib on Windows
     let lib_path = out_dir.join("lib");
     let lib_file = if cfg!(target_os = "windows") {
@@ -50,6 +50,7 @@ fn main() {
             lib_file.display()
         );
     }
+    validate_archive(&lib_file);
 
     // Tell Cargo where to find and link the library
     println!("cargo:rustc-link-search=native={}", lib_path.display());
@@ -140,6 +141,48 @@ fn rust_target_to_zig_target(rust_target: &str) -> Option<String> {
         "aarch64-apple-darwin" => Some("aarch64-macos".to_string()),
         "x86_64-pc-windows-msvc" => Some("x86_64-windows".to_string()),
         _ => None,
+    }
+}
+
+/// Validate that an archive (.a) file is well-formed by listing its members
+/// with `ar t`.  Zig 0.15.2 on Linux x86_64 can produce truncated archives
+/// when building with a warm cache.  This catch-early validation prevents the
+/// linker from seeing a corrupt archive much later during `cargo test`.
+fn validate_archive(path: &std::path::Path) {
+    let file_len = std::fs::metadata(path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    let output = Command::new("ar")
+        .arg("t")
+        .arg(path)
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            let members = String::from_utf8_lossy(&o.stdout);
+            println!(
+                "cargo:warning=Archive OK: {} ({file_len} bytes, members: {})",
+                path.display(),
+                members.trim().replace('\n', ", ")
+            );
+        }
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            panic!(
+                "Archive validation FAILED for {} ({file_len} bytes).\n\
+                 ar stderr: {stderr}\n\
+                 This is the Zig 0.15.2 warm-cache corruption bug.\n\
+                 The archive was truncated during creation.",
+                path.display()
+            );
+        }
+        Err(e) => {
+            // ar not available (e.g. Windows) — skip validation
+            println!(
+                "cargo:warning=Skipping archive validation ({file_len} bytes): ar not found: {e}"
+            );
+        }
     }
 }
 

@@ -33,6 +33,11 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+          # Disable Zig build cache — warm .zig-cache triggers Zig 0.15.2
+          # archive corruption on Linux x86_64.  The action restores cached
+          # artifacts to .zig-cache at the repo root, and despite --cache-dir
+          # CLI flags in build.rs, the warm cache still corrupts archives.
+          use-cache: false
 
       - name: Cache cargo registry & build
         uses: actions/cache@v4
@@ -47,11 +52,12 @@ jobs:
             ${{ runner.os }}-cargo-
 
       # Zig 0.15.2 bug: warm .zig-cache produces truncated archives on Linux
-      # x86_64.  Purge ALL Zig caches and build outputs to force cold builds.
-      # build.rs also purges before each invocation, but this catches caches
-      # restored from CI's target/ cache that build.rs wouldn't see.
+      # x86_64.  Purge ALL Zig caches to force cold builds:
+      #  - .zig-cache at repo root (restored by setup-zig in prior runs)
+      #  - zig/.zig-cache (default local cache when cwd=zig/)
+      #  - target/*/build/markymark-kernels-*/out (previous build.rs output)
       - name: Purge stale Zig build artifacts
-        run: rm -rf zig/.zig-cache target/debug/build/markymark-kernels-*/out target/release/build/markymark-kernels-*/out
+        run: rm -rf .zig-cache zig/.zig-cache target/debug/build/markymark-kernels-*/out target/release/build/markymark-kernels-*/out
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -118,6 +124,7 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+          use-cache: false
 
       - name: Cache cargo registry & build
         uses: actions/cache@v4
@@ -132,7 +139,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Purge stale Zig build artifacts
-        run: rm -rf target/debug/build/markymark-kernels-*/out target/release/build/markymark-kernels-*/out
+        run: rm -rf .zig-cache zig/.zig-cache target/debug/build/markymark-kernels-*/out target/release/build/markymark-kernels-*/out
 
       - name: Check marksman availability
         id: marksman-check
@@ -166,6 +173,7 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+          use-cache: false
 
       - name: Cache cargo registry & build
         uses: actions/cache@v4
@@ -180,7 +188,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Purge stale Zig build artifacts
-        run: rm -rf target/debug/build/markymark-kernels-*/out target/release/build/markymark-kernels-*/out
+        run: rm -rf .zig-cache zig/.zig-cache target/debug/build/markymark-kernels-*/out target/release/build/markymark-kernels-*/out
 
       - name: Build release binary
         run: cargo build --release -p markymark-cli
