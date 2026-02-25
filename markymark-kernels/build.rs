@@ -149,14 +149,9 @@ fn rust_target_to_zig_target(rust_target: &str) -> Option<String> {
 /// when building with a warm cache.  This catch-early validation prevents the
 /// linker from seeing a corrupt archive much later during `cargo test`.
 fn validate_archive(path: &std::path::Path) {
-    let file_len = std::fs::metadata(path)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let file_len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
 
-    let output = Command::new("ar")
-        .arg("t")
-        .arg(path)
-        .output();
+    let output = Command::new("ar").arg("t").arg(path).output();
 
     match output {
         Ok(o) if o.status.success() => {
