@@ -10,11 +10,11 @@ Completed work details live in git history, not here.
 
 ## Current State (2026-02-24)
 
-### PR #44 (v0.6.0, dev→main) — blocked on CI
+### PR #44 (v0.6.0, dev→main) — CI green, ready for merge
 
 PR #43 was closed (stale merge base). Main was merged into dev, and PR #44 opened as the fresh
-release PR. CI is failing with Zig 0.15.2 warm-cache archive corruption (see Known Bugs below).
-Three fix attempts pushed so far; waiting for CI run on `da3a91f`.
+release PR. CI fixed at `f2a894f` — the Zig archive corruption turned out to be a format
+incompatibility, not a caching issue (see Known Bugs below).
 
 **Codex pre-triage findings (beads created):**
 - marky-vxgg (P2): select-binary.sh missing .exe handling for Windows
@@ -38,29 +38,30 @@ Known issue: XML tag false positives in code blocks (marky-8la).
 
 ### Known Bugs
 
-#### Zig 0.15.2 warm-cache archive corruption (CI blocker, 2026-02-24)
+#### Zig 0.15.2 archive format incompatibility with rust-lld (RESOLVED, 2026-02-24)
 
-`zig build lib` on Linux x86_64 with a warm `.zig-cache` produces a truncated
-`libmarky_kernels.a` archive. The linker sees: `Archive::children failed: truncated
-or malformed archive (offset to next archive member past the end of the archive
-after member c_adapter.o)`.
+`zig build lib` on Linux x86_64 produces archives that pass `ar t` but fail
+rust-lld's stricter parsing: `Archive::children failed: truncated or malformed
+archive (offset to next archive member past the end of the archive after member
+c_adapter.o)`.
 
-**Root cause:** Sequential cargo commands (clippy -> test) both invoke build.rs,
-which calls `zig build lib`. The second invocation finds a warm cache and produces
-a corrupted archive. The bug is in Zig's archive writer, not in our code.
+**Root cause (revised after 6 iterations):** NOT a warm-cache issue. Zig 0.15.2's
+archive writer on Linux produces a non-standard archive format where member offset
+metadata is inconsistent with the actual file size. GNU `ar` tolerates this, but
+`rust-lld` rejects it. The archive passes `ar t` validation (3.43 MB, 1 member)
+but fails at link time.
 
-**Fix attempts and learnings (3 iterations):**
+**Fix (`f2a894f`):** build.rs extracts .o files from the Zig-produced archive with
+`ar x` and re-packs with `ar rcs` to produce a standard GNU archive. Only runs on
+Linux (macOS ld64 handles Zig's format fine). Combined with `use-cache: false` on
+`mlugg/setup-zig` and purging `.zig-cache` at repo root.
 
-| Commit | Approach | Why it failed |
-|--------|----------|---------------|
-| `d5fbd4e` | Purge `out/lib` in CI, cache key includes zig sources | Only purged output, not cache; cache restored warm from CI |
-| `cf6dcd0` | Per-invocation `.zig-cache` via `ZIG_LOCAL_CACHE_DIR` env var | `zig build` ignores env vars; uses its own `.zig-cache` in CWD |
-| `e547dca` | `rm_dir_all` on `prefix/.zig-cache` before build | Purged wrong cache dir; real cache is at `zig/.zig-cache/` |
-| `da3a91f` | `--cache-dir` CLI flags + purge `zig/.zig-cache/` | **Current fix** — CLI flags are authoritative; purges both caches |
-
-**Key insight:** `zig build` creates `.zig-cache/` in its `current_dir` (the `zig/`
-directory). The `ZIG_LOCAL_CACHE_DIR` env var is NOT respected by the build runner.
-Only `--cache-dir` and `--global-cache-dir` CLI arguments override it reliably.
+**Key learnings from the 6-iteration debugging saga:**
+1. Env vars (`ZIG_LOCAL_CACHE_DIR`) are ignored by `zig build` — only CLI flags work
+2. `mlugg/setup-zig` restores `.zig-cache` at repo root, not `zig/.zig-cache`
+3. Adding `ar t` validation in build.rs was the diagnostic breakthrough — it proved
+   the archive was "valid" but in a format rust-lld couldn't parse
+4. The real bug is Zig's archive FORMAT on Linux, not caching behavior
 
 ### Zig errdefer + explicit deinit = double-free pattern (2026-02-20, marky-gmny)
 
