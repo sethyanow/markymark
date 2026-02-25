@@ -59,6 +59,6 @@ async fn run_lsp() -> Result<()> {
 }
 
 async fn run_mcp(roots: Vec<PathBuf>) -> Result<()> {
-    let engine = markymark_mcp::RuntimeEngine::from_workspace_roots(roots)?;
+    let engine = markymark_mcp::RuntimeEngine::from_workspace_roots(roots).await?;
     markymark_mcp::run_stdio(Arc::new(engine)).await
 }

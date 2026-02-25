@@ -7,7 +7,7 @@ use serde_json::json;
 use super::{parse_file_uri, tool_error, tool_error_from_core, unexpected_result_error};
 use crate::dto::*;
 
-pub(crate) fn handle_get_outline(
+pub(crate) async fn handle_get_outline(
     engine: &dyn CoreEngine,
     req: OutlineRequest,
 ) -> Result<CallToolResult, McpError> {
@@ -16,10 +16,13 @@ pub(crate) fn handle_get_outline(
         Err(err) => return Ok(tool_error(&err.code, err.message)),
     };
 
-    match engine.execute(CoreOperation::GetOutline {
-        uri,
-        realm: req.realm.clone(),
-    }) {
+    match engine
+        .execute(CoreOperation::GetOutline {
+            uri,
+            realm: req.realm.clone(),
+        })
+        .await
+    {
         CoreOperationResult::Outline(headings) => {
             Ok(CallToolResult::structured(json!(OutlineResponse {
                 uri: req.uri,
@@ -31,7 +34,7 @@ pub(crate) fn handle_get_outline(
     }
 }
 
-pub(crate) fn handle_export_index(
+pub(crate) async fn handle_export_index(
     engine: &dyn CoreEngine,
     req: ExportIndexRequest,
 ) -> Result<CallToolResult, McpError> {
@@ -40,10 +43,13 @@ pub(crate) fn handle_export_index(
         Err(err) => return Ok(tool_error(&err.code, err.message)),
     };
 
-    match engine.execute(CoreOperation::ExportIndex {
-        uri,
-        realm: req.realm.clone(),
-    }) {
+    match engine
+        .execute(CoreOperation::ExportIndex {
+            uri,
+            realm: req.realm.clone(),
+        })
+        .await
+    {
         CoreOperationResult::DocumentExport {
             uri,
             headings,

@@ -27,19 +27,24 @@ fn symbol_names(result: CoreOperationResult) -> Vec<String> {
 /// search_symbols must return heading candidates from markdown files.
 /// Regression test for marky-n5w: headings must still be returned after
 /// the eager-alloc elimination refactor (Cow<'_, str> path).
-#[test]
-fn search_symbols_returns_headings_from_markdown() {
+#[tokio::test]
+async fn search_symbols_returns_headings_from_markdown() {
     let ws = TempWorkspace::new("headings-basic");
     fs::write(ws.root().join("a.md"), "# Introduction\n# Implementation\n")
         .expect("md should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let names = symbol_names(engine.execute(CoreOperation::SearchSymbols {
-        query: "intro".to_string(),
-        realm: None,
-    }));
+    let names = symbol_names(
+        engine
+            .execute(CoreOperation::SearchSymbols {
+                query: "intro".to_string(),
+                realm: None,
+            })
+            .await,
+    );
 
     assert_eq!(names, vec!["Introduction".to_string()]);
 }
@@ -49,8 +54,8 @@ fn search_symbols_returns_headings_from_markdown() {
 /// search_symbols must return key-path candidates from JSON structured docs.
 /// Regression test for marky-n5w: key-path candidates must survive the
 /// Cow<'_, str> refactor of the candidates Vec.
-#[test]
-fn search_symbols_includes_json_key_paths() {
+#[tokio::test]
+async fn search_symbols_includes_json_key_paths() {
     let ws = TempWorkspace::new("json-key-paths");
     // JSON document with a known key that should be matched.
     fs::write(
@@ -59,13 +64,18 @@ fn search_symbols_includes_json_key_paths() {
     )
     .expect("json should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let names = symbol_names(engine.execute(CoreOperation::SearchSymbols {
-        query: "database".to_string(),
-        realm: None,
-    }));
+    let names = symbol_names(
+        engine
+            .execute(CoreOperation::SearchSymbols {
+                query: "database".to_string(),
+                realm: None,
+            })
+            .await,
+    );
 
     // Both database_host and database_port should match.
     assert!(
@@ -80,8 +90,8 @@ fn search_symbols_includes_json_key_paths() {
 
 /// search_symbols returns both markdown headings and JSON key paths in the
 /// same result set when both match the query.  Regression test for marky-n5w.
-#[test]
-fn search_symbols_mixes_headings_and_key_paths() {
+#[tokio::test]
+async fn search_symbols_mixes_headings_and_key_paths() {
     let ws = TempWorkspace::new("mixed-heading-json");
     fs::write(ws.root().join("notes.md"), "# API Reference\n# API Guide\n")
         .expect("md should be created");
@@ -91,13 +101,18 @@ fn search_symbols_mixes_headings_and_key_paths() {
     )
     .expect("json should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let names = symbol_names(engine.execute(CoreOperation::SearchSymbols {
-        query: "api".to_string(),
-        realm: None,
-    }));
+    let names = symbol_names(
+        engine
+            .execute(CoreOperation::SearchSymbols {
+                query: "api".to_string(),
+                realm: None,
+            })
+            .await,
+    );
 
     assert!(
         !names.is_empty(),

@@ -10,7 +10,7 @@ use crate::dto::{
 };
 use crate::PositionDto;
 
-pub(crate) fn handle_get_diagnostics(
+pub(crate) async fn handle_get_diagnostics(
     engine: &dyn CoreEngine,
     request: GetDiagnosticsRequest,
 ) -> Result<CallToolResult, McpError> {
@@ -23,10 +23,12 @@ pub(crate) fn handle_get_diagnostics(
         None => None,
     };
 
-    let result = engine.execute(CoreOperation::GetDiagnostics {
-        uri,
-        realm: request.realm.clone(),
-    });
+    let result = engine
+        .execute(CoreOperation::GetDiagnostics {
+            uri,
+            realm: request.realm.clone(),
+        })
+        .await;
 
     match result {
         CoreOperationResult::Diagnostics { realm, items } => {

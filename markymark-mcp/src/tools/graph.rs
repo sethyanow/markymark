@@ -7,15 +7,18 @@ use serde_json::json;
 use super::{tool_error_from_core, unexpected_result_error};
 use crate::dto::*;
 
-pub(crate) fn handle_graph_analysis(
+pub(crate) async fn handle_graph_analysis(
     engine: &dyn CoreEngine,
     req: GraphAnalysisRequest,
 ) -> Result<CallToolResult, McpError> {
-    match engine.execute(CoreOperation::GraphAnalysis {
-        realm: req.realm.clone(),
-        top_n_hubs: req.top_n_hubs,
-        include_clusters: req.include_clusters,
-    }) {
+    match engine
+        .execute(CoreOperation::GraphAnalysis {
+            realm: req.realm.clone(),
+            top_n_hubs: req.top_n_hubs,
+            include_clusters: req.include_clusters,
+        })
+        .await
+    {
         CoreOperationResult::GraphAnalysis {
             realm,
             total_docs,

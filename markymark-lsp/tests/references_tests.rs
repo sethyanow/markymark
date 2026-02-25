@@ -45,8 +45,10 @@ async fn setup_workspace() -> (
         let mut state = backend.state().write().await;
         let core_main = DocumentUri::new("file:///workspace/main.md").unwrap();
         let core_other = DocumentUri::new("file:///workspace/other-page.md").unwrap();
-        state.open_document(core_main, main_text.to_string());
-        state.open_document(core_other, other_text.to_string());
+        state.open_document(core_main, main_text.to_string()).await;
+        state
+            .open_document(core_other, other_text.to_string())
+            .await;
     }
 
     (service, socket, uri_main, uri_other)
@@ -235,8 +237,8 @@ async fn setup_xml_workspace() -> (
         let mut state = backend.state().write().await;
         let core_a = DocumentUri::new("file:///workspace/a.md").unwrap();
         let core_b = DocumentUri::new("file:///workspace/b.md").unwrap();
-        state.open_document(core_a, text_a.to_string());
-        state.open_document(core_b, text_b.to_string());
+        state.open_document(core_a, text_a.to_string()).await;
+        state.open_document(core_b, text_b.to_string()).await;
     }
 
     (service, socket, uri_a, uri_b)
@@ -420,9 +422,9 @@ async fn setup_structured_refs_workspace() -> (
         let core_md = DocumentUri::new("file:///workspace/notes.md").unwrap();
         let core_json = DocumentUri::new("file:///workspace/config.json").unwrap();
         let core_yaml = DocumentUri::new("file:///workspace/settings.yaml").unwrap();
-        state.open_document(core_md, md_text.to_string());
-        state.open_document(core_json, json_text.to_string());
-        state.open_document(core_yaml, yaml_text.to_string());
+        state.open_document(core_md, md_text.to_string()).await;
+        state.open_document(core_json, json_text.to_string()).await;
+        state.open_document(core_yaml, yaml_text.to_string()).await;
     }
 
     (service, socket, uri_md, uri_json, uri_yaml)

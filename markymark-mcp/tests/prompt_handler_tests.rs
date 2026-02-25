@@ -6,6 +6,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use async_trait::async_trait;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_core::{CoreError, DocumentUri, Position, Range};
 use markymark_mcp::MarkymarkMcp;
@@ -27,8 +28,9 @@ impl Default for MockEngine {
     }
 }
 
+#[async_trait]
 impl CoreEngine for MockEngine {
-    fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
+    async fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
         match operation {
             CoreOperation::GetOutline { .. } => {
                 CoreOperationResult::Outline(vec!["Introduction".to_string(), "Setup".to_string()])
@@ -202,8 +204,8 @@ fn suggest_references_prompt_has_required_arguments() {
 // prompts/get: explain-link
 // ---------------------------------------------------------------------------
 
-#[test]
-fn explain_link_returns_user_message_with_document_context() {
+#[tokio::test]
+async fn explain_link_returns_user_message_with_document_context() {
     let mcp = make_mcp();
     let args = json!({
         "uri": "file:///vault/notes.md",
@@ -218,6 +220,7 @@ fn explain_link_returns_user_message_with_document_context() {
                     .clone(),
             ),
         )
+        .await
         .expect("prompt should succeed");
 
     assert!(result.description.is_some());
@@ -246,51 +249,57 @@ fn explain_link_returns_user_message_with_document_context() {
     );
 }
 
-#[test]
-fn explain_link_fails_on_missing_uri() {
+#[tokio::test]
+async fn explain_link_fails_on_missing_uri() {
     let mcp = make_mcp();
     let args = json!({ "target": "other-page" });
-    let result = mcp.get_prompt_by_name(
-        "explain-link",
-        Some(
-            args.as_object()
-                .expect("json! macro always produces an object")
-                .clone(),
-        ),
-    );
+    let result = mcp
+        .get_prompt_by_name(
+            "explain-link",
+            Some(
+                args.as_object()
+                    .expect("json! macro always produces an object")
+                    .clone(),
+            ),
+        )
+        .await;
     assert!(result.is_err(), "should fail without uri argument");
 }
 
-#[test]
-fn explain_link_fails_on_missing_target() {
+#[tokio::test]
+async fn explain_link_fails_on_missing_target() {
     let mcp = make_mcp();
     let args = json!({ "uri": "file:///vault/notes.md" });
-    let result = mcp.get_prompt_by_name(
-        "explain-link",
-        Some(
-            args.as_object()
-                .expect("json! macro always produces an object")
-                .clone(),
-        ),
-    );
+    let result = mcp
+        .get_prompt_by_name(
+            "explain-link",
+            Some(
+                args.as_object()
+                    .expect("json! macro always produces an object")
+                    .clone(),
+            ),
+        )
+        .await;
     assert!(result.is_err(), "should fail without target argument");
 }
 
-#[test]
-fn explain_link_fails_on_non_file_uri() {
+#[tokio::test]
+async fn explain_link_fails_on_non_file_uri() {
     let mcp = make_mcp();
     let args = json!({
         "uri": "https://example.com/notes.md",
         "target": "heading"
     });
-    let result = mcp.get_prompt_by_name(
-        "explain-link",
-        Some(
-            args.as_object()
-                .expect("json! macro always produces an object")
-                .clone(),
-        ),
-    );
+    let result = mcp
+        .get_prompt_by_name(
+            "explain-link",
+            Some(
+                args.as_object()
+                    .expect("json! macro always produces an object")
+                    .clone(),
+            ),
+        )
+        .await;
     assert!(result.is_err(), "should fail with non-file URI");
 }
 
@@ -298,8 +307,8 @@ fn explain_link_fails_on_non_file_uri() {
 // prompts/get: suggest-references
 // ---------------------------------------------------------------------------
 
-#[test]
-fn suggest_references_returns_user_message_with_symbol_context() {
+#[tokio::test]
+async fn suggest_references_returns_user_message_with_symbol_context() {
     let mcp = make_mcp();
     let args = json!({
         "uri": "file:///vault/notes.md",
@@ -315,6 +324,7 @@ fn suggest_references_returns_user_message_with_symbol_context() {
                     .clone(),
             ),
         )
+        .await
         .expect("prompt should succeed");
 
     assert!(result.description.is_some());
@@ -334,55 +344,61 @@ fn suggest_references_returns_user_message_with_symbol_context() {
     );
 }
 
-#[test]
-fn suggest_references_fails_on_missing_uri() {
+#[tokio::test]
+async fn suggest_references_fails_on_missing_uri() {
     let mcp = make_mcp();
     let args = json!({ "line": 0, "character": 5 });
-    let result = mcp.get_prompt_by_name(
-        "suggest-references",
-        Some(
-            args.as_object()
-                .expect("json! macro always produces an object")
-                .clone(),
-        ),
-    );
+    let result = mcp
+        .get_prompt_by_name(
+            "suggest-references",
+            Some(
+                args.as_object()
+                    .expect("json! macro always produces an object")
+                    .clone(),
+            ),
+        )
+        .await;
     assert!(result.is_err(), "should fail without uri argument");
 }
 
-#[test]
-fn suggest_references_fails_on_missing_line() {
+#[tokio::test]
+async fn suggest_references_fails_on_missing_line() {
     let mcp = make_mcp();
     let args = json!({
         "uri": "file:///vault/notes.md",
         "character": 5
     });
-    let result = mcp.get_prompt_by_name(
-        "suggest-references",
-        Some(
-            args.as_object()
-                .expect("json! macro always produces an object")
-                .clone(),
-        ),
-    );
+    let result = mcp
+        .get_prompt_by_name(
+            "suggest-references",
+            Some(
+                args.as_object()
+                    .expect("json! macro always produces an object")
+                    .clone(),
+            ),
+        )
+        .await;
     assert!(result.is_err(), "should fail without line argument");
 }
 
-#[test]
-fn suggest_references_fails_on_non_file_uri() {
+#[tokio::test]
+async fn suggest_references_fails_on_non_file_uri() {
     let mcp = make_mcp();
     let args = json!({
         "uri": "https://example.com",
         "line": 0,
         "character": 0
     });
-    let result = mcp.get_prompt_by_name(
-        "suggest-references",
-        Some(
-            args.as_object()
-                .expect("json! macro always produces an object")
-                .clone(),
-        ),
-    );
+    let result = mcp
+        .get_prompt_by_name(
+            "suggest-references",
+            Some(
+                args.as_object()
+                    .expect("json! macro always produces an object")
+                    .clone(),
+            ),
+        )
+        .await;
     assert!(result.is_err(), "should fail with non-file URI");
 }
 
@@ -390,30 +406,32 @@ fn suggest_references_fails_on_non_file_uri() {
 // realm threading
 // ---------------------------------------------------------------------------
 
-#[test]
-fn explain_link_with_explicit_realm_succeeds() {
+#[tokio::test]
+async fn explain_link_with_explicit_realm_succeeds() {
     let mcp = make_mcp();
     let args = json!({
         "uri": "file:///vault/notes.md",
         "target": "other-page#section",
         "realm": "my-vault"
     });
-    let result = mcp.get_prompt_by_name(
-        "explain-link",
-        Some(
-            args.as_object()
-                .expect("json! macro always produces an object")
-                .clone(),
-        ),
-    );
+    let result = mcp
+        .get_prompt_by_name(
+            "explain-link",
+            Some(
+                args.as_object()
+                    .expect("json! macro always produces an object")
+                    .clone(),
+            ),
+        )
+        .await;
     assert!(
         result.is_ok(),
         "explain-link should succeed with explicit realm arg"
     );
 }
 
-#[test]
-fn suggest_references_with_explicit_realm_succeeds() {
+#[tokio::test]
+async fn suggest_references_with_explicit_realm_succeeds() {
     let mcp = make_mcp();
     let args = json!({
         "uri": "file:///vault/notes.md",
@@ -421,35 +439,39 @@ fn suggest_references_with_explicit_realm_succeeds() {
         "character": 5,
         "realm": "my-vault"
     });
-    let result = mcp.get_prompt_by_name(
-        "suggest-references",
-        Some(
-            args.as_object()
-                .expect("json! macro always produces an object")
-                .clone(),
-        ),
-    );
+    let result = mcp
+        .get_prompt_by_name(
+            "suggest-references",
+            Some(
+                args.as_object()
+                    .expect("json! macro always produces an object")
+                    .clone(),
+            ),
+        )
+        .await;
     assert!(
         result.is_ok(),
         "suggest-references should succeed with explicit realm arg"
     );
 }
 
-#[test]
-fn explain_link_without_realm_defaults_to_default_realm() {
+#[tokio::test]
+async fn explain_link_without_realm_defaults_to_default_realm() {
     let (mcp, engine) = make_mcp_with_engine();
     let args = json!({
         "uri": "file:///vault/notes.md",
         "target": "other-page#section"
     });
-    let result = mcp.get_prompt_by_name(
-        "explain-link",
-        Some(
-            args.as_object()
-                .expect("json! macro always produces an object")
-                .clone(),
-        ),
-    );
+    let result = mcp
+        .get_prompt_by_name(
+            "explain-link",
+            Some(
+                args.as_object()
+                    .expect("json! macro always produces an object")
+                    .clone(),
+            ),
+        )
+        .await;
     assert!(result.is_ok(), "explain-link should succeed");
     let captured = engine
         .captured_export_index_realm
@@ -463,22 +485,24 @@ fn explain_link_without_realm_defaults_to_default_realm() {
     );
 }
 
-#[test]
-fn suggest_references_without_realm_defaults_to_default_realm() {
+#[tokio::test]
+async fn suggest_references_without_realm_defaults_to_default_realm() {
     let (mcp, engine) = make_mcp_with_engine();
     let args = json!({
         "uri": "file:///vault/notes.md",
         "line": 0,
         "character": 5
     });
-    let result = mcp.get_prompt_by_name(
-        "suggest-references",
-        Some(
-            args.as_object()
-                .expect("json! macro always produces an object")
-                .clone(),
-        ),
-    );
+    let result = mcp
+        .get_prompt_by_name(
+            "suggest-references",
+            Some(
+                args.as_object()
+                    .expect("json! macro always produces an object")
+                    .clone(),
+            ),
+        )
+        .await;
     assert!(result.is_ok(), "suggest-references should succeed");
     let find_refs_realm = engine
         .captured_find_references_realm
@@ -506,10 +530,10 @@ fn suggest_references_without_realm_defaults_to_default_realm() {
 // unknown prompt
 // ---------------------------------------------------------------------------
 
-#[test]
-fn get_prompt_fails_on_unknown_name() {
+#[tokio::test]
+async fn get_prompt_fails_on_unknown_name() {
     let mcp = make_mcp();
-    let result = mcp.get_prompt_by_name("nonexistent", None);
+    let result = mcp.get_prompt_by_name("nonexistent", None).await;
     assert!(result.is_err(), "should fail on unknown prompt name");
 }
 

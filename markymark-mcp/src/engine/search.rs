@@ -130,7 +130,7 @@ pub(crate) fn handle_search_symbols(realm: &RealmIndex, query: String) -> CoreOp
 }
 
 #[cfg(feature = "semantic-search")]
-pub(crate) fn handle_semantic_search(
+pub(crate) async fn handle_semantic_search(
     realm: &RealmIndex,
     query: String,
     top_k: u32,
@@ -143,7 +143,10 @@ pub(crate) fn handle_semantic_search(
         ));
     }
 
-    let results = match realm.semantic_search(&query, top_k, min_score.clamp(0.0, 1.0)) {
+    let results = match realm
+        .semantic_search(&query, top_k, min_score.clamp(0.0, 1.0))
+        .await
+    {
         Ok(results) => results,
         Err(err) => {
             return CoreOperationResult::Error(CoreError::Message(format!(
@@ -206,11 +209,11 @@ mod tests {
         DocumentIndex::from_ast(ast)
     }
 
-    #[test]
-    fn search_symbols_includes_code_span_candidates() {
+    #[tokio::test]
+    async fn search_symbols_includes_code_span_candidates() {
         let mut realm = RealmIndex::new();
         let index = make_index_with_code_spans(&["HashMap"]);
-        realm.add_document(uri("types.md"), index);
+        realm.add_document(uri("types.md"), index).await;
 
         let names = symbol_names(handle_search_symbols(&realm, "HashMap".to_string()));
         assert!(
@@ -219,12 +222,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn search_symbols_dedup_code_spans_per_document() {
+    #[tokio::test]
+    async fn search_symbols_dedup_code_spans_per_document() {
         let mut realm = RealmIndex::new();
         // Build source with 3 occurrences of `Result` — dedup should produce 1 entry
         let index = make_index_with_code_spans(&["Result", "Result", "Result"]);
-        realm.add_document(uri("results.md"), index);
+        realm.add_document(uri("results.md"), index).await;
 
         let names = symbol_names(handle_search_symbols(&realm, "Result".to_string()));
         let result_count = names.iter().filter(|n| *n == "Result").count();

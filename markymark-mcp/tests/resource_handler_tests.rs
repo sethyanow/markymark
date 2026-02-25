@@ -6,6 +6,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use async_trait::async_trait;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_core::{CoreError, DocumentUri, Position, Range};
 use markymark_mcp::MarkymarkMcp;
@@ -24,8 +25,9 @@ impl Default for MockEngine {
     }
 }
 
+#[async_trait]
 impl CoreEngine for MockEngine {
-    fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
+    async fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
         match operation {
             CoreOperation::GetOutline { realm, .. } => {
                 let mut captured = self.captured_realm.lock().expect("mutex poisoned");
@@ -157,10 +159,12 @@ fn symbols_template_includes_realm_param() {
 
 // --- read_resource: outline ---
 
-#[test]
-fn read_outline_resource_returns_json() {
+#[tokio::test]
+async fn read_outline_resource_returns_json() {
     let mcp = make_mcp();
-    let result = mcp.read_resource_sync("markymark://outline/file:///vault/notes.md");
+    let result = mcp
+        .read_resource_sync("markymark://outline/file:///vault/notes.md")
+        .await;
     let contents = result.expect("should succeed");
     assert_eq!(contents.len(), 1, "expected single resource content");
     match &contents[0] {
@@ -178,11 +182,13 @@ fn read_outline_resource_returns_json() {
     }
 }
 
-#[test]
-fn read_outline_resource_with_realm_query_succeeds() {
+#[tokio::test]
+async fn read_outline_resource_with_realm_query_succeeds() {
     let (mcp, engine) = make_mcp_with_engine();
     // realm query param must not bleed into the document URI
-    let result = mcp.read_resource_sync("markymark://outline/file:///vault/notes.md?realm=custom");
+    let result = mcp
+        .read_resource_sync("markymark://outline/file:///vault/notes.md?realm=custom")
+        .await;
     assert!(
         result.is_ok(),
         "outline resource should succeed when realm query param is present; got: {:?}",
@@ -200,11 +206,12 @@ fn read_outline_resource_with_realm_query_succeeds() {
     );
 }
 
-#[test]
-fn read_outline_resource_with_percent_encoded_realm_query_decodes_value() {
+#[tokio::test]
+async fn read_outline_resource_with_percent_encoded_realm_query_decodes_value() {
     let (mcp, engine) = make_mcp_with_engine();
-    let result =
-        mcp.read_resource_sync("markymark://outline/file:///vault/notes.md?realm=custom%20realm");
+    let result = mcp
+        .read_resource_sync("markymark://outline/file:///vault/notes.md?realm=custom%20realm")
+        .await;
     assert!(
         result.is_ok(),
         "outline resource should succeed when percent-encoded realm is present; got: {:?}",
@@ -224,10 +231,12 @@ fn read_outline_resource_with_percent_encoded_realm_query_decodes_value() {
 
 // --- read_resource: symbols ---
 
-#[test]
-fn read_symbols_resource_returns_json() {
+#[tokio::test]
+async fn read_symbols_resource_returns_json() {
     let mcp = make_mcp();
-    let result = mcp.read_resource_sync("markymark://symbols?query=test");
+    let result = mcp
+        .read_resource_sync("markymark://symbols?query=test")
+        .await;
     let contents = result.expect("should succeed");
     assert_eq!(contents.len(), 1);
     match &contents[0] {
@@ -243,10 +252,12 @@ fn read_symbols_resource_returns_json() {
     }
 }
 
-#[test]
-fn read_symbols_resource_with_realm_query_succeeds() {
+#[tokio::test]
+async fn read_symbols_resource_with_realm_query_succeeds() {
     let mcp = make_mcp();
-    let result = mcp.read_resource_sync("markymark://symbols?query=test&realm=custom");
+    let result = mcp
+        .read_resource_sync("markymark://symbols?query=test&realm=custom")
+        .await;
     assert!(
         result.is_ok(),
         "symbols resource should succeed when realm query param is present; got: {:?}",
@@ -256,10 +267,12 @@ fn read_symbols_resource_with_realm_query_succeeds() {
 
 // --- read_resource: dependency-graph ---
 
-#[test]
-fn read_dependency_graph_json_resource() {
+#[tokio::test]
+async fn read_dependency_graph_json_resource() {
     let mcp = make_mcp();
-    let result = mcp.read_resource_sync("markymark://dependency-graph?realm=default&format=json");
+    let result = mcp
+        .read_resource_sync("markymark://dependency-graph?realm=default&format=json")
+        .await;
     let contents = result.expect("should succeed");
     assert_eq!(contents.len(), 1);
     match &contents[0] {
@@ -273,10 +286,12 @@ fn read_dependency_graph_json_resource() {
     }
 }
 
-#[test]
-fn read_dependency_graph_dot_resource() {
+#[tokio::test]
+async fn read_dependency_graph_dot_resource() {
     let mcp = make_mcp();
-    let result = mcp.read_resource_sync("markymark://dependency-graph?realm=default&format=dot");
+    let result = mcp
+        .read_resource_sync("markymark://dependency-graph?realm=default&format=dot")
+        .await;
     let contents = result.expect("should succeed");
     assert_eq!(contents.len(), 1);
     match &contents[0] {
@@ -295,10 +310,10 @@ fn read_dependency_graph_dot_resource() {
 
 // --- read_resource: unknown URI ---
 
-#[test]
-fn read_unknown_resource_returns_error() {
+#[tokio::test]
+async fn read_unknown_resource_returns_error() {
     let mcp = make_mcp();
-    let result = mcp.read_resource_sync("markymark://unknown/foo");
+    let result = mcp.read_resource_sync("markymark://unknown/foo").await;
     assert!(result.is_err(), "unknown resource URI should fail");
 }
 

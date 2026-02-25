@@ -51,7 +51,7 @@ pub(crate) fn handle_destroy_realm(
     CoreOperationResult::Ok
 }
 
-pub(crate) fn handle_add_root(
+pub(crate) async fn handle_add_root(
     state: &mut HashMap<String, RealmData>,
     realm: String,
     root: PathBuf,
@@ -81,7 +81,7 @@ pub(crate) fn handle_add_root(
         }
     }
 
-    index_root_into_realm(&root, realm_data);
+    index_root_into_realm(&root, realm_data).await;
     realm_data.roots.push(root);
 
     CoreOperationResult::RealmInfo {

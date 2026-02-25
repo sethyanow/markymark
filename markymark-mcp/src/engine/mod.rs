@@ -3,11 +3,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 #[cfg(feature = "semantic-search")]
 use std::sync::Arc;
-use std::sync::RwLock;
+
+use tokio::sync::RwLock;
 
 use anyhow::bail;
-#[cfg(feature = "semantic-search")]
-use markymark_core::engine::SemanticSearchMatch;
+use async_trait::async_trait;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 #[cfg(feature = "semantic-search")]
 use markymark_core::prelude::{EmbedError, EmbeddingProvider};
@@ -91,8 +91,9 @@ impl HashEmbeddingProvider {
 }
 
 #[cfg(feature = "semantic-search")]
+#[async_trait]
 impl EmbeddingProvider for HashEmbeddingProvider {
-    fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
         if self.dims == 0 {
             return Err(EmbedError::InvalidInput(
                 "embedding dimensions must be > 0".to_string(),
@@ -154,7 +155,7 @@ impl RuntimeEngine {
     /// All markdown files (`*.md`, `*.markdown`) under the provided roots are indexed
     /// into the "default" realm.
     /// Invalid roots fail startup. Individual document read/parse failures are skipped.
-    pub fn from_workspace_roots(workspace_roots: Vec<PathBuf>) -> anyhow::Result<Self> {
+    pub async fn from_workspace_roots(workspace_roots: Vec<PathBuf>) -> anyhow::Result<Self> {
         if workspace_roots.is_empty() {
             bail!("at least one workspace root is required");
         }
@@ -163,7 +164,7 @@ impl RuntimeEngine {
 
         for root in workspace_roots {
             helpers::validate_workspace_root(&root)?;
-            index_root_into_realm(&root, &mut default_realm);
+            index_root_into_realm(&root, &mut default_realm).await;
             default_realm.roots.push(root);
         }
 
@@ -183,7 +184,7 @@ impl RuntimeEngine {
 /// Frontmatter is parsed directly from source text (no tree-sitter needed).
 /// Structured documents (JSON, YAML, TOML, etc.) still use tree-sitter via
 /// `StructuredDocumentIndex::from_ast`.
-pub(crate) fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
+pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
     let backend = Md4cScanBackend;
     let documents = helpers::collect_documents(root);
 
@@ -202,15 +203,18 @@ pub(crate) fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
             // setext heading underline. Replace non-newline bytes with spaces
             // to preserve line counting and byte offsets.
             let scan_source = markymark_index::mask_frontmatter(&source);
-            realm.index.add_document(
-                uri,
-                DocumentIndex::from_scan_with_frontmatter(
-                    &scan_source,
-                    &backend,
-                    fm_owned,
-                    aliases_owned,
-                ),
-            );
+            realm
+                .index
+                .add_document(
+                    uri,
+                    DocumentIndex::from_scan_with_frontmatter(
+                        &scan_source,
+                        &backend,
+                        fm_owned,
+                        aliases_owned,
+                    ),
+                )
+                .await;
         } else {
             let ast = match parse_structured(&source, kind) {
                 Ok(ast) => ast,
@@ -241,8 +245,9 @@ pub(crate) fn unindex_root_from_realm(root: &Path, realm: &mut RealmData) {
     }
 }
 
+#[async_trait]
 impl CoreEngine for RuntimeEngine {
-    fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
+    async fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
         match operation {
             // --- Document operations (read from specified realm, falling back to default) ---
             CoreOperation::GetOutline {
@@ -250,7 +255,7 @@ impl CoreEngine for RuntimeEngine {
                 realm: realm_name,
             } => {
                 let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().expect("lock poisoned");
+                let state = self.state.read().await;
                 let Some(realm_data) = state.get(realm_key) else {
                     return CoreOperationResult::Error(CoreError::Message(format!(
                         "realm does not exist: {realm_key}"
@@ -263,7 +268,7 @@ impl CoreEngine for RuntimeEngine {
                 realm: realm_name,
             } => {
                 let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().expect("lock poisoned");
+                let state = self.state.read().await;
                 let Some(realm_data) = state.get(realm_key) else {
                     return CoreOperationResult::Error(CoreError::Message(format!(
                         "realm does not exist: {realm_key}"
@@ -278,7 +283,7 @@ impl CoreEngine for RuntimeEngine {
                 min_score,
             } => {
                 let realm_name = realm.unwrap_or_else(|| DEFAULT_REALM.to_string());
-                let state = self.state.read().expect("lock poisoned");
+                let state = self.state.read().await;
                 let realm_data = match state.get(&realm_name) {
                     Some(data) => data,
                     None => {
@@ -297,7 +302,7 @@ impl CoreEngine for RuntimeEngine {
                 }
 
                 #[cfg(feature = "semantic-search")]
-                search::handle_semantic_search(&realm_data.index, query, top_k, min_score)
+                search::handle_semantic_search(&realm_data.index, query, top_k, min_score).await
             }
             CoreOperation::FindReferences {
                 uri,
@@ -305,7 +310,7 @@ impl CoreEngine for RuntimeEngine {
                 realm: realm_name,
             } => {
                 let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().expect("lock poisoned");
+                let state = self.state.read().await;
                 let Some(realm_data) = state.get(realm_key) else {
                     return CoreOperationResult::Error(CoreError::Message(format!(
                         "realm does not exist: {realm_key}"
@@ -320,7 +325,7 @@ impl CoreEngine for RuntimeEngine {
                 realm: realm_name,
             } => {
                 let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().expect("lock poisoned");
+                let state = self.state.read().await;
                 let Some(realm_data) = state.get(realm_key) else {
                     return CoreOperationResult::Error(CoreError::Message(format!(
                         "realm does not exist: {realm_key}"
@@ -331,19 +336,19 @@ impl CoreEngine for RuntimeEngine {
 
             // --- Realm management operations ---
             CoreOperation::CreateRealm { name } => {
-                let mut state = self.state.write().expect("lock poisoned");
+                let mut state = self.state.write().await;
                 realm_ops::handle_create_realm(&mut state, name)
             }
             CoreOperation::DestroyRealm { name } => {
-                let mut state = self.state.write().expect("lock poisoned");
+                let mut state = self.state.write().await;
                 realm_ops::handle_destroy_realm(&mut state, name)
             }
             CoreOperation::AddRoot { realm, root } => {
-                let mut state = self.state.write().expect("lock poisoned");
-                realm_ops::handle_add_root(&mut state, realm, root)
+                let mut state = self.state.write().await;
+                realm_ops::handle_add_root(&mut state, realm, root).await
             }
             CoreOperation::RemoveRoot { realm, root } => {
-                let mut state = self.state.write().expect("lock poisoned");
+                let mut state = self.state.write().await;
                 realm_ops::handle_remove_root(&mut state, realm, root)
             }
 
@@ -353,7 +358,7 @@ impl CoreEngine for RuntimeEngine {
                 check_duplicates,
                 include_token_counts,
             } => {
-                let state = self.state.read().expect("lock poisoned");
+                let state = self.state.read().await;
                 let realm_data = match state.get(&realm) {
                     Some(data) => data,
                     None => {
@@ -370,7 +375,7 @@ impl CoreEngine for RuntimeEngine {
                 )
             }
             CoreOperation::DependencyGraph { realm, format } => {
-                let state = self.state.read().expect("lock poisoned");
+                let state = self.state.read().await;
                 let realm_data = match state.get(&realm) {
                     Some(data) => data,
                     None => {
@@ -395,7 +400,7 @@ impl CoreEngine for RuntimeEngine {
                 realm: realm_name,
             } => {
                 let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().expect("lock poisoned");
+                let state = self.state.read().await;
                 let Some(realm_data) = state.get(realm_key) else {
                     return CoreOperationResult::Error(CoreError::Message(format!(
                         "realm does not exist: {realm_key}"
@@ -412,7 +417,7 @@ impl CoreEngine for RuntimeEngine {
                 limit,
             } => {
                 let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().expect("lock poisoned");
+                let state = self.state.read().await;
                 let Some(realm_data) = state.get(realm_key) else {
                     return CoreOperationResult::Error(markymark_core::CoreError::Message(
                         format!("realm does not exist: {realm_key}"),
@@ -437,7 +442,7 @@ impl CoreEngine for RuntimeEngine {
                 realm: realm_name,
             } => {
                 let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().expect("lock poisoned");
+                let state = self.state.read().await;
                 let Some(realm_data) = state.get(realm_key) else {
                     return CoreOperationResult::Error(markymark_core::CoreError::Message(
                         format!("realm does not exist: {realm_key}"),
@@ -459,7 +464,7 @@ impl CoreEngine for RuntimeEngine {
                 include_clusters,
             } => {
                 let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().expect("lock poisoned");
+                let state = self.state.read().await;
                 let Some(realm_data) = state.get(realm_key) else {
                     return CoreOperationResult::Error(markymark_core::CoreError::Message(
                         format!("realm does not exist: {realm_key}"),
@@ -477,7 +482,7 @@ impl CoreEngine for RuntimeEngine {
                 realm: realm_name,
             } => {
                 let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().expect("lock poisoned");
+                let state = self.state.read().await;
                 let Some(realm_data) = state.get(realm_key) else {
                     return CoreOperationResult::Error(markymark_core::CoreError::Message(
                         format!("realm does not exist: {realm_key}"),

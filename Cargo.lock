@@ -998,6 +998,7 @@ name = "markymark-mcp"
 version = "0.6.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "insta",
  "log",
  "markymark-core",

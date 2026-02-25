@@ -6,84 +6,98 @@ fn make_temp_realm_dir(_suffix: &str) -> tempfile::TempDir {
     tempfile::tempdir().expect("failed to create temp dir")
 }
 
-fn make_engine_with_custom_realm(realm_name: &str, dir: &Path) -> RuntimeEngine {
+async fn make_engine_with_custom_realm(realm_name: &str, dir: &Path) -> RuntimeEngine {
     let engine = RuntimeEngine::default();
     // create the realm
-    engine.execute(CoreOperation::CreateRealm {
-        name: realm_name.to_string(),
-    });
+    engine
+        .execute(CoreOperation::CreateRealm {
+            name: realm_name.to_string(),
+        })
+        .await;
     // index the directory into it
-    engine.execute(CoreOperation::AddRoot {
-        realm: realm_name.to_string(),
-        root: dir.to_path_buf(),
-    });
+    engine
+        .execute(CoreOperation::AddRoot {
+            realm: realm_name.to_string(),
+            root: dir.to_path_buf(),
+        })
+        .await;
     engine
 }
 
-#[test]
-fn get_outline_uses_named_realm() {
+#[tokio::test]
+async fn get_outline_uses_named_realm() {
     let dir = make_temp_realm_dir("get-outline");
     fs::write(dir.path().join("doc.md"), "# Hello World\n\n## Section\n").unwrap();
-    let engine = make_engine_with_custom_realm("my-realm", dir.path());
+    let engine = make_engine_with_custom_realm("my-realm", dir.path()).await;
 
     let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
 
     // Should fail without realm (default realm has no such doc)
-    let result = engine.execute(CoreOperation::GetOutline {
-        uri: uri.clone(),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::GetOutline {
+            uri: uri.clone(),
+            realm: None,
+        })
+        .await;
     assert!(
         matches!(result, CoreOperationResult::Error(_)),
         "expected error when querying default realm, got {result:?}"
     );
 
     // Should succeed with the correct realm
-    let result = engine.execute(CoreOperation::GetOutline {
-        uri: uri.clone(),
-        realm: Some("my-realm".to_string()),
-    });
+    let result = engine
+        .execute(CoreOperation::GetOutline {
+            uri: uri.clone(),
+            realm: Some("my-realm".to_string()),
+        })
+        .await;
     assert!(
         matches!(result, CoreOperationResult::Outline(_)),
         "expected Outline from named realm, got {result:?}"
     );
 }
 
-#[test]
-fn export_index_uses_named_realm() {
+#[tokio::test]
+async fn export_index_uses_named_realm() {
     let dir = make_temp_realm_dir("export-index");
     fs::write(dir.path().join("doc.md"), "# Title\n").unwrap();
-    let engine = make_engine_with_custom_realm("export-realm", dir.path());
+    let engine = make_engine_with_custom_realm("export-realm", dir.path()).await;
 
     let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
 
-    let result = engine.execute(CoreOperation::ExportIndex {
-        uri: uri.clone(),
-        realm: Some("export-realm".to_string()),
-    });
+    let result = engine
+        .execute(CoreOperation::ExportIndex {
+            uri: uri.clone(),
+            realm: Some("export-realm".to_string()),
+        })
+        .await;
     assert!(
         matches!(result, CoreOperationResult::DocumentExport { .. }),
         "expected DocumentExport from named realm, got {result:?}"
     );
 
-    let result_default = engine.execute(CoreOperation::ExportIndex { uri, realm: None });
+    let result_default = engine
+        .execute(CoreOperation::ExportIndex { uri, realm: None })
+        .await;
     assert!(
         matches!(result_default, CoreOperationResult::Error(_)),
         "expected error from default realm, got {result_default:?}"
     );
 }
 
-#[test]
-fn search_symbols_uses_named_realm() {
+#[tokio::test]
+async fn search_symbols_uses_named_realm() {
     let dir = make_temp_realm_dir("search-symbols");
     fs::write(dir.path().join("doc.md"), "# UniqueHeadingXYZ\n").unwrap();
-    let engine = make_engine_with_custom_realm("search-realm", dir.path());
+    let engine = make_engine_with_custom_realm("search-realm", dir.path()).await;
 
     // Default realm should return no matches for the unique heading
-    let result = engine.execute(CoreOperation::SearchSymbols {
-        query: "UniqueHeadingXYZ".to_string(),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::SearchSymbols {
+            query: "UniqueHeadingXYZ".to_string(),
+            realm: None,
+        })
+        .await;
     if let CoreOperationResult::Symbols(matches) = result {
         assert!(
             matches.is_empty(),
@@ -94,10 +108,12 @@ fn search_symbols_uses_named_realm() {
     }
 
     // Named realm should find it
-    let result = engine.execute(CoreOperation::SearchSymbols {
-        query: "UniqueHeadingXYZ".to_string(),
-        realm: Some("search-realm".to_string()),
-    });
+    let result = engine
+        .execute(CoreOperation::SearchSymbols {
+            query: "UniqueHeadingXYZ".to_string(),
+            realm: Some("search-realm".to_string()),
+        })
+        .await;
     if let CoreOperationResult::Symbols(matches) = result {
         assert!(!matches.is_empty(), "named realm should have the heading");
     } else {
@@ -105,8 +121,8 @@ fn search_symbols_uses_named_realm() {
     }
 }
 
-#[test]
-fn find_references_uses_named_realm() {
+#[tokio::test]
+async fn find_references_uses_named_realm() {
     let dir = make_temp_realm_dir("find-refs");
     // A heading with a wiki-link reference in the same file
     fs::write(
@@ -114,7 +130,7 @@ fn find_references_uses_named_realm() {
         "# My Heading\n\n[[My Heading]]\n",
     )
     .unwrap();
-    let engine = make_engine_with_custom_realm("refs-realm", dir.path());
+    let engine = make_engine_with_custom_realm("refs-realm", dir.path()).await;
 
     let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
 
@@ -130,33 +146,37 @@ fn find_references_uses_named_realm() {
     };
 
     // Default realm has no such doc
-    let result = engine.execute(CoreOperation::FindReferences {
-        uri: uri.clone(),
-        position,
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::FindReferences {
+            uri: uri.clone(),
+            position,
+            realm: None,
+        })
+        .await;
     assert!(
         matches!(result, CoreOperationResult::Error(_)),
         "expected error from default realm, got {result:?}"
     );
 
     // Named realm should find the references
-    let result = engine.execute(CoreOperation::FindReferences {
-        uri,
-        position,
-        realm: Some("refs-realm".to_string()),
-    });
+    let result = engine
+        .execute(CoreOperation::FindReferences {
+            uri,
+            position,
+            realm: Some("refs-realm".to_string()),
+        })
+        .await;
     assert!(
         !matches!(result, CoreOperationResult::Error(_)),
         "expected success from named realm, got {result:?}"
     );
 }
 
-#[test]
-fn rename_uses_named_realm() {
+#[tokio::test]
+async fn rename_uses_named_realm() {
     let dir = make_temp_realm_dir("rename");
     fs::write(dir.path().join("doc.md"), "# Old Name\n").unwrap();
-    let engine = make_engine_with_custom_realm("rename-realm", dir.path());
+    let engine = make_engine_with_custom_realm("rename-realm", dir.path()).await;
 
     let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
 
@@ -172,46 +192,52 @@ fn rename_uses_named_realm() {
     };
 
     // Default realm has no such doc
-    let result = engine.execute(CoreOperation::Rename {
-        uri: uri.clone(),
-        position,
-        new_name: "New Name".to_string(),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::Rename {
+            uri: uri.clone(),
+            position,
+            new_name: "New Name".to_string(),
+            realm: None,
+        })
+        .await;
     assert!(
         matches!(result, CoreOperationResult::Error(_)),
         "expected error from default realm, got {result:?}"
     );
 
     // Named realm should work
-    let result = engine.execute(CoreOperation::Rename {
-        uri,
-        position,
-        new_name: "New Name".to_string(),
-        realm: Some("rename-realm".to_string()),
-    });
+    let result = engine
+        .execute(CoreOperation::Rename {
+            uri,
+            position,
+            new_name: "New Name".to_string(),
+            realm: Some("rename-realm".to_string()),
+        })
+        .await;
     assert!(
         !matches!(result, CoreOperationResult::Error(_)),
         "expected success from named realm, got {result:?}"
     );
 }
 
-#[test]
-fn find_references_structured_doc_key_returns_empty_locations() {
+#[tokio::test]
+async fn find_references_structured_doc_key_returns_empty_locations() {
     let dir = make_temp_realm_dir("find-refs-structured-key");
     fs::write(
         dir.path().join("config.json"),
         "{\n  \"database\": {\n    \"host\": \"localhost\"\n  }\n}\n",
     )
     .unwrap();
-    let engine = make_engine_with_custom_realm("refs-structured", dir.path());
+    let engine = make_engine_with_custom_realm("refs-structured", dir.path()).await;
     let uri = DocumentUri::from_file_path(&dir.path().join("config.json"));
 
-    let result = engine.execute(CoreOperation::FindReferences {
-        uri,
-        position: Range::new(Position::new(2, 5), Position::new(2, 5)),
-        realm: Some("refs-structured".to_string()),
-    });
+    let result = engine
+        .execute(CoreOperation::FindReferences {
+            uri,
+            position: Range::new(Position::new(2, 5), Position::new(2, 5)),
+            realm: Some("refs-structured".to_string()),
+        })
+        .await;
 
     match result {
         CoreOperationResult::Locations(locations) => {
@@ -224,23 +250,25 @@ fn find_references_structured_doc_key_returns_empty_locations() {
     }
 }
 
-#[test]
-fn find_references_structured_doc_off_key_returns_error() {
+#[tokio::test]
+async fn find_references_structured_doc_off_key_returns_error() {
     let dir = make_temp_realm_dir("find-refs-structured-off-key");
     fs::write(
         dir.path().join("config.json"),
         "{\n  \"database\": {\n    \"host\": \"localhost\"\n  }\n}\n",
     )
     .unwrap();
-    let engine = make_engine_with_custom_realm("refs-structured-off-key", dir.path());
+    let engine = make_engine_with_custom_realm("refs-structured-off-key", dir.path()).await;
     let uri = DocumentUri::from_file_path(&dir.path().join("config.json"));
 
-    let result = engine.execute(CoreOperation::FindReferences {
-        uri,
-        // Cursor on value text ("localhost"), not on a key.
-        position: Range::new(Position::new(2, 15), Position::new(2, 15)),
-        realm: Some("refs-structured-off-key".to_string()),
-    });
+    let result = engine
+        .execute(CoreOperation::FindReferences {
+            uri,
+            // Cursor on value text ("localhost"), not on a key.
+            position: Range::new(Position::new(2, 15), Position::new(2, 15)),
+            realm: Some("refs-structured-off-key".to_string()),
+        })
+        .await;
 
     match result {
         CoreOperationResult::Error(err) => {
@@ -254,19 +282,21 @@ fn find_references_structured_doc_off_key_returns_error() {
     }
 }
 
-#[test]
-fn rename_structured_doc_returns_not_supported_error() {
+#[tokio::test]
+async fn rename_structured_doc_returns_not_supported_error() {
     let dir = make_temp_realm_dir("rename-structured");
     fs::write(dir.path().join("config.toml"), "host = \"localhost\"\n").unwrap();
-    let engine = make_engine_with_custom_realm("rename-structured", dir.path());
+    let engine = make_engine_with_custom_realm("rename-structured", dir.path()).await;
     let uri = DocumentUri::from_file_path(&dir.path().join("config.toml"));
 
-    let result = engine.execute(CoreOperation::Rename {
-        uri,
-        position: Range::new(Position::new(0, 1), Position::new(0, 1)),
-        new_name: "server_host".to_string(),
-        realm: Some("rename-structured".to_string()),
-    });
+    let result = engine
+        .execute(CoreOperation::Rename {
+            uri,
+            position: Range::new(Position::new(0, 1), Position::new(0, 1)),
+            new_name: "server_host".to_string(),
+            realm: Some("rename-structured".to_string()),
+        })
+        .await;
 
     match result {
         CoreOperationResult::Error(err) => {
@@ -280,8 +310,8 @@ fn rename_structured_doc_returns_not_supported_error() {
     }
 }
 
-#[test]
-fn collect_documents_includes_json_alongside_markdown() {
+#[tokio::test]
+async fn collect_documents_includes_json_alongside_markdown() {
     let dir = tempfile::tempdir().expect("failed to create temp dir");
     fs::write(dir.path().join("notes.md"), "# Hello\n").unwrap();
     fs::write(dir.path().join("config.json"), "{}").unwrap();
@@ -312,8 +342,8 @@ fn collect_documents_includes_json_alongside_markdown() {
 /// The constant 0x4f9f2cab is the standard FNV-1a 32-bit hash of "hello"
 /// (verified against the reference implementation and online calculators).
 #[cfg(feature = "semantic-search")]
-#[test]
-fn fnv1a32_is_stable_and_deterministic() {
+#[tokio::test]
+async fn fnv1a32_is_stable_and_deterministic() {
     let h1 = fnv1a32(b"hello");
     let h2 = fnv1a32(b"hello");
     assert_eq!(h1, h2, "same input must produce same hash");
@@ -339,10 +369,10 @@ fn fnv1a32_is_stable_and_deterministic() {
 /// HashEmbeddingProvider must produce a normalized output vector of the
 /// expected dimensionality.
 #[cfg(feature = "semantic-search")]
-#[test]
-fn hash_embedding_output_is_normalized_and_correct_dims() {
+#[tokio::test]
+async fn hash_embedding_output_is_normalized_and_correct_dims() {
     let provider = HashEmbeddingProvider::new(128);
-    let emb = provider.embed("hello world").unwrap();
+    let emb = provider.embed("hello world").await.unwrap();
     assert_eq!(emb.len(), 128, "embedding length must match dims");
     let norm_sq: f32 = emb.iter().map(|v| v * v).sum();
     assert!(
@@ -354,20 +384,20 @@ fn hash_embedding_output_is_normalized_and_correct_dims() {
 /// HashEmbeddingProvider must produce identical vectors for identical input.
 /// This test detects accidental use of randomised hashing (e.g. RandomState).
 #[cfg(feature = "semantic-search")]
-#[test]
-fn hash_embedding_is_deterministic() {
+#[tokio::test]
+async fn hash_embedding_is_deterministic() {
     let provider = HashEmbeddingProvider::new(64);
-    let a = provider.embed("markymark semantic search").unwrap();
-    let b = provider.embed("markymark semantic search").unwrap();
+    let a = provider.embed("markymark semantic search").await.unwrap();
+    let b = provider.embed("markymark semantic search").await.unwrap();
     assert_eq!(a, b, "identical input must produce identical embedding");
 }
 
 /// Empty text must fail with InvalidInput (not panic).
 #[cfg(feature = "semantic-search")]
-#[test]
-fn hash_embedding_rejects_empty_text() {
+#[tokio::test]
+async fn hash_embedding_rejects_empty_text() {
     let provider = HashEmbeddingProvider::new(32);
-    let err = provider.embed("   ").unwrap_err();
+    let err = provider.embed("   ").await.unwrap_err();
     assert!(
         matches!(err, markymark_core::prelude::EmbedError::InvalidInput(_)),
         "whitespace-only input must return InvalidInput, got {err:?}"
@@ -376,10 +406,10 @@ fn hash_embedding_rejects_empty_text() {
 
 /// Zero dims must fail with InvalidInput (not divide-by-zero).
 #[cfg(feature = "semantic-search")]
-#[test]
-fn hash_embedding_rejects_zero_dims() {
+#[tokio::test]
+async fn hash_embedding_rejects_zero_dims() {
     let provider = HashEmbeddingProvider::new(0);
-    let err = provider.embed("hello").unwrap_err();
+    let err = provider.embed("hello").await.unwrap_err();
     assert!(
         matches!(err, markymark_core::prelude::EmbedError::InvalidInput(_)),
         "zero dims must return InvalidInput, got {err:?}"
@@ -392,21 +422,23 @@ fn hash_embedding_rejects_zero_dims() {
 /// The `from_scan` path (Zig extraction) extracts inline code spans, while
 /// `from_ast` does not. After migration, searching for code span text should
 /// return results.
-#[test]
-fn batch_indexed_docs_have_code_spans() {
+#[tokio::test]
+async fn batch_indexed_docs_have_code_spans() {
     let dir = make_temp_realm_dir("code-spans");
     fs::write(
         dir.path().join("doc.md"),
         "# Code Spans Test\n\nThe `HashMap` type is a key-value store.\n\nUse `Vec<T>` for lists.\n",
     )
     .unwrap();
-    let engine = make_engine_with_custom_realm("code-spans-realm", dir.path());
+    let engine = make_engine_with_custom_realm("code-spans-realm", dir.path()).await;
 
     // Search for code span text — should find matches if code spans are extracted
-    let result = engine.execute(CoreOperation::SearchSymbols {
-        query: "HashMap".to_string(),
-        realm: Some("code-spans-realm".to_string()),
-    });
+    let result = engine
+        .execute(CoreOperation::SearchSymbols {
+            query: "HashMap".to_string(),
+            realm: Some("code-spans-realm".to_string()),
+        })
+        .await;
     if let CoreOperationResult::Symbols(matches) = result {
         assert!(
             !matches.is_empty(),
@@ -422,25 +454,27 @@ fn batch_indexed_docs_have_code_spans() {
 /// After B-8 migration to from_scan, frontmatter must still be accessible
 /// for search filtering, preview, and export. This tests that the
 /// `from_scan_with_frontmatter` constructor correctly preserves frontmatter.
-#[test]
-fn batch_indexed_docs_preserve_frontmatter() {
+#[tokio::test]
+async fn batch_indexed_docs_preserve_frontmatter() {
     let dir = make_temp_realm_dir("frontmatter-preservation");
     fs::write(
         dir.path().join("doc.md"),
         "---\ntitle: Test Document\ntags: [rust, zig]\n---\n\n# Content\n\nSome text here.\n",
     )
     .unwrap();
-    let engine = make_engine_with_custom_realm("fm-realm", dir.path());
+    let engine = make_engine_with_custom_realm("fm-realm", dir.path()).await;
 
     // Search with frontmatter filter should find the document
-    let result = engine.execute(CoreOperation::SearchWorkspace {
-        query: None,
-        realm: Some("fm-realm".to_string()),
-        frontmatter_filter: Some(("title".to_string(), "Test Document".to_string())),
-        property_filter: None,
-        tag_filter: None,
-        limit: 10,
-    });
+    let result = engine
+        .execute(CoreOperation::SearchWorkspace {
+            query: None,
+            realm: Some("fm-realm".to_string()),
+            frontmatter_filter: Some(("title".to_string(), "Test Document".to_string())),
+            property_filter: None,
+            tag_filter: None,
+            limit: 10,
+        })
+        .await;
     if let CoreOperationResult::WorkspaceSearchResults { results, .. } = result {
         assert!(
             !results.is_empty(),
@@ -451,8 +485,8 @@ fn batch_indexed_docs_preserve_frontmatter() {
     }
 }
 
-#[test]
-fn collect_documents_markdown_unchanged() {
+#[tokio::test]
+async fn collect_documents_markdown_unchanged() {
     let dir = tempfile::tempdir().expect("failed to create temp dir");
     fs::write(dir.path().join("readme.md"), "# R\n").unwrap();
     fs::write(dir.path().join("guide.markdown"), "# G\n").unwrap();
@@ -525,9 +559,9 @@ fn streamed_preview(path: &std::path::Path, target_line: u32, max_bytes: usize) 
 /// Interpretation: speedup > 1.0 means streaming is faster.  Speedup is
 /// meaningful only when files are large enough for I/O to dominate (~>500 KB).
 #[cfg(feature = "semantic-search")]
-#[test]
+#[tokio::test]
 #[ignore = "performance profiling -- run manually: cargo test -p markymark-mcp --features semantic-search -- preview_io_cost_large_file --ignored --nocapture"]
-fn preview_io_cost_large_file() {
+async fn preview_io_cost_large_file() {
     use markymark_core::Position;
     use std::time::Instant;
 
@@ -593,9 +627,9 @@ fn preview_io_cost_large_file() {
 /// This establishes whether batching/caching previews at the call site
 /// (in the SemanticSearch arm of `execute`) would yield meaningful savings.
 #[cfg(feature = "semantic-search")]
-#[test]
+#[tokio::test]
 #[ignore = "performance profiling -- run manually: cargo test -p markymark-mcp --features semantic-search -- preview_io_cost_multi_file --ignored --nocapture"]
-fn preview_io_cost_multi_file() {
+async fn preview_io_cost_multi_file() {
     use markymark_core::Position;
     use std::time::Instant;
 

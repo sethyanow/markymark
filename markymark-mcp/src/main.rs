@@ -17,6 +17,6 @@ async fn main() -> anyhow::Result<()> {
         vec![std::env::current_dir()?]
     };
 
-    let engine = RuntimeEngine::from_workspace_roots(workspace_roots)?;
+    let engine = RuntimeEngine::from_workspace_roots(workspace_roots).await?;
     run_stdio(Arc::new(engine)).await
 }

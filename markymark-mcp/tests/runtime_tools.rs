@@ -19,8 +19,9 @@ async fn mcp_tools_return_real_indexed_data() {
     fs::write(&file, "# Intro\nSome text\n## Deep Dive\n#rust #tools\n")
         .expect("markdown fixture should be written");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
     let mcp = MarkymarkMcp::new(Arc::new(engine));
 
     let outline_result = mcp
@@ -58,8 +59,9 @@ async fn semantic_search_tool_returns_real_engine_results() {
     fs::write(&file, "# Intro\nContext about embeddings.\n")
         .expect("markdown fixture should be written");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
     let mcp = MarkymarkMcp::new(Arc::new(engine));
 
     let result = mcp

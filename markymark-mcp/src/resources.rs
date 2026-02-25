@@ -62,21 +62,21 @@ impl MarkymarkMcp {
         ]
     }
 
-    /// Synchronously read an MCP resource by URI.
+    /// Read an MCP resource by URI.
     ///
     /// Dispatches based on the URI scheme/path prefix:
     /// - `markymark://outline/{uri}` → document outline
     /// - `markymark://symbols?query={query}` → symbol search
     /// - `markymark://dependency-graph?realm={realm}&format={format}` → link graph
-    pub fn read_resource_sync(&self, uri: &str) -> Result<Vec<ResourceContents>, McpError> {
+    pub async fn read_resource_sync(&self, uri: &str) -> Result<Vec<ResourceContents>, McpError> {
         if let Some(doc_uri) = uri.strip_prefix("markymark://outline/") {
-            return self.read_outline_resource(uri, doc_uri);
+            return self.read_outline_resource(uri, doc_uri).await;
         }
         if uri.starts_with("markymark://symbols") {
-            return self.read_symbols_resource(uri);
+            return self.read_symbols_resource(uri).await;
         }
         if uri.starts_with("markymark://dependency-graph") {
-            return self.read_dependency_graph_resource(uri);
+            return self.read_dependency_graph_resource(uri).await;
         }
         Err(McpError::resource_not_found(
             format!("unknown resource URI: {uri}"),
@@ -84,7 +84,7 @@ impl MarkymarkMcp {
         ))
     }
 
-    fn read_outline_resource(
+    async fn read_outline_resource(
         &self,
         resource_uri: &str,
         doc_uri_str: &str,
@@ -94,10 +94,14 @@ impl MarkymarkMcp {
         let realm = extract_query_param(resource_uri, "realm");
         let doc_uri = DocumentUri::new(doc_uri_str)
             .map_err(|e| McpError::invalid_params(format!("invalid document URI: {e}"), None))?;
-        match self.engine.execute(CoreOperation::GetOutline {
-            uri: doc_uri,
-            realm,
-        }) {
+        match self
+            .engine
+            .execute(CoreOperation::GetOutline {
+                uri: doc_uri,
+                realm,
+            })
+            .await
+        {
             CoreOperationResult::Outline(headings) => {
                 let json = serde_json::to_string_pretty(&headings)
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -119,7 +123,10 @@ impl MarkymarkMcp {
         }
     }
 
-    fn read_symbols_resource(&self, resource_uri: &str) -> Result<Vec<ResourceContents>, McpError> {
+    async fn read_symbols_resource(
+        &self,
+        resource_uri: &str,
+    ) -> Result<Vec<ResourceContents>, McpError> {
         let query = extract_query_param(resource_uri, "query").unwrap_or_default();
         if query.is_empty() {
             return Err(McpError::invalid_params(
@@ -131,6 +138,7 @@ impl MarkymarkMcp {
         match self
             .engine
             .execute(CoreOperation::SearchSymbols { query, realm })
+            .await
         {
             CoreOperationResult::Symbols(symbols) => {
                 let mapped: Vec<_> = symbols
@@ -166,7 +174,7 @@ impl MarkymarkMcp {
         }
     }
 
-    fn read_dependency_graph_resource(
+    async fn read_dependency_graph_resource(
         &self,
         resource_uri: &str,
     ) -> Result<Vec<ResourceContents>, McpError> {
@@ -184,6 +192,7 @@ impl MarkymarkMcp {
         match self
             .engine
             .execute(CoreOperation::DependencyGraph { realm, format })
+            .await
         {
             CoreOperationResult::DependencyGraph { content, .. } => {
                 Ok(vec![ResourceContents::TextResourceContents {

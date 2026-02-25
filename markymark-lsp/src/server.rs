@@ -159,7 +159,9 @@ impl LanguageServer for Backend {
         if let Ok(doc_uri) = crate::convert::from_lsp_uri(&uri_str) {
             {
                 let mut state = self.state.write().await;
-                state.open_document(doc_uri.clone(), params.text_document.text);
+                state
+                    .open_document(doc_uri.clone(), params.text_document.text)
+                    .await;
             }
             // Assign a globally unique generation so any in-flight debounce task
             // from a prior session detects the mismatch and discards its stale
@@ -273,7 +275,9 @@ impl LanguageServer for Backend {
 
                 let all_changes: Vec<crate::state::DocumentChange> =
                     batches.into_iter().flatten().collect();
-                state_w.apply_document_changes(&doc_uri_clone, all_changes);
+                state_w
+                    .apply_document_changes(&doc_uri_clone, all_changes)
+                    .await;
                 state_w.compute_diagnostics(&doc_uri_clone)
             };
 
@@ -962,7 +966,7 @@ impl Backend {
         }
         let all_changes: Vec<crate::state::DocumentChange> =
             batches.into_iter().flatten().collect();
-        state_w.apply_document_changes(uri, all_changes);
+        state_w.apply_document_changes(uri, all_changes).await;
         true
     }
 

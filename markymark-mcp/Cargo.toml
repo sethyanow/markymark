@@ -14,6 +14,7 @@ default = []
 semantic-search = ["markymark-index/embeddings"]
 
 [dependencies]
+async-trait = { workspace = true }
 markymark-core = { version = "0.6.0", path = "../markymark-core" }
 markymark-parser = { version = "0.6.0", path = "../markymark-parser" }
 markymark-index = { version = "0.6.0", path = "../markymark-index" }
