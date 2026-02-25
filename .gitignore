@@ -41,3 +41,7 @@ bd_export_laptop*.jsonl
 .brain
 
 brza-spec.md
+
+# Secrets
+.env
+.env.*
