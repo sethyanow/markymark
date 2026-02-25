@@ -8,7 +8,7 @@ Completed work details live in git history, not here.
 
 ---
 
-## Current State (2026-02-24)
+## Current State (2026-02-25)
 
 ### PR #44 (v0.6.0, dev→main) — CI green, ready for merge
 
@@ -19,6 +19,43 @@ incompatibility, not a caching issue (see Known Bugs below).
 **Codex pre-triage findings (beads created):**
 - marky-vxgg (P2): select-binary.sh missing .exe handling for Windows
 - marky-e3if (P3): binary.ts PATH fallback — fixed in #34223
+
+### docs-site branch — review passed, follow-ups before done
+
+Epic marky-dhkn (Update docs-site for v0.6.0 feature delta) implementation reviewed and approved.
+All 5 child tasks closed, 9/9 epic success criteria met, build passes (26 pages). Branch: `docs-site`.
+
+**Remaining before epic can close:**
+- **marky-6yuk** (P3): `scanner.rs` → `scanner/` rename in overview.md:75 and parser-pipeline.md:81
+  (plus `kernels` → `Zig FFI layer` in overview, parser-pipeline, faq, troubleshooting).
+  Blocked by marky-xclk.
+- **marky-xclk** (P1): Docs site human review notes — must be resolved to unblock 6yuk.
+- **marky-03m7** (P3): Clean up dead extract/ files in markymark-parser (blocks.rs, links.rs,
+  tags.rs, tasks.rs — dead code from pre-Zig era).
+
+**Review noted concerns (non-blocking for epic approval):**
+- project-structure.md:50 lists all 6 extract/ files including 4 dead ones — accurate to disk
+  but misleading since only frontmatter.rs is active. Fixed when marky-03m7 deletes them.
+- Changelog duplicate heading slugs (repeated "Features"/"Bug Fixes" per version) — inherent
+  to changelog format, Starlight handles fine.
+
+### GitHub Pages deployment — research captured, ready to brainstorm
+
+Goal: serve docs-site at `sethyanow.github.io/markymark/`. Research in
+`/Volumes/code/sethyanow.github.io/temp/perplexity-research.md` (local, not committed).
+
+**Key approach:** Hub repo (`sethyanow.github.io`) pulls Starlight repo via CI, builds, and
+deploys to `/markymark/` subpath. Requires:
+1. Set `site: 'https://sethyanow.github.io'` and `base: '/markymark'` in `astro.config.mjs`
+2. Hub repo workflow: checkout markymark docs-site, `bun install && bun run build`, move
+   `dist/` to `_site/markymark/`, deploy via `actions/deploy-pages@v4`
+3. GitHub Pages source set to "GitHub Actions" on hub repo
+4. Optional: `repository_dispatch` trigger for auto-redeploy when docs-site changes
+5. `base` in astro config MUST match the subfolder name — mismatch breaks asset paths
+
+**Next session:** Brainstorm the full deployment plan — decide on CI triggers, whether to use
+PAT for private repo checkout, whether to build in markymark repo and push artifacts vs build
+in hub repo, and whether `bun` is available in the CI runner (may need to use `npm`).
 
 ---
 
