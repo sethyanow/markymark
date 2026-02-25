@@ -50,6 +50,15 @@ fn main() {
             lib_file.display()
         );
     }
+
+    // Zig 0.15.2 on Linux x86_64 produces archives that pass `ar t` but
+    // fail rust-lld's stricter parsing ("Archive::children failed: truncated
+    // or malformed archive").  Re-pack with the system `ar` to produce a
+    // rust-lld-compatible archive.  Only needed on Linux; macOS ld64 handles
+    // the Zig archive format without issues.
+    if cfg!(target_os = "linux") {
+        repack_archive(&lib_file);
+    }
     validate_archive(&lib_file);
 
     // Tell Cargo where to find and link the library
@@ -142,6 +151,85 @@ fn rust_target_to_zig_target(rust_target: &str) -> Option<String> {
         "x86_64-pc-windows-msvc" => Some("x86_64-windows".to_string()),
         _ => None,
     }
+}
+
+/// Re-pack an archive using the system `ar` to produce a format compatible
+/// with rust-lld.  Zig 0.15.2 on Linux x86_64 produces archives where the
+/// member offset table is inconsistent with the actual file size, causing
+/// `Archive::children failed` in rust-lld.  Extracting and re-packing with
+/// the system `ar rcs` normalizes the format.
+///
+/// On platforms where `ar` is unavailable (Windows), this is a no-op.
+fn repack_archive(archive: &std::path::Path) {
+    let tmp = archive.with_extension("repack_tmp");
+    if tmp.exists() {
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+    if std::fs::create_dir_all(&tmp).is_err() {
+        println!("cargo:warning=Skipping archive repack: cannot create temp dir");
+        return;
+    }
+
+    // Extract all object files from the Zig-produced archive
+    let extract = Command::new("ar")
+        .arg("x")
+        .arg(archive)
+        .current_dir(&tmp)
+        .output();
+
+    match extract {
+        Ok(o) if o.status.success() => {}
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            println!("cargo:warning=Skipping archive repack: ar x failed: {stderr}");
+            let _ = std::fs::remove_dir_all(&tmp);
+            return;
+        }
+        Err(_) => {
+            // ar not available (e.g. Windows)
+            let _ = std::fs::remove_dir_all(&tmp);
+            return;
+        }
+    }
+
+    // Collect all .o files
+    let o_files: Vec<PathBuf> = std::fs::read_dir(&tmp)
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|ext| ext == "o"))
+        .collect();
+
+    if o_files.is_empty() {
+        println!("cargo:warning=Skipping archive repack: no .o files extracted");
+        let _ = std::fs::remove_dir_all(&tmp);
+        return;
+    }
+
+    // Remove the original archive and re-create with system ar
+    std::fs::remove_file(archive)
+        .unwrap_or_else(|e| panic!("Failed to remove original archive for repack: {e}"));
+
+    let repack = Command::new("ar")
+        .arg("rcs")
+        .arg(archive)
+        .args(&o_files)
+        .output()
+        .unwrap_or_else(|e| panic!("Failed to repack archive with ar rcs: {e}"));
+
+    if !repack.status.success() {
+        let stderr = String::from_utf8_lossy(&repack.stderr);
+        panic!("ar rcs failed during archive repack: {stderr}");
+    }
+
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    let file_len = std::fs::metadata(archive).map(|m| m.len()).unwrap_or(0);
+    println!(
+        "cargo:warning=Archive repacked with system ar ({file_len} bytes, {} object files)",
+        o_files.len()
+    );
 }
 
 /// Validate that an archive (.a) file is well-formed by listing its members
