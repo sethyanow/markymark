@@ -4,18 +4,19 @@
 // mmap-compatible layout, zero pointer chasing.
 //
 // Section order (fixed, offsets computed from counts):
-//   [ScanBlobHeader]
+//   [ScanBlobHeader]             (v2: 128 bytes)
 //   [BlobHeading × heading_count]
 //   [BlobLink × link_count]
 //   [BlobTag × tag_count]
 //   [BlobBlockId × block_id_count]
+//   [BlobCodeSpan × code_span_count]
 //   [u32 × line_count]           (line_starts)
 //   [u8 × text_pool_size]        (text pool)
 
 const std = @import("std");
 
 pub const BLOB_MAGIC: u32 = 0x4D4B5343; // "MKSC" (MarKy SCan)
-pub const BLOB_VERSION: u16 = 1;
+pub const BLOB_VERSION: u16 = 2;
 
 // ── Blob structs ────────────────────────────────────────────────────
 
@@ -34,7 +35,16 @@ pub const ScanBlobHeader = extern struct {
     text_pool_size: u32 = 0,
     token_estimate: u32 = 0,
     total_blob_size: u32 = 0,
-    _reserved: [16]u8 = .{0} ** 16,
+    code_span_count: u32 = 0,
+    embed_count: u32 = 0,
+    task_count: u32 = 0,
+    callout_count: u32 = 0,
+    query_block_count: u32 = 0,
+    link_def_count: u32 = 0,
+    block_ref_count: u32 = 0,
+    property_count: u32 = 0,
+    xml_tag_count: u32 = 0,
+    _reserved_v2: [44]u8 = .{0} ** 44,
 };
 
 pub const BlobHeading = extern struct {
@@ -84,14 +94,132 @@ pub const BlobBlockId = extern struct {
     end_col: u32 = 0,
 };
 
+pub const BlobTask = extern struct {
+    text_off: u32 = 0,
+    text_len: u32 = 0,
+    source_offset: u32 = 0,
+    end_offset: u32 = 0,
+    start_line: u32 = 0,
+    start_col: u32 = 0,
+    end_line: u32 = 0,
+    end_col: u32 = 0,
+    state: u8 = 0,
+    _pad: [3]u8 = .{ 0, 0, 0 },
+};
+
+pub const BlobEmbed = extern struct {
+    target_off: u32 = 0,
+    target_len: u32 = 0,
+    source_offset: u32 = 0,
+    end_offset: u32 = 0,
+    start_line: u32 = 0,
+    start_col: u32 = 0,
+    end_line: u32 = 0,
+    end_col: u32 = 0,
+};
+
+pub const BlobCodeSpan = extern struct {
+    text_off: u32 = 0,
+    text_len: u32 = 0,
+    source_offset: u32 = 0, // byte offset of opening backtick
+    end_offset: u32 = 0, // byte offset past closing backtick
+    start_line: u32 = 0,
+    start_col: u32 = 0,
+    end_line: u32 = 0,
+    end_col: u32 = 0,
+};
+
+pub const BlobCallout = extern struct {
+    type_off: u32 = 0, // callout type text offset in text pool
+    type_len: u32 = 0,
+    title_off: u32 = 0, // title offset (0/0 sentinel for None)
+    title_len: u32 = 0,
+    source_offset: u32 = 0,
+    end_offset: u32 = 0,
+    start_line: u32 = 0,
+    start_col: u32 = 0,
+    end_line: u32 = 0,
+    end_col: u32 = 0,
+};
+
+pub const BlobBlockRef = extern struct {
+    uuid_off: u32 = 0, // UUID text offset in text pool
+    uuid_len: u32 = 0,
+    source_offset: u32 = 0,
+    start_line: u32 = 0,
+    start_col: u32 = 0,
+    end_line: u32 = 0,
+    end_col: u32 = 0,
+};
+
+pub const BlobQueryBlock = extern struct {
+    query_off: u32 = 0, // query text offset in text pool
+    query_len: u32 = 0,
+    source_offset: u32 = 0,
+    end_offset: u32 = 0,
+    start_line: u32 = 0,
+    start_col: u32 = 0,
+    end_line: u32 = 0,
+    end_col: u32 = 0,
+};
+
+pub const BlobLinkDefinition = extern struct {
+    label_off: u32 = 0, // label text offset in text pool
+    label_len: u32 = 0,
+    url_off: u32 = 0, // URL text offset in text pool
+    url_len: u32 = 0,
+    title_off: u32 = 0, // title offset (0/0 sentinel for None)
+    title_len: u32 = 0,
+    source_offset: u32 = 0,
+    end_offset: u32 = 0,
+    start_line: u32 = 0,
+    start_col: u32 = 0,
+    end_line: u32 = 0,
+    end_col: u32 = 0,
+};
+
+pub const BlobProperty = extern struct {
+    key_off: u32 = 0, // key text offset in text pool
+    key_len: u32 = 0,
+    value_off: u32 = 0, // raw value text offset in text pool
+    value_len: u32 = 0,
+    value_type: u8 = 0, // 0=string, 1=list, 2=page_ref
+    _pad: [3]u8 = .{ 0, 0, 0 },
+};
+
+pub const BlobXmlTag = extern struct {
+    tag_name_off: u32 = 0,
+    tag_name_len: u16 = 0,
+    flags: u8 = 0, // bit 0 = self_closing, bit 1 = unclosed, bit 2 = is_inline
+    _pad: u8 = 0,
+    raw_html_off: u32 = 0,
+    raw_html_len: u16 = 0,
+    _pad2: u16 = 0,
+    source_offset: u32 = 0,
+    end_offset: u32 = 0,
+    start_line: u32 = 0,
+    start_col: u32 = 0,
+    end_line: u32 = 0,
+    end_col: u32 = 0,
+};
+
 // ── Comptime size assertions ────────────────────────────────────────
 
 comptime {
-    std.debug.assert(@sizeOf(ScanBlobHeader) == 64);
+    std.debug.assert(@sizeOf(ScanBlobHeader) == 128);
     std.debug.assert(@sizeOf(BlobHeading) == 40);
     std.debug.assert(@sizeOf(BlobLink) == 40);
     std.debug.assert(@sizeOf(BlobTag) == 24);
     std.debug.assert(@sizeOf(BlobBlockId) == 28);
+    std.debug.assert(@sizeOf(BlobTask) == 36);
+    std.debug.assert(@sizeOf(BlobEmbed) == 32);
+    std.debug.assert(@sizeOf(BlobCodeSpan) == 32);
+    std.debug.assert(@sizeOf(BlobCallout) == 40);
+    std.debug.assert(@sizeOf(BlobBlockRef) == 28);
+    std.debug.assert(@sizeOf(BlobQueryBlock) == 32);
+    std.debug.assert(@sizeOf(BlobLinkDefinition) == 48);
+    std.debug.assert(@sizeOf(BlobProperty) == 20);
+    std.debug.assert(@sizeOf(BlobXmlTag) == 40);
 }
 
 // ── Blob size computation ───────────────────────────────────────────
@@ -102,6 +230,15 @@ pub fn computeBlobSize(
     link_count: u32,
     tag_count: u32,
     block_id_count: u32,
+    code_span_count: u32,
+    task_count: u32,
+    embed_count: u32,
+    callout_count: u32,
+    block_ref_count: u32,
+    query_block_count: u32,
+    link_def_count: u32,
+    property_count: u32,
+    xml_tag_count: u32,
     line_count: u32,
     text_pool_size: u32,
 ) ?u32 {
@@ -110,6 +247,15 @@ pub fn computeBlobSize(
         @as(u64, link_count) * @sizeOf(BlobLink) +
         @as(u64, tag_count) * @sizeOf(BlobTag) +
         @as(u64, block_id_count) * @sizeOf(BlobBlockId) +
+        @as(u64, code_span_count) * @sizeOf(BlobCodeSpan) +
+        @as(u64, task_count) * @sizeOf(BlobTask) +
+        @as(u64, embed_count) * @sizeOf(BlobEmbed) +
+        @as(u64, callout_count) * @sizeOf(BlobCallout) +
+        @as(u64, block_ref_count) * @sizeOf(BlobBlockRef) +
+        @as(u64, query_block_count) * @sizeOf(BlobQueryBlock) +
+        @as(u64, link_def_count) * @sizeOf(BlobLinkDefinition) +
+        @as(u64, property_count) * @sizeOf(BlobProperty) +
+        @as(u64, xml_tag_count) * @sizeOf(BlobXmlTag) +
         @as(u64, line_count) * @sizeOf(u32) +
         @as(u64, text_pool_size);
 
@@ -123,6 +269,15 @@ pub const SectionOffsets = struct {
     links: u32,
     tags: u32,
     block_ids: u32,
+    code_spans: u32,
+    tasks: u32,
+    embeds: u32,
+    callouts: u32,
+    block_refs: u32,
+    query_blocks: u32,
+    link_definitions: u32,
+    properties: u32,
+    xml_tags: u32,
     line_starts: u32,
     text_pool: u32,
 };
@@ -139,6 +294,15 @@ pub fn computeSectionOffsets(header: ScanBlobHeader) ?SectionOffsets {
         header.link_count,
         header.tag_count,
         header.block_id_count,
+        header.code_span_count,
+        header.task_count,
+        header.embed_count,
+        header.callout_count,
+        header.block_ref_count,
+        header.query_block_count,
+        header.link_def_count,
+        header.property_count,
+        header.xml_tag_count,
         header.line_count,
         header.text_pool_size,
     ) == null) return null;
@@ -147,13 +311,31 @@ pub fn computeSectionOffsets(header: ScanBlobHeader) ?SectionOffsets {
     const links = headings + header.heading_count * @sizeOf(BlobHeading);
     const tags = links + header.link_count * @sizeOf(BlobLink);
     const block_ids = tags + header.tag_count * @sizeOf(BlobTag);
-    const line_starts = block_ids + header.block_id_count * @sizeOf(BlobBlockId);
+    const code_spans = block_ids + header.block_id_count * @sizeOf(BlobBlockId);
+    const tasks = code_spans + header.code_span_count * @sizeOf(BlobCodeSpan);
+    const embeds = tasks + header.task_count * @sizeOf(BlobTask);
+    const callouts = embeds + header.embed_count * @sizeOf(BlobEmbed);
+    const block_refs = callouts + header.callout_count * @sizeOf(BlobCallout);
+    const query_blocks = block_refs + header.block_ref_count * @sizeOf(BlobBlockRef);
+    const link_definitions = query_blocks + header.query_block_count * @sizeOf(BlobQueryBlock);
+    const properties = link_definitions + header.link_def_count * @sizeOf(BlobLinkDefinition);
+    const xml_tags = properties + header.property_count * @sizeOf(BlobProperty);
+    const line_starts = xml_tags + header.xml_tag_count * @sizeOf(BlobXmlTag);
     const text_pool = line_starts + header.line_count * @sizeOf(u32);
     return .{
         .headings = headings,
         .links = links,
         .tags = tags,
         .block_ids = block_ids,
+        .code_spans = code_spans,
+        .tasks = tasks,
+        .embeds = embeds,
+        .callouts = callouts,
+        .block_refs = block_refs,
+        .query_blocks = query_blocks,
+        .link_definitions = link_definitions,
+        .properties = properties,
+        .xml_tags = xml_tags,
         .line_starts = line_starts,
         .text_pool = text_pool,
     };
@@ -185,6 +367,15 @@ pub fn validateBlob(data: []const u8) BlobError!ScanBlobHeader {
         header.link_count,
         header.tag_count,
         header.block_id_count,
+        header.code_span_count,
+        header.task_count,
+        header.embed_count,
+        header.callout_count,
+        header.block_ref_count,
+        header.query_block_count,
+        header.link_def_count,
+        header.property_count,
+        header.xml_tag_count,
         header.line_count,
         header.text_pool_size,
     ) orelse return error.OutOfRange;
@@ -197,7 +388,7 @@ pub fn validateBlob(data: []const u8) BlobError!ScanBlobHeader {
 
 /// Read header from raw bytes (alignment-safe bytewise copy).
 ///
-/// Precondition: `data.len >= @sizeOf(ScanBlobHeader)` (64 bytes).
+/// Precondition: `data.len >= @sizeOf(ScanBlobHeader)` (128 bytes for v2).
 /// Panics via Zig slice bounds check on undersized input.
 /// Callers should use `validateBlob()` first, which enforces the minimum size.
 pub fn readHeader(data: []const u8) ScanBlobHeader {
@@ -209,7 +400,7 @@ pub fn readHeader(data: []const u8) ScanBlobHeader {
 
 /// Write header to raw bytes (alignment-safe bytewise copy).
 ///
-/// Precondition: `data.len >= @sizeOf(ScanBlobHeader)` (64 bytes).
+/// Precondition: `data.len >= @sizeOf(ScanBlobHeader)` (128 bytes for v2).
 /// Panics via Zig slice bounds check on undersized input.
 pub fn writeHeader(data: []u8, header: ScanBlobHeader) void {
     const src: [*]const u8 = @ptrCast(&header);
@@ -239,27 +430,62 @@ pub fn readStruct(comptime T: type, buf: []const u8, offset: usize) !T {
 const testing = std.testing;
 
 test "comptime size assertions hold" {
-    try testing.expectEqual(@as(usize, 64), @sizeOf(ScanBlobHeader));
+    try testing.expectEqual(@as(usize, 128), @sizeOf(ScanBlobHeader));
     try testing.expectEqual(@as(usize, 40), @sizeOf(BlobHeading));
     try testing.expectEqual(@as(usize, 40), @sizeOf(BlobLink));
     try testing.expectEqual(@as(usize, 24), @sizeOf(BlobTag));
     try testing.expectEqual(@as(usize, 28), @sizeOf(BlobBlockId));
+    try testing.expectEqual(@as(usize, 36), @sizeOf(BlobTask));
+    try testing.expectEqual(@as(usize, 32), @sizeOf(BlobEmbed));
+    try testing.expectEqual(@as(usize, 32), @sizeOf(BlobCodeSpan));
+}
+
+test "v2 header includes all planned count fields" {
+    try testing.expect(@hasField(ScanBlobHeader, "embed_count"));
+    try testing.expect(@hasField(ScanBlobHeader, "task_count"));
+    try testing.expect(@hasField(ScanBlobHeader, "callout_count"));
+    try testing.expect(@hasField(ScanBlobHeader, "query_block_count"));
+    try testing.expect(@hasField(ScanBlobHeader, "link_def_count"));
+    try testing.expect(@hasField(ScanBlobHeader, "block_ref_count"));
+    try testing.expect(@hasField(ScanBlobHeader, "property_count"));
+    try testing.expect(@hasField(ScanBlobHeader, "xml_tag_count"));
 }
 
 test "computeBlobSize empty document" {
-    const size = computeBlobSize(0, 0, 0, 0, 0, 0);
-    try testing.expectEqual(@as(?u32, 64), size);
+    const size = computeBlobSize(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    try testing.expectEqual(@as(?u32, 128), size);
 }
 
 test "computeBlobSize with counts" {
-    // 1 heading (40) + 1 link (40) + 1 tag (24) + 1 block_id (28) + 2 lines (8) + 10 text
-    const size = computeBlobSize(1, 1, 1, 1, 2, 10);
-    const expected: u32 = 64 + 40 + 40 + 24 + 28 + 8 + 10;
+    // 1 heading (40) + 1 link (40) + 1 tag (24) + 1 block_id (28) + 0 code_spans + 0 tasks + 0 embeds + 0 callouts + 0 block_refs + 2 lines (8) + 10 text
+    const size = computeBlobSize(1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 10);
+    const expected: u32 = 128 + 40 + 40 + 24 + 28 + 8 + 10;
+    try testing.expectEqual(@as(?u32, expected), size);
+}
+
+test "computeBlobSize with code spans" {
+    // 1 heading (40) + 1 link (40) + 1 tag (24) + 1 block_id (28) + 2 code_spans (64) + 0 tasks + 0 embeds + 0 callouts + 0 block_refs + 2 lines (8) + 10 text
+    const size = computeBlobSize(1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 10);
+    const expected: u32 = 128 + 40 + 40 + 24 + 28 + 64 + 8 + 10;
+    try testing.expectEqual(@as(?u32, expected), size);
+}
+
+test "computeBlobSize with tasks and embeds" {
+    // 0 headings + 0 links + 0 tags + 0 block_ids + 0 code_spans + 1 task (36) + 1 embed (32) + 0 callouts + 0 block_refs + 0 lines + 5 text
+    const size = computeBlobSize(0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 5);
+    const expected: u32 = 128 + 36 + 32 + 5;
+    try testing.expectEqual(@as(?u32, expected), size);
+}
+
+test "computeBlobSize with callouts and block refs" {
+    // 0 headings + 0 links + 0 tags + 0 block_ids + 0 code_spans + 0 tasks + 0 embeds + 1 callout (40) + 1 block_ref (28) + 0 lines + 10 text
+    const size = computeBlobSize(0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 10);
+    const expected: u32 = 128 + 40 + 28 + 10;
     try testing.expectEqual(@as(?u32, expected), size);
 }
 
 test "computeBlobSize overflow returns null" {
-    const size = computeBlobSize(std.math.maxInt(u32), 0, 0, 0, 0, 0);
+    const size = computeBlobSize(std.math.maxInt(u32), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     try testing.expectEqual(@as(?u32, null), size);
 }
 
@@ -269,7 +495,7 @@ test "validateBlob rejects too small" {
 }
 
 test "validateBlob rejects bad magic" {
-    var buf: [64]u8 = .{0} ** 64;
+    var buf: [128]u8 = .{0} ** 128;
     // Write wrong magic
     std.mem.writeInt(u32, buf[0..4], 0xDEADBEEF, .little);
     try testing.expectError(error.InvalidMagic, validateBlob(&buf));
@@ -278,19 +504,19 @@ test "validateBlob rejects bad magic" {
 test "validateBlob accepts valid empty blob" {
     var header = ScanBlobHeader{};
     header.total_blob_size = @sizeOf(ScanBlobHeader);
-    var buf: [64]u8 = undefined;
+    var buf: [128]u8 = undefined;
     writeHeader(&buf, header);
     const validated = try validateBlob(&buf);
     try testing.expectEqual(BLOB_MAGIC, validated.magic);
     try testing.expectEqual(BLOB_VERSION, validated.version);
     try testing.expectEqual(@as(u32, 0), validated.heading_count);
-    try testing.expectEqual(@as(u32, 64), validated.total_blob_size);
+    try testing.expectEqual(@as(u32, 128), validated.total_blob_size);
 }
 
 test "validateBlob rejects size mismatch" {
     var header = ScanBlobHeader{};
-    header.total_blob_size = 128; // Wrong: actual data is 64 bytes
-    var buf: [64]u8 = undefined;
+    header.total_blob_size = 64; // Wrong: actual data is 128 bytes
+    var buf: [128]u8 = undefined;
     writeHeader(&buf, header);
     try testing.expectError(error.SizeMismatch, validateBlob(&buf));
 }
@@ -301,18 +527,41 @@ test "computeSectionOffsets correct for known counts" {
         .link_count = 1,
         .tag_count = 3,
         .block_id_count = 1,
+        .code_span_count = 0,
         .line_count = 4,
         .text_pool_size = 20,
     };
     const offsets = computeSectionOffsets(header).?;
-    try testing.expectEqual(@as(u32, 64), offsets.headings);
-    try testing.expectEqual(@as(u32, 64 + 2 * 40), offsets.links);
-    try testing.expectEqual(@as(u32, 64 + 2 * 40 + 1 * 40), offsets.tags);
-    try testing.expectEqual(@as(u32, 64 + 2 * 40 + 1 * 40 + 3 * 24), offsets.block_ids);
+    try testing.expectEqual(@as(u32, 128), offsets.headings);
+    try testing.expectEqual(@as(u32, 128 + 2 * 40), offsets.links);
+    try testing.expectEqual(@as(u32, 128 + 2 * 40 + 1 * 40), offsets.tags);
+    try testing.expectEqual(@as(u32, 128 + 2 * 40 + 1 * 40 + 3 * 24), offsets.block_ids);
+    // code_spans section at block_ids end (0 code spans)
+    try testing.expectEqual(offsets.block_ids + 1 * 28, offsets.code_spans);
+}
+
+test "computeSectionOffsets with code spans" {
+    const header = ScanBlobHeader{
+        .heading_count = 1,
+        .link_count = 0,
+        .tag_count = 0,
+        .block_id_count = 0,
+        .code_span_count = 2,
+        .line_count = 1,
+        .text_pool_size = 5,
+    };
+    const offsets = computeSectionOffsets(header).?;
+    try testing.expectEqual(@as(u32, 128), offsets.headings);
+    try testing.expectEqual(@as(u32, 128 + 1 * 40), offsets.links);
+    try testing.expectEqual(@as(u32, 128 + 1 * 40), offsets.tags);
+    try testing.expectEqual(@as(u32, 128 + 1 * 40), offsets.block_ids);
+    try testing.expectEqual(@as(u32, 128 + 1 * 40), offsets.code_spans);
+    // 2 code spans * 32 bytes each = 64
+    try testing.expectEqual(@as(u32, 128 + 1 * 40 + 2 * 32), offsets.line_starts);
 }
 
 test "writeStruct and readStruct roundtrip" {
-    var buf: [128]u8 = .{0} ** 128;
+    var buf: [256]u8 = .{0} ** 256;
     const heading = BlobHeading{
         .text_off = 10,
         .text_len = 5,
@@ -325,8 +574,8 @@ test "writeStruct and readStruct roundtrip" {
         .end_col = 7,
         .level = 1,
     };
-    try writeStruct(BlobHeading, &buf, 64, heading);
-    const read_back = try readStruct(BlobHeading, &buf, 64);
+    try writeStruct(BlobHeading, &buf, 128, heading);
+    const read_back = try readStruct(BlobHeading, &buf, 128);
     try testing.expectEqual(heading.text_off, read_back.text_off);
     try testing.expectEqual(heading.text_len, read_back.text_len);
     try testing.expectEqual(heading.level, read_back.level);

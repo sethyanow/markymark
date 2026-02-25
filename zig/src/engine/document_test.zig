@@ -11,6 +11,7 @@ const DocumentEngine = doc.DocumentEngine;
 const StoredHeading = doc.StoredHeading;
 const StoredLink = doc.StoredLink;
 const StoredTag = doc.StoredTag;
+const StoredCodeSpan = doc.StoredCodeSpan;
 const StoredBlockId = doc.StoredBlockId;
 const computeLineStarts = doc.computeLineStarts;
 const byteOffsetToPosition = doc.byteOffsetToPosition;
@@ -18,6 +19,7 @@ const slugifyText = doc.slugifyText;
 const parseAll = doc.parseAll;
 const freeHeadings = doc.freeHeadings;
 const freeLinks = doc.freeLinks;
+const freeCodeSpans = doc.freeCodeSpans;
 const freeTags = doc.freeTags;
 const freeBlockIds = doc.freeBlockIds;
 const freeStoredHeadingsList = doc.freeStoredHeadingsList;
@@ -174,8 +176,8 @@ test "test_blob_empty_document" {
     defer engine.destroy();
 
     const blob_data = try engine.getBlob();
-    // Empty document blob is header only (64 bytes)
-    try testing.expectEqual(@as(usize, 64), blob_data.len);
+    // Empty document blob is header only (128 bytes for v2)
+    try testing.expectEqual(@as(usize, 128), blob_data.len);
 
     const header = blob.readHeader(blob_data);
     try testing.expectEqual(@as(u32, 0), header.heading_count);
@@ -185,7 +187,7 @@ test "test_blob_empty_document" {
 }
 
 test "test_blob_validate_rejects_bad_magic" {
-    var buf: [64]u8 = .{0} ** 64;
+    var buf: [128]u8 = .{0} ** 128;
     std.mem.writeInt(u32, buf[0..4], 0xDEADBEEF, .little);
     try testing.expectError(error.InvalidMagic, blob.validateBlob(&buf));
 }
@@ -474,8 +476,17 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
 
         var out_headings: []StoredHeading = &.{};
         var out_links: []StoredLink = &.{};
+        var out_code_spans: []StoredCodeSpan = &.{};
         var out_tags: []StoredTag = &.{};
         var out_block_ids: []StoredBlockId = &.{};
+        var out_tasks: []doc.StoredTask = &.{};
+        var out_embeds: []doc.StoredEmbed = &.{};
+        var out_callouts: []doc.StoredCallout = &.{};
+        var out_block_refs: []doc.StoredBlockRef = &.{};
+        var out_query_blocks: []doc.StoredQueryBlock = &.{};
+        var out_link_defs: []doc.StoredLinkDefinition = &.{};
+        var out_properties: []doc.StoredProperty = &.{};
+        var out_xml_tags: []doc.StoredXmlTag = &.{};
         var out_line_starts: []u32 = &.{};
         var out_token_estimate: u32 = 0;
         var out_content_hash: u64 = 0;
@@ -485,8 +496,17 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
             input,
             &out_headings,
             &out_links,
+            &out_code_spans,
             &out_tags,
             &out_block_ids,
+            &out_tasks,
+            &out_embeds,
+            &out_callouts,
+            &out_block_refs,
+            &out_query_blocks,
+            &out_link_defs,
+            &out_properties,
+            &out_xml_tags,
             &out_line_starts,
             &out_token_estimate,
             &out_content_hash,
@@ -496,8 +516,17 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
             // Success: free output slices manually (simulates caller cleanup)
             freeHeadings(failing.allocator(), out_headings);
             freeLinks(failing.allocator(), out_links);
+            freeCodeSpans(failing.allocator(), out_code_spans);
             freeTags(failing.allocator(), out_tags);
             freeBlockIds(failing.allocator(), out_block_ids);
+            doc.freeTasks(failing.allocator(), out_tasks);
+            doc.freeEmbeds(failing.allocator(), out_embeds);
+            doc.freeCallouts(failing.allocator(), out_callouts);
+            doc.freeBlockRefs(failing.allocator(), out_block_refs);
+            doc.freeQueryBlocks(failing.allocator(), out_query_blocks);
+            doc.freeLinkDefinitions(failing.allocator(), out_link_defs);
+            doc.freeProperties(failing.allocator(), out_properties);
+            doc.freeXmlTags(failing.allocator(), out_xml_tags);
             if (out_line_starts.len > 0) failing.allocator().free(out_line_starts);
             consecutive_successes += 1;
         } else |_| {
@@ -510,4 +539,137 @@ test "marky-8nzt: parseAll toOwnedSlice cascade OOM — no leak" {
 
     // Verify we actually tested multiple failure points (not just index 0)
     try testing.expect(fail_index > 5);
+}
+
+// ── Code span tests ───────────────────────────────────────────────
+
+test "engine extracts code spans from backtick text" {
+    const engine = try DocumentEngine.create("Hello `world` end", testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 1), engine.code_spans.len);
+    try testing.expectEqualStrings("world", engine.code_spans[0].text);
+    try testing.expectEqual(@as(u32, 6), engine.code_spans[0].source_offset);
+    // end_offset past closing backtick: 6 + 1 + 5 + 1 = 13
+    try testing.expectEqual(@as(u32, 13), engine.code_spans[0].end_offset);
+}
+
+test "engine extracts multiple code spans" {
+    const engine = try DocumentEngine.create("`a` and `b`", testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 2), engine.code_spans.len);
+    try testing.expectEqualStrings("a", engine.code_spans[0].text);
+    try testing.expectEqualStrings("b", engine.code_spans[1].text);
+    // Second code span offset must be greater than first
+    try testing.expect(engine.code_spans[1].source_offset > engine.code_spans[0].source_offset);
+}
+
+test "engine no code spans in plain text" {
+    const engine = try DocumentEngine.create("No code here", testing.allocator);
+    defer engine.destroy();
+    try testing.expectEqual(@as(usize, 0), engine.code_spans.len);
+}
+
+test "engine code span inside heading" {
+    const engine = try DocumentEngine.create("# Title `code` end", testing.allocator);
+    defer engine.destroy();
+
+    // Both heading and code span should be present
+    try testing.expectEqual(@as(usize, 1), engine.headings.len);
+    try testing.expectEqual(@as(usize, 1), engine.code_spans.len);
+    try testing.expectEqualStrings("code", engine.code_spans[0].text);
+}
+
+test "engine code span positions are correct" {
+    const engine = try DocumentEngine.create("line1\n`code`\nline3", testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 1), engine.code_spans.len);
+    // Code span is on line 1 (0-indexed), col 0
+    try testing.expectEqual(@as(u32, 1), engine.code_spans[0].start.line);
+    try testing.expectEqual(@as(u32, 0), engine.code_spans[0].start.col);
+}
+
+test "engine code span blob roundtrip" {
+    const engine = try DocumentEngine.create("Hello `world` end", testing.allocator);
+    defer engine.destroy();
+
+    const blob_data = try engine.getBlob();
+    // Validate the blob has code_span_count in header
+    const header = blob.readHeader(blob_data);
+    try testing.expectEqual(@as(u32, 1), header.code_span_count);
+    try testing.expectEqual(@as(u32, 0), header.heading_count);
+
+    // Verify blob validates successfully
+    const validated = try blob.validateBlob(blob_data);
+    try testing.expectEqual(@as(u32, 1), validated.code_span_count);
+}
+
+test "engine code span blob roundtrip empty" {
+    const engine = try DocumentEngine.create("No code here", testing.allocator);
+    defer engine.destroy();
+
+    const blob_data = try engine.getBlob();
+    const header = blob.readHeader(blob_data);
+    try testing.expectEqual(@as(u32, 0), header.code_span_count);
+}
+
+test "engine update preserves code spans" {
+    const engine = try DocumentEngine.create("`a`", testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 1), engine.code_spans.len);
+    try testing.expectEqualStrings("a", engine.code_spans[0].text);
+
+    // Update with new content
+    try engine.update("`b` and `c`");
+    try testing.expectEqual(@as(usize, 2), engine.code_spans.len);
+    try testing.expectEqualStrings("b", engine.code_spans[0].text);
+    try testing.expectEqualStrings("c", engine.code_spans[1].text);
+}
+
+// ── XML tag tests ──────────────────────────────────────────────────
+
+test "engine extracts XML tags from block-level HTML" {
+    const engine = try DocumentEngine.create("<wrapper>\n\ncontent\n\n</wrapper>\n", testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 1), engine.xml_tags.len);
+    try testing.expectEqualStrings("wrapper", engine.xml_tags[0].tag_name);
+    try testing.expect(!engine.xml_tags[0].is_self_closing);
+    try testing.expect(!engine.xml_tags[0].is_unclosed);
+    // Position info populated
+    try testing.expect(engine.xml_tags[0].end.line > 0 or engine.xml_tags[0].end.col > 0);
+}
+
+test "engine xml_tags blob serialization roundtrip" {
+    const blob_mod = @import("blob.zig");
+
+    var engine = try DocumentEngine.create("<tag>\n\ntext\n\n</tag>\n", testing.allocator);
+    defer engine.destroy();
+
+    const blob_data = try engine.getBlob();
+    const header = blob_mod.readHeader(blob_data);
+    try testing.expectEqual(@as(u32, 1), header.xml_tag_count);
+}
+
+test "engine xml_tags empty document has no xml_tags" {
+    const engine = try DocumentEngine.create("# Just a heading\n", testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 0), engine.xml_tags.len);
+}
+
+test "engine xml_tags update replaces old xml_tags" {
+    var engine = try DocumentEngine.create("<div>\n\ntext\n\n</div>\n", testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 1), engine.xml_tags.len);
+    try testing.expectEqualStrings("div", engine.xml_tags[0].tag_name);
+
+    // Update with different content
+    try engine.update("<span>\n\nnew\n\n</span>\n");
+    try testing.expectEqual(@as(usize, 1), engine.xml_tags.len);
+    try testing.expectEqualStrings("span", engine.xml_tags[0].tag_name);
 }

@@ -11,13 +11,12 @@ categories = ["development-tools", "text-processing"]
 
 [features]
 bench-internals = []
-zig-kernels = ["markymark-core/zig-kernels", "dep:markymark-kernels"]
-embeddings = ["zig-kernels"]
+embeddings = []
 
 [dependencies]
-markymark-core = { version = "0.5.1", path = "../markymark-core" }
-markymark-kernels = { version = "0.5.1", path = "../markymark-kernels", optional = true }
-markymark-parser = { version = "0.5.1", path = "../markymark-parser" }
+markymark-core = { version = "0.6.0", path = "../markymark-core", features = ["zig-kernels"] }
+markymark-kernels = { version = "0.6.0", path = "../markymark-kernels" }
+markymark-parser = { version = "0.6.0", path = "../markymark-parser" }
 petgraph = { workspace = true }
 bumpalo = { workspace = true }
 hashbrown = { workspace = true }
@@ -25,6 +24,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 self_cell = { workspace = true }
+lasso = "0.7.3"
 
 [dev-dependencies]
 insta = { workspace = true }
@@ -39,9 +39,12 @@ required-features = ["bench-internals"]
 
 [[bin]]
 name = "gen_golden_blob"
-required-features = ["zig-kernels"]
 
 [[bench]]
 name = "memory"
 harness = false
 required-features = ["bench-internals"]
+
+[[bench]]
+name = "realm_update"
+harness = false

@@ -37,10 +37,21 @@ struct XmlSymbolNode {
 }
 
 /// Convert XML tags into nested `DocumentSymbol` entries using containment.
+///
+/// Tags are sorted by range (start ascending, end descending) so that parent
+/// nodes are inserted before their children — `insert_xml_node` relies on this.
 pub(crate) fn xml_tags_to_symbols(xml_tags: &[XmlTagEntry]) -> Vec<DocumentSymbol> {
+    let mut sorted: Vec<&XmlTagEntry> = xml_tags.iter().collect();
+    sorted.sort_by(|a, b| {
+        a.range
+            .start
+            .cmp(&b.range.start)
+            .then(b.range.end.cmp(&a.range.end))
+    });
+
     let mut roots: Vec<XmlSymbolNode> = Vec::new();
 
-    for tag in xml_tags {
+    for tag in &sorted {
         let node = XmlSymbolNode {
             name: format!("<{}>", tag.tag_name),
             range: tag.range,

@@ -5,17 +5,17 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::RwLock;
 
-use anyhow::{anyhow, bail};
+use anyhow::bail;
 #[cfg(feature = "semantic-search")]
 use markymark_core::engine::SemanticSearchMatch;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 #[cfg(feature = "semantic-search")]
 use markymark_core::prelude::{EmbedError, EmbeddingProvider};
+use markymark_core::scanner::Md4cScanBackend;
 use markymark_core::structured::DocumentKind;
 use markymark_core::{CoreError, DocumentUri};
 use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
 use markymark_parser::structured::parse_structured;
-use markymark_parser::Parser;
 
 mod diagnostics;
 mod export;
@@ -159,12 +159,11 @@ impl RuntimeEngine {
             bail!("at least one workspace root is required");
         }
 
-        let mut parser = Parser::new().map_err(|err| anyhow!(err.to_string()))?;
         let mut default_realm = RealmData::new();
 
         for root in workspace_roots {
             helpers::validate_workspace_root(&root)?;
-            index_root_into_realm(&mut parser, &root, &mut default_realm);
+            index_root_into_realm(&root, &mut default_realm);
             default_realm.roots.push(root);
         }
 
@@ -178,7 +177,14 @@ impl RuntimeEngine {
 }
 
 /// Index all markdown files under a root into a realm.
-pub(crate) fn index_root_into_realm(parser: &mut Parser, root: &Path, realm: &mut RealmData) {
+///
+/// Markdown documents use the Zig scan path (`from_scan_with_frontmatter`) for
+/// full extraction including code spans, tasks, embeds, callouts, etc.
+/// Frontmatter is parsed directly from source text (no tree-sitter needed).
+/// Structured documents (JSON, YAML, TOML, etc.) still use tree-sitter via
+/// `StructuredDocumentIndex::from_ast`.
+pub(crate) fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
+    let backend = Md4cScanBackend;
     let documents = helpers::collect_documents(root);
 
     for (path, kind) in documents {
@@ -190,11 +196,21 @@ pub(crate) fn index_root_into_realm(parser: &mut Parser, root: &Path, realm: &mu
         let uri = DocumentUri::from_file_path(&path);
 
         if kind == DocumentKind::Markdown {
-            let ast = match parser.parse(&source) {
-                Ok(ast) => ast,
-                Err(_) => continue,
-            };
-            realm.index.add_document(uri, DocumentIndex::from_ast(ast));
+            let (fm_owned, aliases_owned) = markymark_index::parse_frontmatter_owned(&source);
+
+            // Mask frontmatter block so md4c doesn't misparse `---` as a
+            // setext heading underline. Replace non-newline bytes with spaces
+            // to preserve line counting and byte offsets.
+            let scan_source = markymark_index::mask_frontmatter(&source);
+            realm.index.add_document(
+                uri,
+                DocumentIndex::from_scan_with_frontmatter(
+                    &scan_source,
+                    &backend,
+                    fm_owned,
+                    aliases_owned,
+                ),
+            );
         } else {
             let ast = match parse_structured(&source, kind) {
                 Ok(ast) => ast,

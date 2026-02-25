@@ -6,13 +6,15 @@
 
 mod helpers;
 mod types;
-pub use types::{AnyDocumentIndex, ResolvedBlock, ResolvedHeading};
+pub use types::{AnyDocumentIndex, ResolvedBlock, ResolvedCodeSpan, ResolvedHeading};
 
 use helpers::{detect_journal_date, resolve_relative_path};
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 #[cfg(feature = "embeddings")]
 use std::sync::Arc;
+
+use lasso::{Rodeo, Spur};
 
 use crate::document::DocumentIndex;
 #[cfg(feature = "embeddings")]
@@ -25,13 +27,32 @@ use markymark_core::DocumentUri;
 /// A multi-document index that aggregates document instances
 /// and provides global cross-document lookups using owned storage.
 pub struct RealmIndex {
+    /// String interner for cross-doc HashMap keys (slugs, tags, block IDs).
+    /// Grows monotonically; never deallocates. For a 10K-doc vault with ~500K
+    /// unique slugs/tags/blocks, interner holds ~10MB. Acceptable for LSP lifetime.
+    interner: Rodeo,
     docs: HashMap<String, (DocumentUri, AnyDocumentIndex)>,
     /// Slug → (uri, owned heading). Owned copies survive doc removal.
-    slug_to_headings: HashMap<String, Vec<(DocumentUri, ResolvedHeading)>>,
+    slug_to_headings: HashMap<Spur, Vec<(DocumentUri, ResolvedHeading)>>,
     /// Block id → list of (uri, block) in insertion order.
-    block_to_location: HashMap<String, Vec<(DocumentUri, ResolvedBlock)>>,
+    block_to_location: HashMap<Spur, Vec<(DocumentUri, ResolvedBlock)>>,
     /// Tag name → URIs of docs containing it.
-    tag_to_docs: HashMap<String, Vec<DocumentUri>>,
+    /// Lazily maintained: set `tags_dirty = true` during `update_document`
+    /// instead of patching eagerly. Rebuilt from `contributions` on next
+    /// mutation that needs it, or computed on-the-fly in read-only queries.
+    tag_to_docs: HashMap<Spur, Vec<DocumentUri>>,
+    /// When true, `tag_to_docs` does not reflect recent `update_document` changes.
+    /// `&mut self` methods call `ensure_tags_clean()` before reading tag_to_docs.
+    /// `&self` methods compute directly from contributions when dirty.
+    tags_dirty: bool,
+    /// Code span text → (uri, code span) for cross-doc code span lookups.
+    code_span_to_docs: HashMap<Spur, Vec<(DocumentUri, ResolvedCodeSpan)>>,
+    /// Per-document contribution metadata for incremental cross-doc index updates.
+    contributions: HashMap<String, DocContribution>,
+    /// File stem → URIs. Stems are lowercased before interning for case-insensitive lookup.
+    /// Multiple URIs can share a stem (e.g., /a/readme.md and /b/readme.md).
+    /// find_uri_by_stem returns the first entry (insertion order).
+    stem_to_uris: HashMap<Spur, Vec<DocumentUri>>,
     /// Key path → URIs of structured docs containing it.
     key_path_to_docs: HashMap<String, Vec<DocumentUri>>,
     /// Journal date → list of URIs for that date (BTreeMap enables range queries by month).
@@ -43,14 +64,76 @@ pub struct RealmIndex {
     semantic_index: Option<SemanticIndex>,
 }
 
+/// Extract the file stem from a DocumentUri, lowercase it, and intern via Rodeo.
+/// Returns None for URIs without a valid file path or stem (e.g., untitled: URIs).
+fn intern_stem(interner: &mut Rodeo, uri: &DocumentUri) -> Option<Spur> {
+    let path = uri.to_file_path()?;
+    let stem = path.file_stem()?.to_str()?;
+    let lowered = stem.to_ascii_lowercase();
+    Some(interner.get_or_intern(&lowered))
+}
+
+/// Tracks what Spur keys a document contributed to each cross-doc index.
+/// Used to diff old vs new contributions on update, patching only changed entries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DocContribution {
+    heading_slugs: HashSet<Spur>,
+    block_ids: HashSet<Spur>,
+    tag_names: HashSet<Spur>,
+    code_span_texts: HashSet<Spur>,
+    stem: Option<Spur>,
+    journal_date: Option<(u16, u8, u8)>,
+}
+
+impl DocContribution {
+    fn build(interner: &mut Rodeo, index: &DocumentIndex, uri: &DocumentUri) -> Self {
+        let mut heading_slugs = HashSet::new();
+        for entry in index.headings() {
+            heading_slugs.insert(interner.get_or_intern(entry.slug));
+        }
+
+        let mut block_ids = HashSet::new();
+        for id in index.block_ids() {
+            block_ids.insert(interner.get_or_intern(id));
+        }
+
+        let mut tag_names = HashSet::new();
+        for tag in index.tags() {
+            tag_names.insert(interner.get_or_intern(tag.name));
+        }
+
+        let mut code_span_texts = HashSet::new();
+        for cs in index.code_spans() {
+            code_span_texts.insert(interner.get_or_intern(cs.text));
+        }
+
+        let stem = intern_stem(interner, uri);
+        let journal_date = detect_journal_date(uri.as_str());
+
+        Self {
+            heading_slugs,
+            block_ids,
+            tag_names,
+            code_span_texts,
+            stem,
+            journal_date,
+        }
+    }
+}
+
 impl RealmIndex {
     /// Create an empty realm index.
     pub fn new() -> Self {
         Self {
+            interner: Rodeo::default(),
             docs: HashMap::new(),
+            contributions: HashMap::new(),
             slug_to_headings: HashMap::new(),
             block_to_location: HashMap::new(),
             tag_to_docs: HashMap::new(),
+            tags_dirty: false,
+            code_span_to_docs: HashMap::new(),
+            stem_to_uris: HashMap::new(),
             key_path_to_docs: HashMap::new(),
             date_to_docs: BTreeMap::new(),
             uri_to_date: HashMap::new(),
@@ -75,46 +158,7 @@ impl RealmIndex {
         // If replacing, clear old doc from cross-doc indexes first
         self.remove_from_cross_doc_indexes(&key);
 
-        // Populate cross-doc heading index (owned copies)
-        for entry in index.headings() {
-            let resolved = ResolvedHeading {
-                text: entry.text.to_string(),
-                slug: entry.slug.to_string(),
-                level: entry.level,
-                range: entry.range,
-            };
-            self.slug_to_headings
-                .entry(entry.slug.to_string())
-                .or_default()
-                .push((uri.clone(), resolved));
-        }
-
-        // Populate cross-doc block index (owned copies)
-        for id in index.block_ids() {
-            if let Some(block) = index.block_by_id(id) {
-                self.block_to_location
-                    .entry(id.to_string())
-                    .or_default()
-                    .push((
-                        uri.clone(),
-                        ResolvedBlock {
-                            id: id.to_string(),
-                            range: block.range,
-                        },
-                    ));
-            }
-        }
-
-        // Populate cross-doc tag index (owned copies)
-        let mut seen_tags = HashMap::new();
-        for tag in index.tags() {
-            if seen_tags.insert(tag.name, ()).is_none() {
-                self.tag_to_docs
-                    .entry(tag.name.to_string())
-                    .or_default()
-                    .push(uri.clone());
-            }
-        }
+        self.populate_cross_doc_indexes(&uri, &index);
 
         #[cfg(feature = "embeddings")]
         if let Some(semantic) = &mut self.semantic_index {
@@ -126,11 +170,9 @@ impl RealmIndex {
             }
         }
 
-        // Detect and index journal pages by date pattern in URI filename.
-        if let Some(date) = detect_journal_date(uri.as_str()) {
-            self.date_to_docs.entry(date).or_default().push(uri.clone());
-            self.uri_to_date.insert(uri.as_str().to_string(), date);
-        }
+        // Store contribution metadata for incremental updates (Layer 3).
+        let contrib = DocContribution::build(&mut self.interner, &index, &uri);
+        self.contributions.insert(key.clone(), contrib);
 
         self.docs
             .insert(key, (uri, AnyDocumentIndex::Markdown(index)));
@@ -152,8 +194,67 @@ impl RealmIndex {
                 .push(uri.clone());
         }
 
+        // Populate stem index for structured documents too.
+        if let Some(stem_spur) = intern_stem(&mut self.interner, &uri) {
+            self.stem_to_uris
+                .entry(stem_spur)
+                .or_default()
+                .push(uri.clone());
+        }
+
         self.docs
             .insert(key, (uri, AnyDocumentIndex::Structured(index)));
+    }
+
+    /// Incrementally update a markdown document's cross-doc indexes.
+    ///
+    /// Diffs old vs new contributions (heading slugs, block IDs, tags, code spans)
+    /// and patches only the changed entries. For the common case (single-char edit
+    /// that doesn't change structure), this skips all cross-doc index operations.
+    ///
+    /// Tags are lazily deferred: instead of patching `tag_to_docs` eagerly, we set
+    /// `tags_dirty = true`. The tag index is rebuilt from contributions on the next
+    /// mutation that needs it, or computed on-the-fly in read-only queries.
+    pub fn update_document(&mut self, uri: DocumentUri, new_index: DocumentIndex) {
+        let key = uri.as_str().to_string();
+        let new_contrib = DocContribution::build(&mut self.interner, &new_index, &uri);
+
+        // Remove old contribution to get owned access (avoids clone of 4 HashSets).
+        let old_contrib = self.contributions.remove(&key);
+
+        if let Some(ref old_contrib) = old_contrib {
+            if old_contrib == &new_contrib {
+                // Fast path: contribution sets identical — skip cross-doc index ops.
+                // Just swap the stored DocumentIndex.
+            } else {
+                // Slow path: diff and patch only changed entries.
+                self.patch_headings(&key, &uri, old_contrib, &new_contrib, &new_index);
+                self.patch_blocks(&key, &uri, old_contrib, &new_contrib, &new_index);
+                // Tags are lazily deferred — mark dirty instead of patching eagerly.
+                if old_contrib.tag_names != new_contrib.tag_names {
+                    self.tags_dirty = true;
+                }
+                self.patch_code_spans(&key, &uri, old_contrib, &new_contrib, &new_index);
+                self.patch_stem(old_contrib, &new_contrib, &uri);
+                self.patch_journal_date(&key, &uri, old_contrib, &new_contrib);
+            }
+        } else {
+            // First add (no prior contribution): full population.
+            self.ensure_tags_clean();
+            self.populate_cross_doc_indexes(&uri, &new_index);
+        }
+
+        #[cfg(feature = "embeddings")]
+        if let Some(semantic) = &mut self.semantic_index {
+            semantic.remove_document(&uri);
+            if let Err(err) = semantic.add_document(uri.clone(), &new_index) {
+                log::warn!("semantic indexing failed for {}: {err}", uri.as_str());
+            }
+        }
+
+        self.contributions.insert(key.clone(), new_contrib);
+        self.docs
+            .insert(key, (uri, AnyDocumentIndex::Markdown(new_index)));
     }
 
     /// Remove a document from the realm index.
@@ -164,56 +265,102 @@ impl RealmIndex {
             semantic.remove_document(uri);
         }
         self.remove_from_cross_doc_indexes(&key);
+        self.contributions.remove(&key);
         self.docs.remove(&key);
+    }
+
+    /// Rebuild `tag_to_docs` from contributions if dirty.
+    ///
+    /// Called from `&mut self` methods before they read/write `tag_to_docs`.
+    /// `&self` methods use `tag_counts_from_contributions()` instead.
+    fn ensure_tags_clean(&mut self) {
+        if !self.tags_dirty {
+            return;
+        }
+        self.tag_to_docs.clear();
+        for (key, contrib) in &self.contributions {
+            if let Some((uri, _)) = self.docs.get(key) {
+                for &spur in &contrib.tag_names {
+                    self.tag_to_docs.entry(spur).or_default().push(uri.clone());
+                }
+            }
+        }
+        self.tags_dirty = false;
     }
 
     /// Remove a document's entries from cross-doc indexes by URI key.
     fn remove_from_cross_doc_indexes(&mut self, key: &str) {
-        let Some((_uri, index)) = self.docs.get(key) else {
+        // Ensure tag index is clean before removal (lazy tag rebuild).
+        self.ensure_tags_clean();
+
+        let Some((uri, index)) = self.docs.get(key) else {
             return;
         };
 
-        match index {
-            AnyDocumentIndex::Markdown(md_idx) => {
-                let slugs: Vec<String> = md_idx
-                    .headings()
-                    .iter()
-                    .map(|h| h.slug.to_string())
-                    .collect();
-                let block_ids: Vec<String> = md_idx.block_ids().map(|id| id.to_string()).collect();
-                let tag_names: Vec<String> = {
-                    let mut seen = std::collections::HashSet::new();
-                    md_idx
-                        .tags()
-                        .iter()
-                        .filter(|t| seen.insert(t.name))
-                        .map(|t| t.name.to_string())
-                        .collect()
-                };
-
-                for slug in &slugs {
-                    if let Some(entries) = self.slug_to_headings.get_mut(slug) {
-                        entries.retain(|(u, _)| u.as_str() != key);
-                        if entries.is_empty() {
-                            self.slug_to_headings.remove(slug);
-                        }
-                    }
-                }
-
-                for id in &block_ids {
-                    if let Some(entries) = self.block_to_location.get_mut(id) {
-                        entries.retain(|(u, _)| u.as_str() != key);
-                        if entries.is_empty() {
-                            self.block_to_location.remove(id);
-                        }
-                    }
-                }
-
-                for tag in &tag_names {
-                    if let Some(uris) = self.tag_to_docs.get_mut(tag) {
+        // Remove from stem index (applies to both markdown and structured docs).
+        if let Some(path) = uri.to_file_path() {
+            if let Some(stem_str) = path.file_stem().and_then(|s| s.to_str()) {
+                let lowered = stem_str.to_ascii_lowercase();
+                if let Some(spur) = self.interner.get(&lowered) {
+                    if let Some(uris) = self.stem_to_uris.get_mut(&spur) {
                         uris.retain(|u| u.as_str() != key);
                         if uris.is_empty() {
-                            self.tag_to_docs.remove(tag);
+                            self.stem_to_uris.remove(&spur);
+                        }
+                    }
+                }
+            }
+        }
+
+        match index {
+            AnyDocumentIndex::Markdown(md_idx) => {
+                // Zero-allocation remove: Spur lookup is O(1), no String collection needed.
+                for entry in md_idx.headings() {
+                    if let Some(spur) = self.interner.get(entry.slug) {
+                        if let Some(entries) = self.slug_to_headings.get_mut(&spur) {
+                            entries.retain(|(u, _)| u.as_str() != key);
+                            if entries.is_empty() {
+                                self.slug_to_headings.remove(&spur);
+                            }
+                        }
+                    }
+                }
+
+                for id in md_idx.block_ids() {
+                    if let Some(spur) = self.interner.get(id) {
+                        if let Some(entries) = self.block_to_location.get_mut(&spur) {
+                            entries.retain(|(u, _)| u.as_str() != key);
+                            if entries.is_empty() {
+                                self.block_to_location.remove(&spur);
+                            }
+                        }
+                    }
+                }
+
+                let mut seen_tags = std::collections::HashSet::new();
+                for tag in md_idx.tags() {
+                    if seen_tags.insert(tag.name) {
+                        if let Some(spur) = self.interner.get(tag.name) {
+                            if let Some(uris) = self.tag_to_docs.get_mut(&spur) {
+                                uris.retain(|u| u.as_str() != key);
+                                if uris.is_empty() {
+                                    self.tag_to_docs.remove(&spur);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let mut seen_cs = std::collections::HashSet::new();
+                for cs in md_idx.code_spans() {
+                    if seen_cs.insert(cs.text) {
+                        if let Some(spur) = self.interner.get(cs.text) {
+                            if let Some(entries) = self.code_span_to_docs.get_mut(&spur) {
+                                entries.retain(|(u, _)| u.as_str() != key);
+                                if entries.is_empty() {
+                                    self.code_span_to_docs.remove(&spur);
+                                }
+                            }
                         }
                     }
                 }
@@ -243,6 +390,250 @@ impl RealmIndex {
         }
     }
 
+    /// Populate all cross-doc indexes for a markdown document (full add).
+    /// Used by both add_document and update_document's first-add fallback.
+    fn populate_cross_doc_indexes(&mut self, uri: &DocumentUri, index: &DocumentIndex) {
+        // Headings (Spur-keyed)
+        for entry in index.headings() {
+            let slug_spur = self.interner.get_or_intern(entry.slug);
+            let resolved = ResolvedHeading {
+                text: entry.text.to_string(),
+                slug: entry.slug.to_string(),
+                level: entry.level,
+                range: entry.range,
+            };
+            self.slug_to_headings
+                .entry(slug_spur)
+                .or_default()
+                .push((uri.clone(), resolved));
+        }
+
+        // Blocks (Spur-keyed)
+        for id in index.block_ids() {
+            if let Some(block) = index.block_by_id(id) {
+                let id_spur = self.interner.get_or_intern(id);
+                self.block_to_location.entry(id_spur).or_default().push((
+                    uri.clone(),
+                    ResolvedBlock {
+                        id: id.to_string(),
+                        range: block.range,
+                    },
+                ));
+            }
+        }
+
+        // Tags (Spur-keyed, dedup per document)
+        let mut seen_tags = HashMap::new();
+        for tag in index.tags() {
+            if seen_tags.insert(tag.name, ()).is_none() {
+                let tag_spur = self.interner.get_or_intern(tag.name);
+                self.tag_to_docs
+                    .entry(tag_spur)
+                    .or_default()
+                    .push(uri.clone());
+            }
+        }
+
+        // Code spans (Spur-keyed, dedup by text per document)
+        let mut seen_code_spans = HashMap::new();
+        for cs in index.code_spans() {
+            if seen_code_spans.insert(cs.text, ()).is_none() {
+                let text_spur = self.interner.get_or_intern(cs.text);
+                self.code_span_to_docs.entry(text_spur).or_default().push((
+                    uri.clone(),
+                    ResolvedCodeSpan {
+                        text: cs.text.to_string(),
+                        range: cs.range,
+                        start_byte: cs.start_byte,
+                        end_byte: cs.end_byte,
+                    },
+                ));
+            }
+        }
+
+        // Stem index for wiki link resolution (Spur-keyed, case-insensitive)
+        if let Some(stem_spur) = intern_stem(&mut self.interner, uri) {
+            self.stem_to_uris
+                .entry(stem_spur)
+                .or_default()
+                .push(uri.clone());
+        }
+
+        // Journal date index
+        if let Some(date) = detect_journal_date(uri.as_str()) {
+            self.date_to_docs.entry(date).or_default().push(uri.clone());
+            self.uri_to_date.insert(uri.as_str().to_string(), date);
+        }
+    }
+
+    // ── Patch helpers for incremental update_document (Layer 3) ──
+
+    fn patch_headings(
+        &mut self,
+        key: &str,
+        uri: &DocumentUri,
+        old: &DocContribution,
+        new: &DocContribution,
+        new_index: &DocumentIndex,
+    ) {
+        // Remove entries for deleted slugs
+        for &spur in old.heading_slugs.difference(&new.heading_slugs) {
+            if let Some(entries) = self.slug_to_headings.get_mut(&spur) {
+                entries.retain(|(u, _)| u.as_str() != key);
+                if entries.is_empty() {
+                    self.slug_to_headings.remove(&spur);
+                }
+            }
+        }
+
+        // Build slug → heading entries lookup map for O(1) access per new slug.
+        // Without this, each new slug would scan all headings: O(N * H) → O(H²).
+        let added: HashSet<&Spur> = new.heading_slugs.difference(&old.heading_slugs).collect();
+        if !added.is_empty() {
+            let mut slug_map: HashMap<&str, Vec<_>> = HashMap::new();
+            for entry in new_index.headings() {
+                slug_map.entry(entry.slug).or_default().push(entry);
+            }
+            for &spur in &added {
+                let slug_str = self.interner.resolve(spur);
+                if let Some(entries) = slug_map.get(slug_str) {
+                    for entry in entries {
+                        let resolved = ResolvedHeading {
+                            text: entry.text.to_string(),
+                            slug: entry.slug.to_string(),
+                            level: entry.level,
+                            range: entry.range,
+                        };
+                        self.slug_to_headings
+                            .entry(*spur)
+                            .or_default()
+                            .push((uri.clone(), resolved));
+                    }
+                }
+            }
+        }
+    }
+
+    fn patch_blocks(
+        &mut self,
+        key: &str,
+        uri: &DocumentUri,
+        old: &DocContribution,
+        new: &DocContribution,
+        new_index: &DocumentIndex,
+    ) {
+        for &spur in old.block_ids.difference(&new.block_ids) {
+            if let Some(entries) = self.block_to_location.get_mut(&spur) {
+                entries.retain(|(u, _)| u.as_str() != key);
+                if entries.is_empty() {
+                    self.block_to_location.remove(&spur);
+                }
+            }
+        }
+
+        for &spur in new.block_ids.difference(&old.block_ids) {
+            let id_str = self.interner.resolve(&spur);
+            if let Some(block) = new_index.block_by_id(id_str) {
+                self.block_to_location.entry(spur).or_default().push((
+                    uri.clone(),
+                    ResolvedBlock {
+                        id: id_str.to_string(),
+                        range: block.range,
+                    },
+                ));
+            }
+        }
+    }
+
+    fn patch_code_spans(
+        &mut self,
+        key: &str,
+        uri: &DocumentUri,
+        old: &DocContribution,
+        new: &DocContribution,
+        new_index: &DocumentIndex,
+    ) {
+        for &spur in old.code_span_texts.difference(&new.code_span_texts) {
+            if let Some(entries) = self.code_span_to_docs.get_mut(&spur) {
+                entries.retain(|(u, _)| u.as_str() != key);
+                if entries.is_empty() {
+                    self.code_span_to_docs.remove(&spur);
+                }
+            }
+        }
+
+        for &spur in new.code_span_texts.difference(&old.code_span_texts) {
+            let text_str = self.interner.resolve(&spur);
+            for cs in new_index.code_spans() {
+                if cs.text == text_str {
+                    self.code_span_to_docs.entry(spur).or_default().push((
+                        uri.clone(),
+                        ResolvedCodeSpan {
+                            text: cs.text.to_string(),
+                            range: cs.range,
+                            start_byte: cs.start_byte,
+                            end_byte: cs.end_byte,
+                        },
+                    ));
+                    break; // dedup: one entry per unique text per doc
+                }
+            }
+        }
+    }
+
+    fn patch_stem(&mut self, old: &DocContribution, new: &DocContribution, uri: &DocumentUri) {
+        if old.stem == new.stem {
+            return;
+        }
+        let key = uri.as_str();
+        // Remove old stem entry
+        if let Some(old_spur) = old.stem {
+            if let Some(uris) = self.stem_to_uris.get_mut(&old_spur) {
+                uris.retain(|u| u.as_str() != key);
+                if uris.is_empty() {
+                    self.stem_to_uris.remove(&old_spur);
+                }
+            }
+        }
+        // Add new stem entry
+        if let Some(new_spur) = new.stem {
+            self.stem_to_uris
+                .entry(new_spur)
+                .or_default()
+                .push(uri.clone());
+        }
+    }
+
+    fn patch_journal_date(
+        &mut self,
+        key: &str,
+        uri: &DocumentUri,
+        old: &DocContribution,
+        new: &DocContribution,
+    ) {
+        if old.journal_date == new.journal_date {
+            return;
+        }
+        // Remove old date entry
+        if let Some(old_date) = old.journal_date {
+            self.uri_to_date.remove(key);
+            if let Some(uris) = self.date_to_docs.get_mut(&old_date) {
+                uris.retain(|u| u.as_str() != key);
+                if uris.is_empty() {
+                    self.date_to_docs.remove(&old_date);
+                }
+            }
+        }
+        // Add new date entry
+        if let Some(new_date) = new.journal_date {
+            self.date_to_docs
+                .entry(new_date)
+                .or_default()
+                .push(uri.clone());
+            self.uri_to_date.insert(key.to_string(), new_date);
+        }
+    }
+
     /// Number of documents in the realm (markdown + structured).
     pub fn document_count(&self) -> usize {
         self.docs.len()
@@ -264,6 +655,11 @@ impl RealmIndex {
             .count()
     }
 
+    /// Number of unique strings held by the interner (slugs, tags, block IDs, code spans, stems).
+    pub fn interner_len(&self) -> usize {
+        self.interner.len()
+    }
+
     /// Total number of key paths across all structured documents.
     pub fn key_path_count(&self) -> usize {
         self.docs
@@ -275,22 +671,53 @@ impl RealmIndex {
 
     /// Look up a heading by slug across all markdown documents.
     pub fn lookup_heading(&self, slug: &str) -> Vec<(DocumentUri, ResolvedHeading)> {
-        self.slug_to_headings.get(slug).cloned().unwrap_or_default()
+        self.interner
+            .get(slug)
+            .and_then(|spur| self.slug_to_headings.get(&spur))
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Look up a block by ID across all documents.
     pub fn lookup_block(&self, id: &str) -> Option<(DocumentUri, ResolvedBlock)> {
-        self.block_to_location
+        self.interner
             .get(id)
+            .and_then(|spur| self.block_to_location.get(&spur))
             .and_then(|entries| entries.first().cloned())
     }
 
+    /// Look up documents containing a code span by text across all markdown documents.
+    pub fn lookup_code_span(&self, text: &str) -> Vec<(DocumentUri, ResolvedCodeSpan)> {
+        self.interner
+            .get(text)
+            .and_then(|spur| self.code_span_to_docs.get(&spur))
+            .cloned()
+            .unwrap_or_default()
+    }
+
     /// Get tag usage counts across all markdown documents.
+    ///
+    /// When `tags_dirty`, computes directly from contributions (read-only,
+    /// no mutation needed) so this method stays `&self`.
     pub fn tag_counts(&self) -> Vec<(String, usize)> {
-        self.tag_to_docs
-            .iter()
-            .map(|(name, uris)| (name.clone(), uris.len()))
-            .collect()
+        if self.tags_dirty {
+            // Compute from contributions without mutating tag_to_docs.
+            let mut counts: HashMap<Spur, usize> = HashMap::new();
+            for contrib in self.contributions.values() {
+                for &spur in &contrib.tag_names {
+                    *counts.entry(spur).or_insert(0) += 1;
+                }
+            }
+            counts
+                .into_iter()
+                .map(|(spur, count)| (self.interner.resolve(&spur).to_string(), count))
+                .collect()
+        } else {
+            self.tag_to_docs
+                .iter()
+                .map(|(spur, uris)| (self.interner.resolve(spur).to_string(), uris.len()))
+                .collect()
+        }
     }
 
     /// Get a markdown document's index by URI.
@@ -335,17 +762,13 @@ impl RealmIndex {
     }
 
     /// Find a document URI by matching its file stem against a target name.
+    /// O(1) via stem_to_uris index. Returns first-added URI when multiple docs share a stem.
     pub(crate) fn find_uri_by_stem(&self, target: &str) -> Option<DocumentUri> {
-        for (uri, _index) in self.docs.values() {
-            if let Some(path) = uri.to_file_path() {
-                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    if stem.eq_ignore_ascii_case(target) {
-                        return Some(uri.clone());
-                    }
-                }
-            }
-        }
-        None
+        let lowered = target.to_ascii_lowercase();
+        self.interner
+            .get(&lowered)
+            .and_then(|spur| self.stem_to_uris.get(&spur))
+            .and_then(|uris| uris.first().cloned())
     }
 
     /// Find a document URI by resolving `relative_url` relative to `from_uri`'s directory.

@@ -27,7 +27,8 @@ const EMULATION_FALLBACK: Record<string, string> = {
  *   4. Bare name fallback: markymark.exe on Windows, markymark elsewhere
  *      (will succeed only if the binary is on the system PATH)
  *
- * All paths are joined with extensionPath/bin/ except for configPath overrides.
+ * Bundled binaries are joined with extensionPath/bin/.
+ * configPath overrides and bare-name fallbacks are returned as-is.
  */
 export function resolveBinaryPath(
   extensionPath: string,
@@ -50,7 +51,9 @@ export function resolveBinaryPath(
   }
 
   if (!name) {
-    name = platform === 'win32' ? 'markymark.exe' : 'markymark';
+    // No bundled binary for this platform — return bare name so the
+    // OS can find a PATH-installed markymark instead.
+    return platform === 'win32' ? 'markymark.exe' : 'markymark';
   }
 
   return path.join(extensionPath, 'bin', name);

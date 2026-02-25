@@ -26,7 +26,17 @@ Thumbs.db
 
 # Zig
 .zig-cache/
+.zig-cache-global/
+.zig-cache-local/
+.zig-global-cache/
+zig/.zig-global-cache/
 zig-out/
+
+# Local scratch / exports
+temp_coderabbit_notes.md
+TEST_BIG_FILE.md
+bd_export_laptop*.jsonl
+.sprite
 
 .brain
 

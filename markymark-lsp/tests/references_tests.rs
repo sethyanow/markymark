@@ -210,9 +210,13 @@ async fn setup_xml_workspace() -> (
         "Some agent content.\n",
         "</agent>\n",
         "\n",
-        "<goal>Win</goal>\n",
+        "<goal>\n",
+        "Win\n",
+        "</goal>\n",
         "\n",
-        "<agent>Another agent block</agent>\n",
+        "<agent>\n",
+        "Another agent block\n",
+        "</agent>\n",
     );
 
     let text_b = concat!(
@@ -222,7 +226,9 @@ async fn setup_xml_workspace() -> (
         "Agent in second doc.\n",
         "</agent>\n",
         "\n",
-        "<routing>Some routing</routing>\n",
+        "<routing>\n",
+        "Some routing\n",
+        "</routing>\n",
     );
 
     {

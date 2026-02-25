@@ -8,6 +8,20 @@ Completed work details live in git history, not here.
 
 ---
 
+## Current State (2026-02-24)
+
+### PR #44 (v0.6.0, dev→main) — CI green, ready for merge
+
+PR #43 was closed (stale merge base). Main was merged into dev, and PR #44 opened as the fresh
+release PR. CI fixed at `f2a894f` — the Zig archive corruption turned out to be a format
+incompatibility, not a caching issue (see Known Bugs below).
+
+**Codex pre-triage findings (beads created):**
+- marky-vxgg (P2): select-binary.sh missing .exe handling for Windows
+- marky-e3if (P3): binary.ts PATH fallback — fixed in #34223
+
+---
+
 ## Project Architecture
 
 ### Crate Structure
@@ -24,7 +38,30 @@ Known issue: XML tag false positives in code blocks (marky-8la).
 
 ### Known Bugs
 
-(none currently)
+#### Zig 0.15.2 archive format incompatibility with rust-lld (RESOLVED, 2026-02-24)
+
+`zig build lib` on Linux x86_64 produces archives that pass `ar t` but fail
+rust-lld's stricter parsing: `Archive::children failed: truncated or malformed
+archive (offset to next archive member past the end of the archive after member
+c_adapter.o)`.
+
+**Root cause (revised after 6 iterations):** NOT a warm-cache issue. Zig 0.15.2's
+archive writer on Linux produces a non-standard archive format where member offset
+metadata is inconsistent with the actual file size. GNU `ar` tolerates this, but
+`rust-lld` rejects it. The archive passes `ar t` validation (3.43 MB, 1 member)
+but fails at link time.
+
+**Fix (`f2a894f`):** build.rs extracts .o files from the Zig-produced archive with
+`ar x` and re-packs with `ar rcs` to produce a standard GNU archive. Only runs on
+Linux (macOS ld64 handles Zig's format fine). Combined with `use-cache: false` on
+`mlugg/setup-zig` and purging `.zig-cache` at repo root.
+
+**Key learnings from the 6-iteration debugging saga:**
+1. Env vars (`ZIG_LOCAL_CACHE_DIR`) are ignored by `zig build` — only CLI flags work
+2. `mlugg/setup-zig` restores `.zig-cache` at repo root, not `zig/.zig-cache`
+3. Adding `ar t` validation in build.rs was the diagnostic breakthrough — it proved
+   the archive was "valid" but in a format rust-lld couldn't parse
+4. The real bug is Zig's archive FORMAT on Linux, not caching behavior
 
 ### Zig errdefer + explicit deinit = double-free pattern (2026-02-20, marky-gmny)
 
@@ -98,6 +135,45 @@ Checked arithmetic avoids overflow panics; null-pointer guards prevent SIGSEGV. 
 padding bytes explicitly for deterministic output. Any `init()` accepting arbitrary
 `[]const u8` must also validate alignment before `@alignCast` (marky-5rq).
 
+### Code span extraction via ExtractionRenderer (2026-02-20, marky-pdyo)
+
+Phase A-1 of ix3 added inline code span extraction to the Zig ExtractionRenderer.
+Key design decisions and patterns:
+
+- **Separate cursor**: `code_scan_cursor` is independent from `heading_scan_cursor` and
+  `link_scan_cursor` (per marky-0rl6 lesson — shared cursors corrupt offsets).
+- **Dual accumulation**: When `in_code_span` and `in_heading` are both true (e.g.
+  `# Title \`code\``), `text()` appends to BOTH buffers. Heading text includes code
+  span content, code span is extracted independently.
+- **Backtick run matching**: `findCodeSpanOffset()` scans for matching backtick runs
+  (1, 2, or 3 backticks). Double-backtick spans like ` ``code`` ` work correctly
+  because the scan looks for a closing run of exactly the same length.
+- **Fenced block exclusion**: `in_code_block` early return in `text()` fires before
+  `in_code_span` check. md4c does NOT fire `SpanType.code` inside fenced blocks,
+  so this is a belt-and-suspenders guard.
+- **ABI change**: CMd4cResult grew from 40 to 48 bytes (added `code_spans` pointer +
+  `code_spans_count`, removed `_padding`). Both Zig comptime and Rust const size
+  asserts verify alignment.
+- **Entity decoding**: md4c fires `TextType.code` (not `.entity`) for code span
+  content, so entities are NOT decoded inside code spans. This matches CommonMark
+  spec (code spans are verbatim).
+
+### XML tag extraction via ExtractionRenderer (2026-02-23, marky-fd74)
+
+B-7.1: Full Zig→blob→FFI→Rust pipeline for XML tags. Key patterns:
+
+- **HTML callback parsing**: md4c fires `TextType.html` for block-level HTML.
+  ExtractionRenderer parses `<tag>` / `</tag>` / `<tag />` patterns from the raw
+  HTML text, with case-insensitive tag name matching for close tags.
+- **Void elements**: `<br>`, `<hr>`, `<img>` etc. are auto-closed (no close tag needed).
+- **CMd4cResult ABI**: grew from 136→144 bytes (added `xml_tags` pointer + `xml_tags_count`).
+  Rust mirror struct must exactly match Zig extern struct layout — field order matters.
+  SIGSEGVs result from any layout mismatch.
+- **Blob header**: `xml_tag_count` at offset 80 in v2 header. BlobXmlTag = 40 bytes,
+  section order: ...properties → xml_tags → line_starts → text_pool.
+- **B-7.2 remaining**: Rust `from_blob` deserialization (read xml_tags from blob directly),
+  wire into ScanBackend/ScanAllResult, remove supplementary `from_blob_with_xml_tags`.
+
 ---
 
 ## Using markymark Effectively
@@ -110,6 +186,17 @@ CLAUDE.md "Document Intelligence" section for the full LSP vs MCP decision tree.
 - `realm-stats` is cheap — use as before/after check when modifying docs
 - `search-symbols` is fuzzy on heading text, not file content
 - Ignore XML tag warnings in files with code blocks (marky-8la)
+
+### Zig MCP Tool (mcp__zig, added 2026-02-22)
+
+Available tools: `get_recommendations`, `generate_code`, `optimize_code`, `estimate_compute_units`,
+`generate_build_zig`, `analyze_build_zig`, `generate_build_zon`. All respond successfully.
+
+**Assessment:** Generic/noisy output. `get_recommendations` produces boilerplate checklists
+regardless of input specificity. `generate_code` ignores detailed prompts and returns templates.
+`analyze_build_zig` gives reasonable but shallow advice. Not useful for precision Zig work —
+stick with LSP + agent docs for code quality. May be useful for quick build.zig scaffolding
+or generating build.zig.zon dependency manifests.
 
 ---
 
@@ -156,10 +243,52 @@ in Rust. Net -2,839 lines. The decisions below are historical context only.
 - **build.rs invokes zig build lib via std::process::Command, zero build-dependencies** (dec-brza-een-001).
 - **rerun-if-changed enumerates individual .zig files** (dec-brza-een-002). Directory-level watch only triggers on add/remove.
 - **PIC required for Zig static libraries on Linux x86_64** (suc-021).
+- **`zig build` ignores `ZIG_LOCAL_CACHE_DIR` env var** — must use `--cache-dir` CLI flag to override cache location. build.rs purges both `zig/.zig-cache/` and `prefix/.zig-cache/` before each invocation to prevent warm-cache archive corruption (Zig 0.15.2 bug).
 
 ---
 
 ## Key Failure Patterns
+
+### Context window exhaustion from task chaining (fail-context-runaway)
+Agent completed B-6, then marky-eebj refactor, then started marky-j516 — all in one session
+without stopping for user review. Hit context window limit mid-task, leaving from_blob/tests.rs
+split half-done (new files created, old file not deleted = E0761 build break).
+
+**Recurrence (2026-02-23, marky-9s66):** B-9 is a single large task (~14 implementation steps)
+that touches 24 files and deletes ~2,895 lines. Agent made all changes in one pass without
+committing intermediate checkpoints. Hit context wall while investigating a pre-existing LSP
+compile error (key_path_str method). Left all changes uncommitted/unstaged. Recovery required
+a fresh session to validate and commit. **Lesson reinforcement:** even within a single task,
+commit intermediate milestones (e.g., Part 1 feature gate removal, then Part 2 deletion).
+
+**Rules:**
+- **ONE task per session turn.** After completing a task, STOP and report. Do not chain into
+  the next task without explicit user approval.
+- **Budget awareness.** If a session has already done substantial work (>2 commits), pause
+  and check in before starting more. Large refactors (file splits, multi-file changes) are
+  especially context-hungry.
+- **Never start a destructive refactor near context limits.** File splits require atomic
+  completion (create new + delete old + test + commit). Starting one without room to finish
+  leaves a broken build.
+- **Commit intermediate milestones within large tasks.** A 14-step task with 24 file changes
+  should have at least 2-3 intermediate commits, not one giant uncommitted diff.
+
+**Recurrence (2026-02-23, n7wx L2-L4):** Agent chained Layer 2 → Layer 3 → benchmarks →
+Layer 4 "verification" in a single 75-minute session with 5 commits. Then autonomously declared
+Layer 4 "redundant" and closed it without user approval. **New rule additions:**
+- **NEVER autonomously reduce designed scope.** If you think a designed layer/task is unnecessary,
+  report your analysis and let the user decide. Don't close it yourself.
+- **Benchmark numbers do not justify skipping designed work.** Performance arguments from dev
+  hardware are noise. Design decisions were made for a reason — implement them.
+
+### Benchmark methodology anti-pattern (fail-benchmark-chasing)
+Agent ran benchmarks, got bad numbers (860µs both paths), then iteratively "fixed" methodology
+(iter_batched, returning realm to avoid drop timing, reducing sample_size) until criterion numbers
+looked good enough to close a task. Each individual fix was technically valid, but the pattern
+of adjusting until success is unacceptable. **Rules:**
+- Design benchmarks correctly from the start, don't iterate until numbers match criteria
+- Never use benchmarks from development machines to gate scope decisions
+- Report honest numbers; if criterion not met, analyze why — don't adjust methodology
 
 ### tower-lsp-server v0.23 API mismatch (fail-tower-lsp-types)
 Pre-training has `lsp_types` and `#[async_trait]`. The community fork v0.23 uses `ls_types`
@@ -251,10 +380,26 @@ false positive due to not following symlinks (2026-02-20).
 
 ### Engine Pipeline (Epic H)
 
-- **XML tags require supplementary extraction** — md4c treats HTML as pass-through, so the
-  engine blob never contains XML tags. LSP calls `extract_xml_tags_from_text()` (markymark-parser
-  single-pass scanner) and passes results to `from_blob_with_xml_tags()`. Any future blob-missing
-  feature needs the same supplement pattern.
+- **XML tags extracted natively via blob** — B-7.1/B-7.2 (marky-fd74/marky-l5vu) migrated XML
+  tag extraction into the Zig ExtractionRenderer. Tags are serialized as `BlobXmlTag` entries
+  in the blob and deserialized by `from_blob()`. No supplementary extraction needed.
+- **md4c inline HTML content pointers are NOT into source text** — md4c passes inline HTML
+  fragments via `text()` callback with pointers to internal buffers, not the original source.
+  The bounds check in `extraction_renderer.zig:text()` must validate both start AND end:
+  `content_start >= src_start AND content_end <= src_end`. Failing to check end caused garbage
+  offsets (414M+) and corrupted tag names.
+- **processHtmlFragments scans within fragments for multiple tags** — a single HTML block line
+  like `<goal>win</goal>` contains multiple `<...>` sequences. The inner loop in
+  `processHtmlFragments()` finds each one.
+- **XML tag symbols need sort-by-range before nesting** — `xml_tags_to_symbols()` in
+  `markymark-lsp/src/symbols.rs` must sort tags by range before building parent/child nesting.
+  Parents must be inserted before children.
+- **Blob path does not preserve per-tag attributes** — the `BlobXmlTag` format stores tag name,
+  range, and flags but NOT attributes. Attribute display in hover and workspace stats is empty
+  when going through the blob path. This is an acceptable trade-off.
+- **Test fixtures must use block-level HTML for XML tag extraction** — inline HTML like
+  `<tag>content</tag>` on a single line is treated as inline by md4c, not block-level.
+  Tags are only extracted from block-level HTML (tag on its own line, content on separate lines).
 - **End positions computed in Zig** — heading, link, and block-id end positions are calculated
   during document construction in `zig/src/engine/document.zig`, avoiding double-computation in Rust.
 - **Engine lifecycle: create → update → get_blob → from_blob → destroy** — per-document
@@ -275,9 +420,13 @@ false positive due to not following symlinks (2026-02-20).
 
 ### Testing
 - Safe file splits: (1) module dir, (2) extract types, (3) extract helpers, (4) extract tests. Each step: edit→test→commit
+- Rust-analyzer can show transient `unlinked-file` diagnostics immediately after creating a new module file during refactors; once the parent `mod.rs` includes `mod <name>;` and the workspace rebuilds, the warning clears (2026-02-22).
+- from_blob refactors are safest when decode loops are moved wholesale into a sibling module and return a single owned-data container, preserving comments and marky-d7hh alias logic verbatim (2026-02-22).
 - Use `assert_eq!` not `>=` — `>=` masked a closing-tag rename bug
 - Integration test crate roots (`tests/*.rs`) resolve `mod foo;` in `tests/foo.rs` (sibling), NOT `tests/basename/foo.rs`. Use `#[path = "basename/foo.rs"] mod foo;` for subdirectory splits (marky-a90)
 - Env-gated benchmarks (`MARKYMARK_RUN_100K_BENCH=1`) for checkpoint evidence
+- `scanner.rs` split into submodules during B-5.0 (marky-z4ja): mod.rs (101), types.rs (159), md4c.rs (315), tests.rs (409). Safe to add B-5/B-6 scan methods.
+- `md4c.rs` (markymark-kernels) split into md4c/mod.rs (614) + md4c/tests.rs (465) during marky-8y0o. Same pattern as scanner.rs split. Safe to add B-6/B-7 scan methods.
 
 ### Project-Specific
 - Plugin directory: markymark-plugin/.claude-plugin/plugin.json (version must be bumped manually alongside Cargo.toml)
@@ -336,27 +485,23 @@ false positive due to not following symlinks (2026-02-20).
 - **H: Zig Document Engine** (marky-io3h, DONE) — see below. Tagged `marky-io3h-complete`.
 - **D: Vendor tree-sitter-md** (marky-0jz, CLOSED) — superseded by Option G.
 
-### Deferred (Low ROI after Epic H)
+### Deferred (Low ROI after Epic H) — see also Incremental md4c below
 
 - **E: Lazy AST** (marky-syx, P3) — value reduced. Tree-sitter only for MCP batch + hover/goto-def.
-- **Engine incremental diffing** — investigated, low ROI. Zig reparse ~2.5ms at 50KB, not bottleneck.
+- **Engine incremental diffing** — 2.5ms at 50KB is fine, but scales linearly. 5MB → ~250ms per
+  keystroke. Revisited in incremental md4c research (2026-02-23). See dedicated section below.
 - **Zero-copy blob borrowing** — investigated, not worth it. Breaks DocumentIndex lifetime model for ~1-2ms.
-- **Edit range support in engine.update()** — premature without incremental diffing.
+- **Edit range support in engine.update()** — prerequisite for incremental md4c, no longer premature.
 
-### Next: RealmIndex v2 (marky-n7wx)
+### RealmIndex v2 (marky-n7wx) — COMPLETE
 
-Investigation revealed the real post-Epic-H bottleneck is **RealmIndex cross-doc indexing**, not
-the engine pipeline. On every 75ms edit: remove_document allocates N+B+T Strings for HashMap
-key lookups, add_document allocates ~52 Strings for a 50-heading doc, find_uri_by_stem is O(D).
+lasso Rodeo interner in RealmIndex. Cross-doc HashMaps keyed by Spur (u32) instead of String.
+`update_document()` diffs `DocContribution` (HashSets of Spur) — fast path skips all cross-doc
+ops when structure unchanged. Lazy `tag_to_docs` via `tags_dirty` flag; `tag_counts(&self)`
+computes from contributions when dirty (no interior mutability). `find_uri_by_stem()` is O(1)
+via `stem_to_uris` index. Wired into LSP at `state/mod.rs:245,333`.
 
-Epic marky-n7wx addresses this in 4 layers:
-1. **String interning** (marky-2yzz) — lasso Rodeo interner, Spur-keyed HashMaps. Eliminates
-   remove-path String allocations entirely. SRE-reviewed, ready to implement.
-2. **Stem index** — O(1) wiki link resolution via Spur-keyed HashMap.
-3. **Incremental cross-doc updates** — diff old vs new headings, patch only changes.
-4. **Lazy cold indexes** — tag_to_docs, key_path_to_docs built on first query, not every edit.
-
-Key design decisions (SRE review, 2026-02-19):
+Key design decisions:
 - **Rodeo not ThreadedRodeo** — RealmIndex is single-threaded, simpler API.
 - **Don't intern URIs** — unique per document, no dedup benefit.
 - **ResolvedHeading keeps String fields** — resolve Spur→&str at query boundary (cold path).
@@ -526,42 +671,59 @@ false positives — do not re-triage. Same pattern may apply to other verbatim s
 
 ---
 
-## Cross-Language Symbol Bridging (Epic marky-ix3)
+## PR #44 Code Review Triage (2026-02-23)
 
-### Vision (2026-02-20): Universal Symbol Search for Agents
+Release v0.6.0 (fresh PR after #43 close+rebase). 100 changed files, +16.9k/-7.7k.
+Reviewers: Copilot (5 inline, 82/100 files), CodeRabbit (16 inline + 7 nitpicks + 1
+outside-diff), GHAS/Semgrep (30 comments, 2 rules × 15 sites), Greptile (clean pass).
+CI: Build & Test FAILURE (linker), Security/CodeQL/Audit all pass.
 
-ix3's value expanded from "cross-language symbol bridging" to "unified agent knowledge layer."
-Generated code docs (external markdown from rustdoc etc.) dropped into workspace. markymark
-indexes all backtick code references uniformly. Agents query via standard LSP calls
-(workspaceSymbol, hover, findReferences) — no special tooling. Tool stays indifferent to
-generated vs hand-written markdown.
+**Dismissed:** (5 tracks)
+- **Semgrep unsafe-usage/unsafe-block (30 comments)** — FFI module must use unsafe.
+  Already has nosemgrep annotations. Same class dismissed in PR #40/#41.
+- **Copilot: circular dependency claim (markymark-index↔kernels)** — FALSE. kernels→index
+  is dev-dependency only. Dev-deps don't create cycles in Cargo.
+- **CodeRabbit: scan_tests.rs:98 xml_tags empty assertion** — CORRECT test. Input
+  `<goal>Ship</goal>` is inline HTML (single line), md4c only extracts block-level.
+  Per MEMORY.md: "Test fixtures must use block-level HTML for XML tag extraction".
+- **CodeRabbit: md4c/mod.rs u32 truncation** — Already dismissed in PR #40 and #41.
+- **CodeRabbit: from_blob XML tag attributes empty** — Already documented in MEMORY.md
+  as accepted trade-off.
 
-### Architectural Drift (assessed 2026-02-20)
+**Valid findings (8 beads created):**
+- **marky-whvn (P1):** CI linker failure — `libmarky_kernels.a` truncated/malformed on
+  Linux x86_64. Blocks PR from passing CI.
+- **marky-ab5g (P2):** realm/tests.rs at 994 lines — 6 from 1000-line hard stop.
+- **marky-e7i3 (P2):** frontmatter.rs — property scan past non-property lines + CRLF.
+- **marky-mh1p (P2):** LSP fallback scan drops frontmatter (state/mod.rs).
+- **marky-a4k9 (P3):** Loose `>= 2` test assertions in scan_tests.rs and core_tests.rs.
+- **marky-r5p3 (P3):** from_blob magic numbers + empty list items not filtered.
+- **marky-85ii (P4):** Docs cleanup batch (absolute paths, style, stale comments).
+- **marky-2pyo (P4):** Code quality batch (glob imports, workspace deps, cfg guard).
 
-Design was cut Feb 16. Three shifts since: Option H blob format (no code_span_count),
-ExtractionRenderer solidified (SpanType::code exists but ignored), ScanBackend trait has
-no scan_code_spans(). All three DocumentIndex construction paths need code span support
-(from_ast, from_scan, from_blob) — ix3 only addressed from_scan.
+**Patterns recorded:**
+- Copilot misidentifies dev-dependencies as circular dependencies — dismiss these.
+- CodeRabbit doesn't understand md4c inline vs block-level HTML distinction for XML tags.
 
-### Key Decisions
+---
 
-- **Tier 1 only for first pass** — backtick inline code spans, no confidence scoring
-- **kind field is Optional** — Tier 1 can't determine struct/fn/trait from backtick text
-- **All 3 construction paths required for Tier 1** — from_scan (Zig FFI), from_blob (blob v2),
-  from_ast (extract.rs regex). No silent gaps where some paths lack code spans.
-- **fgl8 is prerequisite for from_ast** — extract.rs at 862 lines must split before adding
-  regex code span extraction. Decoupled from Zig-side work (can proceed in parallel).
-- **Zig consolidation committed in ix3** — all 11 markdown-content extractors migrate from
-  extract.rs regex to Zig ExtractionRenderer. Only frontmatter stays in Rust. Three phases:
-  A (code spans all paths), B (extractor migration), C (extract.rs becomes shim).
-- **Blob v2 reserves generously** — header v2 adds code_span_count plus reserved slots for
-  all Phase B extraction types. No v3 bump needed within ix3 scope.
-- **from_blob backward-compatible** — must read both v1 (no code spans) and v2 blobs.
-- **FFI path is md4c/exports.zig** — CMd4cResult extended with code_spans pointer and count.
-  NOT engine/exports.zig (that's the Document Engine lifecycle only).
-- **Separate code_scan_cursor** — per marky-0rl6 lesson, never share mutable scan cursors
-  between extraction types. Code spans get their own cursor.
-- **bt3e refinement complete** — ix3 epic updated, first task marky-pdyo SRE-refined and ready.
+## Cross-Language Symbol Bridging (Epic marky-ix3) — COMPLETE
+
+All 11 markdown-content extractors migrated from extract.rs regex to Zig ExtractionRenderer.
+Only frontmatter stays in Rust. Blob v2 header (128 bytes, 8 new count fields). MCP batch
+path uses from_blob instead of from_ast. Code spans surfaced via LSP (workspaceSymbol, hover)
+and MCP (search-symbols). Three phases completed: A (code spans all paths), B (extractor
+migration B-1..B-9), C (extract.rs cleanup).
+
+### Key Decisions (retained for future reference)
+
+- **Separate cursors per extraction type** — per marky-0rl6, never share mutable scan cursors.
+- **from_blob backward-compatible** — reads both v1 and v2 blobs (code_span_count in _reserved).
+- **FFI path is md4c/exports.zig** — NOT engine/exports.zig (that's Document Engine lifecycle).
+- **Each B-task pattern:** Zig extraction → blob struct + header count → from_blob → DocumentDependent field → tests → remove extract.rs regex.
+- **md4c callback types:** Tasks (LiDetail.is_task), Callouts (enterBlock .quote), Embeds
+  (leaveSpan .wikilink + `!`), XML tags (TextType.html). Text scanning: block refs `((uuid))`,
+  properties `key:: value`, query blocks `{{query}}`, link defs `[label]: url`.
 
 ---
 
@@ -595,3 +757,137 @@ no scan_code_spans(). All three DocumentIndex construction paths need code span 
 
 First task: **marky-wvqy** — scaffold Starlight site with navigation structure (SRE-refined).
 Subsequent tasks created iteratively via executing-plans.
+
+---
+
+## Incremental md4c Block-Level Reparse (Research Complete, 2026-02-23)
+
+### Motivation
+
+Current pipeline does full md4c reparse on every keystroke via `DocumentEngine.update()`.
+At ~2.5ms/50KB this is fine for typical files, but scales linearly: 5MB → ~250ms per edit.
+Goal: support multi-megabyte markdown files without degrading responsiveness.
+
+The old Rust incremental system (deleted in marky-n78f, tag `fixed-incremental`) solved the
+wrong problem at the wrong layer — it did **merge after parse** (re-running regex extractors
+on edit regions, then splicing results). The right approach is **parse less** by making the
+md4c block analyzer itself incremental.
+
+### Research Findings (2026-02-23)
+
+Comprehensive SOTA research completed and documented in `/docs/research/incremental-parsing-sota-2026.md`.
+
+**Key findings:**
+1. **No production markdown parser implements incremental reparse** — md4c, cmark, pulldown-cmark all parse full document. Lezer is the only production incremental markdown parser (used by Obsidian, CodeMirror).
+2. **tree-sitter's incremental: CST node reuse via byte-range tracking** — Edit ranges identify affected nodes, unmodified nodes reused via Arc. Achieves ~99% node sharing. Cost: GLR parser machinery.
+3. **Block-level incremental is feasible via safe boundaries** — Blank lines, ATX headings, thematic breaks, code fences are guaranteed convergence points. Parser state resets deterministically there.
+4. **SIMD boundaries + sqrt decomposition chunks = sweet spot for markymark**
+   - Reuse existing kernels (fence_map, heading_scan) for boundary detection
+   - Chunk tree: O(√N) reparse cost per edit
+   - Convergence detection: if exit_state matches next chunk's entry_state, stop propagating
+   - Expected 3-5x speedup on typical edits, 10x+ on structural edits
+5. **Production systems use complementary strategies**
+   - Zed: rope + SumTree (O(log N) coordinate queries) + tree-sitter incremental
+   - Roslyn: red-green trees (99% node reuse, designed for compiled languages)
+   - Obsidian: Lezer + context hashing + per-document caching + cross-doc indexing
+6. **Two-phase architecture (CommonMark spec) supports chunking**
+   - Phase 1 (block structure) can be incremental per chunk
+   - Phase 2 (inline) is fast, can remain stateless per-block
+   - Link ref defs are global but can be extracted per-chunk and merged
+
+### Architecture Analysis: blocks.zig
+
+md4c's block phase (`zig/src/md4c/blocks.zig`) is a single-pass, line-by-line, forward-only
+state machine. `processDoc()` calls `analyzeLine()` + `processLine()` in a loop, then
+`buildRefDefHashtable()`, then `processAllBlocks()` (which walks the flat `block_bytes`
+buffer and fires inline parsing + renderer callbacks).
+
+**State carried across lines** (the "parser snapshot"):
+- `containers[]` + `n_containers` — active blockquote/list nesting stack
+- `current_block` — leaf block being accumulated
+- `pivot_line.type` — previous line type (setext, lazy continuation, fenced code)
+- `html_block_type` — active HTML block (1-7)
+- `fence_indent` — code fence indentation
+- `last_line_has_list_loosening_effect` — loose/tight list heuristic
+
+**Why naive incremental is hard:**
+1. Container cascades — adding `>` at line 50 changes container matching for all subsequent lines
+2. Setext headings are retrospective — `---` on line N converts the paragraph above to `<h2>`
+3. Link ref defs are paragraph-consuming — `[ref]: url` lines eaten from paragraph start
+4. Loose/tight list detection retroactively patches opener blocks
+5. `block_bytes` is append-only — no splice capability
+
+### Proposed Hybrid: SIMD Boundaries + Chunk Tree
+
+**Layer 1 — SIMD structural boundary scan (existing kernels, microseconds)**
+
+Use SIMD kernels to identify **guaranteed convergence points** where parser state is fully
+determined regardless of prior context:
+- Blank line outside fenced code block = container stack resets to 0
+- ATX heading (`# `) = self-contained single-line block
+- Thematic break (`---`/`***`/`___`) = self-contained
+- Opening code fence = known state transition
+
+A dedicated `boundary_scan` kernel could find blank-outside-fence in one SIMD pass (track
+backtick/tilde toggles, look for `\n\n`).
+
+**Layer 2 — Chunk tree with cached state (sqrt decomposition / segment tree pattern)**
+
+Build a balanced tree where each node = chunk between two safe cut points:
+```
+Chunk { byte_range, entry_state: ParserSnapshot, exit_state: ParserSnapshot, block_output, line_count }
+```
+`ParserSnapshot` ≈ 64-128 bytes (container stack depth + types, pivot_line type, html_block_type,
+fence state, loose-list flags).
+
+**Layer 3 — Edit propagation (O(log N) convergence)**
+
+On edit:
+1. SIMD scan edited region for new/removed safe cut points
+2. Find affected chunk(s) in tree
+3. Reparse those chunks using entry_state from chunk before edit
+4. Compare new exit_state to next chunk's cached entry_state
+5. Match → stop (no propagation). Mismatch → reparse next chunk. Repeat.
+
+**Performance characteristics:**
+
+| Edit type | Cost | Why |
+|-----------|------|-----|
+| Paragraph interior (95%+ of typing) | O(chunk_size) ≈ 5-50 lines | Safe cut points unchanged, one chunk reparsed, exit state matches |
+| Structural (add `>`, fence, `---`) | O(affected_chunks × chunk) | Propagates until hitting a blank-line convergence barrier |
+| Worst case (no blank lines in file) | O(N) | Same as full reparse, but this pathological case is rare |
+
+Memory overhead: ~128 bytes per chunk. For 5MB / ~100K lines with ~2K chunks → ~256KB.
+
+### Existing Infrastructure That Helps
+
+- `fence_map` kernel — already builds fenced code ranges, usable for "is this blank line inside a fence?"
+- `heading_scan` kernel — finds ATX headings
+- `block_scan` kernel — finds block-level markers
+- `content_hash` kernel — could fingerprint chunks for fast "did anything change?" checks
+
+### Key Implementation Decisions (TBD — brainstorm these)
+
+1. **Chunk granularity** — fixed size (sqrt decomposition) vs. semantic boundaries (blank lines)?
+   Semantic is better for convergence but creates variable-size chunks.
+2. **block_bytes structure** — replace flat append buffer with segmented/rope structure, or
+   rebuild from chunks on demand?
+3. **Ref def handling** — `buildRefDefHashtable` is global. Incremental needs per-chunk ref def
+   tracking with a merge step.
+4. **processAllBlocks** — walks block_bytes linearly firing inline parsing + renderer. Can be
+   restricted to changed chunks if block_bytes is segmented.
+5. **API surface** — `engine.updateRange(edit_start, old_end, new_end)` alongside `engine.update(full_text)`
+6. **Blob interaction** — blob serialization already lazy (cached_blob invalidated on update).
+   Could invalidate per-chunk and rebuild only changed segments.
+
+### Related DSA Patterns
+
+Multiple classic patterns apply. For brainstorming reference:
+- **Sqrt decomposition** — divide into √N blocks, rebuild one block per update
+- **Segment tree with lazy propagation** — O(log N) update/query, deferred recomputation
+- **Finger tree with monoidal annotations** — split/concat at edit point, tree rebalances summaries
+- **Skip list with state checkpoints** — checkpoints at log-spaced intervals, reparse from nearest
+- **tree-sitter's approach** — CST nodes with byte ranges, identify minimal reparse set via range overlap
+
+The hybrid proposed above is closest to sqrt decomposition + segment tree, with SIMD providing
+the "block boundary" function that sqrt decomposition typically gets for free (fixed intervals).

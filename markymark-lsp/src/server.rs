@@ -346,7 +346,9 @@ impl LanguageServer for Backend {
             SymbolAtPosition::MarkdownLink(ml) => {
                 resolve_markdown_link(state.realm(), &doc_uri, ml.url, ml.anchor)
             }
-            SymbolAtPosition::Heading(_) | SymbolAtPosition::StructuredKey(_) => return Ok(None),
+            SymbolAtPosition::Heading(_)
+            | SymbolAtPosition::CodeSpan(_)
+            | SymbolAtPosition::StructuredKey(_) => return Ok(None),
             SymbolAtPosition::XmlTag(ref xt) => {
                 // Jump to the first occurrence of this tag name in the workspace.
                 // Sort documents by URI for deterministic ordering.
@@ -647,6 +649,21 @@ impl LanguageServer for Backend {
                 }
                 lines.join("\n")
             }
+            SymbolAtPosition::CodeSpan(cs) => {
+                let mut lines = vec![format!("**`{}`** — inline code span", cs.text)];
+                let refs = state.realm().lookup_code_span(cs.text);
+                if refs.len() > 1 {
+                    lines.push(String::new());
+                    lines.push(format!("**Referenced in {} documents:**", refs.len()));
+                    for (ref_uri, _) in refs.iter().take(10) {
+                        lines.push(format!("- {}", ref_uri.as_str()));
+                    }
+                    if refs.len() > 10 {
+                        lines.push(format!("- ... and {} more", refs.len() - 10));
+                    }
+                }
+                lines.join("\n")
+            }
             SymbolAtPosition::StructuredKey(ref info) => structured_key_hover_markdown(info),
         };
 
@@ -865,6 +882,28 @@ impl LanguageServer for Backend {
                     symbols.push(SymbolInformation {
                         name: xml_name,
                         kind: SymbolKind::OBJECT,
+                        tags: None,
+                        deprecated: None,
+                        location: Location {
+                            uri: lsp_uri.clone(),
+                            range,
+                        },
+                        container_name: None,
+                    });
+                }
+            }
+
+            for cs in index.code_spans() {
+                let cs_name = format!("`{}`", cs.text);
+                if query.is_empty() || cs.text.to_lowercase().contains(&query) {
+                    let range = crate::convert::to_lsp_range(cs.range);
+                    #[expect(
+                        deprecated,
+                        reason = "SymbolInformation.deprecated field is deprecated by LSP spec but struct still required"
+                    )]
+                    symbols.push(SymbolInformation {
+                        name: cs_name,
+                        kind: SymbolKind::VARIABLE,
                         tags: None,
                         deprecated: None,
                         location: Location {

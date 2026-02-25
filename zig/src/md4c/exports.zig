@@ -12,47 +12,20 @@ const ExtractionResult = extraction_renderer.ExtractionResult;
 // (see exports_embed.zig). No global state — each call is independent.
 const ffi_allocator = std.heap.page_allocator;
 
-// ── C ABI Types ──────────────────────────────────────────────────────
-// Fields ordered by alignment to avoid implicit padding holes.
-// Both Zig extern struct and Rust #[repr(C)] MUST use identical field order.
-
-pub const CMd4cHeading = extern struct {
-    source_offset: u32, // byte offset of '#' (ATX) or text start (setext) in source
-    text_offset: u32, // offset into text_blob for decoded heading text
-    text_length: u32, // length in text_blob
-    level: u8, // 1-6
-    _padding: [3]u8, // explicit padding to 16-byte struct size
-};
-comptime {
-    std.debug.assert(@sizeOf(CMd4cHeading) == 16);
-}
-
-pub const CMd4cLink = extern struct {
-    source_offset: u32, // byte offset of '[' or '[[' in source
-    text_offset: u32, // offset into text_blob for display text
-    target_offset: u32, // offset into text_blob for href/target
-    text_length: u32, // length in text_blob
-    target_length: u32, // length in text_blob
-    is_wiki: u8, // 1 for [[wiki]] links, 0 otherwise
-    _padding: [3]u8, // explicit padding to 24-byte struct size
-};
-comptime {
-    std.debug.assert(@sizeOf(CMd4cLink) == 24);
-}
-
-// Pointers grouped first, then u32 counts — avoids internal padding on 64-bit.
-pub const CMd4cResult = extern struct {
-    headings: ?[*]CMd4cHeading, // Zig-allocated array, freed by marky_md4c_free
-    links: ?[*]CMd4cLink, // Zig-allocated array, freed by marky_md4c_free
-    text_blob: ?[*]const u8, // concatenated decoded texts, freed by marky_md4c_free
-    headings_count: u32,
-    links_count: u32,
-    text_blob_len: u32,
-    _padding: u32, // explicit padding to 40 bytes (8-byte alignment)
-};
-comptime {
-    std.debug.assert(@sizeOf(CMd4cResult) == 40);
-}
+// ── C ABI Types (re-exported from ffi_types.zig) ────────────────────
+const ffi_types = @import("ffi_types.zig");
+pub const CMd4cHeading = ffi_types.CMd4cHeading;
+pub const CMd4cLink = ffi_types.CMd4cLink;
+pub const CMd4cCodeSpan = ffi_types.CMd4cCodeSpan;
+pub const CMd4cTask = ffi_types.CMd4cTask;
+pub const CMd4cEmbed = ffi_types.CMd4cEmbed;
+pub const CMd4cCallout = ffi_types.CMd4cCallout;
+pub const CMd4cBlockRef = ffi_types.CMd4cBlockRef;
+pub const CMd4cQueryBlock = ffi_types.CMd4cQueryBlock;
+pub const CMd4cLinkDefinition = ffi_types.CMd4cLinkDefinition;
+pub const CMd4cProperty = ffi_types.CMd4cProperty;
+pub const CMd4cXmlTag = ffi_types.CMd4cXmlTag;
+pub const CMd4cResult = ffi_types.CMd4cResult;
 
 // ── C ABI Functions ──────────────────────────────────────────────────
 
@@ -62,7 +35,7 @@ comptime {
 ///          -5=overflow (total extracted text exceeds u32 limit).
 /// On success, `out` is populated with Zig-allocated arrays that MUST be
 /// freed by calling `marky_md4c_free`.
-export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i32 {
+pub export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i32 {
     const out_ptr = out orelse return -1;
 
     // Zero out result immediately (safe default on any error path)
@@ -88,6 +61,15 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
 
     const heading_count = result.headings.len;
     const link_count = result.links.len;
+    const code_span_count = result.code_spans.len;
+    const task_count = result.tasks.len;
+    const embed_count = result.embeds.len;
+    const callout_count = result.callouts.len;
+    const block_ref_count = result.block_refs.len;
+    const query_block_count = result.query_blocks.len;
+    const link_definition_count = result.link_definitions.len;
+    const property_count = result.properties.len;
+    const xml_tag_count = result.xml_tags.len;
 
     // Calculate text blob size
     var blob_size: usize = 0;
@@ -97,6 +79,38 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
     for (result.links) |l| {
         blob_size += l.text.len;
         blob_size += l.target.len;
+    }
+    for (result.code_spans) |cs| {
+        blob_size += cs.text.len;
+    }
+    for (result.tasks) |tk| {
+        blob_size += tk.text.len;
+    }
+    for (result.embeds) |e| {
+        blob_size += e.target.len;
+    }
+    for (result.callouts) |cl| {
+        blob_size += cl.callout_type.len;
+        if (cl.title) |ttl| blob_size += ttl.len;
+    }
+    for (result.block_refs) |br| {
+        blob_size += br.uuid.len;
+    }
+    for (result.query_blocks) |qb| {
+        blob_size += qb.query.len;
+    }
+    for (result.link_definitions) |ld| {
+        blob_size += ld.label.len;
+        blob_size += ld.url.len;
+        if (ld.title) |ttl| blob_size += ttl.len;
+    }
+    for (result.properties) |p| {
+        blob_size += p.key.len;
+        blob_size += p.value.len;
+    }
+    for (result.xml_tags) |xt| {
+        blob_size += xt.tag_name.len;
+        blob_size += xt.raw_html.len;
     }
 
     // T1-3: blob_offset is u32 — guard against wrapping for documents whose total
@@ -130,6 +144,150 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
     var c_links: ?[]CMd4cLink = null;
     if (link_count > 0) {
         c_links = ffi_allocator.alloc(CMd4cLink, link_count) catch {
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate code span array
+    var c_code_spans: ?[]CMd4cCodeSpan = null;
+    if (code_span_count > 0) {
+        c_code_spans = ffi_allocator.alloc(CMd4cCodeSpan, code_span_count) catch {
+            if (c_links) |l| ffi_allocator.free(l);
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate task array
+    var c_tasks: ?[]CMd4cTask = null;
+    if (task_count > 0) {
+        c_tasks = ffi_allocator.alloc(CMd4cTask, task_count) catch {
+            if (c_code_spans) |cs| ffi_allocator.free(cs);
+            if (c_links) |l| ffi_allocator.free(l);
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate embed array
+    var c_embeds: ?[]CMd4cEmbed = null;
+    if (embed_count > 0) {
+        c_embeds = ffi_allocator.alloc(CMd4cEmbed, embed_count) catch {
+            if (c_tasks) |tk| ffi_allocator.free(tk);
+            if (c_code_spans) |cs| ffi_allocator.free(cs);
+            if (c_links) |l| ffi_allocator.free(l);
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate callout array
+    var c_callouts: ?[]CMd4cCallout = null;
+    if (callout_count > 0) {
+        c_callouts = ffi_allocator.alloc(CMd4cCallout, callout_count) catch {
+            if (c_embeds) |em| ffi_allocator.free(em);
+            if (c_tasks) |tk| ffi_allocator.free(tk);
+            if (c_code_spans) |cs| ffi_allocator.free(cs);
+            if (c_links) |l| ffi_allocator.free(l);
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate block ref array
+    var c_block_refs: ?[]CMd4cBlockRef = null;
+    if (block_ref_count > 0) {
+        c_block_refs = ffi_allocator.alloc(CMd4cBlockRef, block_ref_count) catch {
+            if (c_callouts) |cl| ffi_allocator.free(cl);
+            if (c_embeds) |em| ffi_allocator.free(em);
+            if (c_tasks) |tk| ffi_allocator.free(tk);
+            if (c_code_spans) |cs| ffi_allocator.free(cs);
+            if (c_links) |l| ffi_allocator.free(l);
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate query block array
+    var c_query_blocks: ?[]CMd4cQueryBlock = null;
+    if (query_block_count > 0) {
+        c_query_blocks = ffi_allocator.alloc(CMd4cQueryBlock, query_block_count) catch {
+            if (c_block_refs) |br| ffi_allocator.free(br);
+            if (c_callouts) |cl| ffi_allocator.free(cl);
+            if (c_embeds) |em| ffi_allocator.free(em);
+            if (c_tasks) |tk| ffi_allocator.free(tk);
+            if (c_code_spans) |cs| ffi_allocator.free(cs);
+            if (c_links) |l| ffi_allocator.free(l);
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate link definition array
+    var c_link_definitions: ?[]CMd4cLinkDefinition = null;
+    if (link_definition_count > 0) {
+        c_link_definitions = ffi_allocator.alloc(CMd4cLinkDefinition, link_definition_count) catch {
+            if (c_query_blocks) |qb| ffi_allocator.free(qb);
+            if (c_block_refs) |br| ffi_allocator.free(br);
+            if (c_callouts) |cl| ffi_allocator.free(cl);
+            if (c_embeds) |em| ffi_allocator.free(em);
+            if (c_tasks) |tk| ffi_allocator.free(tk);
+            if (c_code_spans) |cs| ffi_allocator.free(cs);
+            if (c_links) |l| ffi_allocator.free(l);
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate property array
+    var c_properties: ?[]CMd4cProperty = null;
+    if (property_count > 0) {
+        c_properties = ffi_allocator.alloc(CMd4cProperty, property_count) catch {
+            if (c_link_definitions) |ld| ffi_allocator.free(ld);
+            if (c_query_blocks) |qb| ffi_allocator.free(qb);
+            if (c_block_refs) |br| ffi_allocator.free(br);
+            if (c_callouts) |cl| ffi_allocator.free(cl);
+            if (c_embeds) |em| ffi_allocator.free(em);
+            if (c_tasks) |tk| ffi_allocator.free(tk);
+            if (c_code_spans) |cs| ffi_allocator.free(cs);
+            if (c_links) |l| ffi_allocator.free(l);
+            if (c_headings) |h| ffi_allocator.free(h);
+            if (blob) |b| ffi_allocator.free(b);
+            result.deinit();
+            return -4;
+        };
+    }
+
+    // Allocate XML tag array
+    var c_xml_tags: ?[]CMd4cXmlTag = null;
+    if (xml_tag_count > 0) {
+        c_xml_tags = ffi_allocator.alloc(CMd4cXmlTag, xml_tag_count) catch {
+            if (c_properties) |pr| ffi_allocator.free(pr);
+            if (c_link_definitions) |ld| ffi_allocator.free(ld);
+            if (c_query_blocks) |qb| ffi_allocator.free(qb);
+            if (c_block_refs) |br| ffi_allocator.free(br);
+            if (c_callouts) |cl| ffi_allocator.free(cl);
+            if (c_embeds) |em| ffi_allocator.free(em);
+            if (c_tasks) |tk| ffi_allocator.free(tk);
+            if (c_code_spans) |cs| ffi_allocator.free(cs);
+            if (c_links) |l| ffi_allocator.free(l);
             if (c_headings) |h| ffi_allocator.free(h);
             if (blob) |b| ffi_allocator.free(b);
             result.deinit();
@@ -188,6 +346,209 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
         };
     }
 
+    for (result.code_spans, 0..) |cs, i| {
+        const text_len: u32 = @intCast(cs.text.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, text_len) <= b.len);
+            @memcpy(b[blob_offset..][0..text_len], cs.text);
+        }
+        c_code_spans.?[i] = .{
+            .source_offset = cs.offset,
+            .end_offset = cs.end_offset,
+            .text_offset = blob_offset,
+            .text_length = text_len,
+        };
+        blob_offset += text_len;
+    }
+
+    for (result.tasks, 0..) |tk, i| {
+        const text_len: u32 = @intCast(tk.text.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, text_len) <= b.len);
+            @memcpy(b[blob_offset..][0..text_len], tk.text);
+        }
+        c_tasks.?[i] = .{
+            .source_offset = tk.offset,
+            .end_offset = tk.end_offset,
+            .text_offset = blob_offset,
+            .text_length = text_len,
+            .state = tk.state,
+        };
+        blob_offset += text_len;
+    }
+
+    for (result.embeds, 0..) |e, i| {
+        const target_len: u32 = @intCast(e.target.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, target_len) <= b.len);
+            @memcpy(b[blob_offset..][0..target_len], e.target);
+        }
+        c_embeds.?[i] = .{
+            .source_offset = e.offset,
+            .end_offset = e.end_offset,
+            .target_offset = blob_offset,
+            .target_length = target_len,
+        };
+        blob_offset += target_len;
+    }
+
+    for (result.callouts, 0..) |cl, i| {
+        const type_len: u32 = @intCast(cl.callout_type.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, type_len) <= b.len);
+            @memcpy(b[blob_offset..][0..type_len], cl.callout_type);
+        }
+        const type_off = blob_offset;
+        blob_offset += type_len;
+
+        var title_off: u32 = 0;
+        var title_len: u32 = 0;
+        if (cl.title) |ttl| {
+            title_len = @intCast(ttl.len);
+            if (blob) |b| {
+                std.debug.assert(@as(usize, blob_offset) + @as(usize, title_len) <= b.len);
+                @memcpy(b[blob_offset..][0..title_len], ttl);
+            }
+            title_off = blob_offset;
+            blob_offset += title_len;
+        }
+
+        c_callouts.?[i] = .{
+            .source_offset = cl.offset,
+            .end_offset = cl.end_offset,
+            .type_offset = type_off,
+            .type_length = type_len,
+            .title_offset = title_off,
+            .title_length = title_len,
+        };
+    }
+
+    for (result.block_refs, 0..) |br, i| {
+        const uuid_len: u32 = @intCast(br.uuid.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, uuid_len) <= b.len);
+            @memcpy(b[blob_offset..][0..uuid_len], br.uuid);
+        }
+        c_block_refs.?[i] = .{
+            .source_offset = br.offset,
+            .uuid_offset = blob_offset,
+            .uuid_length = uuid_len,
+        };
+        blob_offset += uuid_len;
+    }
+
+    for (result.query_blocks, 0..) |qb, i| {
+        const query_len: u32 = @intCast(qb.query.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, query_len) <= b.len);
+            @memcpy(b[blob_offset..][0..query_len], qb.query);
+        }
+        c_query_blocks.?[i] = .{
+            .source_offset = qb.offset,
+            .end_offset = qb.end_offset,
+            .query_offset = blob_offset,
+            .query_length = query_len,
+        };
+        blob_offset += query_len;
+    }
+
+    for (result.link_definitions, 0..) |ld, i| {
+        const label_len: u32 = @intCast(ld.label.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, label_len) <= b.len);
+            @memcpy(b[blob_offset..][0..label_len], ld.label);
+        }
+        const label_off = blob_offset;
+        blob_offset += label_len;
+
+        const url_len: u32 = @intCast(ld.url.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, url_len) <= b.len);
+            @memcpy(b[blob_offset..][0..url_len], ld.url);
+        }
+        const url_off = blob_offset;
+        blob_offset += url_len;
+
+        var title_off: u32 = 0;
+        var title_len: u32 = 0;
+        if (ld.title) |ttl| {
+            title_len = @intCast(ttl.len);
+            if (blob) |b| {
+                std.debug.assert(@as(usize, blob_offset) + @as(usize, title_len) <= b.len);
+                @memcpy(b[blob_offset..][0..title_len], ttl);
+            }
+            title_off = blob_offset;
+            blob_offset += title_len;
+        }
+
+        c_link_definitions.?[i] = .{
+            .source_offset = ld.offset,
+            .end_offset = ld.end_offset,
+            .label_offset = label_off,
+            .label_length = label_len,
+            .url_offset = url_off,
+            .url_length = url_len,
+            .title_offset = title_off,
+            .title_length = title_len,
+        };
+    }
+
+    for (result.properties, 0..) |p, i| {
+        const key_len: u32 = @intCast(p.key.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, key_len) <= b.len);
+            @memcpy(b[blob_offset..][0..key_len], p.key);
+        }
+        const key_off = blob_offset;
+        blob_offset += key_len;
+
+        const value_len: u32 = @intCast(p.value.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, value_len) <= b.len);
+            @memcpy(b[blob_offset..][0..value_len], p.value);
+        }
+        const value_off = blob_offset;
+        blob_offset += value_len;
+
+        c_properties.?[i] = .{
+            .key_offset = key_off,
+            .key_length = key_len,
+            .value_offset = value_off,
+            .value_length = value_len,
+            .value_type = p.value_type,
+        };
+    }
+
+    for (result.xml_tags, 0..) |xt, i| {
+        const tag_name_len: u32 = @intCast(xt.tag_name.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, tag_name_len) <= b.len);
+            @memcpy(b[blob_offset..][0..tag_name_len], xt.tag_name);
+        }
+        const tag_name_off = blob_offset;
+        blob_offset += tag_name_len;
+
+        const raw_html_len: u32 = @intCast(xt.raw_html.len);
+        if (blob) |b| {
+            std.debug.assert(@as(usize, blob_offset) + @as(usize, raw_html_len) <= b.len);
+            @memcpy(b[blob_offset..][0..raw_html_len], xt.raw_html);
+        }
+        const raw_html_off = blob_offset;
+        blob_offset += raw_html_len;
+
+        c_xml_tags.?[i] = .{
+            .source_offset = xt.offset,
+            .end_offset = xt.end_offset,
+            .tag_name_offset = tag_name_off,
+            .tag_name_length = tag_name_len,
+            .raw_html_offset = raw_html_off,
+            .raw_html_length = raw_html_len,
+            .is_self_closing = if (xt.is_self_closing) 1 else 0,
+            .is_unclosed = if (xt.is_unclosed) 1 else 0,
+            .is_inline = if (xt.is_inline) 1 else 0,
+        };
+    }
+
     // Free ExtractionResult (owned strings — already copied to blob)
     result.deinit();
 
@@ -197,9 +558,26 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
         .headings_count = @intCast(heading_count),
         .links = if (c_links) |l| l.ptr else null,
         .links_count = @intCast(link_count),
+        .code_spans = if (c_code_spans) |cs| cs.ptr else null,
+        .code_spans_count = @intCast(code_span_count),
+        .tasks = if (c_tasks) |tk| tk.ptr else null,
+        .tasks_count = @intCast(task_count),
+        .embeds = if (c_embeds) |e| e.ptr else null,
+        .embeds_count = @intCast(embed_count),
+        .callouts = if (c_callouts) |cl| cl.ptr else null,
+        .callouts_count = @intCast(callout_count),
+        .block_refs = if (c_block_refs) |br| br.ptr else null,
+        .block_refs_count = @intCast(block_ref_count),
+        .query_blocks = if (c_query_blocks) |qb| qb.ptr else null,
+        .query_blocks_count = @intCast(query_block_count),
+        .link_definitions = if (c_link_definitions) |ld| ld.ptr else null,
+        .link_definitions_count = @intCast(link_definition_count),
+        .properties = if (c_properties) |pr| pr.ptr else null,
+        .properties_count = @intCast(property_count),
+        .xml_tags = if (c_xml_tags) |xt| xt.ptr else null,
+        .xml_tags_count = @intCast(xml_tag_count),
         .text_blob = blob_ptr,
         .text_blob_len = blob_offset,
-        ._padding = 0,
     };
 
     return 0;
@@ -209,7 +587,7 @@ export fn marky_md4c_extract(text: ?[*]const u8, len: u32, out: ?*CMd4cResult) i
 ///
 /// After this call the result is zeroed (double-free is a no-op).
 /// Passing null is a no-op.
-export fn marky_md4c_free(result: ?*CMd4cResult) void {
+pub export fn marky_md4c_free(result: ?*CMd4cResult) void {
     const r = result orelse return;
 
     if (r.headings) |headings_ptr| {
@@ -220,6 +598,51 @@ export fn marky_md4c_free(result: ?*CMd4cResult) void {
     if (r.links) |links_ptr| {
         if (r.links_count > 0) {
             ffi_allocator.free(links_ptr[0..r.links_count]);
+        }
+    }
+    if (r.code_spans) |code_spans_ptr| {
+        if (r.code_spans_count > 0) {
+            ffi_allocator.free(code_spans_ptr[0..r.code_spans_count]);
+        }
+    }
+    if (r.tasks) |tasks_ptr| {
+        if (r.tasks_count > 0) {
+            ffi_allocator.free(tasks_ptr[0..r.tasks_count]);
+        }
+    }
+    if (r.embeds) |embeds_ptr| {
+        if (r.embeds_count > 0) {
+            ffi_allocator.free(embeds_ptr[0..r.embeds_count]);
+        }
+    }
+    if (r.callouts) |callouts_ptr| {
+        if (r.callouts_count > 0) {
+            ffi_allocator.free(callouts_ptr[0..r.callouts_count]);
+        }
+    }
+    if (r.block_refs) |block_refs_ptr| {
+        if (r.block_refs_count > 0) {
+            ffi_allocator.free(block_refs_ptr[0..r.block_refs_count]);
+        }
+    }
+    if (r.query_blocks) |query_blocks_ptr| {
+        if (r.query_blocks_count > 0) {
+            ffi_allocator.free(query_blocks_ptr[0..r.query_blocks_count]);
+        }
+    }
+    if (r.link_definitions) |link_definitions_ptr| {
+        if (r.link_definitions_count > 0) {
+            ffi_allocator.free(link_definitions_ptr[0..r.link_definitions_count]);
+        }
+    }
+    if (r.properties) |properties_ptr| {
+        if (r.properties_count > 0) {
+            ffi_allocator.free(properties_ptr[0..r.properties_count]);
+        }
+    }
+    if (r.xml_tags) |xml_tags_ptr| {
+        if (r.xml_tags_count > 0) {
+            ffi_allocator.free(xml_tags_ptr[0..r.xml_tags_count]);
         }
     }
     if (r.text_blob) |blob_ptr| {
@@ -233,113 +656,6 @@ export fn marky_md4c_free(result: ?*CMd4cResult) void {
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
-
-const testing = std.testing;
-
-test "md4c_extract: simple heading" {
-    const input = "# Hello\n";
-    var result: CMd4cResult = undefined;
-    const rc = marky_md4c_extract(input.ptr, input.len, &result);
-    defer marky_md4c_free(&result);
-    try testing.expectEqual(@as(i32, 0), rc);
-    try testing.expectEqual(@as(u32, 1), result.headings_count);
-    const blob = result.text_blob.?[0..result.text_blob_len];
-    const h = result.headings.?[0];
-    try testing.expectEqualStrings("Hello", blob[h.text_offset..h.text_offset + h.text_length]);
-    try testing.expectEqual(@as(u8, 1), h.level);
-}
-
-test "md4c_extract: inline link with text and target" {
-    const input = "[click](https://example.com)\n";
-    var result: CMd4cResult = undefined;
-    const rc = marky_md4c_extract(input.ptr, input.len, &result);
-    defer marky_md4c_free(&result);
-    try testing.expectEqual(@as(i32, 0), rc);
-    try testing.expectEqual(@as(u32, 1), result.links_count);
-    const blob = result.text_blob.?[0..result.text_blob_len];
-    const l = result.links.?[0];
-    try testing.expectEqualStrings("click", blob[l.text_offset..l.text_offset + l.text_length]);
-    try testing.expectEqualStrings("https://example.com", blob[l.target_offset..l.target_offset + l.target_length]);
-    try testing.expectEqual(@as(u8, 0), l.is_wiki);
-}
-
-test "md4c_extract: null text pointer returns -1" {
-    var result: CMd4cResult = undefined;
-    const rc = marky_md4c_extract(null, 10, &result);
-    try testing.expectEqual(@as(i32, -1), rc);
-}
-
-test "md4c_extract: null out pointer returns -1" {
-    const input = "# Hello\n";
-    const rc = marky_md4c_extract(input.ptr, input.len, null);
-    try testing.expectEqual(@as(i32, -1), rc);
-}
-
-test "md4c_extract: empty input returns zero results" {
-    const input = "";
-    var result: CMd4cResult = undefined;
-    const rc = marky_md4c_extract(input.ptr, 0, &result);
-    defer marky_md4c_free(&result);
-    try testing.expectEqual(@as(i32, 0), rc);
-    try testing.expectEqual(@as(u32, 0), result.headings_count);
-    try testing.expectEqual(@as(u32, 0), result.links_count);
-}
-
-test "md4c_extract: wiki link" {
-    const input = "[[Target]]\n";
-    var result: CMd4cResult = undefined;
-    const rc = marky_md4c_extract(input.ptr, input.len, &result);
-    defer marky_md4c_free(&result);
-    try testing.expectEqual(@as(i32, 0), rc);
-    try testing.expectEqual(@as(u32, 1), result.links_count);
-    try testing.expectEqual(@as(u8, 1), result.links.?[0].is_wiki);
-    const blob = result.text_blob.?[0..result.text_blob_len];
-    const l = result.links.?[0];
-    try testing.expectEqualStrings("Target", blob[l.target_offset..l.target_offset + l.target_length]);
-}
-
-test "md4c_extract: double free is no-op" {
-    const input = "# Test\n";
-    var result: CMd4cResult = undefined;
-    _ = marky_md4c_extract(input.ptr, input.len, &result);
-    marky_md4c_free(&result);
-    // Second free should be no-op (result zeroed by first free)
-    marky_md4c_free(&result);
-}
-
-test "md4c_extract: entity text decoded in heading" {
-    // Entity references are decoded to UTF-8 by ExtractionRenderer (marky-yfh7)
-    const input = "# Hello &amp; World\n";
-    var result: CMd4cResult = undefined;
-    const rc = marky_md4c_extract(input.ptr, input.len, &result);
-    defer marky_md4c_free(&result);
-    try testing.expectEqual(@as(i32, 0), rc);
-    const blob = result.text_blob.?[0..result.text_blob_len];
-    const h = result.headings.?[0];
-    try testing.expectEqualStrings("Hello & World", blob[h.text_offset..h.text_offset + h.text_length]);
-}
-
-test "md4c_extract: mixed document headings and links" {
-    const input = "# Title\n\nSome [link](url) text.\n\n## Section\n\nSee [[Wiki]] for details.\n";
-    var result: CMd4cResult = undefined;
-    const rc = marky_md4c_extract(input.ptr, input.len, &result);
-    defer marky_md4c_free(&result);
-    try testing.expectEqual(@as(i32, 0), rc);
-    try testing.expectEqual(@as(u32, 2), result.headings_count);
-    try testing.expectEqual(@as(u32, 2), result.links_count);
-
-    const blob = result.text_blob.?[0..result.text_blob_len];
-    const h0 = result.headings.?[0];
-    const h1 = result.headings.?[1];
-    try testing.expectEqualStrings("Title", blob[h0.text_offset..h0.text_offset + h0.text_length]);
-    try testing.expectEqualStrings("Section", blob[h1.text_offset..h1.text_offset + h1.text_length]);
-
-    // Second link should be wiki
-    try testing.expectEqual(@as(u8, 1), result.links.?[1].is_wiki);
-}
-
-test "md4c_extract: null text with zero len returns -1" {
-    var result: CMd4cResult = undefined;
-    const rc = marky_md4c_extract(null, 0, &result);
-    try testing.expectEqual(@as(i32, -1), rc);
+test {
+    _ = @import("exports_tests.zig");
 }

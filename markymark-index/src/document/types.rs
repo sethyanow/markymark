@@ -105,10 +105,7 @@ pub struct TagEntry<'arena> {
     pub name: &'arena str,
 }
 
-/// Owned tag payload used by incremental merge paths before arena allocation.
-///
-/// Note: `Tag` in the parser has no source range, so tags cannot be incrementally
-/// merged. Always pass `None` for `IncrementalOverrides::tags`.
+/// Owned tag payload used by scan-to-index construction before arena allocation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TagOwned {
     /// Tag name (without leading `#`).
@@ -146,6 +143,8 @@ pub struct XmlTagOwned {
     pub is_self_closing: bool,
     /// Whether this tag has no matching closing tag.
     pub is_unclosed: bool,
+    /// Whether this tag was found inline (within a paragraph) rather than block-level.
+    pub is_inline: bool,
     /// Source range (line/col).
     pub range: Range,
     /// Start byte offset in the source document.
@@ -154,25 +153,55 @@ pub struct XmlTagOwned {
     pub end_byte: usize,
 }
 
-/// Overrides for each independent extractor used by the incremental index path.
+/// Kind of symbol referenced by an inline code span.
 ///
-/// `None` means: extract fresh from the AST (no reuse).
-/// `Some(vec)` means: use the provided owned data instead of re-extracting.
-///
-/// `tags` is always `None` because [`Tag`][markymark_parser] has no source range
-/// and cannot be incrementally merged. It is included for API completeness only.
-#[derive(Debug, Default)]
-pub struct IncrementalOverrides {
-    /// Merged wiki-links from the incremental path, or `None` to re-extract.
-    pub wiki_links: Option<Vec<WikiLinkOwned>>,
-    /// Merged block IDs from the incremental path, or `None` to re-extract.
-    pub blocks: Option<Vec<BlockOwned>>,
-    /// Always `None` — tags have no range, cannot be incrementally merged.
-    pub tags: Option<Vec<TagOwned>>,
-    /// Merged markdown links from the incremental path, or `None` to re-extract.
-    pub markdown_links: Option<Vec<MarkdownLinkOwned>>,
-    /// Merged XML tags from the incremental path, or `None` to re-extract.
-    pub xml_tags: Option<Vec<XmlTagOwned>>,
+/// Tier 1 (backtick extraction) always sets `None` — the kind cannot be
+/// determined from syntax alone. Tier 2+ may infer kind from context
+/// (e.g. `DocumentArena` following "struct" in prose).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SymbolKind {
+    /// A struct type.
+    Struct,
+    /// A trait.
+    Trait,
+    /// A function or method.
+    Function,
+    /// A type alias or other named type.
+    Type,
+    /// A constant or static.
+    Constant,
+    /// A module or crate.
+    Module,
+}
+
+/// An inline code span entry stored in the index.
+#[derive(Debug, Clone)]
+pub struct CodeSpanEntry<'arena> {
+    /// The backtick-delimited text content (decoded).
+    pub text: &'arena str,
+    /// Source range of the code span.
+    pub range: Range,
+    /// Byte offset of the opening backtick.
+    pub start_byte: usize,
+    /// Byte offset one past the closing backtick.
+    pub end_byte: usize,
+    /// Language hint (None for Tier 1 — all backtick spans are untyped).
+    pub language_hint: Option<&'arena str>,
+    /// Symbol kind (None for Tier 1 — cannot determine struct/fn/trait from backtick alone).
+    pub kind: Option<SymbolKind>,
+}
+
+/// Owned code span payload used by incremental merge paths before arena allocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodeSpanOwned {
+    /// The backtick-delimited text content (decoded).
+    pub text: String,
+    /// Source range of the code span.
+    pub range: Range,
+    /// Byte offset of the opening backtick.
+    pub start_byte: usize,
+    /// Byte offset one past the closing backtick.
+    pub end_byte: usize,
 }
 
 /// A markdown link entry stored in the index.
@@ -208,6 +237,24 @@ pub struct FrontmatterEntry<'arena> {
     pub key: &'arena str,
     /// The value.
     pub value: FrontmatterValueEntry<'arena>,
+}
+
+/// An owned frontmatter value for cross-module transfer (not arena-allocated).
+#[derive(Debug, Clone)]
+pub enum FrontmatterValueOwned {
+    /// A simple string value.
+    String(String),
+    /// A list of string values.
+    List(Vec<String>),
+}
+
+/// An owned frontmatter key-value entry for cross-module transfer (not arena-allocated).
+#[derive(Debug, Clone)]
+pub struct FrontmatterOwnedEntry {
+    /// The key.
+    pub key: String,
+    /// The value.
+    pub value: FrontmatterValueOwned,
 }
 
 /// A Logseq property value stored in the index.
@@ -256,10 +303,158 @@ pub struct XmlTagEntry<'arena> {
     pub is_self_closing: bool,
     /// Whether this tag has no matching closing tag.
     pub is_unclosed: bool,
+    /// Whether this tag was found inline (within a paragraph) rather than block-level.
+    pub is_inline: bool,
     /// Source range of the entire tag.
     pub range: Range,
     /// Start byte offset in the source document.
     pub start_byte: usize,
     /// End byte offset in the source document.
+    pub end_byte: usize,
+}
+
+/// An embed entry (`![[target]]`) stored in the index.
+#[derive(Debug, Clone)]
+pub struct EmbedEntry<'arena> {
+    /// The embedded resource path.
+    pub target: &'arena str,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset in the source document.
+    pub start_byte: usize,
+    /// End byte offset in the source document.
+    pub end_byte: usize,
+}
+
+/// Owned embed payload for incremental merge paths.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmbedOwned {
+    /// The embedded resource path.
+    pub target: String,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset.
+    pub start_byte: usize,
+    /// End byte offset.
+    pub end_byte: usize,
+}
+
+/// A task entry (checkbox item) stored in the index.
+#[derive(Debug, Clone)]
+pub struct TaskEntry<'arena> {
+    /// Checkbox state (e.g. "unchecked", "checked", "in_progress").
+    pub state: &'arena str,
+    /// Task description text.
+    pub text: &'arena str,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset in the source document.
+    pub start_byte: usize,
+    /// End byte offset in the source document.
+    pub end_byte: usize,
+}
+
+/// Owned task payload for incremental merge paths.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskOwned {
+    /// Checkbox state.
+    pub state: String,
+    /// Task description text.
+    pub text: String,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset.
+    pub start_byte: usize,
+    /// End byte offset.
+    pub end_byte: usize,
+}
+
+/// A callout entry (Obsidian `[!type]` blockquote) stored in the index.
+#[derive(Debug, Clone)]
+pub struct CalloutEntry<'arena> {
+    /// Callout type (e.g. "note", "warning", "tip").
+    pub callout_type: &'arena str,
+    /// Optional callout title.
+    pub title: Option<&'arena str>,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset in the source document.
+    pub start_byte: usize,
+    /// End byte offset in the source document.
+    pub end_byte: usize,
+}
+
+/// Owned callout payload for incremental merge paths.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CalloutOwned {
+    /// Callout type.
+    pub callout_type: String,
+    /// Optional callout title.
+    pub title: Option<String>,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset.
+    pub start_byte: usize,
+    /// End byte offset.
+    pub end_byte: usize,
+}
+
+/// A query block entry (Logseq `{{query ...}}`) stored in the index.
+#[derive(Debug, Clone)]
+pub struct QueryBlockEntry<'arena> {
+    /// The query text.
+    pub query: &'arena str,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset in the source document.
+    pub start_byte: usize,
+    /// End byte offset in the source document.
+    pub end_byte: usize,
+}
+
+/// Owned query block payload for incremental merge paths.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueryBlockOwned {
+    /// The query text.
+    pub query: String,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset.
+    pub start_byte: usize,
+    /// End byte offset.
+    pub end_byte: usize,
+}
+
+/// A link definition entry (`[label]: url "title"`) stored in the index.
+#[derive(Debug, Clone)]
+pub struct LinkDefinitionEntry<'arena> {
+    /// The link label.
+    pub label: &'arena str,
+    /// The link URL.
+    pub url: &'arena str,
+    /// Optional title.
+    pub title: Option<&'arena str>,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset in the source document.
+    pub start_byte: usize,
+    /// End byte offset in the source document.
+    pub end_byte: usize,
+}
+
+/// Owned link definition payload for incremental merge paths.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkDefinitionOwned {
+    /// The link label.
+    pub label: String,
+    /// The link URL.
+    pub url: String,
+    /// Optional title.
+    pub title: Option<String>,
+    /// Source range.
+    pub range: Range,
+    /// Start byte offset.
+    pub start_byte: usize,
+    /// End byte offset.
     pub end_byte: usize,
 }

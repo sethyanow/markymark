@@ -13,42 +13,26 @@ const SpanDetail = types.SpanDetail;
 const CallbackError = types.CallbackError;
 
 const helpers = @import("./helpers.zig");
+const offsets = @import("./extraction_renderer_offsets.zig");
+const scans = @import("./extraction_renderer_scans.zig");
+const xml = @import("./extraction_renderer_xml.zig");
 const root = @import("./root.zig");
 const parser_mod = @import("./parser.zig");
 
-// ── Result types ─────────────────────────────────────────────────────
-
-pub const ExtractedHeading = struct {
-    text: []const u8, // owned
-    offset: u32,
-    level: u8,
-};
-
-pub const ExtractedLink = struct {
-    text: []const u8, // owned
-    target: []const u8, // owned
-    offset: u32,
-    end_offset: u32, // byte offset past the link's closing character
-    is_wiki: bool,
-};
-
-pub const ExtractionResult = struct {
-    headings: []ExtractedHeading,
-    links: []ExtractedLink,
-    allocator: Allocator,
-
-    pub fn deinit(self: *ExtractionResult) void {
-        for (self.headings) |h| {
-            self.allocator.free(h.text);
-        }
-        self.allocator.free(self.headings);
-        for (self.links) |l| {
-            self.allocator.free(l.text);
-            self.allocator.free(l.target);
-        }
-        self.allocator.free(self.links);
-    }
-};
+// ── Result types (re-exported from extraction_renderer_types.zig) ────
+const result_types = @import("./extraction_renderer_types.zig");
+pub const ExtractedHeading = result_types.ExtractedHeading;
+pub const ExtractedLink = result_types.ExtractedLink;
+pub const ExtractedCodeSpan = result_types.ExtractedCodeSpan;
+pub const ExtractedTask = result_types.ExtractedTask;
+pub const ExtractedEmbed = result_types.ExtractedEmbed;
+pub const ExtractedCallout = result_types.ExtractedCallout;
+pub const ExtractedBlockRef = result_types.ExtractedBlockRef;
+pub const ExtractedQueryBlock = result_types.ExtractedQueryBlock;
+pub const ExtractedLinkDefinition = result_types.ExtractedLinkDefinition;
+pub const ExtractedProperty = result_types.ExtractedProperty;
+pub const ExtractedXmlTag = result_types.ExtractedXmlTag;
+pub const ExtractionResult = result_types.ExtractionResult;
 
 // ── ExtractionRenderer ───────────────────────────────────────────────
 
@@ -76,6 +60,43 @@ pub const ExtractionRenderer = struct {
     link_text_buf: std.ArrayListUnmanaged(u8) = .{},
     link_href_buf: std.ArrayListUnmanaged(u8) = .{},
 
+    // code span accumulation state (SEPARATE cursor per marky-0rl6 lesson)
+    code_spans: std.ArrayListUnmanaged(ExtractedCodeSpan) = .{},
+    code_scan_cursor: u32 = 0,
+    in_code_span: bool = false,
+    code_text_buf: std.ArrayListUnmanaged(u8) = .{},
+
+    // task accumulation state (SEPARATE cursor)
+    tasks: std.ArrayListUnmanaged(ExtractedTask) = .{},
+    in_task: bool = false,
+    task_state: u8 = 0,
+    task_text_buf: std.ArrayListUnmanaged(u8) = .{},
+    task_scan_cursor: u32 = 0,
+
+    // embed accumulation state
+    embeds: std.ArrayListUnmanaged(ExtractedEmbed) = .{},
+
+    // callout accumulation state (SEPARATE cursor per marky-0rl6 lesson)
+    callouts: std.ArrayListUnmanaged(ExtractedCallout) = .{},
+    quote_depth: u8 = 0,
+    callout_type_buf: std.ArrayListUnmanaged(u8) = .{},
+    callout_title_buf: std.ArrayListUnmanaged(u8) = .{},
+    callout_scan_cursor: u32 = 0,
+
+    // block ref accumulation state (SEPARATE cursor)
+    block_refs: std.ArrayListUnmanaged(ExtractedBlockRef) = .{},
+    block_ref_scan_cursor: u32 = 0,
+
+    // query block + link definition + property results (raw source scan, no cursor needed)
+    query_blocks: std.ArrayListUnmanaged(ExtractedQueryBlock) = .{},
+    link_definitions: std.ArrayListUnmanaged(ExtractedLinkDefinition) = .{},
+    properties: std.ArrayListUnmanaged(ExtractedProperty) = .{},
+
+    // XML tag extraction (callback-based HTML fragment collection + finalization)
+    xml_tags: std.ArrayListUnmanaged(ExtractedXmlTag) = .{},
+    html_fragments: std.ArrayListUnmanaged(xml.HtmlFragment) = .{},
+    inline_html_tags: std.ArrayListUnmanaged(xml.InlineHtmlTag) = .{},
+
     // code block tracking
     in_code_block: bool = false,
 
@@ -94,6 +115,10 @@ pub const ExtractionRenderer = struct {
         self.heading_text_buf.deinit(self.allocator);
         self.link_text_buf.deinit(self.allocator);
         self.link_href_buf.deinit(self.allocator);
+        self.code_text_buf.deinit(self.allocator);
+        self.task_text_buf.deinit(self.allocator);
+        self.callout_type_buf.deinit(self.allocator);
+        self.callout_title_buf.deinit(self.allocator);
 
         // Free owned strings in results
         for (self.headings.items) |h| {
@@ -105,6 +130,50 @@ pub const ExtractionRenderer = struct {
             self.allocator.free(l.target);
         }
         self.links.deinit(self.allocator);
+        for (self.code_spans.items) |cs| {
+            self.allocator.free(cs.text);
+        }
+        self.code_spans.deinit(self.allocator);
+        for (self.tasks.items) |t| {
+            self.allocator.free(t.text);
+        }
+        self.tasks.deinit(self.allocator);
+        for (self.embeds.items) |e| {
+            self.allocator.free(e.target);
+        }
+        self.embeds.deinit(self.allocator);
+        for (self.callouts.items) |c| {
+            self.allocator.free(c.callout_type);
+            if (c.title) |t| self.allocator.free(t);
+        }
+        self.callouts.deinit(self.allocator);
+        for (self.block_refs.items) |br| {
+            self.allocator.free(br.uuid);
+        }
+        self.block_refs.deinit(self.allocator);
+        for (self.query_blocks.items) |qb| {
+            self.allocator.free(qb.query);
+        }
+        self.query_blocks.deinit(self.allocator);
+        for (self.link_definitions.items) |ld| {
+            self.allocator.free(ld.label);
+            self.allocator.free(ld.url);
+            if (ld.title) |t| self.allocator.free(t);
+        }
+        self.link_definitions.deinit(self.allocator);
+        for (self.properties.items) |p| {
+            self.allocator.free(p.key);
+            self.allocator.free(p.value);
+        }
+        self.properties.deinit(self.allocator);
+        for (self.xml_tags.items) |xt| {
+            self.allocator.free(xt.tag_name);
+            self.allocator.free(xt.raw_html);
+        }
+        self.xml_tags.deinit(self.allocator);
+        self.html_fragments.deinit(self.allocator);
+        for (self.inline_html_tags.items) |t| self.allocator.free(t.text);
+        self.inline_html_tags.deinit(self.allocator);
     }
 
     pub fn renderer(self: *ExtractionRenderer) Renderer {
@@ -159,6 +228,27 @@ pub const ExtractionRenderer = struct {
             .code => {
                 self.in_code_block = true;
             },
+            .li => {
+                // Nested task handling: finalize current task if re-entering
+                if (self.in_task) self.finalizeTask();
+                const task_mark = types.taskMarkFromData(data);
+                if (task_mark != 0) {
+                    self.in_task = true;
+                    self.task_state = task_mark;
+                    self.task_text_buf.clearRetainingCapacity();
+                } else {
+                    self.in_task = false;
+                }
+            },
+            .quote => {
+                self.quote_depth += 1;
+                if (self.quote_depth == 1) {
+                    self.callout_type_buf.clearRetainingCapacity();
+                    self.callout_title_buf.clearRetainingCapacity();
+                    // Scan raw source for callout pattern > [!type] title
+                    self.scanCalloutInSource();
+                }
+            },
             else => {},
         }
     }
@@ -171,6 +261,30 @@ pub const ExtractionRenderer = struct {
             },
             .code => {
                 self.in_code_block = false;
+            },
+            .li => {
+                if (self.in_task) {
+                    self.finalizeTask();
+                    self.in_task = false;
+                }
+            },
+            .quote => {
+                if (self.quote_depth == 1) {
+                    self.finalizeCallout();
+                }
+                if (self.quote_depth > 0) self.quote_depth -= 1;
+            },
+            .doc => {
+                // Process block-level HTML fragments into XML tags
+                if (xml.processHtmlFragments(self.html_fragments.items, self.allocator, &self.xml_tags))
+                    self.oom = true;
+                // Process inline HTML tags with source offset recovery
+                if (xml.processInlineHtmlFragments(self.inline_html_tags.items, self.src_text, self.allocator, &self.xml_tags))
+                    self.oom = true;
+                // Raw source scans for query blocks, link definitions, and properties
+                self.scanQueryBlocks();
+                self.scanLinkDefinitions();
+                self.scanProperties();
             },
             else => {},
         }
@@ -201,6 +315,10 @@ pub const ExtractionRenderer = struct {
             .img => {
                 self.in_image = true;
             },
+            .code => {
+                self.in_code_span = true;
+                self.code_text_buf.clearRetainingCapacity();
+            },
             else => {},
         }
     }
@@ -222,6 +340,12 @@ pub const ExtractionRenderer = struct {
             .img => {
                 self.in_image = false;
             },
+            .code => {
+                if (self.in_code_span) {
+                    self.finalizeCodeSpan();
+                    self.in_code_span = false;
+                }
+            },
             else => {},
         }
     }
@@ -230,6 +354,40 @@ pub const ExtractionRenderer = struct {
 
     fn text(self: *ExtractionRenderer, text_type: TextType, content: []const u8) void {
         if (self.in_code_block) return;
+
+        // Collect HTML fragments for XML tag extraction.
+        // Block-level HTML: content points within src_text → collect with offset.
+        // Inline HTML: content points to md4c internal buffer → save copy for
+        // later source-text offset recovery in processInlineHtmlFragments.
+        if (text_type == .html and content.len > 0) {
+            const src_start = @intFromPtr(self.src_text.ptr);
+            const src_end = src_start + self.src_text.len;
+            const content_start = @intFromPtr(content.ptr);
+            const content_end = content_start + content.len;
+            if (content_start >= src_start and content_end <= src_end) {
+                // Block-level HTML — pointer is into source text
+                const byte_offset = content_start - src_start;
+                if (byte_offset <= std.math.maxInt(u32)) {
+                    self.html_fragments.append(self.allocator, .{
+                        .content = content,
+                        .offset = @intCast(byte_offset),
+                    }) catch {
+                        self.oom = true;
+                    };
+                }
+            } else {
+                // Inline HTML — pointer is into md4c internal buffer.
+                // Dupe because the buffer is freed after parsing.
+                const duped = self.allocator.dupe(u8, content) catch {
+                    self.oom = true;
+                    return;
+                };
+                self.inline_html_tags.append(self.allocator, .{ .text = duped }) catch {
+                    self.allocator.free(duped);
+                    self.oom = true;
+                };
+            }
+        }
 
         // Decode HTML entity references to UTF-8; fall back to raw text if unknown
         var decode_buf: [8]u8 = undefined;
@@ -243,6 +401,17 @@ pub const ExtractionRenderer = struct {
         }
         if (self.in_link and !self.in_image) {
             self.link_text_buf.appendSlice(self.allocator, effective) catch { self.oom = true; };
+        }
+        if (self.in_code_span) {
+            self.code_text_buf.appendSlice(self.allocator, effective) catch { self.oom = true; };
+        }
+        if (self.in_task) {
+            self.task_text_buf.appendSlice(self.allocator, effective) catch { self.oom = true; };
+        }
+
+        // Block ref scanning: look for ((uuid)) in non-code content
+        if (!self.in_code_span) {
+            self.scanBlockRefs(effective);
         }
     }
 
@@ -288,264 +457,235 @@ pub const ExtractionRenderer = struct {
             self.oom = true;
             self.allocator.free(owned_text);
             self.allocator.free(owned_target);
+            return;
+        };
+
+        // Detect embed: wikilink preceded by '!' in source
+        if (self.link_is_wiki and offset > 0 and self.src_text[offset - 1] == '!' and owned_target.len > 0) {
+            const embed_target = self.allocator.dupe(u8, owned_target) catch {
+                self.oom = true;
+                return;
+            };
+            self.embeds.append(self.allocator, .{
+                .target = embed_target,
+                .offset = offset - 1, // '!' position
+                .end_offset = end_offset,
+            }) catch {
+                self.oom = true;
+                self.allocator.free(embed_target);
+            };
+        }
+    }
+
+    fn finalizeCodeSpan(self: *ExtractionRenderer) void {
+        const owned_text = self.code_text_buf.toOwnedSlice(self.allocator) catch {
+            self.oom = true;
+            return;
+        };
+
+        const offset = self.findCodeSpanOffset();
+        const end_offset: u32 = self.code_scan_cursor;
+        self.code_spans.append(self.allocator, .{
+            .text = owned_text,
+            .offset = offset,
+            .end_offset = end_offset,
+        }) catch {
+            self.oom = true;
+            self.allocator.free(owned_text);
         };
     }
 
-    // ── Offset recovery via forward scan ─────────────────────────────
+    fn findCodeSpanOffset(self: *ExtractionRenderer) u32 {
+        return offsets.findCodeSpanOffset(self.src_text, &self.code_scan_cursor);
+    }
+
+    fn finalizeTask(self: *ExtractionRenderer) void {
+        const owned_text = self.task_text_buf.toOwnedSlice(self.allocator) catch {
+            self.oom = true;
+            return;
+        };
+
+        const offset = self.findTaskOffset();
+        const end_offset: u32 = self.task_scan_cursor;
+        self.tasks.append(self.allocator, .{
+            .state = self.task_state,
+            .text = owned_text,
+            .offset = offset,
+            .end_offset = end_offset,
+        }) catch {
+            self.oom = true;
+            self.allocator.free(owned_text);
+        };
+    }
+
+    fn findTaskOffset(self: *ExtractionRenderer) u32 {
+        return offsets.findTaskOffset(self.src_text, &self.task_scan_cursor);
+    }
 
     fn findHeadingOffset(self: *ExtractionRenderer) u32 {
-        const src = self.src_text;
-        var pos: u32 = self.heading_scan_cursor;
-
-        if (self.heading_is_setext) {
-            // Setext: find a line followed by === (level 1) or --- (level 2).
-            // Return offset of the text line start.
-            // Track fenced code blocks to avoid matching underlines inside them.
-            var in_fence_s = false;
-            var fence_char_s: u8 = 0;
-            var fence_len_s: u32 = 0;
-            while (pos < src.len) {
-                // Find the start of a text line
-                const line_start = pos;
-                // Skip to end of this line
-                while (pos < src.len and src[pos] != '\n') : (pos += 1) {}
-                const line_end = pos;
-                // Skip newline
-                if (pos < src.len) pos += 1;
-
-                // Detect fence open/close at this line
-                {
-                    var fp = line_start;
-                    var sp: u32 = 0;
-                    while (fp < line_end and src[fp] == ' ' and sp < 3) { fp += 1; sp += 1; }
-                    if (fp < line_end and (src[fp] == '`' or src[fp] == '~')) {
-                        const fc = src[fp];
-                        var flen: u32 = 0;
-                        while (fp + flen < line_end and src[fp + flen] == fc) : (flen += 1) {}
-                        if (flen >= 3) {
-                            if (!in_fence_s) {
-                                in_fence_s = true;
-                                fence_char_s = fc;
-                                fence_len_s = flen;
-                            } else if (fc == fence_char_s and flen >= fence_len_s) {
-                                in_fence_s = false;
-                                fence_char_s = 0;
-                                fence_len_s = 0;
-                            }
-                            continue; // skip fence lines
-                        }
-                    }
-                }
-
-                // If inside a fence, skip this line entirely
-                if (in_fence_s) continue;
-
-                // Check if NEXT line is the underline
-                if (pos < src.len) {
-                    const underline_char: u8 = if (self.heading_level == 1) '=' else '-';
-                    var underline_start = pos;
-                    // Skip optional leading spaces (up to 3)
-                    var leading_spaces: u32 = 0;
-                    while (underline_start < src.len and src[underline_start] == ' ' and leading_spaces < 3) {
-                        underline_start += 1;
-                        leading_spaces += 1;
-                    }
-                    if (underline_start < src.len and src[underline_start] == underline_char) {
-                        var underline_end = underline_start;
-                        while (underline_end < src.len and src[underline_end] == underline_char) : (underline_end += 1) {}
-                        // Must have at least 1 underline char and rest of line is blank
-                        if (underline_end > underline_start) {
-                            var trailing = underline_end;
-                            while (trailing < src.len and (src[trailing] == ' ' or src[trailing] == '\t')) : (trailing += 1) {}
-                            if (trailing >= src.len or src[trailing] == '\n' or src[trailing] == '\r') {
-                                // Only if the text line is non-empty
-                                if (line_end > line_start) {
-                                    // Advance cursor past the underline
-                                    self.heading_scan_cursor = @intCast(@min(trailing + 1, src.len));
-                                    return @intCast(line_start);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            // ATX: '#' must appear at line start (0-3 leading spaces + optional '>' blockquote).
-            // Scan line-by-line; track code fences to skip false '#' matches inside fenced blocks.
-            var in_fence = false;
-            var fence_char: u8 = 0;
-            var fence_len: u32 = 0;
-            while (pos < src.len) {
-                const line_start = pos;
-                var line_end = pos;
-                while (line_end < src.len and src[line_end] != '\n') : (line_end += 1) {}
-                const next_line: u32 = @intCast(if (line_end < src.len) line_end + 1 else src.len);
-
-                // Detect fence open/close: 0-3 spaces then 3+ identical backticks or tildes.
-                var fp = pos;
-                var sp: u32 = 0;
-                while (fp < line_end and src[fp] == ' ' and sp < 3) { fp += 1; sp += 1; }
-                if (fp < line_end and (src[fp] == '`' or src[fp] == '~')) {
-                    const fc = src[fp];
-                    var flen: u32 = 0;
-                    while (fp + flen < line_end and src[fp + flen] == fc) : (flen += 1) {}
-                    if (flen >= 3) {
-                        if (!in_fence) {
-                            in_fence = true;
-                            fence_char = fc;
-                            fence_len = flen;
-                        } else if (fc == fence_char and flen >= fence_len) {
-                            in_fence = false;
-                            fence_char = 0;
-                            fence_len = 0;
-                        }
-                        // else: different char or shorter fence — stay in fence
-                        pos = next_line;
-                        continue;
-                    }
-                }
-
-                if (!in_fence) {
-                    // Check for 0-3 leading spaces, optional '>' blockquote prefix, then '#'.
-                    var lp = line_start;
-                    var lsp: u32 = 0;
-                    while (lp < line_end and src[lp] == ' ' and lsp < 3) { lp += 1; lsp += 1; }
-                    while (lp < line_end and src[lp] == '>') {
-                        lp += 1;
-                        if (lp < line_end and src[lp] == ' ') lp += 1;
-                    }
-                    if (lp < line_end and src[lp] == '#') {
-                        const hash_start = lp;
-                        var hash_count: u8 = 0;
-                        var p = lp;
-                        while (p < line_end and src[p] == '#') : (p += 1) { hash_count += 1; }
-                        if (hash_count == self.heading_level and
-                            (p >= line_end or src[p] == ' ' or src[p] == '\t'))
-                        {
-                            self.heading_scan_cursor = next_line;
-                            return @intCast(hash_start);
-                        }
-                    }
-                }
-
-                pos = next_line;
-            }
-        }
-
-        // Fallback: use current cursor
-        return self.heading_scan_cursor;
+        return offsets.findHeadingOffset(self.src_text, &self.heading_scan_cursor, self.heading_is_setext, self.heading_level);
     }
 
     fn findLinkOffset(self: *ExtractionRenderer) u32 {
-        const src = self.src_text;
-        var pos: u32 = self.link_scan_cursor;
+        return offsets.findLinkOffset(self.src_text, &self.link_scan_cursor, self.link_is_wiki, self.link_is_autolink);
+    }
 
-        if (self.link_is_wiki) {
-            // Search for '[['
-            while (pos + 1 < src.len) {
-                if (src[pos] == '[' and src[pos + 1] == '[') {
-                    // Advance cursor past the wiki link ]]
-                    var end = pos + 2;
-                    while (end + 1 < src.len) {
-                        if (src[end] == ']' and src[end + 1] == ']') {
-                            end += 2;
-                            break;
+    /// Scan raw source text from callout_scan_cursor for callout pattern: > [!type] title
+    /// If found, populate callout_type_buf (lowercased) and callout_title_buf.
+    fn scanCalloutInSource(self: *ExtractionRenderer) void {
+        const src = self.src_text;
+        var pos: u32 = self.callout_scan_cursor;
+
+        // Find '>' at start of a line
+        while (pos < src.len) {
+            const at_line_start = (pos == 0 or src[pos - 1] == '\n');
+            if (at_line_start) {
+                var lp: u32 = pos;
+                // Skip leading spaces (up to 3)
+                var spaces: u32 = 0;
+                while (lp < src.len and src[lp] == ' ' and spaces < 3) {
+                    lp += 1;
+                    spaces += 1;
+                }
+                if (lp < src.len and src[lp] == '>') {
+                    lp += 1;
+                    // Skip whitespace after '>'
+                    while (lp < src.len and (src[lp] == ' ' or src[lp] == '\t')) : (lp += 1) {}
+                    // Check for [!
+                    if (lp + 2 < src.len and src[lp] == '[' and src[lp + 1] == '!') {
+                        lp += 2;
+                        const type_start = lp;
+                        while (lp < src.len and std.ascii.isAlphabetic(src[lp])) : (lp += 1) {}
+                        if (lp == type_start) return; // empty type [!]
+                        if (lp >= src.len or src[lp] != ']') return; // no closing ]
+
+                        // Store lowercased type
+                        for (src[type_start..lp]) |ch| {
+                            self.callout_type_buf.append(self.allocator, std.ascii.toLower(ch)) catch {
+                                self.oom = true;
+                                return;
+                            };
                         }
-                        end += 1;
+                        lp += 1; // skip ']'
+
+                        // Extract title: rest of line after ], trimmed
+                        var line_end = lp;
+                        while (line_end < src.len and src[line_end] != '\n') : (line_end += 1) {}
+                        const raw_title = std.mem.trim(u8, src[lp..line_end], " \t");
+                        if (raw_title.len > 0) {
+                            self.callout_title_buf.appendSlice(self.allocator, raw_title) catch {
+                                self.oom = true;
+                            };
+                        }
+                        return;
                     }
-                    self.link_scan_cursor = @intCast(end);
-                    return @intCast(pos);
                 }
-                pos += 1;
             }
-        } else if (self.link_is_autolink) {
-            // Search for '<'
-            while (pos < src.len) {
-                if (src[pos] == '<') {
-                    var end = pos + 1;
-                    while (end < src.len and src[end] != '>') : (end += 1) {}
-                    if (end < src.len) end += 1; // past '>'
-                    self.link_scan_cursor = @intCast(end);
-                    return @intCast(pos);
-                }
-                pos += 1;
+            pos += 1;
+        }
+    }
+
+    /// Finalize a callout if callout_type_buf is non-empty (i.e., [!type] was found).
+    fn finalizeCallout(self: *ExtractionRenderer) void {
+        if (self.callout_type_buf.items.len == 0) return;
+
+        const owned_type = self.callout_type_buf.toOwnedSlice(self.allocator) catch {
+            self.oom = true;
+            return;
+        };
+        const owned_title: ?[]const u8 = if (self.callout_title_buf.items.len > 0)
+            self.callout_title_buf.toOwnedSlice(self.allocator) catch {
+                self.oom = true;
+                self.allocator.free(owned_type);
+                return;
             }
-        } else {
-            // Search for '[' (inline or reference link), skipping fenced code blocks.
-            var in_fence = false;
-            var fence_char: u8 = 0;
-            var fence_len: u32 = 0;
-            while (pos < src.len) {
-                // Detect fence at line start: 0-3 spaces then 3+ backticks or tildes.
-                if (pos == 0 or src[pos - 1] == '\n') {
-                    var fp = pos;
-                    var sp: u32 = 0;
-                    while (fp < src.len and src[fp] == ' ' and sp < 3) { fp += 1; sp += 1; }
-                    if (fp < src.len and (src[fp] == '`' or src[fp] == '~')) {
-                        const fc = src[fp];
-                        var flen: u32 = 0;
-                        while (fp + flen < src.len and src[fp + flen] == fc) : (flen += 1) {}
-                        if (flen >= 3) {
-                            if (!in_fence) {
-                                in_fence = true;
-                                fence_char = fc;
-                                fence_len = flen;
-                            } else if (fc == fence_char and flen >= fence_len) {
-                                in_fence = false;
-                                fence_char = 0;
-                                fence_len = 0;
-                            }
-                            // else: different char or shorter fence — stay in fence
-                            while (pos < src.len and src[pos] != '\n') : (pos += 1) {}
-                            if (pos < src.len) pos += 1;
+        else
+            null;
+
+        const co_offset = self.findCalloutOffset();
+        // end_offset: use callout_scan_cursor (advanced past the callout in source)
+        const end_offset: u32 = self.callout_scan_cursor;
+        self.callouts.append(self.allocator, .{
+            .callout_type = owned_type,
+            .title = owned_title,
+            .offset = co_offset,
+            .end_offset = end_offset,
+        }) catch {
+            self.oom = true;
+            self.allocator.free(owned_type);
+            if (owned_title) |t| self.allocator.free(t);
+        };
+    }
+
+    /// Scan forward from callout_scan_cursor for '>' then '[!' to find callout offset.
+    fn findCalloutOffset(self: *ExtractionRenderer) u32 {
+        return offsets.findCalloutOffset(self.src_text, &self.callout_scan_cursor);
+    }
+
+    /// Scan text content for block refs matching ((uuid)) pattern with 8-4-4-4-12 validation.
+    fn scanBlockRefs(self: *ExtractionRenderer, content: []const u8) void {
+        var i: usize = 0;
+        while (i + 1 < content.len) {
+            if (content[i] == '(' and content[i + 1] == '(') {
+                // Need at least 36 chars of UUID + '))'
+                if (i + 2 + 36 + 2 <= content.len) {
+                    const uuid_slice = content[i + 2 .. i + 2 + 36];
+                    if (content[i + 2 + 36] == ')' and content[i + 2 + 36 + 1] == ')') {
+                        if (isValidUuid(uuid_slice)) {
+                            const owned_uuid = self.allocator.dupe(u8, uuid_slice) catch {
+                                self.oom = true;
+                                return;
+                            };
+                            const br_offset = offsets.findBlockRefOffset(self.src_text, &self.block_ref_scan_cursor);
+                            self.block_refs.append(self.allocator, .{
+                                .uuid = owned_uuid,
+                                .offset = br_offset,
+                            }) catch {
+                                self.oom = true;
+                                self.allocator.free(owned_uuid);
+                                return;
+                            };
+                            i += 2 + 36 + 2;
                             continue;
                         }
                     }
                 }
-                if (!in_fence and src[pos] == '[') {
-                    // Skip image links — they start with ![ and are tracked by in_image
-                    if (pos > 0 and src[pos - 1] == '!') {
-                        pos += 1;
-                        continue;
-                    }
-                    // Advance cursor past the closing ) or ]
-                    var end = pos + 1;
-                    var bracket_depth: u32 = 1;
-                    while (end < src.len and bracket_depth > 0) {
-                        if (src[end] == '[') bracket_depth += 1;
-                        if (src[end] == ']') bracket_depth -= 1;
-                        end += 1;
-                    }
-                    // Skip past (url) if present, tracking paren depth for URLs like
-                    // https://en.wikipedia.org/wiki/Foo_(bar) and handling backslash escapes.
-                    if (end < src.len and src[end] == '(') {
-                        end += 1;
-                        var paren_depth: u32 = 1;
-                        while (end < src.len and paren_depth > 0) {
-                            if (src[end] == '\\' and end + 1 < src.len) {
-                                end += 2; // skip escaped character
-                                continue;
-                            }
-                            if (src[end] == '(') paren_depth += 1;
-                            if (src[end] == ')') paren_depth -= 1;
-                            if (paren_depth > 0) end += 1;
-                        }
-                        if (paren_depth == 0) end += 1; // skip final ')'
-                    } else if (end < src.len and src[end] == '[') {
-                        // Reference link [text][ref]
-                        end += 1;
-                        while (end < src.len and src[end] != ']') : (end += 1) {}
-                        if (end < src.len) end += 1;
-                    }
-                    self.link_scan_cursor = @intCast(end);
-                    return @intCast(pos);
-                }
-                pos += 1;
+                i += 2;
+            } else {
+                i += 1;
             }
         }
+    }
 
-        // Fallback
-        return self.link_scan_cursor;
+    /// Validate UUID format: 8-4-4-4-12 hex digits with dashes at positions 8,13,18,23.
+    fn isValidUuid(s: []const u8) bool {
+        if (s.len != 36) return false;
+        for (s, 0..) |ch, idx| {
+            if (idx == 8 or idx == 13 or idx == 18 or idx == 23) {
+                if (ch != '-') return false;
+            } else {
+                if (!std.ascii.isHex(ch)) return false;
+            }
+        }
+        return true;
+    }
+
+    /// Scan raw source for `{{query ...}}` patterns, skipping fenced code blocks.
+    fn scanQueryBlocks(self: *ExtractionRenderer) void {
+        if (scans.scanQueryBlocksInSource(self.src_text, self.allocator, &self.query_blocks))
+            self.oom = true;
+    }
+
+    /// Scan raw source for `[label]: url "title"` link definitions, skipping fenced code blocks.
+    fn scanLinkDefinitions(self: *ExtractionRenderer) void {
+        if (scans.scanLinkDefinitionsInSource(self.src_text, self.allocator, &self.link_definitions))
+            self.oom = true;
+    }
+
+    /// Scan raw source for `key:: value` properties at document start.
+    fn scanProperties(self: *ExtractionRenderer) void {
+        if (scans.scanPropertiesInSource(self.src_text, self.allocator, &self.properties))
+            self.oom = true;
     }
 };
 
@@ -590,642 +730,129 @@ pub fn extractFromMarkdown(
     const links = ext.links.toOwnedSlice(allocator) catch {
         return error.OutOfMemory;
     };
+    errdefer {
+        for (links) |l| {
+            allocator.free(l.text);
+            allocator.free(l.target);
+        }
+        allocator.free(links);
+    }
+    const code_spans = ext.code_spans.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
+    errdefer {
+        for (code_spans) |cs| allocator.free(cs.text);
+        allocator.free(code_spans);
+    }
+    const tasks = ext.tasks.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
+    errdefer {
+        for (tasks) |t| allocator.free(t.text);
+        allocator.free(tasks);
+    }
+    const embeds = ext.embeds.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
+    errdefer {
+        for (embeds) |e| allocator.free(e.target);
+        allocator.free(embeds);
+    }
+    const callouts = ext.callouts.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
+    errdefer {
+        for (callouts) |c| {
+            allocator.free(c.callout_type);
+            if (c.title) |t| allocator.free(t);
+        }
+        allocator.free(callouts);
+    }
+    const block_refs = ext.block_refs.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
+    errdefer {
+        for (block_refs) |br| allocator.free(br.uuid);
+        allocator.free(block_refs);
+    }
+    const query_blocks = ext.query_blocks.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
+    errdefer {
+        for (query_blocks) |qb| allocator.free(qb.query);
+        allocator.free(query_blocks);
+    }
+    const link_definitions = ext.link_definitions.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
+    errdefer {
+        for (link_definitions) |ld| {
+            allocator.free(ld.label);
+            allocator.free(ld.url);
+            if (ld.title) |t| allocator.free(t);
+        }
+        allocator.free(link_definitions);
+    }
+    const properties = ext.properties.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
+    errdefer {
+        for (properties) |p| {
+            allocator.free(p.key);
+            allocator.free(p.value);
+        }
+        allocator.free(properties);
+    }
+    const xml_tags = ext.xml_tags.toOwnedSlice(allocator) catch {
+        return error.OutOfMemory;
+    };
 
     // Free accumulation buffers only (results transferred)
     ext.heading_text_buf.deinit(allocator);
     ext.link_text_buf.deinit(allocator);
     ext.link_href_buf.deinit(allocator);
+    ext.code_text_buf.deinit(allocator);
+    ext.task_text_buf.deinit(allocator);
+    ext.callout_type_buf.deinit(allocator);
+    ext.callout_title_buf.deinit(allocator);
     // Deinit the now-empty ArrayLists (items transferred to owned slices)
     ext.headings.deinit(allocator);
     ext.links.deinit(allocator);
+    ext.code_spans.deinit(allocator);
+    ext.tasks.deinit(allocator);
+    ext.embeds.deinit(allocator);
+    ext.callouts.deinit(allocator);
+    ext.block_refs.deinit(allocator);
+    ext.query_blocks.deinit(allocator);
+    ext.link_definitions.deinit(allocator);
+    ext.properties.deinit(allocator);
+    ext.xml_tags.deinit(allocator);
+    ext.html_fragments.deinit(allocator);
+    for (ext.inline_html_tags.items) |t| allocator.free(t.text);
+    ext.inline_html_tags.deinit(allocator);
 
     return .{
         .headings = headings,
         .links = links,
+        .code_spans = code_spans,
+        .tasks = tasks,
+        .embeds = embeds,
+        .callouts = callouts,
+        .block_refs = block_refs,
+        .query_blocks = query_blocks,
+        .link_definitions = link_definitions,
+        .properties = properties,
+        .xml_tags = xml_tags,
         .allocator = allocator,
     };
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
 
-const testing = std.testing;
-
-// --- Heading tests ---
-
-test "extract ATX heading level 1" {
-    const input = "# Hello\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqualStrings("Hello", result.headings[0].text);
-    try testing.expectEqual(@as(u8, 1), result.headings[0].level);
-    try testing.expectEqual(@as(u32, 0), result.headings[0].offset);
-}
-
-test "extract ATX headings levels 1 through 6" {
-    const input = "# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 6), result.headings.len);
-    for (result.headings, 0..) |h, i| {
-        try testing.expectEqual(@as(u8, @intCast(i + 1)), h.level);
-    }
-    try testing.expectEqualStrings("H1", result.headings[0].text);
-    try testing.expectEqualStrings("H6", result.headings[5].text);
-}
-
-test "extract ATX heading byte offset after text" {
-    const input = "Some text\n\n# Heading\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    // '#' starts at byte 11 ("Some text\n\n" = 10 bytes, then '#')
-    try testing.expectEqual(@as(u32, 11), result.headings[0].offset);
-    try testing.expect(input[result.headings[0].offset] == '#');
-}
-
-test "extract setext heading level 1" {
-    const input = "Hello\n=====\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqualStrings("Hello", result.headings[0].text);
-    try testing.expectEqual(@as(u8, 1), result.headings[0].level);
-    try testing.expectEqual(@as(u32, 0), result.headings[0].offset);
-}
-
-test "extract setext heading level 2" {
-    const input = "Hello\n-----\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqualStrings("Hello", result.headings[0].text);
-    try testing.expectEqual(@as(u8, 2), result.headings[0].level);
-}
-
-test "heading with inline formatting" {
-    const input = "# Hello **bold** world\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    // md4c strips inline markup; text callback gets decoded text
-    try testing.expectEqualStrings("Hello bold world", result.headings[0].text);
-}
-
-test "duplicate headings get distinct offsets" {
-    const input = "# Same\n\n# Same\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 2), result.headings.len);
-    try testing.expectEqualStrings("Same", result.headings[0].text);
-    try testing.expectEqualStrings("Same", result.headings[1].text);
-    try testing.expect(result.headings[1].offset > result.headings[0].offset);
-}
-
-test "heading in blockquote" {
-    const input = "> # Quoted\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqualStrings("Quoted", result.headings[0].text);
-    try testing.expectEqual(@as(u8, 1), result.headings[0].level);
-    // '#' is at position 2 (after "> ")
-    try testing.expect(input[result.headings[0].offset] == '#');
-}
-
-test "empty heading" {
-    const input = "# \n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqual(@as(u8, 1), result.headings[0].level);
-}
-
-// --- Link tests ---
-
-test "extract inline link" {
-    const input = "[click](https://example.com)\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqualStrings("click", result.links[0].text);
-    try testing.expectEqualStrings("https://example.com", result.links[0].target);
-    try testing.expectEqual(false, result.links[0].is_wiki);
-}
-
-test "extract inline link byte offset" {
-    const input = "Hello [click](url)\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expect(input[result.links[0].offset] == '[');
-}
-
-test "extract autolink" {
-    const input = "<https://example.com>\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqualStrings("https://example.com", result.links[0].text);
-}
-
-test "extract reference link" {
-    const input = "[text][ref]\n\n[ref]: https://example.com\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqualStrings("text", result.links[0].text);
-}
-
-test "image not extracted as link" {
-    const input = "![alt](img.png)\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 0), result.links.len);
-}
-
-test "link inside heading" {
-    const input = "# See [here](url)\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqualStrings("See here", result.headings[0].text);
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqualStrings("here", result.links[0].text);
-}
-
-test "link inside heading has correct offsets" {
-    // Regression: shared scan_cursor caused heading offset to be corrupted when
-    // finalizeLink (called first) advanced the cursor past the link syntax.
-    // "# See [here](url)\n": '#' at byte 0, '[' at byte 6, end of [here](url) at byte 17.
-    const input = "# See [here](url)\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqual(@as(u32, 0), result.headings[0].offset); // '#' is at byte 0
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqual(@as(u32, 6), result.links[0].offset); // '[' is at byte 6
-    try testing.expectEqual(@as(u32, 17), result.links[0].end_offset); // past ')' at byte 16
-}
-
-test "wiki link inside heading has correct offsets" {
-    // "# See [[target]]\n": '#' at byte 0, '[[' at byte 6, past ']]' at byte 17.
-    const input = "# See [[target]]\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqual(@as(u32, 0), result.headings[0].offset);
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqual(@as(u32, 6), result.links[0].offset);
-}
-
-test "autolink inside heading has correct offsets" {
-    // "# See <https://x.com>\n": '#' at byte 0, '<' at byte 6.
-    const input = "# See <https://x.com>\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqual(@as(u32, 0), result.headings[0].offset);
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqual(@as(u32, 6), result.links[0].offset);
-}
-
-// --- Wiki link tests ---
-
-test "extract wiki link" {
-    const input = "[[Target]]\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqual(true, result.links[0].is_wiki);
-    try testing.expectEqualStrings("Target", result.links[0].target);
-}
-
-test "extract wiki link with alias" {
-    const input = "[[Target|Display]]\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqual(true, result.links[0].is_wiki);
-    try testing.expectEqualStrings("Target", result.links[0].target);
-    try testing.expectEqualStrings("Display", result.links[0].text);
-}
-
-test "extract wiki link byte offset" {
-    const input = "Text [[Target]]\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expect(input[result.links[0].offset] == '[');
-    try testing.expect(input[result.links[0].offset + 1] == '[');
-}
-
-// --- Code block exclusion tests ---
-
-test "heading in code block not extracted" {
-    const input = "```\n# Not a heading\n```\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 0), result.headings.len);
-}
-
-test "link in code block not extracted" {
-    const input = "```\n[not](a-link)\n```\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 0), result.links.len);
-}
-
-// --- Mixed document test ---
-
-test "mixed document: headings, links, wiki links" {
-    const input =
-        \\# Title
-        \\
-        \\Some [link](url) text.
-        \\
-        \\## Section
-        \\
-        \\See [[Wiki Page]] for details.
-        \\
-    ;
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 2), result.headings.len);
-    try testing.expectEqualStrings("Title", result.headings[0].text);
-    try testing.expectEqualStrings("Section", result.headings[1].text);
-
-    try testing.expectEqual(@as(usize, 2), result.links.len);
-    try testing.expectEqual(false, result.links[0].is_wiki);
-    try testing.expectEqual(true, result.links[1].is_wiki);
-
-    // Offsets should be ascending
-    try testing.expect(result.headings[1].offset > result.headings[0].offset);
-}
-
-// --- Edge case tests ---
-
-test "empty input" {
-    var result = try extractFromMarkdown("", testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 0), result.headings.len);
-    try testing.expectEqual(@as(usize, 0), result.links.len);
-}
-
-test "no headings or links" {
-    var result = try extractFromMarkdown("Just plain text.\n", testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 0), result.headings.len);
-    try testing.expectEqual(@as(usize, 0), result.links.len);
-}
-
-test "entity in heading decoded" {
-    const input = "# Hello &amp; World\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    // Entity references should be decoded to their UTF-8 representation
-    try testing.expectEqualStrings("Hello & World", result.headings[0].text);
-    // Offset should point to '#'
-    try testing.expect(input[result.headings[0].offset] == '#');
-}
-
-test "numeric entity in heading decoded" {
-    const input = "# A &#38; B\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqualStrings("A & B", result.headings[0].text);
-}
-
-test "hex entity in heading decoded" {
-    const input = "# &#x3C;tag&#x3E;\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqualStrings("<tag>", result.headings[0].text);
-}
-
-test "entity in link text decoded" {
-    const input = "[A &amp; B](url)\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqualStrings("A & B", result.links[0].text);
-}
-
-test "multiple entities in heading decoded" {
-    const input = "# &lt;div&gt; &amp; &quot;test&quot;\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqualStrings("<div> & \"test\"", result.headings[0].text);
-}
-
-// --- T1-5 regression: offset correctness with code fences and mid-line markers ---
-
-test "T1-5: ATX heading offset not corrupted by hash inside fenced code block" {
-    // "```\n# not a heading\n```\n\n# Real Heading\n"
-    // byte layout: "```\n"(4) + "# not a heading\n"(16) + "```\n"(4) + "\n"(1) = 25
-    // "# Real Heading" starts at byte 25
-    const input = "```\n# not a heading\n```\n\n# Real Heading\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqualStrings("Real Heading", result.headings[0].text);
-    // offset must point into "# Real Heading", not the fake one inside the fence
-    try testing.expectEqual(@as(u32, 25), result.headings[0].offset);
-    try testing.expect(input[result.headings[0].offset] == '#');
-}
-
-test "T1-5: link offset not corrupted by bracket inside fenced code block" {
-    // "```\n[not a link](url)\n```\n\n[real link](url)\n"
-    // byte layout: "```\n"(4) + "[not a link](url)\n"(18) + "```\n"(4) + "\n"(1) = 27
-    // "[real link](url)" starts at byte 27
-    const input = "```\n[not a link](url)\n```\n\n[real link](url)\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqualStrings("real link", result.links[0].text);
-    try testing.expectEqual(@as(u32, 27), result.links[0].offset);
-    try testing.expect(input[result.links[0].offset] == '[');
-}
-
-test "T1-5: mid-line hash not treated as ATX heading offset" {
-    // "Some text # not-a-heading\n# Real Heading\n"
-    // "Some text # not-a-heading\n" = 26 bytes; '#' of heading at 26
-    const input = "Some text # not-a-heading\n# Real Heading\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqualStrings("Real Heading", result.headings[0].text);
-    try testing.expectEqual(@as(u32, 26), result.headings[0].offset);
-    try testing.expect(input[result.headings[0].offset] == '#');
-}
-
-// --- T1-4 regression: OOM during rendering propagated, not swallowed ---
-
-test "T1-4: OOM from parser is propagated as error.OutOfMemory" {
-    // Use a FailingAllocator that fails immediately (fail_index=0).
-    // Parser init allocations fail → renderWithRenderer returns OutOfMemory.
-    // Verifies that the error pathway from renderWithRenderer is intact.
-    // (Callback-phase OOM is handled by the oom flag; parser-phase OOM by this path.)
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    var failing = std.testing.FailingAllocator.init(gpa.allocator(), .{ .fail_index = 0 });
-    const input = "# Hello World\n";
-    const result = extractFromMarkdown(input, failing.allocator());
-    try testing.expectError(error.OutOfMemory, result);
-}
-
-// --- end_offset accuracy for all link syntaxes ---
-
-test "extract inline link end_offset" {
-    // [Hello](world) = 14 chars; scan_cursor lands past ')'
-    const input = "[Hello](world)";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqual(@as(u32, 0), result.links[0].offset);
-    try testing.expectEqual(@as(u32, 14), result.links[0].end_offset);
-}
-
-test "extract reference link end_offset" {
-    // [Hello][ref] = 12 chars; scan_cursor lands past second ']'
-    // Previously the heuristic used text_len+target_len+4, giving a large wrong value
-    // because target gets resolved to the full URL, not "ref".
-    const input = "[Hello][ref]\n\n[ref]: https://example.com\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqual(@as(u32, 0), result.links[0].offset);
-    try testing.expectEqual(@as(u32, 12), result.links[0].end_offset);
-}
-
-test "extract autolink end_offset" {
-    // <https://example.com> = 21 chars; scan_cursor lands past '>'
-    const input = "<https://example.com>";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqual(@as(u32, 0), result.links[0].offset);
-    try testing.expectEqual(@as(u32, 21), result.links[0].end_offset);
-}
-
-test "extract wiki link end_offset" {
-    // [[target]] = 10 chars; scan_cursor lands past ']]'
-    const input = "[[target]]";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqual(@as(u32, 0), result.links[0].offset);
-    try testing.expectEqual(@as(u32, 10), result.links[0].end_offset);
-}
-
-test "processLeafBlock multi-line setext heading merges lines correctly" {
-    // Setext headings have 2+ block_lines: the text line(s) and the underline.
-    // processLeafBlock merges them with '\n' via buffer.append/appendSlice.
-    // Previously, catch {} silently swallowed OOM on those appends; now try propagates.
-    // This test verifies correct behavior on the success path (no OOM).
-    const input = "Multi Line Heading\n==================\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqualStrings("Multi Line Heading", result.headings[0].text);
-}
-
-// --- marky-gmny: OOM-loop double-free and leak regression ---
-
-test "marky-gmny: extractFromMarkdown OOM loop — no double-free or leak" {
-    // Exercises every OOM failure point in extractFromMarkdown by iterating
-    // fail_index from 0..N. At each index, exactly one allocation fails.
-    // GPA detects double-free (fills freed memory with 0xaa → segfault).
-    // GPA leak check (.check() returning .leak) detects missing frees.
-    //
-    // Uses a document with both headings and links so that the partially-
-    // transferred-headings path (links.toOwnedSlice fails after headings
-    // transferred) is exercised at some fail_index values.
-    const input = "# Heading One\n\n[Link Text](https://example.com)\n\n## Heading Two\n";
-
-    var fail_index: usize = 0;
-    // Upper bound: enough to cover all allocation sites. If we get 5
-    // consecutive successes, all failure points have been covered.
-    var consecutive_successes: usize = 0;
-    while (consecutive_successes < 5) : (fail_index += 1) {
-        // Safety valve: prevent infinite loop if something is very wrong
-        if (fail_index > 200) break;
-
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        var failing = std.testing.FailingAllocator.init(gpa.allocator(), .{ .fail_index = fail_index });
-
-        const result = extractFromMarkdown(input, failing.allocator());
-        if (result) |*ok| {
-            // Success path: must have valid data, free it
-            var r = ok.*;
-            r.deinit();
-            consecutive_successes += 1;
-        } else |err| {
-            // Error path: must be OutOfMemory, nothing else
-            try testing.expectEqual(error.OutOfMemory, err);
-            consecutive_successes = 0;
-        }
-
-        // GPA leak check: .ok means no leaks, .leak means memory leaked
-        const check = gpa.deinit();
-        try testing.expect(check == .ok);
-    }
-
-    // Verify we actually tested multiple failure points (not just index 0)
-    try testing.expect(fail_index > 5);
-}
-
-// --- marky-lzd5: offset scan hardening tests ---
-
-test "lzd5-F1: backtick fence not closed by tilde line — ATX heading" {
-    // ``` opens fence, ~~~ should NOT close it (different char), then ``` closes it.
-    // # Real Heading should get correct offset.
-    // "```\n# fake\n~~~\n# also fake\n```\n\n# Real Heading\n"
-    // bytes: "```\n"(4) "# fake\n"(7) "~~~\n"(4) "# also fake\n"(12) "```\n"(4) "\n"(1) = 32
-    const input = "```\n# fake\n~~~\n# also fake\n```\n\n# Real Heading\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqualStrings("Real Heading", result.headings[0].text);
-    try testing.expectEqual(@as(u32, 32), result.headings[0].offset);
-    try testing.expect(input[result.headings[0].offset] == '#');
-}
-
-test "lzd5-F2: tilde fence not closed by backtick line — ATX heading" {
-    // ~~~ opens fence, ``` should NOT close it (different char), then ~~~ closes it.
-    // "~~~\n# fake\n```\n# also fake\n~~~\n\n# Real Heading\n"
-    // bytes: "~~~\n"(4) "# fake\n"(7) "```\n"(4) "# also fake\n"(12) "~~~\n"(4) "\n"(1) = 32
-    const input = "~~~\n# fake\n```\n# also fake\n~~~\n\n# Real Heading\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqualStrings("Real Heading", result.headings[0].text);
-    try testing.expectEqual(@as(u32, 32), result.headings[0].offset);
-    try testing.expect(input[result.headings[0].offset] == '#');
-}
-
-test "lzd5-F3: 4-backtick fence not closed by 3-backtick line" {
-    // ```` opens fence (4 chars), ``` should NOT close it (shorter), then ```` closes it.
-    // "````\n# fake\n```\n# also fake\n````\n\n# Real Heading\n"
-    // bytes: "````\n"(5) "# fake\n"(7) "```\n"(4) "# also fake\n"(12) "````\n"(5) "\n"(1) = 34
-    const input = "````\n# fake\n```\n# also fake\n````\n\n# Real Heading\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqualStrings("Real Heading", result.headings[0].text);
-    try testing.expectEqual(@as(u32, 34), result.headings[0].offset);
-    try testing.expect(input[result.headings[0].offset] == '#');
-}
-
-test "lzd5-F3b: setext heading (level 2) after code block containing --- line" {
-    // Code block contains "---" which should NOT be treated as setext underline.
-    // After code block, real setext heading (level 2, ---) should get correct offset.
-    // "```\nfake\n---\nfake\n```\n\nReal Heading\n---\n"
-    // bytes: "```\n"(4) "fake\n"(5) "---\n"(4) "fake\n"(5) "```\n"(4) "\n"(1) = 23
-    // "Real Heading" starts at 23
-    const input = "```\nfake\n---\nfake\n```\n\nReal Heading\n---\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.headings.len);
-    try testing.expectEqualStrings("Real Heading", result.headings[0].text);
-    try testing.expectEqual(@as(u32, 23), result.headings[0].offset);
-    try testing.expect(input[result.headings[0].offset] == 'R');
-}
-
-test "lzd5-F4a: link with parenthesized URL (Wikipedia style)" {
-    // [link](https://en.wikipedia.org/wiki/Foo_(bar))
-    // The URL contains (bar) — naive ) scan truncates.
-    const input = "[link](https://en.wikipedia.org/wiki/Foo_(bar))";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqualStrings("link", result.links[0].text);
-    // end_offset should cover the entire construct including (bar))
-    try testing.expectEqual(@as(u32, 47), result.links[0].end_offset);
-}
-
-test "lzd5-F4b: link with nested parentheses in URL" {
-    // [link](url(a(b)))
-    // 0123456789012345678
-    // len = 17
-    const input = "[link](url(a(b)))";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqualStrings("link", result.links[0].text);
-    try testing.expectEqual(@as(u32, 17), result.links[0].end_offset);
-}
-
-test "lzd5-F4c: link with escaped parentheses in URL" {
-    // [link](url\(not-paren\))
-    // Escaped parens should not be counted. end_offset covers everything.
-    // [  l  i  n  k  ]  (  u  r  l  \  (  n  o  t  -  p  a  r  e  n  \  )  )
-    // 0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23
-    // len = 24
-    const input = "[link](url\\(not-paren\\))";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqualStrings("link", result.links[0].text);
-    try testing.expectEqual(@as(u32, 24), result.links[0].end_offset);
-}
-
-test "lzd5-F2b: backtick fence not closed by tilde line — link scan" {
-    // Same as F1 but for links: ``` fence should not be closed by ~~~
-    // "```\n[fake](url)\n~~~\n[also fake](url)\n```\n\n[real](url)\n"
-    // bytes: "```\n"(4) "[fake](url)\n"(12) "~~~\n"(4) "[also fake](url)\n"(17) "```\n"(4) "\n"(1) = 42
-    const input = "```\n[fake](url)\n~~~\n[also fake](url)\n```\n\n[real](url)\n";
-    var result = try extractFromMarkdown(input, testing.allocator);
-    defer result.deinit();
-
-    try testing.expectEqual(@as(usize, 1), result.links.len);
-    try testing.expectEqualStrings("real", result.links[0].text);
-    try testing.expectEqual(@as(u32, 42), result.links[0].offset);
-    try testing.expect(input[result.links[0].offset] == '[');
+test {
+    _ = @import("extraction_renderer_tests_headings.zig");
+    _ = @import("extraction_renderer_tests_regressions.zig");
+    _ = @import("extraction_renderer_tests_code_spans.zig");
+    _ = @import("extraction_renderer_tests_elements.zig");
+    _ = @import("extraction_renderer_tests_xml_tags.zig");
 }

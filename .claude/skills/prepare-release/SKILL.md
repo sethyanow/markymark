@@ -323,7 +323,8 @@ Title: Release vA.B.C
 The PR is ready for your review. Please:
 1. Merge it when satisfied
 2. Tag the release: `git tag vA.B.C && git push origin vA.B.C`
-3. Tell me when the tag is pushed — I'll refine the release notes
+3. Wait for CI to complete (the tag push triggers a GitHub Actions release workflow that creates the GitHub Release with auto-generated notes)
+4. Tell me when CI is done — I'll then refine the release notes
 ```
 
 ---
@@ -344,12 +345,15 @@ git tag vA.B.C
 git push origin vA.B.C
 ```
 
-### STOP: Wait for human to confirm the tag is pushed.
+### STOP: Wait for human to confirm CI is complete (not just the tag push).
 
-The agent verifies the tag exists:
+**Important:** The tag push triggers a GitHub Actions release workflow that creates the GitHub Release with auto-generated git-cliff notes. Phase 5 requires that release to exist — `gh release view vA.B.C` will return "release not found" until the workflow completes. Do NOT attempt Phase 5 until the human confirms CI is done.
+
+The agent verifies the tag AND release exist:
 ```bash
 git fetch --tags
 git log --oneline -1 vA.B.C
+gh release view vA.B.C --json name,tagName --jq '"\(.name) — \(.tagName)"'
 ```
 
 ---
