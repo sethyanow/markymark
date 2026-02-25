@@ -8,16 +8,22 @@ pub fn extract_frontmatter<'a>(
     source: &str,
     arena: &'a bumpalo::Bump,
 ) -> Option<Frontmatter<'a>> {
-    // Check if document starts with ---
-    if !source.starts_with("---\n") {
+    // Check if document starts with --- followed by a newline (LF or CRLF)
+    let rest = if let Some(r) = source.strip_prefix("---\r\n") {
+        r
+    } else if let Some(r) = source.strip_prefix("---\n") {
+        r
+    } else {
         return None;
-    }
+    };
 
-    // Find the closing ---
-    let rest = &source[4..];
-    if let Some(end_pos) = rest.find("\n---\n") {
+    // Find the earliest closing --- (handle both LF and CRLF, pick min position)
+    let end_pos = [rest.find("\n---\r\n"), rest.find("\n---\n")]
+        .into_iter()
+        .flatten()
+        .min();
+    if let Some(end_pos) = end_pos {
         let yaml_content = &rest[..end_pos];
-        // Simple YAML parsing - just extract key: value pairs
         return Some(parse_simple_yaml(yaml_content, arena));
     }
 
@@ -76,6 +82,8 @@ pub fn extract_page_properties<'a>(
 
             data.insert(key, value);
             found_any = true;
+        } else {
+            break;
         }
     }
 
@@ -121,4 +129,95 @@ fn parse_simple_yaml<'a>(content: &str, arena: &'a bumpalo::Bump) -> Frontmatter
     }
 
     Frontmatter::new(data)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bumpalo::Bump;
+
+    #[test]
+    fn property_scan_stops_at_non_property_line() {
+        let arena = Bump::new();
+        let source =
+            "title:: My Page\ntags:: rust, code\nThis is body text.\nlater:: not-a-property\n";
+        let props = extract_page_properties(&[], source, &arena).unwrap();
+        let keys: Vec<_> = props.iter().map(|(k, _)| k).collect();
+        assert_eq!(keys.len(), 2);
+        assert!(props.get("title").is_some());
+        assert!(props.get("tags").is_some());
+        assert!(props.get("later").is_none());
+    }
+
+    #[test]
+    fn property_scan_stops_at_blank_line() {
+        let arena = Bump::new();
+        let source = "title:: My Page\n\nbody:: not-a-property\n";
+        let props = extract_page_properties(&[], source, &arena).unwrap();
+        assert!(props.get("title").is_some());
+        assert!(props.get("body").is_none());
+    }
+
+    #[test]
+    fn property_scan_stops_at_heading() {
+        let arena = Bump::new();
+        let source = "title:: My Page\n# Heading\nother:: value\n";
+        let props = extract_page_properties(&[], source, &arena).unwrap();
+        assert!(props.get("title").is_some());
+        assert!(props.get("other").is_none());
+    }
+
+    #[test]
+    fn no_properties_returns_none() {
+        let arena = Bump::new();
+        let source = "Just normal text\nNo properties here\n";
+        assert!(extract_page_properties(&[], source, &arena).is_none());
+    }
+
+    #[test]
+    fn frontmatter_with_lf() {
+        let arena = Bump::new();
+        let source = "---\ntitle: Hello\n---\nBody\n";
+        let fm = extract_frontmatter(&[], source, &arena).unwrap();
+        assert!(fm.get_string("title").is_some());
+    }
+
+    #[test]
+    fn frontmatter_with_crlf() {
+        let arena = Bump::new();
+        let source = "---\r\ntitle: Hello\r\n---\r\nBody\r\n";
+        let fm = extract_frontmatter(&[], source, &arena).unwrap();
+        assert!(fm.get_string("title").is_some());
+    }
+
+    #[test]
+    fn frontmatter_no_delimiter_returns_none() {
+        let arena = Bump::new();
+        let source = "No frontmatter here\n";
+        assert!(extract_frontmatter(&[], source, &arena).is_none());
+    }
+
+    #[test]
+    fn frontmatter_unclosed_returns_none() {
+        let arena = Bump::new();
+        let source = "---\ntitle: Hello\nNo closing delimiter\n";
+        assert!(extract_frontmatter(&[], source, &arena).is_none());
+    }
+
+    #[test]
+    fn extract_frontmatter_mixed_endings_picks_earliest_close() {
+        // LF close comes first, but CRLF "---" appears later in body.
+        // Bug: find(CRLF).or_else(find(LF)) picks CRLF at 19 instead of LF at 8,
+        //      treating "bogus: B" as a frontmatter entry.
+        let source = "---\ntitle: A\n---\nbogus: B\r\n---\r\nMore\n";
+        let arena = Bump::new();
+        let fm = extract_frontmatter(&[], source, &arena);
+        assert!(fm.is_some(), "should parse frontmatter");
+        let fm = fm.unwrap();
+        assert!(fm.get_string("title").is_some(), "should find 'title'");
+        assert!(
+            fm.get_string("bogus").is_none(),
+            "body content must not leak into frontmatter"
+        );
+    }
 }

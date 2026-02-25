@@ -1,7 +1,8 @@
 // Core from_blob tests — basic engine-backed tests and validation rejection tests.
 
-use super::super::super::DocumentIndex;
+use super::super::super::{DocumentIndex, FrontmatterOwnedEntry, FrontmatterValueOwned};
 use super::super::header::BlobError;
+use super::super::helpers::mask_frontmatter;
 use super::{blob_for, make_v1_empty_blob, make_v2_empty_blob};
 
 // ── Engine-backed tests (tests 1–9, 14–15) ───────────────────────────
@@ -135,7 +136,7 @@ fn test_from_blob_markdown_link_with_anchor() {
 fn test_from_blob_tags() {
     let blob = blob_for("text #alpha #beta\n");
     let index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
-    assert!(index.tags().len() >= 2);
+    assert_eq!(index.tags().len(), 2);
     assert!(index.tags().iter().any(|t| t.name == "alpha"));
     assert!(index.tags().iter().any(|t| t.name == "beta"));
 }
@@ -270,4 +271,59 @@ fn test_from_blob_rejects_size_mismatch() {
         DocumentIndex::from_blob(&corrupt),
         Err(BlobError::SizeMismatch)
     ));
+}
+
+// ── from_blob_with_frontmatter tests ─────────────────────────────────
+
+#[test]
+fn test_from_blob_with_frontmatter_populates_entries() {
+    let text = "---\ntitle: Hello\ntags: [a, b]\naliases: [hi, hey]\n---\n# Heading\n";
+    // Mask frontmatter before passing to engine, so `---` delimiters are not
+    // misparsed as setext headings. This matches the LSP layer's behavior.
+    let masked = mask_frontmatter(text);
+    let blob = blob_for(&masked);
+    let frontmatter = vec![
+        FrontmatterOwnedEntry {
+            key: "title".to_string(),
+            value: FrontmatterValueOwned::String("Hello".to_string()),
+        },
+        FrontmatterOwnedEntry {
+            key: "tags".to_string(),
+            value: FrontmatterValueOwned::List(vec!["a".to_string(), "b".to_string()]),
+        },
+    ];
+    let aliases = vec!["hi".to_string(), "hey".to_string()];
+
+    let index = DocumentIndex::from_blob_with_frontmatter(&blob, frontmatter, aliases)
+        .expect("from_blob_with_frontmatter failed");
+
+    // Frontmatter entries populated
+    assert_eq!(
+        index.frontmatter().len(),
+        2,
+        "should have 2 frontmatter entries"
+    );
+    assert_eq!(index.frontmatter()[0].key, "title");
+    assert_eq!(index.frontmatter()[1].key, "tags");
+
+    // Aliases populated
+    assert_eq!(index.aliases().len(), 2, "should have 2 aliases");
+    assert!(index.aliases().contains(&"hi"), "missing alias 'hi'");
+    assert!(index.aliases().contains(&"hey"), "missing alias 'hey'");
+
+    // Heading from blob still works
+    assert_eq!(index.headings().len(), 1);
+    assert_eq!(index.headings()[0].text, "Heading");
+}
+
+#[test]
+fn test_from_blob_with_frontmatter_empty_fm_still_works() {
+    let blob = blob_for("# Just a heading\n");
+    let index = DocumentIndex::from_blob_with_frontmatter(&blob, vec![], vec![])
+        .expect("from_blob_with_frontmatter with empty fm failed");
+
+    assert!(index.frontmatter().is_empty());
+    assert!(index.aliases().is_empty());
+    assert_eq!(index.headings().len(), 1);
+    assert_eq!(index.headings()[0].text, "Just a heading");
 }
