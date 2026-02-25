@@ -4,9 +4,11 @@ description: Complete reference for all Model Context Protocol tools with parame
 ---
 
 markymark exposes 15 tools through the Model Context Protocol (MCP), giving AI agents
-and scripts programmatic access to the same workspace intelligence that powers the
-editor features. Every tool accepts a `realm` parameter where noted, which defaults
-to `"default"` if omitted.
+and scripts programmatic access to workspace intelligence that complements the
+real-time [LSP features](/features/lsp/). Agents with both protocols available get
+the best results by combining them — see [Using with AI Agents](/guides/agents/)
+for workflow examples. Every tool accepts a `realm` parameter where noted, which
+defaults to `"default"` if omitted.
 
 ## Document inspection
 

@@ -36,6 +36,12 @@ available in VS Code and Neovim.
 let agents read document structure, search across files, check for problems, and
 perform refactoring without parsing raw Markdown themselves.
 
+In practice, agents interleave both protocols in a single workflow: LSP for
+position-aware navigation (outline, hover, go-to-definition) and MCP for
+workspace-wide operations (search, diagnostics, graph analysis). See
+[Using with AI Agents](/guides/agents/) for dual-protocol workflow examples
+and a comparison table of when to use each protocol.
+
 ## Key MCP tools
 
 These are the tools agents use most often:
@@ -76,3 +82,12 @@ common issues — a quick quality gate before committing documentation changes.
   before making targeted edits.
 - Agents can combine `get-diagnostics` + `rename` for automated refactoring:
   find issues, then fix them programmatically.
+
+### Dual-protocol tips
+
+- Use **LSP `documentSymbol`** before editing a file — it returns a semantic,
+  position-aware outline that is cheaper than reading the full file.
+- Use **MCP `search-symbols`** when you don't know which file to look in — it
+  searches headings and tags across the entire workspace.
+- Use **MCP `get-diagnostics`** for batch quality checks across a realm; use
+  **LSP diagnostics** for real-time feedback as you edit.

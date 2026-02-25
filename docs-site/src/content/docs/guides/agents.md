@@ -1,13 +1,19 @@
 ---
 title: Using with AI Agents
-description: How to use markymark as an MCP server with Claude Code and other AI agents
+description: How to use markymark with AI agents through LSP and MCP protocols
 ---
 
-markymark's MCP server gives AI agents structured access to document
-intelligence — headings, links, diagnostics, and refactoring — without
-parsing raw Markdown. See [Claude Code setup](/editors/claude-code/) for
-installation and [MCP Tools Reference](/features/mcp-tools/) for the full
-parameter list.
+markymark gives AI agents access to document intelligence through two
+complementary protocols: **LSP** for real-time, position-aware navigation
+(hover, go-to-definition, find-references, document symbols) and **MCP** for
+workspace-level operations (search, diagnostics, realm management, graph
+analysis). Agents that have both protocols available — such as
+[Claude Code](/editors/claude-code/) — get the best results by interleaving
+them in a single workflow.
+
+See [Claude Code setup](/editors/claude-code/) for installation,
+[LSP Capabilities](/features/lsp/) for the editor-and-agent features, and
+[MCP Tools Reference](/features/mcp-tools/) for the full tool parameter list.
 
 ## Set up a workspace
 
@@ -23,6 +29,44 @@ Create a realm and add your documentation root:
 
 A realm is an isolated index. You can create multiple realms for different
 directories and tear them down with `destroy-realm` when finished.
+
+## Dual-protocol workflows
+
+Agents with access to both LSP and MCP can pick the best tool for each step.
+The table below summarizes when each protocol is the better choice:
+
+| Operation | Recommended | Why |
+|-----------|-------------|-----|
+| Heading outline for a file | LSP `documentSymbol` | Hierarchical tree with line-precise positions |
+| Hover info (backlinks, types) | LSP `hover` | Contextual, position-aware |
+| Go to definition | LSP `goToDefinition` | Cross-file navigation with position context |
+| Find all references | Either | LSP is position-based; MCP `find-references` works the same way |
+| Search symbols by name | MCP `search-symbols` | Workspace-wide fuzzy search, no file context needed |
+| Regex content search | MCP `search-for-pattern` | Content search with context lines and glob filtering |
+| Get diagnostics | MCP `get-diagnostics` | Can check an entire realm at once |
+| Rename across workspace | MCP `rename` | Programmatic, no editor UI needed |
+| Link graph analysis | MCP `graph-analysis` | No LSP equivalent |
+| Workspace management | MCP `create-realm` / `add-root` | No LSP equivalent |
+
+### Example: explore and fix documentation
+
+1. **LSP `documentSymbol`** — get the heading outline of a target file.
+2. **LSP `hover`** on a heading — check how many documents link to it.
+3. **MCP `get-diagnostics`** — find broken links and duplicate headings across the realm.
+4. **MCP `rename`** — fix each heading issue programmatically.
+
+### Example: research and navigate
+
+1. **MCP `search-symbols`** — find headings matching a topic across the workspace.
+2. **LSP `goToDefinition`** — jump from a wiki link to the target document.
+3. **LSP `hover`** — read backlink context at the destination.
+4. **MCP `graph-analysis`** — audit link health for the whole realm.
+
+:::note
+Dual-protocol usage is recommended but not required. Agents with only MCP access
+(headless scripts, non-editor integrations) can accomplish most tasks using MCP
+tools alone — the sections below cover MCP-only workflows.
+:::
 
 ## Understand structure
 

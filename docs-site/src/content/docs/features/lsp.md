@@ -5,7 +5,9 @@ description: Complete reference for all Language Server Protocol features in mar
 
 markymark implements the Language Server Protocol to provide real-time editing
 features in any LSP-compatible editor. These capabilities work as you type, with
-changes reflected after a 75ms debounce.
+changes reflected after a 75ms debounce. AI agents access the same features
+through their LSP client — see [Using with AI Agents](/guides/agents/) for
+dual-protocol workflow examples.
 
 ## Go to definition
 
