@@ -8,7 +8,7 @@ description: How to build, test, and run markymark locally for contribution
 | Tool | Minimum version | Purpose |
 |------|----------------|---------|
 | Rust | 1.80 | Compiler and cargo |
-| Zig | 0.15.2 | Zig FFI layer (md4c parser and SIMD kernels) |
+| Zig | 0.15.2 | Zig FFI layer (md4c parser and SIMD acceleration) |
 | Bun | latest | Docs site tooling |
 | cargo-nextest | latest | Test runner |
 | lefthook | latest | Pre-commit hooks |

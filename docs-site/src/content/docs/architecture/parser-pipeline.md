@@ -82,6 +82,6 @@ markdown-specific symbols.
 symbol scanning with two implementations:
 
 - **`Md4cScanBackend`** — md4c FFI via `markymark-kernels`
-- **`ZigScanBackend`** — Zig SIMD kernels
+- **`ZigScanBackend`** — Zig SIMD scan backend
 
 Both return the same result types, keeping the indexing layer parser-agnostic.

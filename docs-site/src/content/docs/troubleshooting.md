@@ -57,7 +57,7 @@ your realm's roots with `realm-stats`.
 **Compilation errors when running `cargo build`.**
 
 markymark requires both Rust (1.80+) and Zig (0.15) toolchains. The Zig
-toolchain compiles the SIMD parser kernels during the Rust build.
+toolchain compiles the Zig FFI layer during the Rust build.
 
 ```bash
 rustc --version   # needs 1.80+

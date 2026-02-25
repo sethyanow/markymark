@@ -13,7 +13,7 @@ markymark/
 ├── markymark-index/       # Document and realm indexing
 ├── markymark-lsp/         # LSP server
 ├── markymark-mcp/         # MCP server
-├── markymark-kernels/     # Zig FFI layer (md4c parser + SIMD kernels)
+├── markymark-kernels/     # Zig FFI layer (md4c parser + SIMD acceleration)
 ├── zig/                   # Zig source (compiled by markymark-kernels)
 ├── markymark-plugin/      # Claude Code plugin manifest
 ├── markymark-vscode/      # VS Code extension

@@ -13,7 +13,7 @@ source (via `cargo install` or `cargo build`), you need:
 | Tool | Minimum version | Purpose |
 |------|----------------|---------|
 | [Rust](https://rustup.rs/) | 1.80 | Compiler and cargo |
-| [Zig](https://ziglang.org/download/) | 0.15.2 | Zig FFI layer (md4c parser and SIMD kernels) |
+| [Zig](https://ziglang.org/download/) | 0.15.2 | Zig FFI layer (md4c parser and SIMD acceleration) |
 
 The Zig FFI layer is statically linked into the binary — the build will fail if Zig is
 not installed or is below the minimum version.

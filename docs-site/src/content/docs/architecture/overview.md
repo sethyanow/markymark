@@ -11,7 +11,7 @@ sharing the same core indexing engine.
 
 | Crate | Role |
 |-------|------|
-| `markymark-kernels` | Zig SIMD kernels and md4c FFI bindings |
+| `markymark-kernels` | Zig FFI layer — md4c parser and SIMD-accelerated operations |
 | `markymark-core` | Shared types, traits, error handling, scanner interface |
 | `markymark-parser` | Tree-sitter-based markdown and structured format parsing |
 | `markymark-index` | Document indexing, cross-reference resolution, diagnostics |
@@ -36,8 +36,8 @@ sharing the same core indexing engine.
 ```
 
 The dependency graph is strictly layered — no circular dependencies. `markymark-kernels`
-requires a Zig 0.15.2+ toolchain — the `zig-kernels` feature is always enabled and the
-kernel library is statically linked into the final binary.
+requires a Zig 0.15.2+ toolchain — the Zig layer is statically linked into the final
+binary.
 
 ## Dual-server architecture
 
@@ -62,7 +62,7 @@ library linked at build time. The Zig code provides:
 - **Document Engine** — a stateful per-document Zig engine that parses markdown,
   extracts symbols, and serializes results into a binary blob consumed by Rust via
   `DocumentIndex::from_blob()`
-- **SIMD-accelerated operations** — vectorized search and text processing kernels
+- **SIMD-accelerated operations** — vectorized search and text processing routines
 - **FFI bindings** — Rust calls into Zig via C ABI exports; the Rust side uses
   `repr(C)` mirror structs at the boundary
 
