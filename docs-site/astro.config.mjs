@@ -70,6 +70,7 @@ export default defineConfig({
 				},
 				{ label: 'Troubleshooting', slug: 'troubleshooting' },
 				{ label: 'FAQ', slug: 'faq' },
+				{ label: 'Changelog', slug: 'changelog' },
 			],
 		}),
 	],
