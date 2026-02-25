@@ -178,10 +178,7 @@ fn build_zig_library(
     for cache_path in [zig_dir.join(".zig-cache"), zig_cache_dir.clone()] {
         if cache_path.exists() {
             std::fs::remove_dir_all(&cache_path).unwrap_or_else(|e| {
-                panic!(
-                    "Failed to purge Zig cache at {}: {e}",
-                    cache_path.display()
-                )
+                panic!("Failed to purge Zig cache at {}: {e}", cache_path.display())
             });
         }
     }
