@@ -2,12 +2,43 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+#[cfg(feature = "semantic-search")]
+use std::sync::Arc;
 
 use markymark_core::engine::CoreOperationResult;
+#[cfg(feature = "semantic-search")]
+use markymark_core::prelude::EmbeddingProvider;
 use markymark_core::CoreError;
 
 use super::{helpers, index_root_into_realm, unindex_root_from_realm, RealmData, DEFAULT_REALM};
 
+#[cfg(feature = "semantic-search")]
+pub(crate) fn handle_create_realm(
+    state: &mut HashMap<String, RealmData>,
+    name: String,
+    provider: Option<Arc<dyn EmbeddingProvider>>,
+) -> CoreOperationResult {
+    if name.is_empty() {
+        return CoreOperationResult::Error(CoreError::Message(
+            "realm name must not be empty".to_string(),
+        ));
+    }
+
+    if state.contains_key(&name) {
+        return CoreOperationResult::Error(CoreError::Message(format!(
+            "realm already exists: {name}"
+        )));
+    }
+
+    state.insert(name.clone(), RealmData::new(provider));
+    CoreOperationResult::RealmInfo {
+        name,
+        root_count: 0,
+        document_count: 0,
+    }
+}
+
+#[cfg(not(feature = "semantic-search"))]
 pub(crate) fn handle_create_realm(
     state: &mut HashMap<String, RealmData>,
     name: String,

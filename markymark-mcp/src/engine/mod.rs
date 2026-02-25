@@ -35,6 +35,15 @@ pub(crate) struct RealmData {
 }
 
 impl RealmData {
+    #[cfg(feature = "semantic-search")]
+    pub(crate) fn new(provider: Option<Arc<dyn EmbeddingProvider>>) -> Self {
+        Self {
+            index: build_realm_index(provider),
+            roots: Vec::new(),
+        }
+    }
+
+    #[cfg(not(feature = "semantic-search"))]
     pub(crate) fn new() -> Self {
         Self {
             index: build_realm_index(),
@@ -43,20 +52,20 @@ impl RealmData {
     }
 }
 
-pub(crate) fn build_realm_index() -> RealmIndex {
-    #[cfg(feature = "semantic-search")]
-    {
-        let provider: Arc<dyn EmbeddingProvider> = Arc::new(HashEmbeddingProvider::new(128));
-        RealmIndex::new_with_embeddings(provider).unwrap_or_else(|err| {
+#[cfg(feature = "semantic-search")]
+pub(crate) fn build_realm_index(provider: Option<Arc<dyn EmbeddingProvider>>) -> RealmIndex {
+    match provider {
+        Some(p) => RealmIndex::new_with_embeddings(p).unwrap_or_else(|err| {
             eprintln!("warning: failed to initialize semantic index; falling back to plain realm index: {err}");
             RealmIndex::new()
-        })
+        }),
+        None => RealmIndex::new(),
     }
+}
 
-    #[cfg(not(feature = "semantic-search"))]
-    {
-        RealmIndex::new()
-    }
+#[cfg(not(feature = "semantic-search"))]
+pub(crate) fn build_realm_index() -> RealmIndex {
+    RealmIndex::new()
 }
 
 /// FNV-1a 32-bit hash for stable, cross-version token hashing.
@@ -79,13 +88,18 @@ fn fnv1a32(bytes: &[u8]) -> u32 {
 
 #[cfg(feature = "semantic-search")]
 #[derive(Debug, Clone)]
-struct HashEmbeddingProvider {
+/// Dev/test hash-based embedding provider using FNV-1a bag-of-words.
+///
+/// Not suitable for production semantic search — use a real provider like
+/// [`VoyageProvider`](markymark_core::embeddings::voyage::VoyageProvider) instead.
+pub struct HashEmbeddingProvider {
     dims: u32,
 }
 
 #[cfg(feature = "semantic-search")]
 impl HashEmbeddingProvider {
-    fn new(dims: u32) -> Self {
+    /// Create a new hash embedding provider with the given dimensionality.
+    pub fn new(dims: u32) -> Self {
         Self { dims }
     }
 }
@@ -137,14 +151,22 @@ impl EmbeddingProvider for HashEmbeddingProvider {
 /// Additional realms can be created/destroyed dynamically via [`CoreOperation`].
 pub struct RuntimeEngine {
     pub(crate) state: RwLock<HashMap<String, RealmData>>,
+    /// Embedding provider shared across all realms (only when semantic-search feature enabled).
+    #[cfg(feature = "semantic-search")]
+    pub(crate) provider: Option<Arc<dyn EmbeddingProvider>>,
 }
 
 impl Default for RuntimeEngine {
     fn default() -> Self {
         let mut realms = HashMap::new();
+        #[cfg(feature = "semantic-search")]
+        realms.insert(DEFAULT_REALM.to_string(), RealmData::new(None));
+        #[cfg(not(feature = "semantic-search"))]
         realms.insert(DEFAULT_REALM.to_string(), RealmData::new());
         Self {
             state: RwLock::new(realms),
+            #[cfg(feature = "semantic-search")]
+            provider: None,
         }
     }
 }
@@ -160,6 +182,9 @@ impl RuntimeEngine {
             bail!("at least one workspace root is required");
         }
 
+        #[cfg(feature = "semantic-search")]
+        let mut default_realm = RealmData::new(None);
+        #[cfg(not(feature = "semantic-search"))]
         let mut default_realm = RealmData::new();
 
         for root in workspace_roots {
@@ -173,6 +198,38 @@ impl RuntimeEngine {
 
         Ok(Self {
             state: RwLock::new(realms),
+            #[cfg(feature = "semantic-search")]
+            provider: None,
+        })
+    }
+
+    /// Build a runtime engine from workspace roots with an explicit embedding provider.
+    ///
+    /// When `provider` is `Some`, all realms (including dynamically-created ones) will
+    /// be initialized with semantic search support using that provider.
+    #[cfg(feature = "semantic-search")]
+    pub async fn from_workspace_roots_with_provider(
+        workspace_roots: Vec<PathBuf>,
+        provider: Option<Arc<dyn EmbeddingProvider>>,
+    ) -> anyhow::Result<Self> {
+        if workspace_roots.is_empty() {
+            bail!("at least one workspace root is required");
+        }
+
+        let mut default_realm = RealmData::new(provider.clone());
+
+        for root in workspace_roots {
+            helpers::validate_workspace_root(&root)?;
+            index_root_into_realm(&root, &mut default_realm).await;
+            default_realm.roots.push(root);
+        }
+
+        let mut realms = HashMap::new();
+        realms.insert(DEFAULT_REALM.to_string(), default_realm);
+
+        Ok(Self {
+            state: RwLock::new(realms),
+            provider,
         })
     }
 }
@@ -337,7 +394,14 @@ impl CoreEngine for RuntimeEngine {
             // --- Realm management operations ---
             CoreOperation::CreateRealm { name } => {
                 let mut state = self.state.write().await;
-                realm_ops::handle_create_realm(&mut state, name)
+                #[cfg(feature = "semantic-search")]
+                {
+                    realm_ops::handle_create_realm(&mut state, name, self.provider.clone())
+                }
+                #[cfg(not(feature = "semantic-search"))]
+                {
+                    realm_ops::handle_create_realm(&mut state, name)
+                }
             }
             CoreOperation::DestroyRealm { name } => {
                 let mut state = self.state.write().await;

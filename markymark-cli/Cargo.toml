@@ -13,6 +13,11 @@ categories = ["development-tools", "text-editors"]
 name = "markymark"
 path = "src/main.rs"
 
+[features]
+default = []
+semantic-search = ["markymark-mcp/semantic-search"]
+voyage = ["markymark-core/voyage"]
+
 [dependencies]
 markymark-core = { version = "0.6.0", path = "../markymark-core" }
 markymark-lsp = { version = "0.6.0", path = "../markymark-lsp" }

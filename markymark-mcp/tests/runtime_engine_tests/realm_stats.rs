@@ -1,6 +1,12 @@
 use std::fs;
+#[cfg(feature = "semantic-search")]
+use std::sync::Arc;
 
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
+#[cfg(feature = "semantic-search")]
+use markymark_core::prelude::EmbeddingProvider;
+#[cfg(feature = "semantic-search")]
+use markymark_mcp::HashEmbeddingProvider;
 use markymark_mcp::RuntimeEngine;
 
 use super::TempWorkspace;
@@ -159,9 +165,11 @@ async fn semantic_search_returns_ranked_matches() {
     fs::write(&intro, "# Introduction\n\nA short overview.\n").expect("intro doc should exist");
     fs::write(&setup, "# Installation\n\nSetup steps.\n").expect("setup doc should exist");
 
-    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
-        .await
-        .expect("workspace should index");
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(HashEmbeddingProvider::new(128));
+    let engine =
+        RuntimeEngine::from_workspace_roots_with_provider(vec![ws.root()], Some(provider))
+            .await
+            .expect("workspace should index");
 
     let result = engine
         .execute(CoreOperation::SemanticSearch {
@@ -196,9 +204,11 @@ async fn semantic_search_preview_stays_within_200_bytes_for_unicode() {
     fs::write(&unicode_doc, format!("# Unicode\n\n{}\n", long_emoji))
         .expect("unicode markdown should exist");
 
-    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
-        .await
-        .expect("workspace should index");
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(HashEmbeddingProvider::new(128));
+    let engine =
+        RuntimeEngine::from_workspace_roots_with_provider(vec![ws.root()], Some(provider))
+            .await
+            .expect("workspace should index");
 
     let result = engine
         .execute(CoreOperation::SemanticSearch {

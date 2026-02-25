@@ -9,7 +9,9 @@ use markymark_mcp::{
     SearchSymbolsResponse,
 };
 #[cfg(feature = "semantic-search")]
-use markymark_mcp::{SemanticSearchRequest, SemanticSearchResponse};
+use markymark_core::prelude::EmbeddingProvider;
+#[cfg(feature = "semantic-search")]
+use markymark_mcp::{HashEmbeddingProvider, SemanticSearchRequest, SemanticSearchResponse};
 use rmcp::handler::server::wrapper::Parameters;
 
 #[tokio::test]
@@ -59,9 +61,11 @@ async fn semantic_search_tool_returns_real_engine_results() {
     fs::write(&file, "# Intro\nContext about embeddings.\n")
         .expect("markdown fixture should be written");
 
-    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
-        .await
-        .expect("workspace should index");
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(HashEmbeddingProvider::new(128));
+    let engine =
+        RuntimeEngine::from_workspace_roots_with_provider(vec![ws.root()], Some(provider))
+            .await
+            .expect("workspace should index");
     let mcp = MarkymarkMcp::new(Arc::new(engine));
 
     let result = mcp
