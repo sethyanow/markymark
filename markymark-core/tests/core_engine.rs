@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use async_trait::async_trait;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_core::{CoreError, DocumentUri, Position, Range};
 
@@ -193,8 +194,9 @@ fn test_core_error_display_not_implemented() {
 
 struct MockEngine;
 
+#[async_trait]
 impl CoreEngine for MockEngine {
-    fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
+    async fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
         match operation {
             CoreOperation::GetOutline { .. } => {
                 CoreOperationResult::Outline(vec!["Heading".to_string()])
@@ -204,11 +206,13 @@ impl CoreEngine for MockEngine {
     }
 }
 
-#[test]
-fn test_core_engine_executes_operation() {
+#[tokio::test]
+async fn test_core_engine_executes_operation() {
     let engine = MockEngine;
     let uri = DocumentUri::from_file_path(&PathBuf::from("/vault/notes.md"));
-    let result = engine.execute(CoreOperation::GetOutline { uri, realm: None });
+    let result = engine
+        .execute(CoreOperation::GetOutline { uri, realm: None })
+        .await;
 
     match result {
         CoreOperationResult::Outline(items) => {

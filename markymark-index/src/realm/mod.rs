@@ -152,7 +152,7 @@ impl RealmIndex {
 
     /// Add a markdown document to the realm index.
     /// Populates cross-doc indexes with owned copies.
-    pub fn add_document(&mut self, uri: DocumentUri, index: DocumentIndex) {
+    pub async fn add_document(&mut self, uri: DocumentUri, index: DocumentIndex) {
         let key = uri.as_str().to_string();
 
         // If replacing, clear old doc from cross-doc indexes first
@@ -162,7 +162,7 @@ impl RealmIndex {
 
         #[cfg(feature = "embeddings")]
         if let Some(semantic) = &mut self.semantic_index {
-            if let Err(err) = semantic.add_document(uri.clone(), &index) {
+            if let Err(err) = semantic.add_document(uri.clone(), &index).await {
                 eprintln!(
                     "warning: semantic indexing failed for {}: {err}",
                     uri.as_str()
@@ -215,7 +215,7 @@ impl RealmIndex {
     /// Tags are lazily deferred: instead of patching `tag_to_docs` eagerly, we set
     /// `tags_dirty = true`. The tag index is rebuilt from contributions on the next
     /// mutation that needs it, or computed on-the-fly in read-only queries.
-    pub fn update_document(&mut self, uri: DocumentUri, new_index: DocumentIndex) {
+    pub async fn update_document(&mut self, uri: DocumentUri, new_index: DocumentIndex) {
         let key = uri.as_str().to_string();
         let new_contrib = DocContribution::build(&mut self.interner, &new_index, &uri);
 
@@ -247,7 +247,7 @@ impl RealmIndex {
         #[cfg(feature = "embeddings")]
         if let Some(semantic) = &mut self.semantic_index {
             semantic.remove_document(&uri);
-            if let Err(err) = semantic.add_document(uri.clone(), &new_index) {
+            if let Err(err) = semantic.add_document(uri.clone(), &new_index).await {
                 log::warn!("semantic indexing failed for {}: {err}", uri.as_str());
             }
         }
@@ -796,14 +796,14 @@ impl RealmIndex {
     ///
     /// Returns an empty vector when semantic indexing is not configured.
     #[cfg(feature = "embeddings")]
-    pub fn semantic_search(
+    pub async fn semantic_search(
         &self,
         query: &str,
         top_k: u32,
         min_score: f32,
     ) -> Result<Vec<SearchResult>, EmbedError> {
         match &self.semantic_index {
-            Some(index) => index.search(query, top_k, min_score),
+            Some(index) => index.search(query, top_k, min_score).await,
             None => Ok(Vec::new()),
         }
     }

@@ -19,7 +19,7 @@ fn uri(name: &str) -> DocumentUri {
 }
 
 /// Build a test realm with multiple documents for resolution tests.
-fn test_realm() -> (RealmIndex, DocumentUri, DocumentUri, DocumentUri) {
+async fn test_realm() -> (RealmIndex, DocumentUri, DocumentUri, DocumentUri) {
     let mut realm = RealmIndex::new();
 
     // Document A: page-a.md
@@ -32,7 +32,7 @@ fn test_realm() -> (RealmIndex, DocumentUri, DocumentUri, DocumentUri) {
          ## Section Two\n\n\
          More text",
     );
-    realm.add_document(uri_a.clone(), idx_a);
+    realm.add_document(uri_a.clone(), idx_a).await;
 
     // Document B: page-b.md
     let uri_b = uri("page-b.md");
@@ -43,7 +43,7 @@ fn test_realm() -> (RealmIndex, DocumentUri, DocumentUri, DocumentUri) {
          Details ^block-b1\n\n\
          ## Summary",
     );
-    realm.add_document(uri_b.clone(), idx_b);
+    realm.add_document(uri_b.clone(), idx_b).await;
 
     // Document C: notes/daily.md
     let uri_c = uri("notes/daily.md");
@@ -53,7 +53,7 @@ fn test_realm() -> (RealmIndex, DocumentUri, DocumentUri, DocumentUri) {
          ## Tasks\n\n\
          - [ ] Something ^task-block",
     );
-    realm.add_document(uri_c.clone(), idx_c);
+    realm.add_document(uri_c.clone(), idx_c).await;
 
     (realm, uri_a, uri_b, uri_c)
 }
@@ -62,9 +62,9 @@ fn test_realm() -> (RealmIndex, DocumentUri, DocumentUri, DocumentUri) {
 // Wiki link resolution
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_resolve_wiki_link_to_page() {
-    let (realm, _uri_a, uri_b, uri_c) = test_realm();
+#[tokio::test]
+async fn test_resolve_wiki_link_to_page() {
+    let (realm, _uri_a, uri_b, uri_c) = test_realm().await;
 
     // [[page-b]] from document C should resolve to document B
     let result = resolution::resolve_wiki_link(&realm, &uri_c, "page-b", None);
@@ -82,9 +82,9 @@ fn test_resolve_wiki_link_to_page() {
     }
 }
 
-#[test]
-fn test_resolve_wiki_link_to_heading() {
-    let (realm, uri_a, _uri_b, uri_c) = test_realm();
+#[tokio::test]
+async fn test_resolve_wiki_link_to_heading() {
+    let (realm, uri_a, _uri_b, uri_c) = test_realm().await;
 
     // [[page-a#section-one]] from document C should resolve to heading in page A
     let result = resolution::resolve_wiki_link(&realm, &uri_c, "page-a", Some("section-one"));
@@ -103,9 +103,9 @@ fn test_resolve_wiki_link_to_heading() {
     }
 }
 
-#[test]
-fn test_resolve_wiki_link_current_page_heading() {
-    let (realm, uri_a, _uri_b, _uri_c) = test_realm();
+#[tokio::test]
+async fn test_resolve_wiki_link_current_page_heading() {
+    let (realm, uri_a, _uri_b, _uri_c) = test_realm().await;
 
     // [[#section-two]] from page A should resolve to heading in the same document
     let result = resolution::resolve_wiki_link(&realm, &uri_a, "", Some("section-two"));
@@ -132,9 +132,9 @@ fn test_resolve_wiki_link_current_page_heading() {
 // Markdown link resolution
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_resolve_markdown_link_to_heading() {
-    let (realm, uri_a, _uri_b, _uri_c) = test_realm();
+#[tokio::test]
+async fn test_resolve_markdown_link_to_heading() {
+    let (realm, uri_a, _uri_b, _uri_c) = test_realm().await;
 
     // [text](#section-one) from page A - same-page anchor link
     let result = resolution::resolve_markdown_link(&realm, &uri_a, "", Some("section-one"));
@@ -159,7 +159,7 @@ fn test_resolve_markdown_link_to_heading() {
 ///   /vault/docs/guide/overview.md
 ///   /vault/docs/api/auth.md   (same directory as endpoints.md)
 ///   /vault/index.md
-fn path_realm() -> (
+async fn path_realm() -> (
     RealmIndex,
     DocumentUri,
     DocumentUri,
@@ -172,24 +172,24 @@ fn path_realm() -> (
     let uri_endpoints =
         DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/docs/api/endpoints.md"));
     let idx_endpoints = index_from("# API Endpoints\n\n## List Endpoints\n\nSome content.");
-    realm.add_document(uri_endpoints.clone(), idx_endpoints);
+    realm.add_document(uri_endpoints.clone(), idx_endpoints).await;
 
     // /vault/docs/guide/overview.md — same stem as... nothing yet, but in a different dir
     let uri_overview =
         DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/docs/guide/overview.md"));
     let idx_overview = index_from("# Guide Overview\n\n## Introduction\n\nGuide content.");
-    realm.add_document(uri_overview.clone(), idx_overview);
+    realm.add_document(uri_overview.clone(), idx_overview).await;
 
     // /vault/docs/api/auth.md — same directory as endpoints.md
     let uri_auth =
         DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/docs/api/auth.md"));
     let idx_auth = index_from("# Auth\n\n## OAuth Flow\n\nAuth content.");
-    realm.add_document(uri_auth.clone(), idx_auth);
+    realm.add_document(uri_auth.clone(), idx_auth).await;
 
     // /vault/index.md — root level doc
     let uri_index = DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/index.md"));
     let idx_index = index_from("# Index\n\nRoot document.");
-    realm.add_document(uri_index.clone(), idx_index);
+    realm.add_document(uri_index.clone(), idx_index).await;
 
     (realm, uri_endpoints, uri_overview, uri_auth, uri_index)
 }
@@ -198,9 +198,9 @@ fn path_realm() -> (
 // Markdown link → document resolution (stem-only)
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_resolve_markdown_link_to_document_by_stem() {
-    let (realm, uri_a, _uri_b, _uri_c) = test_realm();
+#[tokio::test]
+async fn test_resolve_markdown_link_to_document_by_stem() {
+    let (realm, uri_a, _uri_b, _uri_c) = test_realm().await;
 
     // [text](page-b.md) from page A — stem "page-b" should resolve to page-b.md
     let result = resolution::resolve_markdown_link(&realm, &uri_a, "page-b.md", None);
@@ -217,9 +217,9 @@ fn test_resolve_markdown_link_to_document_by_stem() {
     }
 }
 
-#[test]
-fn test_resolve_markdown_link_to_document_with_anchor() {
-    let (realm, uri_a, _uri_b, _uri_c) = test_realm();
+#[tokio::test]
+async fn test_resolve_markdown_link_to_document_with_anchor() {
+    let (realm, uri_a, _uri_b, _uri_c) = test_realm().await;
 
     // [text](page-b.md#overview) from page A should resolve to the heading in page-b.md
     let result = resolution::resolve_markdown_link(&realm, &uri_a, "page-b.md", Some("overview"));
@@ -245,9 +245,9 @@ fn test_resolve_markdown_link_to_document_with_anchor() {
 // Markdown link → path-relative resolution
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_resolve_markdown_link_path_relative_in_same_dir() {
-    let (realm, uri_endpoints, _uri_overview, uri_auth, _uri_index) = path_realm();
+#[tokio::test]
+async fn test_resolve_markdown_link_path_relative_in_same_dir() {
+    let (realm, uri_endpoints, _uri_overview, uri_auth, _uri_index) = path_realm().await;
 
     // From /vault/docs/api/endpoints.md → [text](auth.md)
     // "auth.md" has no directory segment, so stem-only resolution applies.
@@ -265,9 +265,9 @@ fn test_resolve_markdown_link_path_relative_in_same_dir() {
     }
 }
 
-#[test]
-fn test_resolve_markdown_link_path_relative_with_directory_segment() {
-    let (realm, uri_endpoints, _uri_overview, _uri_auth, _uri_index) = path_realm();
+#[tokio::test]
+async fn test_resolve_markdown_link_path_relative_with_directory_segment() {
+    let (realm, uri_endpoints, _uri_overview, _uri_auth, _uri_index) = path_realm().await;
 
     // From /vault/docs/api/endpoints.md → [text](../guide/overview.md)
     // Has directory segment → try path-relative: resolves to /vault/docs/guide/overview.md.
@@ -288,9 +288,9 @@ fn test_resolve_markdown_link_path_relative_with_directory_segment() {
     }
 }
 
-#[test]
-fn test_resolve_markdown_link_path_relative_with_anchor() {
-    let (realm, uri_endpoints, _uri_overview, _uri_auth, _uri_index) = path_realm();
+#[tokio::test]
+async fn test_resolve_markdown_link_path_relative_with_anchor() {
+    let (realm, uri_endpoints, _uri_overview, _uri_auth, _uri_index) = path_realm().await;
 
     // From /vault/docs/api/endpoints.md → [text](../guide/overview.md#introduction)
     let result = resolution::resolve_markdown_link(
@@ -319,9 +319,9 @@ fn test_resolve_markdown_link_path_relative_with_anchor() {
     }
 }
 
-#[test]
-fn test_resolve_markdown_link_path_relative_falls_back_to_stem() {
-    let (realm, _uri_endpoints, _uri_overview, uri_auth, _uri_index) = path_realm();
+#[tokio::test]
+async fn test_resolve_markdown_link_path_relative_falls_back_to_stem() {
+    let (realm, _uri_endpoints, _uri_overview, uri_auth, _uri_index) = path_realm().await;
 
     // From /vault/index.md → [text](api/auth.md)
     // Path-relative: /vault/api/auth.md — does NOT exist.
@@ -344,14 +344,14 @@ fn test_resolve_markdown_link_path_relative_falls_back_to_stem() {
 // External URL filtering
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_resolve_markdown_link_https_url_returns_none() {
+#[tokio::test]
+async fn test_resolve_markdown_link_https_url_returns_none() {
     // Realm has a document whose stem happens to match the hostname of an external URL.
     // resolve_markdown_link must NOT return it as a false-positive match.
     let mut realm = RealmIndex::new();
     let local_uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/example.com.md"));
     let idx = index_from("# Example\n\nSome content.");
-    realm.add_document(local_uri, idx);
+    realm.add_document(local_uri, idx).await;
 
     let from = DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/page.md"));
     let result = resolution::resolve_markdown_link(&realm, &from, "https://example.com", None);
@@ -376,9 +376,9 @@ fn test_resolve_markdown_link_mailto_url_returns_none() {
 // Block reference resolution
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_resolve_block_ref() {
-    let (realm, uri_a, _uri_b, _uri_c) = test_realm();
+#[tokio::test]
+async fn test_resolve_block_ref() {
+    let (realm, uri_a, _uri_b, _uri_c) = test_realm().await;
 
     // ((block-a1)) should resolve to the block in page A
     let result = resolution::resolve_block_ref(&realm, "block-a1");
@@ -397,9 +397,9 @@ fn test_resolve_block_ref() {
 // Unresolved references
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_unresolved_wiki_link() {
-    let (realm, uri_a, _uri_b, _uri_c) = test_realm();
+#[tokio::test]
+async fn test_unresolved_wiki_link() {
+    let (realm, uri_a, _uri_b, _uri_c) = test_realm().await;
 
     // [[nonexistent-page]] should not resolve
     let result = resolution::resolve_wiki_link(&realm, &uri_a, "nonexistent-page", None);
@@ -410,9 +410,9 @@ fn test_unresolved_wiki_link() {
 // Cross-document resolution
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_resolve_across_documents() {
-    let (realm, _uri_a, uri_b, uri_c) = test_realm();
+#[tokio::test]
+async fn test_resolve_across_documents() {
+    let (realm, _uri_a, uri_b, uri_c) = test_realm().await;
 
     // From document C, resolve [[page-b#overview]] to heading in page B
     let result = resolution::resolve_wiki_link(&realm, &uri_c, "page-b", Some("overview"));
@@ -432,9 +432,9 @@ fn test_resolve_across_documents() {
 // Case-insensitive page matching
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_resolve_case_insensitive_page() {
-    let (realm, _uri_a, uri_b, uri_c) = test_realm();
+#[tokio::test]
+async fn test_resolve_case_insensitive_page() {
+    let (realm, _uri_a, uri_b, uri_c) = test_realm().await;
 
     // [[Page-B]] (different case) should still resolve to page-b.md
     let result = resolution::resolve_wiki_link(&realm, &uri_c, "Page-B", None);

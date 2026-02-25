@@ -109,6 +109,7 @@ fn parse_doc(source: &str) -> DocumentIndex {
 /// Pre-populate a realm with `n_docs` vault documents.
 /// Returns the realm and the parser (for reuse).
 fn build_vault(n_docs: usize) -> RealmIndex {
+    let rt = tokio::runtime::Runtime::new().unwrap();
     let mut realm = RealmIndex::new();
     let mut parser = Parser::new().expect("parser init");
 
@@ -117,7 +118,7 @@ fn build_vault(n_docs: usize) -> RealmIndex {
         let text = generate_vault_doc(i);
         let ast = parser.parse(&text).expect("parse should succeed");
         let index = DocumentIndex::from_ast(ast);
-        realm.add_document(uri, index);
+        rt.block_on(realm.add_document(uri, index));
     }
     realm
 }
@@ -125,6 +126,7 @@ fn build_vault(n_docs: usize) -> RealmIndex {
 // ── Original single-doc benchmarks (regression baseline) ──
 
 fn bench_update_vs_remove_add(c: &mut Criterion) {
+    let rt = tokio::runtime::Runtime::new().unwrap();
     let mut group = c.benchmark_group("realm_update");
 
     let doc_text = generate_doc(50, 5);
@@ -140,14 +142,14 @@ fn bench_update_vs_remove_add(c: &mut Criterion) {
                 // Setup: fresh realm + fresh parsed index for the "edit"
                 let mut realm = RealmIndex::new();
                 let index_orig = parse_doc(&doc_text);
-                realm.add_document(uri.clone(), index_orig);
+                rt.block_on(realm.add_document(uri.clone(), index_orig));
                 let index_edited = parse_doc(&doc_text_edited);
                 (realm, index_edited)
             },
             |(mut realm, index_edited)| {
                 // Measured: only the realm remove+add operations
                 realm.remove_document(black_box(&uri));
-                realm.add_document(black_box(uri.clone()), black_box(index_edited));
+                rt.block_on(realm.add_document(black_box(uri.clone()), black_box(index_edited)));
             },
             BatchSize::SmallInput,
         );
@@ -160,13 +162,13 @@ fn bench_update_vs_remove_add(c: &mut Criterion) {
                 // Setup: fresh realm + fresh parsed index for the "edit"
                 let mut realm = RealmIndex::new();
                 let index_orig = parse_doc(&doc_text);
-                realm.add_document(uri.clone(), index_orig);
+                rt.block_on(realm.add_document(uri.clone(), index_orig));
                 let index_edited = parse_doc(&doc_text_edited);
                 (realm, index_edited)
             },
             |(mut realm, index_edited)| {
                 // Measured: only the update_document operation
-                realm.update_document(black_box(uri.clone()), black_box(index_edited));
+                rt.block_on(realm.update_document(black_box(uri.clone()), black_box(index_edited)));
             },
             BatchSize::SmallInput,
         );
@@ -178,6 +180,7 @@ fn bench_update_vs_remove_add(c: &mut Criterion) {
 // ── Vault benchmarks (epic criterion spec: 50KB doc, 1000-doc vault) ──
 
 fn bench_vault_update(c: &mut Criterion) {
+    let rt = tokio::runtime::Runtime::new().unwrap();
     let mut group = c.benchmark_group("realm_update_vault");
     // Reduce sample count — vault construction is expensive
     group.sample_size(20);
@@ -210,13 +213,13 @@ fn bench_vault_update(c: &mut Criterion) {
                 || {
                     let mut realm = build_vault(1000);
                     let orig_index = parse_doc(&doc_orig);
-                    realm.add_document(uri.clone(), orig_index);
+                    rt.block_on(realm.add_document(uri.clone(), orig_index));
                     let edited_index = parse_doc(&doc_edit);
                     (realm, edited_index)
                 },
                 |(mut realm, new_index)| {
                     realm.remove_document(black_box(&uri));
-                    realm.add_document(black_box(uri.clone()), black_box(new_index));
+                    rt.block_on(realm.add_document(black_box(uri.clone()), black_box(new_index)));
                     realm // return so drop is outside timing
                 },
                 BatchSize::LargeInput,
@@ -234,12 +237,12 @@ fn bench_vault_update(c: &mut Criterion) {
                 || {
                     let mut realm = build_vault(1000);
                     let orig_index = parse_doc(&doc_orig);
-                    realm.add_document(uri.clone(), orig_index);
+                    rt.block_on(realm.add_document(uri.clone(), orig_index));
                     let edited_index = parse_doc(&doc_edit);
                     (realm, edited_index)
                 },
                 |(mut realm, new_index)| {
-                    realm.update_document(black_box(uri.clone()), black_box(new_index));
+                    rt.block_on(realm.update_document(black_box(uri.clone()), black_box(new_index)));
                     realm // return so drop is outside timing
                 },
                 BatchSize::LargeInput,
@@ -257,12 +260,12 @@ fn bench_vault_update(c: &mut Criterion) {
                 || {
                     let mut realm = build_vault(1000);
                     let orig_index = parse_doc(&doc_orig);
-                    realm.add_document(uri.clone(), orig_index);
+                    rt.block_on(realm.add_document(uri.clone(), orig_index));
                     let edited_index = parse_doc(&doc_edit);
                     (realm, edited_index)
                 },
                 |(mut realm, new_index)| {
-                    realm.update_document(black_box(uri.clone()), black_box(new_index));
+                    rt.block_on(realm.update_document(black_box(uri.clone()), black_box(new_index)));
                     realm // return so drop is outside timing
                 },
                 BatchSize::LargeInput,

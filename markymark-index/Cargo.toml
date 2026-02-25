@@ -14,6 +14,7 @@ bench-internals = []
 embeddings = []
 
 [dependencies]
+async-trait = { workspace = true }
 markymark-core = { version = "0.6.0", path = "../markymark-core", features = ["zig-kernels"] }
 markymark-kernels = { version = "0.6.0", path = "../markymark-kernels" }
 markymark-parser = { version = "0.6.0", path = "../markymark-parser" }
@@ -24,12 +25,14 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 self_cell = { workspace = true }
+log = { workspace = true }
 lasso = "0.7.3"
 
 [dev-dependencies]
 insta = { workspace = true }
 proptest = { workspace = true }
 criterion = { workspace = true }
+tokio = { workspace = true }
 memory-stats = "1.2"
 libc = "0.2.182"
 

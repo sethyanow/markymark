@@ -1,5 +1,7 @@
 //! Core engine: transport-agnostic operation types and trait.
 
+use async_trait::async_trait;
+
 use crate::structured::DocumentKind;
 use crate::{CoreError, DocumentUri, Range};
 
@@ -238,9 +240,10 @@ pub struct PatternMatch {
 ///
 /// Both LSP and MCP transports call into this trait so indexing and
 /// resolution logic stays shared in one place.
+#[async_trait]
 pub trait CoreEngine: Send + Sync {
     /// Execute a core operation and return the transport-neutral result.
-    fn execute(&self, operation: CoreOperation) -> CoreOperationResult;
+    async fn execute(&self, operation: CoreOperation) -> CoreOperationResult;
 }
 
 /// The result of a core engine operation.

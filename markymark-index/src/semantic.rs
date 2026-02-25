@@ -91,7 +91,7 @@ impl SemanticIndex {
     /// If the document has headings, one semantic entry is generated per
     /// heading. If it has no headings, a single fallback entry based on the
     /// document file stem is created.
-    pub fn add_document(
+    pub async fn add_document(
         &mut self,
         uri: DocumentUri,
         index: &DocumentIndex,
@@ -104,7 +104,7 @@ impl SemanticIndex {
 
         if index.headings().is_empty() {
             let fallback_heading = fallback_heading(&uri);
-            let embedding = self.provider.embed(&fallback_heading)?;
+            let embedding = self.provider.embed(&fallback_heading).await?;
             let id = format!("{}#fallback", uri.as_str());
             self.index
                 .add(&id, &embedding)
@@ -128,7 +128,7 @@ impl SemanticIndex {
                 if embedding_input.trim().is_empty() {
                     continue;
                 }
-                let embedding = self.provider.embed(&embedding_input)?;
+                let embedding = self.provider.embed(&embedding_input).await?;
                 let id = format!("{}#{}#{i}", uri.as_str(), heading.slug);
                 self.index
                     .add(&id, &embedding)
@@ -172,7 +172,7 @@ impl SemanticIndex {
     }
 
     /// Run semantic search over indexed entries.
-    pub fn search(
+    pub async fn search(
         &self,
         query: &str,
         top_k: u32,
@@ -182,7 +182,7 @@ impl SemanticIndex {
             return Ok(Vec::new());
         }
 
-        let query_embedding = self.provider.embed(query)?;
+        let query_embedding = self.provider.embed(query).await?;
         let score_floor = min_score.clamp(0.0, 1.0);
 
         let fetch_k = compute_fetch_k(self.index.count(), self.entries_by_id.len() as u32, top_k);
@@ -326,6 +326,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    use async_trait::async_trait;
     use markymark_core::prelude::EmbedError;
 
     // --- compute_fetch_k unit tests ---
@@ -382,8 +383,9 @@ mod tests {
         }
     }
 
+    #[async_trait]
     impl EmbeddingProvider for TestEmbeddingProvider {
-        fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+        async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
             if self.reject_empty && text.trim().is_empty() {
                 return Err(EmbedError::InvalidInput("empty text rejected".to_string()));
             }
@@ -419,8 +421,8 @@ mod tests {
 
     // --- P2: empty heading skip tests ---
 
-    #[test]
-    fn add_document_skips_empty_headings() {
+    #[tokio::test]
+    async fn add_document_skips_empty_headings() {
         let provider = Arc::new(TestEmbeddingProvider::new(32));
         let mut sem = SemanticIndex::new(provider).unwrap();
 
@@ -429,7 +431,7 @@ mod tests {
 
         let uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/test.md"));
         // Must succeed, not abort on empty headings.
-        sem.add_document(uri.clone(), &doc_idx).unwrap();
+        sem.add_document(uri.clone(), &doc_idx).await.unwrap();
 
         // The empty heading should be skipped; only valid headings indexed.
         assert!(
@@ -439,14 +441,14 @@ mod tests {
         );
     }
 
-    #[test]
-    fn add_document_no_headings_uses_fallback() {
+    #[tokio::test]
+    async fn add_document_no_headings_uses_fallback() {
         let provider = Arc::new(TestEmbeddingProvider::new(32));
         let mut sem = SemanticIndex::new(provider).unwrap();
 
         let doc_idx = build_doc_index("Just some text, no headings.\n");
         let uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/plain.md"));
-        sem.add_document(uri, &doc_idx).unwrap();
+        sem.add_document(uri, &doc_idx).await.unwrap();
         assert_eq!(
             sem.entry_count(),
             1,
