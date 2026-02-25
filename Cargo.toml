@@ -50,10 +50,14 @@ bumpalo = { version = "3.19.1", features = ["collections", "boxed", "allocator-a
 hashbrown = "0.16.1"
 self_cell = "1.2.2"
 
+# HTTP
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
 # Testing
 insta = { version = "1.42", features = ["yaml"] }
 proptest = "1.5"
 tempfile = "3"
+wiremock = "0.6"
 
 # Benchmarking
 criterion = { version = "0.5", features = ["html_reports"] }
