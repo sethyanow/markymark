@@ -59,6 +59,11 @@ The embedding provider trait abstracts over different vector backends.
 - **Hash**: Deterministic local provider for testing
 HEREDOC
   echo "  (using built-in 2-file test workspace)"
+else
+  if [[ ! -d "$WORKSPACE_ROOT" ]]; then
+    echo "ERROR: workspace root does not exist or is not a directory: $WORKSPACE_ROOT" >&2
+    exit 1
+  fi
 fi
 
 echo "==> Workspace root: $WORKSPACE_ROOT"
@@ -152,10 +157,10 @@ check() {
 
 echo ""
 echo "==> Assertions:"
-check "Server initialized"          '"protocolVersion"'
-check "Tools list returned"         '"tools"'
-check "semantic-search tool exists"  'semantic-search'
-check "Search returned result"      '"result"'
+check "Initialize response (id=1)"            '"id":1'
+check "Tools/list response (id=2)"            '"id":2'
+check "semantic-search tool advertised"        'semantic-search'
+check "semantic-search response (id=3)"        '"id":3'
 
 echo ""
 echo "==> Results: $PASS passed, $FAIL failed"

@@ -224,8 +224,15 @@ impl RealmIndex {
 
         if let Some(ref old_contrib) = old_contrib {
             if old_contrib == &new_contrib {
-                // Fast path: contribution sets identical — skip cross-doc index ops
-                // AND semantic re-indexing (headings haven't changed).
+                // Fast path: contribution sets identical — skip cross-doc index ops.
+                // Still update semantic index: heading text may have changed even
+                // though slugs are identical (e.g. "Foo!" → "Foo").
+                #[cfg(feature = "embeddings")]
+                if let Some(semantic) = &mut self.semantic_index {
+                    if let Err(err) = semantic.update_document(uri.clone(), &new_index).await {
+                        log::warn!("semantic indexing failed for {}: {err}", uri.as_str());
+                    }
+                }
             } else {
                 // Slow path: diff and patch only changed entries.
                 self.patch_headings(&key, &uri, old_contrib, &new_contrib, &new_index);

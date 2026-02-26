@@ -40,11 +40,15 @@ async fn create_realm_rejects_duplicate_name() {
         .await
         .expect("workspace should index");
 
-    let _ = engine
+    match engine
         .execute(CoreOperation::CreateRealm {
             name: "my-realm".to_string(),
         })
-        .await;
+        .await
+    {
+        CoreOperationResult::RealmInfo { .. } => {}
+        other => panic!("setup CreateRealm failed: {other:?}"),
+    }
 
     let result = engine
         .execute(CoreOperation::CreateRealm {
@@ -84,11 +88,15 @@ async fn destroy_realm_removes_realm() {
         .await
         .expect("workspace should index");
 
-    let _ = engine
+    match engine
         .execute(CoreOperation::CreateRealm {
             name: "temp-realm".to_string(),
         })
-        .await;
+        .await
+    {
+        CoreOperationResult::RealmInfo { .. } => {}
+        other => panic!("setup CreateRealm failed: {other:?}"),
+    }
     let result = engine
         .execute(CoreOperation::DestroyRealm {
             name: "temp-realm".to_string(),
@@ -163,11 +171,15 @@ async fn add_root_indexes_markdown_files_in_realm() {
         .await
         .expect("workspace should index");
 
-    let _ = engine
+    match engine
         .execute(CoreOperation::CreateRealm {
             name: "docs-realm".to_string(),
         })
-        .await;
+        .await
+    {
+        CoreOperationResult::RealmInfo { .. } => {}
+        other => panic!("setup CreateRealm failed: {other:?}"),
+    }
 
     let result = engine
         .execute(CoreOperation::AddRoot {
@@ -217,11 +229,15 @@ async fn add_root_rejects_invalid_path() {
         .await
         .expect("workspace should index");
 
-    let _ = engine
+    match engine
         .execute(CoreOperation::CreateRealm {
             name: "r".to_string(),
         })
-        .await;
+        .await
+    {
+        CoreOperationResult::RealmInfo { .. } => {}
+        other => panic!("setup CreateRealm failed: {other:?}"),
+    }
 
     let result = engine
         .execute(CoreOperation::AddRoot {
@@ -245,17 +261,25 @@ async fn add_root_rejects_duplicate_root() {
         .await
         .expect("workspace should index");
 
-    let _ = engine
+    match engine
         .execute(CoreOperation::CreateRealm {
             name: "r".to_string(),
         })
-        .await;
-    let _ = engine
+        .await
+    {
+        CoreOperationResult::RealmInfo { .. } => {}
+        other => panic!("setup CreateRealm failed: {other:?}"),
+    }
+    match engine
         .execute(CoreOperation::AddRoot {
             realm: "r".to_string(),
             root: ws.root(),
         })
-        .await;
+        .await
+    {
+        CoreOperationResult::RealmInfo { .. } => {}
+        other => panic!("setup AddRoot failed: {other:?}"),
+    }
 
     let result = engine
         .execute(CoreOperation::AddRoot {
@@ -281,17 +305,25 @@ async fn remove_root_unindexes_documents() {
         .await
         .expect("workspace should index");
 
-    let _ = engine
+    match engine
         .execute(CoreOperation::CreateRealm {
             name: "r".to_string(),
         })
-        .await;
-    let _ = engine
+        .await
+    {
+        CoreOperationResult::RealmInfo { .. } => {}
+        other => panic!("setup CreateRealm failed: {other:?}"),
+    }
+    match engine
         .execute(CoreOperation::AddRoot {
             realm: "r".to_string(),
             root: docs.clone(),
         })
-        .await;
+        .await
+    {
+        CoreOperationResult::RealmInfo { .. } => {}
+        other => panic!("setup AddRoot failed: {other:?}"),
+    }
 
     let result = engine
         .execute(CoreOperation::RemoveRoot {
@@ -341,11 +373,15 @@ async fn remove_root_rejects_untracked_root() {
         .await
         .expect("workspace should index");
 
-    let _ = engine
+    match engine
         .execute(CoreOperation::CreateRealm {
             name: "r".to_string(),
         })
-        .await;
+        .await
+    {
+        CoreOperationResult::RealmInfo { .. } => {}
+        other => panic!("setup CreateRealm failed: {other:?}"),
+    }
 
     let result = engine
         .execute(CoreOperation::RemoveRoot {

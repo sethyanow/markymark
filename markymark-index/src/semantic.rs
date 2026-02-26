@@ -231,9 +231,29 @@ impl SemanticIndex {
 
         // If transitioning between fallback ↔ headings, delegate to full replace
         // since there's nothing to diff (different ID formats).
+        // Snapshot before remove so we can restore on failure.
         if old_was_fallback != new_is_fallback {
+            let snapshot_entries: Vec<(String, SemanticEntry)> = old_ids
+                .iter()
+                .filter_map(|id| self.entries_by_id.get(id).cloned().map(|e| (id.clone(), e)))
+                .collect();
+            let snapshot_tokens = self.doc_token_sets.get(&uri).cloned();
+
             self.remove_document(&uri);
-            return self.add_document(uri, index).await;
+            match self.add_document(uri.clone(), index).await {
+                Ok(()) => return Ok(()),
+                Err(err) => {
+                    // Restore old state on failure.
+                    for (id, entry) in snapshot_entries {
+                        self.entries_by_id.insert(id, entry);
+                    }
+                    self.doc_to_ids.insert(uri.clone(), old_ids);
+                    if let Some(tokens) = snapshot_tokens {
+                        self.doc_token_sets.insert(uri, tokens);
+                    }
+                    return Err(err);
+                }
+            }
         }
 
         // Stage: collect changes to apply atomically.
@@ -898,6 +918,121 @@ mod tests {
             sem.entry_count(),
             2,
             "old entries must be preserved on failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_fallback_transition_failure_preserves_state() {
+        // Provider succeeds for initial add (1 fallback embed) but fails on transition.
+        let provider = Arc::new(FailingProvider::new(32, 1));
+        let mut sem = SemanticIndex::new(provider).unwrap();
+        let uri = test_uri();
+
+        // Start with no headings → fallback entry.
+        let doc = build_doc_index("Just text, no headings.\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+        assert_eq!(sem.entry_count(), 1, "fallback entry should exist");
+
+        // Verify the fallback entry is present.
+        let old_ids = sem.doc_to_ids.get(&uri).cloned().unwrap();
+        assert_eq!(old_ids.len(), 1);
+        assert!(old_ids[0].ends_with("#fallback"));
+
+        // Now update to a doc with headings — triggers fallback→headings transition.
+        // The provider will fail (already used its 1 allowed embed), so add_document
+        // inside the transition should fail.
+        let updated = build_doc_index("# Alpha\n## Beta\n");
+        let result = sem.update_document(uri.clone(), &updated).await;
+
+        assert!(
+            result.is_err(),
+            "transition should propagate provider failure"
+        );
+        // Old fallback state must be restored.
+        assert_eq!(
+            sem.entry_count(),
+            1,
+            "old fallback entry must survive failed transition"
+        );
+        let restored_ids = sem.doc_to_ids.get(&uri).unwrap();
+        assert_eq!(restored_ids.len(), 1, "doc_to_ids must be restored");
+        assert!(
+            restored_ids[0].ends_with("#fallback"),
+            "restored entry should be the original fallback"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_fallback_transition_success_replaces_state() {
+        let provider = Arc::new(CountingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+        let uri = test_uri();
+
+        // Start with no headings → fallback entry.
+        let doc = build_doc_index("Just text, no headings.\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+        assert_eq!(sem.entry_count(), 1);
+
+        let old_ids = sem.doc_to_ids.get(&uri).cloned().unwrap();
+        assert!(old_ids[0].ends_with("#fallback"));
+
+        provider.reset();
+        // Update to a doc with headings — successful transition.
+        let updated = build_doc_index("# Alpha\n## Beta\n");
+        sem.update_document(uri.clone(), &updated).await.unwrap();
+
+        assert_eq!(
+            provider.embed_count(),
+            2,
+            "both new headings should be embedded"
+        );
+        assert_eq!(sem.entry_count(), 2, "fallback replaced by 2 headings");
+
+        // Verify no fallback entries remain.
+        let new_ids = sem.doc_to_ids.get(&uri).unwrap();
+        assert!(
+            !new_ids.iter().any(|id| id.ends_with("#fallback")),
+            "fallback entry should be gone after successful transition"
+        );
+    }
+
+    /// Regression: heading text "Foo!" and "Foo" produce the same slug but
+    /// different embedding text. `SemanticIndex::update_document` must detect
+    /// the text change and re-embed even though the slug is identical.
+    #[tokio::test]
+    async fn test_update_document_reembeds_on_text_change_same_slug() {
+        let provider = Arc::new(CountingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+        let uri = test_uri();
+
+        // "Foo!" slugifies to "foo".
+        let doc = build_doc_index("# Foo!\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+        assert_eq!(sem.entry_count(), 1);
+
+        // Verify the initial heading text is "Foo!".
+        let ids = sem.doc_to_ids.get(&uri).unwrap();
+        assert_eq!(sem.entries_by_id.get(&ids[0]).unwrap().heading, "Foo!");
+
+        provider.reset();
+
+        // "Foo" also slugifies to "foo" — same slug, different text.
+        let updated = build_doc_index("# Foo\n");
+        sem.update_document(uri.clone(), &updated).await.unwrap();
+
+        assert_eq!(
+            provider.embed_count(),
+            1,
+            "text changed from 'Foo!' to 'Foo', must re-embed"
+        );
+        assert_eq!(sem.entry_count(), 1);
+
+        // Verify the entry's heading text was updated.
+        let ids = sem.doc_to_ids.get(&uri).unwrap();
+        assert_eq!(
+            sem.entries_by_id.get(&ids[0]).unwrap().heading,
+            "Foo",
+            "heading text should be updated from 'Foo!' to 'Foo'"
         );
     }
 }

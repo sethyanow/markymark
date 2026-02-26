@@ -55,7 +55,7 @@ struct VoyageErrorResponse {
 
 /// Configuration for [`VoyageProvider`].
 pub struct VoyageConfig {
-    /// Voyage AI model name (default: `"voyage-3"`).
+    /// Voyage AI model name (default: `"voyage-4"`).
     pub model: String,
     /// Embedding dimensionality (default: 1024).
     pub dimensions: u32,
@@ -68,7 +68,7 @@ pub struct VoyageConfig {
 impl Default for VoyageConfig {
     fn default() -> Self {
         Self {
-            model: "voyage-3".to_string(),
+            model: "voyage-4".to_string(),
             dimensions: 1024,
             base_url: "https://api.voyageai.com".to_string(),
             batch_chunk_size: DEFAULT_BATCH_CHUNK_SIZE,
@@ -106,6 +106,12 @@ impl VoyageProvider {
         if api_key.trim().is_empty() {
             return Err(EmbedError::ProviderUnavailable(
                 "VOYAGE_API_KEY is empty or not set".to_string(),
+            ));
+        }
+
+        if config.batch_chunk_size == 0 {
+            return Err(EmbedError::InvalidInput(
+                "batch_chunk_size must be >= 1".to_string(),
             ));
         }
 
@@ -297,7 +303,7 @@ mod tests {
         serde_json::json!({
             "object": "list",
             "data": data,
-            "model": "voyage-3",
+            "model": "voyage-4",
             "usage": { "total_tokens": 42 }
         })
     }
@@ -554,7 +560,7 @@ mod tests {
 
         // JSON spec doesn't support NaN, so serde rejects it at parse time.
         // Use a raw string body with "NaN" to simulate a non-standard API returning it.
-        let raw_body = r#"{"object":"list","data":[{"object":"embedding","embedding":[NaN,0.1],"index":0}],"model":"voyage-3","usage":{"total_tokens":1}}"#;
+        let raw_body = r#"{"object":"list","data":[{"object":"embedding","embedding":[NaN,0.1],"index":0}],"model":"voyage-4","usage":{"total_tokens":1}}"#;
 
         Mock::given(method("POST"))
             .respond_with(ResponseTemplate::new(200).set_body_string(raw_body))
@@ -598,5 +604,39 @@ mod tests {
             "Debug output leaked API key: {debug_output}"
         );
         assert!(debug_output.contains("***"));
+    }
+
+    #[test]
+    fn test_new_with_zero_batch_chunk_size_returns_error() {
+        let result = VoyageProvider::new(
+            "test-api-key".to_string(),
+            VoyageConfig {
+                batch_chunk_size: 0,
+                ..Default::default()
+            },
+        );
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            EmbedError::InvalidInput(msg) => {
+                assert!(
+                    msg.contains("batch_chunk_size"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected InvalidInput, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_new_with_valid_batch_chunk_size_succeeds() {
+        // Boundary case: batch_chunk_size = 1 is the minimum valid value.
+        let result = VoyageProvider::new(
+            "test-api-key".to_string(),
+            VoyageConfig {
+                batch_chunk_size: 1,
+                ..Default::default()
+            },
+        );
+        assert!(result.is_ok());
     }
 }

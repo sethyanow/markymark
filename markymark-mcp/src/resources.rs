@@ -68,7 +68,7 @@ impl MarkymarkMcp {
     /// - `markymark://outline/{uri}` → document outline
     /// - `markymark://symbols?query={query}` → symbol search
     /// - `markymark://dependency-graph?realm={realm}&format={format}` → link graph
-    pub async fn read_resource_sync(&self, uri: &str) -> Result<Vec<ResourceContents>, McpError> {
+    pub async fn read_resource(&self, uri: &str) -> Result<Vec<ResourceContents>, McpError> {
         if let Some(doc_uri) = uri.strip_prefix("markymark://outline/") {
             return self.read_outline_resource(uri, doc_uri).await;
         }

@@ -240,6 +240,9 @@ mod tests {
 
     /// When semantic-search + voyage features are compiled, missing VOYAGE_API_KEY
     /// should produce a clear error.
+    // Note: This test mutates VOYAGE_API_KEY env var. Process isolation is
+    // guaranteed by cargo-nextest (process-per-test). If running under
+    // `cargo test` (shared process), this test may interfere with others.
     #[cfg(all(feature = "semantic-search", feature = "voyage"))]
     #[test]
     fn voyage_missing_api_key_returns_error() {

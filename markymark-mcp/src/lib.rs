@@ -114,7 +114,7 @@ impl ServerHandler for MarkymarkMcp {
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
-        let result = self.read_resource_sync(&request.uri).await;
+        let result = self.read_resource(&request.uri).await;
         result.map(|contents| ReadResourceResult { contents })
     }
 }
