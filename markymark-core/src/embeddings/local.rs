@@ -216,6 +216,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn new_with_unwritable_cache_dir_returns_provider_unavailable() {
         // /dev/null is a file, not a directory — create_dir_all will fail.
         let result = LocalOnnxProvider::new(Some(PathBuf::from("/dev/null/nonexistent")));

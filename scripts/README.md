@@ -27,7 +27,7 @@ semantic search query.
 | Script | Provider | Credentials | First-run overhead |
 |--------|----------|-------------|--------------------|
 | `smoke-local.sh` | Local ONNX (all-MiniLM-L6-v2) | None | ~23MB model download |
-| `smoke-voyage.sh` | Voyage AI API (voyage-3) | `VOYAGE_API_KEY` | None |
+| `smoke-voyage.sh` | Voyage AI API (voyage-4) | `VOYAGE_API_KEY` | None |
 
 ### Configuration
 

@@ -8,7 +8,22 @@ Completed work details live in git history, not here.
 
 ---
 
-## Current State (2026-02-24)
+## Current State (2026-02-26)
+
+### PR #46 (feature-embeddings) — Review Triage Round 2
+
+15 findings from 4 reviewers (Codex, Copilot, CodeRabbit, Greptile). **10 dismissed** (already
+fixed by `ac3563b`), **1 already tracked** (marky-y4be), **4 new valid**:
+
+| Bead | P | Finding |
+|------|---|---------|
+| marky-ysv8 | P2 | Realm read-lock held across semantic search await (engine/mod.rs:343) |
+| marky-2q2b | P2 | Voyage embed_batch doesn't validate response cardinality (voyage.rs:260) |
+| marky-h7pp | P4 | `/dev/null` test not portable — needs `#[cfg(unix)]` (local.rs:221) |
+| marky-le49 | P4 | Stale `voyage-3` in README.md, code default is `voyage-4` |
+
+**Pattern learned:** Reviewers analyzed commit `b77c490` (pre-fix). 10/15 findings were already
+addressed. Future triage rounds should note the reviewed commit vs HEAD to fast-dismiss stale findings.
 
 ### PR #44 (v0.6.0, dev→main) — CI green, ready for merge
 
