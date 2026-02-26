@@ -293,6 +293,12 @@ in Rust. Net -2,839 lines. The decisions below are historical context only.
 
 ## Key Failure Patterns
 
+### bd + Dolt panics under parallel CLI invocations (2026-02-26)
+
+Running multiple `bd` commands in parallel (`list/show/ready`) can trigger a Dolt nil-pointer
+panic even with `BD_NO_DB=true BEADS_NO_DAEMON=1`. Sequential `bd` commands in the same shell
+work reliably. For plan execution, run `bd` operations one-at-a-time.
+
 ### Context window exhaustion from task chaining (fail-context-runaway)
 Agent completed B-6, then marky-eebj refactor, then started marky-j516 — all in one session
 without stopping for user review. Hit context window limit mid-task, leaving from_blob/tests.rs
