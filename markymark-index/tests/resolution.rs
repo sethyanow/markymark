@@ -172,7 +172,9 @@ async fn path_realm() -> (
     let uri_endpoints =
         DocumentUri::from_file_path(&std::path::PathBuf::from("/vault/docs/api/endpoints.md"));
     let idx_endpoints = index_from("# API Endpoints\n\n## List Endpoints\n\nSome content.");
-    realm.add_document(uri_endpoints.clone(), idx_endpoints).await;
+    realm
+        .add_document(uri_endpoints.clone(), idx_endpoints)
+        .await;
 
     // /vault/docs/guide/overview.md — same stem as... nothing yet, but in a different dir
     let uri_overview =

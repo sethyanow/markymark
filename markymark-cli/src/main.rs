@@ -99,8 +99,7 @@ async fn build_engine_with_provider(
         SemanticProvider::Local => build_local_provider()?,
         SemanticProvider::Hash => Arc::new(markymark_mcp::HashEmbeddingProvider::new(128)),
     };
-    markymark_mcp::RuntimeEngine::from_workspace_roots_with_provider(roots, Some(embedding))
-        .await
+    markymark_mcp::RuntimeEngine::from_workspace_roots_with_provider(roots, Some(embedding)).await
 }
 
 #[cfg(not(feature = "semantic-search"))]
@@ -163,13 +162,16 @@ mod tests {
         let cli = Cli::try_parse_from(["markymark", "--mcp", "--semantic-search", "voyage", "."])
             .unwrap();
         assert!(cli.mcp);
-        assert!(matches!(cli.semantic_search, Some(SemanticProvider::Voyage)));
+        assert!(matches!(
+            cli.semantic_search,
+            Some(SemanticProvider::Voyage)
+        ));
     }
 
     #[test]
     fn cli_parses_semantic_search_hash() {
-        let cli = Cli::try_parse_from(["markymark", "--mcp", "--semantic-search", "hash", "."])
-            .unwrap();
+        let cli =
+            Cli::try_parse_from(["markymark", "--mcp", "--semantic-search", "hash", "."]).unwrap();
         assert!(matches!(cli.semantic_search, Some(SemanticProvider::Hash)));
     }
 
@@ -181,8 +183,8 @@ mod tests {
 
     #[test]
     fn cli_parses_semantic_search_local() {
-        let cli = Cli::try_parse_from(["markymark", "--mcp", "--semantic-search", "local", "."])
-            .unwrap();
+        let cli =
+            Cli::try_parse_from(["markymark", "--mcp", "--semantic-search", "local", "."]).unwrap();
         assert!(matches!(cli.semantic_search, Some(SemanticProvider::Local)));
     }
 
@@ -210,7 +212,9 @@ mod tests {
         let tmp = std::env::temp_dir().join("markymark-test-no-feature");
         let _ = std::fs::create_dir_all(&tmp);
         let result = build_engine_with_provider(vec![tmp], SemanticProvider::Hash).await;
-        let err = result.err().expect("should fail without semantic-search feature");
+        let err = result
+            .err()
+            .expect("should fail without semantic-search feature");
         assert!(
             err.to_string().contains("--features semantic-search"),
             "error should mention the required feature flag, got: {err}"
@@ -225,7 +229,9 @@ mod tests {
         let tmp = std::env::temp_dir().join("markymark-test-no-local");
         let _ = std::fs::create_dir_all(&tmp);
         let result = build_engine_with_provider(vec![tmp], SemanticProvider::Local).await;
-        let err = result.err().expect("should fail without local-embeddings feature");
+        let err = result
+            .err()
+            .expect("should fail without local-embeddings feature");
         assert!(
             err.to_string().contains("--features local-embeddings"),
             "error should mention the required feature flag, got: {err}"

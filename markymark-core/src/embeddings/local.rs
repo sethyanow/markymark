@@ -63,9 +63,7 @@ impl LocalOnnxProvider {
                 .with_show_download_progress(true),
         )
         .map_err(|e| {
-            EmbedError::ProviderUnavailable(format!(
-                "failed to load all-MiniLM-L6-v2 model: {e}"
-            ))
+            EmbedError::ProviderUnavailable(format!("failed to load all-MiniLM-L6-v2 model: {e}"))
         })?;
 
         Ok(Self {
@@ -84,9 +82,9 @@ impl EmbeddingProvider for LocalOnnxProvider {
         let text = text.to_owned();
 
         tokio::task::spawn_blocking(move || {
-            let mut guard = model.lock().map_err(|e| {
-                EmbedError::InternalError(format!("model mutex poisoned: {e}"))
-            })?;
+            let mut guard = model
+                .lock()
+                .map_err(|e| EmbedError::InternalError(format!("model mutex poisoned: {e}")))?;
             let mut results = guard.embed(vec![text], None).map_err(|e| {
                 EmbedError::InternalError(format!("embedding inference failed: {e}"))
             })?;
@@ -114,9 +112,9 @@ impl EmbeddingProvider for LocalOnnxProvider {
         let owned: Vec<String> = texts.iter().map(|t| (*t).to_owned()).collect();
 
         tokio::task::spawn_blocking(move || {
-            let mut guard = model.lock().map_err(|e| {
-                EmbedError::InternalError(format!("model mutex poisoned: {e}"))
-            })?;
+            let mut guard = model
+                .lock()
+                .map_err(|e| EmbedError::InternalError(format!("model mutex poisoned: {e}")))?;
             guard.embed(owned, None).map_err(|e| {
                 EmbedError::InternalError(format!("batch embedding inference failed: {e}"))
             })

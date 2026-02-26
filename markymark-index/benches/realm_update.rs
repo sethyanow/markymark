@@ -242,7 +242,9 @@ fn bench_vault_update(c: &mut Criterion) {
                     (realm, edited_index)
                 },
                 |(mut realm, new_index)| {
-                    rt.block_on(realm.update_document(black_box(uri.clone()), black_box(new_index)));
+                    rt.block_on(
+                        realm.update_document(black_box(uri.clone()), black_box(new_index)),
+                    );
                     realm // return so drop is outside timing
                 },
                 BatchSize::LargeInput,
@@ -265,7 +267,9 @@ fn bench_vault_update(c: &mut Criterion) {
                     (realm, edited_index)
                 },
                 |(mut realm, new_index)| {
-                    rt.block_on(realm.update_document(black_box(uri.clone()), black_box(new_index)));
+                    rt.block_on(
+                        realm.update_document(black_box(uri.clone()), black_box(new_index)),
+                    );
                     realm // return so drop is outside timing
                 },
                 BatchSize::LargeInput,

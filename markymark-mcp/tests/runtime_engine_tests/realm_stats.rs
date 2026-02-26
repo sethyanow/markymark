@@ -166,10 +166,9 @@ async fn semantic_search_returns_ranked_matches() {
     fs::write(&setup, "# Installation\n\nSetup steps.\n").expect("setup doc should exist");
 
     let provider: Arc<dyn EmbeddingProvider> = Arc::new(HashEmbeddingProvider::new(128));
-    let engine =
-        RuntimeEngine::from_workspace_roots_with_provider(vec![ws.root()], Some(provider))
-            .await
-            .expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots_with_provider(vec![ws.root()], Some(provider))
+        .await
+        .expect("workspace should index");
 
     let result = engine
         .execute(CoreOperation::SemanticSearch {
@@ -205,10 +204,9 @@ async fn semantic_search_preview_stays_within_200_bytes_for_unicode() {
         .expect("unicode markdown should exist");
 
     let provider: Arc<dyn EmbeddingProvider> = Arc::new(HashEmbeddingProvider::new(128));
-    let engine =
-        RuntimeEngine::from_workspace_roots_with_provider(vec![ws.root()], Some(provider))
-            .await
-            .expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots_with_provider(vec![ws.root()], Some(provider))
+        .await
+        .expect("workspace should index");
 
     let result = engine
         .execute(CoreOperation::SemanticSearch {

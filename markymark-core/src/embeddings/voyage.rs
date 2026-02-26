@@ -155,9 +155,7 @@ impl VoyageProvider {
                 .await
                 .map(|e| e.detail)
                 .unwrap_or_else(|_| "rate limited".to_string());
-            return Err(EmbedError::InternalError(format!(
-                "rate limited: {detail}"
-            )));
+            return Err(EmbedError::InternalError(format!("rate limited: {detail}")));
         }
 
         if !status.is_success() {
@@ -203,7 +201,9 @@ impl VoyageProvider {
 impl EmbeddingProvider for VoyageProvider {
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
         if text.is_empty() {
-            return Err(EmbedError::InvalidInput("text must not be empty".to_string()));
+            return Err(EmbedError::InvalidInput(
+                "text must not be empty".to_string(),
+            ));
         }
 
         let resp = self.post_embeddings(&[text]).await?;
@@ -590,11 +590,8 @@ mod tests {
 
     #[test]
     fn test_debug_does_not_leak_api_key() {
-        let provider = VoyageProvider::new(
-            "super-secret-key".to_string(),
-            VoyageConfig::default(),
-        )
-        .unwrap();
+        let provider =
+            VoyageProvider::new("super-secret-key".to_string(), VoyageConfig::default()).unwrap();
         let debug_output = format!("{provider:?}");
         assert!(
             !debug_output.contains("super-secret"),

@@ -223,10 +223,8 @@ impl SemanticIndex {
         };
 
         // Check if old entries were a fallback.
-        let old_was_fallback = old_ids.len() == 1
-            && old_ids
-                .first()
-                .is_some_and(|id| id.ends_with("#fallback"));
+        let old_was_fallback =
+            old_ids.len() == 1 && old_ids.first().is_some_and(|id| id.ends_with("#fallback"));
 
         // Determine new_is_fallback.
         let new_is_fallback = new_headings.len() == 1 && new_headings[0].4;
@@ -631,8 +629,7 @@ mod tests {
         }
 
         fn reset(&self) {
-            self.count
-                .store(0, std::sync::atomic::Ordering::SeqCst);
+            self.count.store(0, std::sync::atomic::Ordering::SeqCst);
         }
 
         fn embed_count(&self) -> u32 {
@@ -643,8 +640,7 @@ mod tests {
     #[async_trait]
     impl EmbeddingProvider for CountingProvider {
         async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
-            self.count
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             self.inner.embed(text).await
         }
 
@@ -674,8 +670,7 @@ mod tests {
     #[async_trait]
     impl EmbeddingProvider for FailingProvider {
         async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
-            let n = self.count
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let n = self.count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if n >= self.fail_after {
                 return Err(EmbedError::InternalError("injected failure".to_string()));
             }
@@ -707,7 +702,11 @@ mod tests {
         let same_doc = build_doc_index("# Alpha\n## Beta\n## Gamma\n");
         sem.update_document(uri, &same_doc).await.unwrap();
 
-        assert_eq!(provider.embed_count(), 0, "unchanged headings should not re-embed");
+        assert_eq!(
+            provider.embed_count(),
+            0,
+            "unchanged headings should not re-embed"
+        );
         assert_eq!(sem.entry_count(), 3);
     }
 
@@ -724,7 +723,11 @@ mod tests {
         let updated = build_doc_index("# Alpha\n## BetaModified\n## Gamma\n");
         sem.update_document(uri, &updated).await.unwrap();
 
-        assert_eq!(provider.embed_count(), 1, "only changed heading should re-embed");
+        assert_eq!(
+            provider.embed_count(),
+            1,
+            "only changed heading should re-embed"
+        );
         assert_eq!(sem.entry_count(), 3);
     }
 
@@ -760,7 +763,11 @@ mod tests {
         let updated = build_doc_index("# Alpha\n## Gamma\n");
         sem.update_document(uri, &updated).await.unwrap();
 
-        assert_eq!(provider.embed_count(), 0, "no changed/new headings, zero embed calls");
+        assert_eq!(
+            provider.embed_count(),
+            0,
+            "no changed/new headings, zero embed calls"
+        );
         assert_eq!(sem.entry_count(), 2, "deleted heading metadata removed");
     }
 
@@ -777,7 +784,11 @@ mod tests {
         let same = build_doc_index("# Alpha\n## Beta\n");
         sem.update_document(uri, &same).await.unwrap();
 
-        assert_eq!(provider.embed_count(), 0, "identical doc should have zero embed calls");
+        assert_eq!(
+            provider.embed_count(),
+            0,
+            "identical doc should have zero embed calls"
+        );
         assert_eq!(sem.entry_count(), 2);
     }
 
@@ -857,7 +868,10 @@ mod tests {
         let ids = sem.doc_to_ids.get(&uri).unwrap();
         assert_eq!(ids.len(), 1);
         let entry = sem.entries_by_id.get(&ids[0]).unwrap();
-        assert_eq!(entry.heading_level, 3, "heading level should be updated to 3");
+        assert_eq!(
+            entry.heading_level, 3,
+            "heading level should be updated to 3"
+        );
     }
 
     #[tokio::test]
@@ -875,8 +889,15 @@ mod tests {
         let updated = build_doc_index("# Alpha\n## Beta\n## Gamma\n");
         let result = sem.update_document(uri.clone(), &updated).await;
 
-        assert!(result.is_err(), "update should return error on embed failure");
+        assert!(
+            result.is_err(),
+            "update should return error on embed failure"
+        );
         // Old state must be preserved — entries should still reference Alpha and Beta.
-        assert_eq!(sem.entry_count(), 2, "old entries must be preserved on failure");
+        assert_eq!(
+            sem.entry_count(),
+            2,
+            "old entries must be preserved on failure"
+        );
     }
 }

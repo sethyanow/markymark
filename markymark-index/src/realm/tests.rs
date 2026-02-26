@@ -97,7 +97,9 @@ async fn test_mixed_documents() {
     let mut realm = RealmIndex::new();
 
     let md_uri = uri("doc.md");
-    realm.add_document(md_uri.clone(), make_md_index("# Title")).await;
+    realm
+        .add_document(md_uri.clone(), make_md_index("# Title"))
+        .await;
 
     let json_uri = uri("config.json");
     realm.add_structured_document(
@@ -187,7 +189,9 @@ fn test_key_path_count() {
 async fn test_markdown_cross_doc_still_works() {
     let mut realm = RealmIndex::new();
     let uri = uri("doc.md");
-    realm.add_document(uri.clone(), make_md_index("# Hello\n## World")).await;
+    realm
+        .add_document(uri.clone(), make_md_index("# Hello\n## World"))
+        .await;
 
     // Heading lookup should still work
     let headings = realm.lookup_heading("hello");
@@ -227,7 +231,9 @@ async fn test_get_any_document() {
     let mut realm = RealmIndex::new();
 
     let md_uri = uri("doc.md");
-    realm.add_document(md_uri.clone(), make_md_index("# Title")).await;
+    realm
+        .add_document(md_uri.clone(), make_md_index("# Title"))
+        .await;
 
     let json_uri = uri("config.json");
     realm.add_structured_document(
@@ -320,7 +326,9 @@ async fn test_realm_indexes_journal_by_date() {
     // Bug this catches: detection runs but result not stored in date_to_docs
     let mut realm = RealmIndex::new();
     let journal_uri = uri("journals/2024_01_15.md");
-    realm.add_document(journal_uri.clone(), make_md_index("# Jan 15")).await;
+    realm
+        .add_document(journal_uri.clone(), make_md_index("# Jan 15"))
+        .await;
 
     let results = realm.lookup_journal_by_month(2024, 1);
     assert_eq!(results.len(), 1, "expected 1 journal doc for Jan 2024");
@@ -331,11 +339,21 @@ async fn test_realm_indexes_journal_by_date() {
 async fn test_realm_lookup_journal_by_month_multiple() {
     // Bug this catches: BTreeMap range query off by one, returns wrong month
     let mut realm = RealmIndex::new();
-    realm.add_document(uri("journals/2024_01_01.md"), make_md_index("day 1")).await;
-    realm.add_document(uri("journals/2024_01_15.md"), make_md_index("day 15")).await;
-    realm.add_document(uri("journals/2024_01_31.md"), make_md_index("day 31")).await;
-    realm.add_document(uri("journals/2024_02_01.md"), make_md_index("feb 1")).await;
-    realm.add_document(uri("journals/2024_02_15.md"), make_md_index("feb 15")).await;
+    realm
+        .add_document(uri("journals/2024_01_01.md"), make_md_index("day 1"))
+        .await;
+    realm
+        .add_document(uri("journals/2024_01_15.md"), make_md_index("day 15"))
+        .await;
+    realm
+        .add_document(uri("journals/2024_01_31.md"), make_md_index("day 31"))
+        .await;
+    realm
+        .add_document(uri("journals/2024_02_01.md"), make_md_index("feb 1"))
+        .await;
+    realm
+        .add_document(uri("journals/2024_02_15.md"), make_md_index("feb 15"))
+        .await;
 
     let jan = realm.lookup_journal_by_month(2024, 1);
     assert_eq!(jan.len(), 3, "expected 3 Jan docs, got {}", jan.len());
@@ -391,7 +409,9 @@ async fn test_realm_remove_journal_doc_cleans_up_date_index() {
     // Bug this catches: remove_document doesn't clean date_to_docs, causing stale entries
     let mut realm = RealmIndex::new();
     let journal_uri = uri("journals/2024_03_10.md");
-    realm.add_document(journal_uri.clone(), make_md_index("day")).await;
+    realm
+        .add_document(journal_uri.clone(), make_md_index("day"))
+        .await;
     realm.remove_document(&journal_uri);
 
     let results = realm.lookup_journal_by_month(2024, 3);
@@ -474,14 +494,18 @@ async fn test_code_span_cross_doc() {
     let mut realm = RealmIndex::new();
     let u1 = uri("a.md");
     let u2 = uri("b.md");
-    realm.add_document(
-        u1.clone(),
-        make_md_index_with_code_spans("# A\n", vec![code_span("Option")]),
-    ).await;
-    realm.add_document(
-        u2.clone(),
-        make_md_index_with_code_spans("# B\n", vec![code_span("Option")]),
-    ).await;
+    realm
+        .add_document(
+            u1.clone(),
+            make_md_index_with_code_spans("# A\n", vec![code_span("Option")]),
+        )
+        .await;
+    realm
+        .add_document(
+            u2.clone(),
+            make_md_index_with_code_spans("# B\n", vec![code_span("Option")]),
+        )
+        .await;
 
     let results = realm.lookup_code_span("Option");
     assert_eq!(results.len(), 2, "expected 2 docs, got {}", results.len());
@@ -505,7 +529,9 @@ fn test_lookup_code_span_not_found() {
 async fn test_stem_index_basic_lookup() {
     let mut realm = RealmIndex::new();
     let u = uri("notes.md");
-    realm.add_document(u.clone(), make_md_index("# Hello")).await;
+    realm
+        .add_document(u.clone(), make_md_index("# Hello"))
+        .await;
 
     let result = realm.find_uri_by_stem("notes");
     assert_eq!(
@@ -623,10 +649,12 @@ async fn test_stem_index_remove_one_of_two_same_stem() {
 async fn test_contribution_built_on_add() {
     let mut realm = RealmIndex::new();
     let u = uri("contrib_add.md");
-    realm.add_document(
-        u.clone(),
-        make_md_index("# Intro\n\n#tag1 #tag2\n\n^block1"),
-    ).await;
+    realm
+        .add_document(
+            u.clone(),
+            make_md_index("# Intro\n\n#tag1 #tag2\n\n^block1"),
+        )
+        .await;
 
     let key = u.as_str().to_string();
     let contrib = realm
@@ -673,7 +701,9 @@ async fn test_contribution_built_on_add() {
 async fn test_contribution_removed_on_remove() {
     let mut realm = RealmIndex::new();
     let u = uri("contrib_remove.md");
-    realm.add_document(u.clone(), make_md_index("# Heading\n\n#mytag")).await;
+    realm
+        .add_document(u.clone(), make_md_index("# Heading\n\n#mytag"))
+        .await;
 
     let key = u.as_str().to_string();
     assert!(
@@ -693,10 +723,12 @@ async fn test_update_no_structural_change() {
     let mut realm = RealmIndex::new();
     let u = uri("update_noop.md");
     // Add doc with 3 headings and 2 tags
-    realm.add_document(
-        u.clone(),
-        make_md_index("# Intro\n\n## Details\n\n### Deep\n\n#rust #zig"),
-    ).await;
+    realm
+        .add_document(
+            u.clone(),
+            make_md_index("# Intro\n\n## Details\n\n### Deep\n\n#rust #zig"),
+        )
+        .await;
 
     let heading_count_before = realm
         .slug_to_headings
@@ -706,10 +738,12 @@ async fn test_update_no_structural_change() {
     let tag_count_before: usize = realm.tag_counts().iter().map(|(_, c)| c).sum();
 
     // Update with identical structure but different content (simulating range shift)
-    realm.update_document(
-        u.clone(),
-        make_md_index("# Intro\n\n## Details\n\n### Deep\n\n#rust #zig"),
-    ).await;
+    realm
+        .update_document(
+            u.clone(),
+            make_md_index("# Intro\n\n## Details\n\n### Deep\n\n#rust #zig"),
+        )
+        .await;
 
     let heading_count_after = realm
         .slug_to_headings
@@ -736,10 +770,14 @@ async fn test_update_no_structural_change() {
 async fn test_update_heading_added() {
     let mut realm = RealmIndex::new();
     let u = uri("update_heading_add.md");
-    realm.add_document(u.clone(), make_md_index("# Intro")).await;
+    realm
+        .add_document(u.clone(), make_md_index("# Intro"))
+        .await;
 
     // Update: add a second heading
-    realm.update_document(u.clone(), make_md_index("# Intro\n\n## Details")).await;
+    realm
+        .update_document(u.clone(), make_md_index("# Intro\n\n## Details"))
+        .await;
 
     let intro_spur = realm.interner.get("intro").expect("intro interned");
     let details_spur = realm.interner.get("details").expect("details interned");
@@ -767,10 +805,14 @@ async fn test_update_heading_added() {
 async fn test_update_heading_removed() {
     let mut realm = RealmIndex::new();
     let u = uri("update_heading_rm.md");
-    realm.add_document(u.clone(), make_md_index("# Intro\n\n## Details")).await;
+    realm
+        .add_document(u.clone(), make_md_index("# Intro\n\n## Details"))
+        .await;
 
     // Update: remove the second heading
-    realm.update_document(u.clone(), make_md_index("# Intro")).await;
+    realm
+        .update_document(u.clone(), make_md_index("# Intro"))
+        .await;
 
     let intro_spur = realm.interner.get("intro").expect("intro interned");
     let details_spur = realm.interner.get("details").expect("details interned");
@@ -791,10 +833,14 @@ async fn test_update_heading_removed() {
 async fn test_update_tag_added_removed() {
     let mut realm = RealmIndex::new();
     let u = uri("update_tags.md");
-    realm.add_document(u.clone(), make_md_index("# H\n\n#rust #zig")).await;
+    realm
+        .add_document(u.clone(), make_md_index("# H\n\n#rust #zig"))
+        .await;
 
     // Update: remove zig, add wasm
-    realm.update_document(u.clone(), make_md_index("# H\n\n#rust #wasm")).await;
+    realm
+        .update_document(u.clone(), make_md_index("# H\n\n#rust #wasm"))
+        .await;
 
     // Use tag_counts() public API — tag_to_docs is lazily maintained.
     let counts: HashMap<String, usize> = realm.tag_counts().into_iter().collect();
@@ -810,10 +856,12 @@ async fn test_update_code_span_added() {
     realm.add_document(u.clone(), make_md_index("# H")).await;
 
     // Update: add a code span
-    realm.update_document(
-        u.clone(),
-        make_md_index_with_code_spans("# H", vec![code_span("HashMap")]),
-    ).await;
+    realm
+        .update_document(
+            u.clone(),
+            make_md_index_with_code_spans("# H", vec![code_span("HashMap")]),
+        )
+        .await;
 
     let hm_spur = realm.interner.get("HashMap").expect("HashMap interned");
     let entries = realm
@@ -830,10 +878,14 @@ async fn test_update_code_span_added() {
 async fn test_update_block_id_removed() {
     let mut realm = RealmIndex::new();
     let u = uri("update_block.md");
-    realm.add_document(u.clone(), make_md_index("# H\n\ntext ^abc")).await;
+    realm
+        .add_document(u.clone(), make_md_index("# H\n\ntext ^abc"))
+        .await;
 
     // Update: remove block id
-    realm.update_document(u.clone(), make_md_index("# H\n\ntext")).await;
+    realm
+        .update_document(u.clone(), make_md_index("# H\n\ntext"))
+        .await;
 
     let abc_spur = realm.interner.get("abc").expect("abc interned");
     let has_our_doc = realm
@@ -850,15 +902,21 @@ async fn test_update_preserves_other_docs_entries() {
     let ua = uri("update_a.md");
     let ub = uri("update_b.md");
     // Both docs have heading "intro"
-    realm.add_document(ua.clone(), make_md_index("# Intro")).await;
-    realm.add_document(ub.clone(), make_md_index("# Intro")).await;
+    realm
+        .add_document(ua.clone(), make_md_index("# Intro"))
+        .await;
+    realm
+        .add_document(ub.clone(), make_md_index("# Intro"))
+        .await;
 
     let intro_spur = realm.interner.get("intro").expect("intro interned");
     let before = realm.slug_to_headings.get(&intro_spur).unwrap().len();
     assert_eq!(before, 2, "both docs contribute to intro");
 
     // Update doc A to remove "intro"
-    realm.update_document(ua.clone(), make_md_index("# Changed")).await;
+    realm
+        .update_document(ua.clone(), make_md_index("# Changed"))
+        .await;
 
     let intro_entries = realm.slug_to_headings.get(&intro_spur);
     let b_still_present = intro_entries
@@ -922,12 +980,20 @@ async fn test_interner_memory_bounded_at_scale() {
 async fn test_lazy_tags_multiple_updates_before_query() {
     let mut realm = RealmIndex::new();
     let u = uri("lazy_tags.md");
-    realm.add_document(u.clone(), make_md_index("# H\n\n#rust #zig")).await;
+    realm
+        .add_document(u.clone(), make_md_index("# H\n\n#rust #zig"))
+        .await;
 
     // Rapid sequence of structural edits changing tags — no query between them.
-    realm.update_document(u.clone(), make_md_index("# H\n\n#rust #wasm")).await;
-    realm.update_document(u.clone(), make_md_index("# H\n\n#go #wasm")).await;
-    realm.update_document(u.clone(), make_md_index("# H\n\n#go #python #wasm")).await;
+    realm
+        .update_document(u.clone(), make_md_index("# H\n\n#rust #wasm"))
+        .await;
+    realm
+        .update_document(u.clone(), make_md_index("# H\n\n#go #wasm"))
+        .await;
+    realm
+        .update_document(u.clone(), make_md_index("# H\n\n#go #python #wasm"))
+        .await;
 
     // Single query should reflect final state.
     let counts: HashMap<String, usize> = realm.tag_counts().into_iter().collect();
@@ -943,11 +1009,17 @@ async fn test_lazy_tags_remove_after_dirty_update() {
     let mut realm = RealmIndex::new();
     let u1 = uri("doc1.md");
     let u2 = uri("doc2.md");
-    realm.add_document(u1.clone(), make_md_index("# A\n\n#shared #unique1")).await;
-    realm.add_document(u2.clone(), make_md_index("# B\n\n#shared #unique2")).await;
+    realm
+        .add_document(u1.clone(), make_md_index("# A\n\n#shared #unique1"))
+        .await;
+    realm
+        .add_document(u2.clone(), make_md_index("# B\n\n#shared #unique2"))
+        .await;
 
     // Update doc1 tags (makes tag index dirty)
-    realm.update_document(u1.clone(), make_md_index("# A\n\n#shared #replaced1")).await;
+    realm
+        .update_document(u1.clone(), make_md_index("# A\n\n#shared #replaced1"))
+        .await;
 
     // Remove doc2 — must clean tag index first to avoid stale entries.
     realm.remove_document(&u2);
@@ -963,14 +1035,20 @@ async fn test_lazy_tags_remove_after_dirty_update() {
 async fn test_lazy_tags_add_after_dirty_update() {
     let mut realm = RealmIndex::new();
     let u1 = uri("existing.md");
-    realm.add_document(u1.clone(), make_md_index("# A\n\n#alpha")).await;
+    realm
+        .add_document(u1.clone(), make_md_index("# A\n\n#alpha"))
+        .await;
 
     // Update makes tags dirty
-    realm.update_document(u1.clone(), make_md_index("# A\n\n#beta")).await;
+    realm
+        .update_document(u1.clone(), make_md_index("# A\n\n#beta"))
+        .await;
 
     // Add new document — must clean tag index first.
     let u2 = uri("new.md");
-    realm.add_document(u2.clone(), make_md_index("# B\n\n#gamma #beta")).await;
+    realm
+        .add_document(u2.clone(), make_md_index("# B\n\n#gamma #beta"))
+        .await;
 
     let counts: HashMap<String, usize> = realm.tag_counts().into_iter().collect();
     assert_eq!(counts.get("alpha"), None, "alpha removed by update");
@@ -982,10 +1060,14 @@ async fn test_lazy_tags_add_after_dirty_update() {
 async fn test_lazy_tags_fast_path_keeps_tags_clean() {
     let mut realm = RealmIndex::new();
     let u = uri("fastpath.md");
-    realm.add_document(u.clone(), make_md_index("# H\n\n#rust")).await;
+    realm
+        .add_document(u.clone(), make_md_index("# H\n\n#rust"))
+        .await;
 
     // Same structure — fast path, tags should NOT be dirtied.
-    realm.update_document(u.clone(), make_md_index("# H\n\n#rust")).await;
+    realm
+        .update_document(u.clone(), make_md_index("# H\n\n#rust"))
+        .await;
 
     // tag_to_docs should still be clean and correct.
     assert!(!realm.tags_dirty, "fast path should not dirty tags");

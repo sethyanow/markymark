@@ -122,8 +122,12 @@ async fn test_block_lookup_prefers_first_inserted_doc_on_collision() {
     let uri_a = uri("block-a.md");
     let uri_b = uri("block-b.md");
 
-    realm.add_document(uri_a.clone(), index_from("Doc A line ^shared-block")).await;
-    realm.add_document(uri_b.clone(), index_from("Doc B line ^shared-block")).await;
+    realm
+        .add_document(uri_a.clone(), index_from("Doc A line ^shared-block"))
+        .await;
+    realm
+        .add_document(uri_b.clone(), index_from("Doc B line ^shared-block"))
+        .await;
 
     let (resolved_uri, block) = realm
         .lookup_block("shared-block")
@@ -376,8 +380,12 @@ async fn test_interned_slug_dedup_cross_doc() {
 
     let uri_a = uri("intern-a.md");
     let uri_b = uri("intern-b.md");
-    realm.add_document(uri_a.clone(), index_from("# Intro\n\nDoc A")).await;
-    realm.add_document(uri_b.clone(), index_from("# Intro\n\nDoc B")).await;
+    realm
+        .add_document(uri_a.clone(), index_from("# Intro\n\nDoc A"))
+        .await;
+    realm
+        .add_document(uri_b.clone(), index_from("# Intro\n\nDoc B"))
+        .await;
 
     let results = realm.lookup_heading("intro");
     assert_eq!(
@@ -399,7 +407,9 @@ async fn test_remove_then_readd_same_content() {
 
     let content = "# Overview\n\nContent #cycling ^block-cycle";
 
-    realm.add_document(doc_uri.clone(), index_from(content)).await;
+    realm
+        .add_document(doc_uri.clone(), index_from(content))
+        .await;
     assert_eq!(realm.lookup_heading("overview").len(), 1);
     assert!(realm.lookup_block("block-cycle").is_some());
 
@@ -408,7 +418,9 @@ async fn test_remove_then_readd_same_content() {
     assert!(realm.lookup_block("block-cycle").is_none());
 
     // Re-add same content
-    realm.add_document(doc_uri.clone(), index_from(content)).await;
+    realm
+        .add_document(doc_uri.clone(), index_from(content))
+        .await;
     assert_eq!(realm.lookup_heading("overview").len(), 1);
     assert!(realm.lookup_block("block-cycle").is_some());
     let has_tag = realm.tag_counts().iter().any(|(n, _)| n == "cycling");
@@ -422,8 +434,12 @@ async fn test_cross_doc_same_slug_remove_first() {
 
     let uri_a = uri("cross-a.md");
     let uri_b = uri("cross-b.md");
-    realm.add_document(uri_a.clone(), index_from("# Overview\n\nDoc A")).await;
-    realm.add_document(uri_b.clone(), index_from("# Overview\n\nDoc B")).await;
+    realm
+        .add_document(uri_a.clone(), index_from("# Overview\n\nDoc A"))
+        .await;
+    realm
+        .add_document(uri_b.clone(), index_from("# Overview\n\nDoc B"))
+        .await;
 
     assert_eq!(realm.lookup_heading("overview").len(), 2);
 
@@ -440,7 +456,9 @@ async fn test_lookup_heading_returns_correct_strings() {
     // (not corrupted by interning).
     let mut realm = RealmIndex::new();
     let doc_uri = uri("strings.md");
-    realm.add_document(doc_uri.clone(), index_from("# Hello World\n\nContent")).await;
+    realm
+        .add_document(doc_uri.clone(), index_from("# Hello World\n\nContent"))
+        .await;
 
     let results = realm.lookup_heading("hello-world");
     assert_eq!(results.len(), 1);
@@ -454,8 +472,12 @@ async fn test_tag_counts_after_interning() {
     // Two docs with overlapping tags. Verify counts are correct.
     let mut realm = RealmIndex::new();
 
-    realm.add_document(uri("tag-a.md"), index_from("Content #alpha #beta here")).await;
-    realm.add_document(uri("tag-b.md"), index_from("More #beta #gamma content")).await;
+    realm
+        .add_document(uri("tag-a.md"), index_from("Content #alpha #beta here"))
+        .await;
+    realm
+        .add_document(uri("tag-b.md"), index_from("More #beta #gamma content"))
+        .await;
 
     let counts = realm.tag_counts();
     let alpha = counts.iter().find(|(n, _)| n == "alpha");
@@ -470,7 +492,9 @@ async fn test_tag_counts_after_interning() {
 #[tokio::test]
 async fn test_block_lookup_returns_correct_id() {
     let mut realm = RealmIndex::new();
-    realm.add_document(uri("block-id.md"), index_from("Paragraph ^my-block")).await;
+    realm
+        .add_document(uri("block-id.md"), index_from("Paragraph ^my-block"))
+        .await;
 
     let result = realm.lookup_block("my-block");
     assert!(result.is_some());
@@ -483,10 +507,12 @@ async fn test_remove_document_clears_cross_doc_maps() {
     // After removing the only doc, all cross-doc maps should be empty.
     let mut realm = RealmIndex::new();
     let doc_uri = uri("solo.md");
-    realm.add_document(
-        doc_uri.clone(),
-        index_from("# Heading\n\nContent #tag ^block-id"),
-    ).await;
+    realm
+        .add_document(
+            doc_uri.clone(),
+            index_from("# Heading\n\nContent #tag ^block-id"),
+        )
+        .await;
 
     realm.remove_document(&doc_uri);
 

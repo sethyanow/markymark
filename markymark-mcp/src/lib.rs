@@ -34,9 +34,9 @@ mod subscriptions;
 mod tools;
 
 pub use dto::*;
-pub use engine::RuntimeEngine;
 #[cfg(feature = "semantic-search")]
 pub use engine::HashEmbeddingProvider;
+pub use engine::RuntimeEngine;
 
 pub(crate) const SEMANTIC_SEARCH_MAX_TOP_K: u32 = 100;
 
