@@ -156,16 +156,12 @@ impl RealmIndex {
         Ok(realm)
     }
 
-    /// Add a markdown document to the realm index.
-    /// Populates cross-doc indexes with owned copies.
+    /// Add a markdown document to the realm index (structural + semantic embedding).
+    ///
+    /// For batch operations (e.g. `AddRoot`) where the caller manages lock scope,
+    /// use [`add_document_structural`] + deferred embedding via [`semantic_index_arc`]
+    /// to avoid holding outer locks during slow embedding I/O.
     pub async fn add_document(&mut self, uri: DocumentUri, index: DocumentIndex) {
-        let key = uri.as_str().to_string();
-
-        // If replacing, clear old doc from cross-doc indexes first
-        self.remove_from_cross_doc_indexes(&key);
-
-        self.populate_cross_doc_indexes(&uri, &index);
-
         #[cfg(feature = "embeddings")]
         if let Some(semantic) = &self.semantic_index {
             let mut guard = semantic.lock().await;
@@ -176,6 +172,23 @@ impl RealmIndex {
                 );
             }
         }
+
+        self.add_document_structural(uri, index);
+    }
+
+    /// Add a markdown document to the structural index only (no semantic embedding).
+    ///
+    /// This is the sync portion of [`add_document`]. It updates cross-doc indexes,
+    /// contribution metadata, and document storage. Embedding is the caller's
+    /// responsibility — clone the [`semantic_index_arc`] and embed outside any
+    /// outer lock to avoid blocking concurrent operations.
+    pub fn add_document_structural(&mut self, uri: DocumentUri, index: DocumentIndex) {
+        let key = uri.as_str().to_string();
+
+        // If replacing, clear old doc from cross-doc indexes first
+        self.remove_from_cross_doc_indexes(&key);
+
+        self.populate_cross_doc_indexes(&uri, &index);
 
         // Store contribution metadata for incremental updates (Layer 3).
         let contrib = DocContribution::build(&mut self.interner, &index, &uri);

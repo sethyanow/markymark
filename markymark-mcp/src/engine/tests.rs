@@ -749,6 +749,89 @@ mod concurrency_tests {
             "SemanticSearch should succeed, got {search_result:?}"
         );
     }
+
+    /// AddRoot with a slow embedding provider must not block concurrent write
+    /// operations on the realm state.
+    ///
+    /// This test:
+    /// 1. Creates an engine with a slow embedding provider (200ms per embed).
+    /// 2. Creates a realm, then spawns an AddRoot for a dir with markdown files.
+    /// 3. Waits until the embedding provider has started (deterministic sync).
+    /// 4. Concurrently runs a CreateRealm write operation.
+    /// 5. Asserts CreateRealm completes quickly (well under the embedding delay).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn add_root_does_not_block_realm_writes() {
+        let delay = Duration::from_millis(200);
+        let (slow_provider, embed_started) = SlowEmbeddingProvider::new(32, delay);
+        let provider: Arc<dyn EmbeddingProvider> = Arc::new(slow_provider);
+
+        // Build an engine with the slow provider and a "default" realm (no roots yet).
+        let engine = Arc::new(RuntimeEngine {
+            state: tokio::sync::RwLock::new({
+                let mut map = std::collections::HashMap::new();
+                map.insert(
+                    "default".to_string(),
+                    RealmData::new(Some(Arc::clone(&provider))),
+                );
+                map
+            }),
+            provider: Some(provider),
+        });
+
+        // Create a temp dir with a markdown file that has a heading (triggers embedding).
+        let dir = make_temp_realm_dir("add-root-concurrency");
+        fs::write(
+            dir.path().join("doc.md"),
+            "# Slow Embedding Test\n\nSome content.\n",
+        )
+        .unwrap();
+
+        // Spawn AddRoot in the background (will be slow due to embedding).
+        let engine_add = Arc::clone(&engine);
+        let root_path = dir.path().to_path_buf();
+        let add_root_handle = tokio::spawn(async move {
+            engine_add
+                .execute(CoreOperation::AddRoot {
+                    realm: "default".to_string(),
+                    root: root_path,
+                })
+                .await
+        });
+
+        // Wait until the embedding provider has been called — deterministic sync.
+        embed_started.notified().await;
+
+        // Now run a write operation concurrently — it should NOT be blocked.
+        let engine_write = Arc::clone(&engine);
+        let write_start = Instant::now();
+        let write_result = engine_write
+            .execute(CoreOperation::CreateRealm {
+                name: "add-root-write-test".to_string(),
+            })
+            .await;
+        let write_elapsed = write_start.elapsed();
+
+        // The write operation should complete in well under the embedding delay.
+        // If the write lock is held across indexing, this would take >=200ms.
+        assert!(
+            write_elapsed < Duration::from_millis(100),
+            "CreateRealm took {write_elapsed:?}, expected <100ms — write lock may be held across AddRoot indexing",
+        );
+
+        assert!(
+            matches!(write_result, CoreOperationResult::RealmInfo { .. }),
+            "CreateRealm should succeed, got {write_result:?}"
+        );
+
+        // Let AddRoot complete and verify it succeeded.
+        let add_root_result = add_root_handle
+            .await
+            .expect("add_root task should not panic");
+        assert!(
+            matches!(add_root_result, CoreOperationResult::RealmInfo { .. }),
+            "AddRoot should succeed, got {add_root_result:?}"
+        );
+    }
 }
 
 /// Profiles the cumulative I/O cost of N `preview_for_range` calls across
