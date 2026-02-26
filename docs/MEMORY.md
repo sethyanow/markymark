@@ -10,6 +10,21 @@ Completed work details live in git history, not here.
 
 ## Current State (2026-02-26)
 
+### marky-0xtn Phase 1 complete (marky-e0kp, commit `2cd1310`)
+
+Additive CEngineResult path landed alongside blob path:
+- Zig: new `engine/ffi_types.zig` + `engine/get_result.zig`, new exports
+  `marky_engine_get_result` / `marky_engine_free_result`
+- Zig `DocumentEngine` now tracks monotonic `generation` (1 after create, +1 per successful update)
+- Rust kernels: new `engine_ffi.rs` with repr(C) mirrors, safe blob-slice decoding, and
+  `EngineResult::to_extraction()`
+- Rust index: new `DocumentIndex::from_engine_result(_with_frontmatter)` constructor
+- Parity tests added: `from_engine_result` matches `from_blob` across empty, mixed, unicode,
+  and nullable-field scenarios
+
+**Decision captured:** `CEngineXmlTag` includes `is_inline` (not just self-closing/unclosed) to
+match full `StoredXmlTag` engine state and preserve from_blob parity.
+
 ### PR #46 (feature-embeddings) — Review Triage Round 2
 
 15 findings from 4 reviewers (Codex, Copilot, CodeRabbit, Greptile). **10 dismissed** (already
