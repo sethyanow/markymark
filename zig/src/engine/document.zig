@@ -60,6 +60,7 @@ pub const DocumentEngine = struct {
 
     token_estimate: u32 = 0,
     content_hash: u64 = 0,
+    generation: u64 = 0,
 
     cached_blob: ?[]u8 = null,
 
@@ -140,6 +141,7 @@ pub const DocumentEngine = struct {
         self.line_starts = new_line_starts;
         self.token_estimate = new_token_estimate;
         self.content_hash = new_content_hash;
+        self.generation += 1;
         self.cached_blob = null; // Invalidate cached blob
     }
 
@@ -150,6 +152,11 @@ pub const DocumentEngine = struct {
         const b = serializeState(self) catch return error.OutOfMemory;
         self.cached_blob = b;
         return b;
+    }
+
+    /// Monotonic parse generation. Starts at 1 after successful create().
+    pub fn getGeneration(self: *const DocumentEngine) u64 {
+        return self.generation;
     }
 
     /// Destroy the engine, freeing all owned memory.
@@ -181,6 +188,7 @@ pub const DocumentEngine = struct {
             &self.token_estimate,
             &self.content_hash,
         ) catch |e| return e;
+        self.generation += 1;
     }
 
     fn freeState(self: *DocumentEngine) void {
@@ -665,4 +673,3 @@ const freeStoredXmlTagsList = free_mod.freeStoredXmlTagsList;
 test {
     _ = @import("document_test.zig");
 }
-

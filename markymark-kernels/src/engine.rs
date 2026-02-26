@@ -7,7 +7,10 @@
 //!
 //! Created for marky-atsp (epic marky-io3h, Task 2).
 
+use crate::engine_ffi::{marky_engine_get_result, CEngineResult, EngineResult};
 use crate::scan::KernelError;
+
+pub use crate::engine_ffi::{convert_engine_result, EngineExtraction};
 
 // ---------------------------------------------------------------------------
 // FFI declarations
@@ -179,6 +182,61 @@ impl DocumentEngine {
             other => Err(KernelError::InternalError(other)),
         }
     }
+
+    /// Get a structured FFI result for the current engine state.
+    ///
+    /// Returned allocations are owned by [`EngineResult`] and automatically
+    /// freed on drop.
+    pub fn get_result(&self) -> Result<EngineResult, KernelError> {
+        let mut raw = CEngineResult {
+            headings: std::ptr::null_mut(),
+            links: std::ptr::null_mut(),
+            code_spans: std::ptr::null_mut(),
+            tags: std::ptr::null_mut(),
+            block_ids: std::ptr::null_mut(),
+            tasks: std::ptr::null_mut(),
+            embeds: std::ptr::null_mut(),
+            callouts: std::ptr::null_mut(),
+            block_refs: std::ptr::null_mut(),
+            query_blocks: std::ptr::null_mut(),
+            link_definitions: std::ptr::null_mut(),
+            properties: std::ptr::null_mut(),
+            xml_tags: std::ptr::null_mut(),
+            line_starts: std::ptr::null_mut(),
+            text_blob: std::ptr::null(),
+            content_hash: 0,
+            generation: 0,
+            headings_count: 0,
+            links_count: 0,
+            code_spans_count: 0,
+            tags_count: 0,
+            block_ids_count: 0,
+            tasks_count: 0,
+            embeds_count: 0,
+            callouts_count: 0,
+            block_refs_count: 0,
+            query_blocks_count: 0,
+            link_definitions_count: 0,
+            properties_count: 0,
+            xml_tags_count: 0,
+            line_starts_count: 0,
+            text_blob_len: 0,
+            token_estimate: 0,
+            _reserved: [0; 32],
+        };
+
+        // SAFETY: `self.handle` is a valid handle created by marky_engine_create.
+        // `raw` is stack-owned and passed as a valid mutable pointer.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let rc = unsafe { marky_engine_get_result(self.handle, &mut raw) };
+        match rc {
+            0 => Ok(EngineResult::from_raw(raw)),
+            -1 => Err(KernelError::InvalidInput),
+            -4 => Err(KernelError::InternalError(-4)),
+            -5 => Err(KernelError::InternalError(-5)),
+            other => Err(KernelError::InternalError(other)),
+        }
+    }
 }
 
 impl Drop for DocumentEngine {
@@ -309,5 +367,27 @@ mod tests {
         let debug = format!("{engine:?}");
         assert!(debug.contains("DocumentEngine"));
         assert!(debug.contains("handle_null: false"));
+    }
+
+    #[test]
+    fn test_engine_get_result_basic() {
+        let engine = DocumentEngine::new("# Hello\n\n[[Page|Alias]]\n").unwrap();
+        let result = engine.get_result().unwrap();
+        let extraction = result.to_extraction().unwrap();
+
+        assert_eq!(extraction.headings.len(), 1);
+        assert_eq!(extraction.wiki_links.len(), 1);
+        assert!(extraction.generation >= 1);
+    }
+
+    #[test]
+    fn test_engine_get_result_generation_increments() {
+        let mut engine = DocumentEngine::new("# One\n").unwrap();
+        let gen1 = engine.get_result().unwrap().as_raw().generation;
+
+        engine.update("# Two\n## Sub\n").unwrap();
+        let gen2 = engine.get_result().unwrap().as_raw().generation;
+
+        assert!(gen2 > gen1);
     }
 }

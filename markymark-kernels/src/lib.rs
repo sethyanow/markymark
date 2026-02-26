@@ -16,6 +16,7 @@
 
 pub mod embed;
 pub mod engine;
+pub mod engine_ffi;
 pub mod hash;
 pub mod index_serde;
 pub mod md4c;

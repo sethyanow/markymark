@@ -29,6 +29,7 @@ pub fn make_v2_empty_blob() -> [u8; 128] {
 }
 
 mod core_tests;
+mod engine_parity_tests;
 mod feature_tests;
 mod golden_tests;
 mod parity_tests;
