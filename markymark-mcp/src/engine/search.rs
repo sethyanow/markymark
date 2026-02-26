@@ -145,10 +145,7 @@ pub(crate) async fn handle_semantic_search(
 
     let results = {
         let guard = semantic_index.lock().await;
-        match guard
-            .search(&query, top_k, min_score.clamp(0.0, 1.0))
-            .await
-        {
+        match guard.search(&query, top_k, min_score.clamp(0.0, 1.0)).await {
             Ok(results) => results,
             Err(err) => {
                 return CoreOperationResult::Error(CoreError::Message(format!(
