@@ -17,8 +17,8 @@ fixed by `ac3563b`), **1 already tracked** (marky-y4be), **4 new valid**:
 
 | Bead | P | Finding |
 |------|---|---------|
-| marky-ysv8 | P2 | **FIXED** — Realm read-lock held across semantic search await (engine/mod.rs:343) |
-| marky-2q2b | P2 | Voyage embed_batch doesn't validate response cardinality (voyage.rs:260) |
+| marky-ysv8 | P2 | **FIXED** (`f06d591`) — Realm read-lock held across semantic search await |
+| marky-2q2b | P2 | **FIXED** (`db61d5c`) — Voyage embed_batch response cardinality validation |
 | marky-h7pp | P4 | `/dev/null` test not portable — needs `#[cfg(unix)]` (local.rs:221) |
 | marky-le49 | P4 | Stale `voyage-3` in README.md, code default is `voyage-4` |
 
@@ -107,6 +107,25 @@ GPA backing. GPA fills freed memory with `0xaa` — double-free segfaults at
 ---
 
 ## Lessons Learned
+
+### Post-implementation code review findings pattern (2026-02-26)
+
+After parallel subagent implementation of marky-ysv8 + marky-2q2b, code review found
+recurring patterns worth catching upfront:
+
+- **Racy test synchronization**: `sleep(Nms)` to "wait for async task to start" is a race.
+  Use `tokio::sync::Notify` — signal from inside the target code path, await before proceeding.
+  The test passes vacuously if the sleep is too short (false green). Fixed in `90734e2`.
+- **Symmetrical test coverage**: When validating `!=` checks (e.g., count mismatch), test
+  BOTH directions — under-count AND over-count. The partial-response test only covered fewer
+  items; the excess-items direction was untested until review caught it.
+- **Inner Mutex contention after lock-scope fix**: Wrapping shared state in `Arc<Mutex>` to
+  release an outer lock is correct, but the inner Mutex still serializes mutations against
+  searches. This is acceptable (by design) but must be documented — callers need to know
+  write latency can spike by the duration of a concurrent search.
+- **`pub` vs `pub(crate)` for cross-crate internal APIs**: Methods consumed only by sibling
+  workspace crates must stay `pub` (Rust visibility is per-crate, not per-workspace). Consider
+  `#[doc(hidden)]` for stability signaling, but don't attempt `pub(crate)` for cross-crate use.
 
 ### Zig ArrayListUnmanaged scratch buffer pattern (2026-02-19)
 
