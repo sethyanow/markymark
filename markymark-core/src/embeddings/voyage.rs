@@ -247,12 +247,46 @@ impl EmbeddingProvider for VoyageProvider {
         for (chunk_idx, chunk) in texts.chunks(chunk_size).enumerate() {
             let resp = self.post_embeddings(chunk).await?;
 
+            // Check A: chunk count matches input count
+            if resp.data.len() != chunk.len() {
+                return Err(EmbedError::InternalError(format!(
+                    "Voyage chunk {chunk_idx}: expected {} items, got {}",
+                    chunk.len(),
+                    resp.data.len()
+                )));
+            }
+
+            // Check B: uniqueness + range validation (inline during iteration)
+            let mut seen = std::collections::HashSet::with_capacity(chunk.len());
             for item in resp.data {
+                // Range check BEFORE computing global_idx (prevents overflow)
+                if item.index >= chunk.len() {
+                    return Err(EmbedError::InternalError(format!(
+                        "Voyage chunk {chunk_idx}: item index {} out of range [0, {})",
+                        item.index,
+                        chunk.len()
+                    )));
+                }
+                if !seen.insert(item.index) {
+                    return Err(EmbedError::InternalError(format!(
+                        "Voyage chunk {chunk_idx}: duplicate item index {} in response",
+                        item.index
+                    )));
+                }
                 self.validate_dimensions(&item.embedding)?;
                 // Global index = chunk offset + local index
                 let global_idx = chunk_idx * chunk_size + item.index;
                 all_results.push((global_idx, item.embedding));
             }
+        }
+
+        // Check C: final count guard (defensive — catches logic regressions)
+        if all_results.len() != texts.len() {
+            return Err(EmbedError::InternalError(format!(
+                "Voyage embed_batch: expected {} results, got {} (logic error)",
+                texts.len(),
+                all_results.len()
+            )));
         }
 
         // Sort by index to respect API ordering
@@ -638,5 +672,193 @@ mod tests {
             },
         );
         assert!(result.is_ok());
+    }
+
+    // -----------------------------------------------------------------------
+    // Response cardinality validation (marky-2q2b)
+    // -----------------------------------------------------------------------
+
+    /// Helper: build a response JSON with custom data items.
+    /// Each item is (index, dims) — allows crafting partial/duplicate/OOB responses.
+    fn custom_response(items: &[(usize, usize)]) -> serde_json::Value {
+        let data: Vec<serde_json::Value> = items
+            .iter()
+            .map(|&(idx, dims)| {
+                serde_json::json!({
+                    "object": "embedding",
+                    "embedding": vec![0.1_f32; dims],
+                    "index": idx,
+                })
+            })
+            .collect();
+
+        serde_json::json!({
+            "object": "list",
+            "data": data,
+            "model": "voyage-4",
+            "usage": { "total_tokens": 42 }
+        })
+    }
+
+    #[tokio::test]
+    async fn test_embed_batch_partial_response_returns_error() {
+        // Send 3 texts but API returns only 2 items → chunk count mismatch
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/embeddings"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(custom_response(&[(0, 4), (1, 4)])),
+            )
+            .mount(&server)
+            .await;
+
+        let provider = VoyageProvider::new(
+            "test-api-key".to_string(),
+            VoyageConfig {
+                base_url: server.uri(),
+                dimensions: 4,
+                batch_chunk_size: 10,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let result = provider.embed_batch(&["a", "b", "c"]).await;
+        assert!(result.is_err(), "expected error for partial response");
+        match result.unwrap_err() {
+            EmbedError::InternalError(msg) => {
+                assert!(
+                    msg.contains("expected 3") && msg.contains("got 2"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected InternalError, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_embed_batch_duplicate_index_returns_error() {
+        // API returns 3 items but two share index 1 → duplicate
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/embeddings"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(custom_response(&[(0, 4), (1, 4), (1, 4)])),
+            )
+            .mount(&server)
+            .await;
+
+        let provider = VoyageProvider::new(
+            "test-api-key".to_string(),
+            VoyageConfig {
+                base_url: server.uri(),
+                dimensions: 4,
+                batch_chunk_size: 10,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let result = provider.embed_batch(&["a", "b", "c"]).await;
+        assert!(result.is_err(), "expected error for duplicate indices");
+        match result.unwrap_err() {
+            EmbedError::InternalError(msg) => {
+                assert!(
+                    msg.contains("duplicate") && msg.contains("index 1"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected InternalError, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_embed_batch_out_of_range_index_returns_error() {
+        // API returns item with index=5 for a 3-item chunk → out of range
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/embeddings"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(custom_response(&[(0, 4), (1, 4), (5, 4)])),
+            )
+            .mount(&server)
+            .await;
+
+        let provider = VoyageProvider::new(
+            "test-api-key".to_string(),
+            VoyageConfig {
+                base_url: server.uri(),
+                dimensions: 4,
+                batch_chunk_size: 10,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let result = provider.embed_batch(&["a", "b", "c"]).await;
+        assert!(result.is_err(), "expected error for out-of-range index");
+        match result.unwrap_err() {
+            EmbedError::InternalError(msg) => {
+                assert!(
+                    msg.contains("index 5") && msg.contains("out of range"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected InternalError, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_embed_batch_multi_chunk_partial_second_chunk_returns_error() {
+        // Two chunks: chunk 0 (3 items) OK, chunk 1 (2 items) returns only 1 → error
+        let server = MockServer::start().await;
+
+        // First request: chunk 0 with 3 items — correct
+        Mock::given(method("POST"))
+            .and(path("/v1/embeddings"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(ok_response(3, 4)),
+            )
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        // Second request: chunk 1 with 2 items — returns only 1
+        Mock::given(method("POST"))
+            .and(path("/v1/embeddings"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(custom_response(&[(0, 4)])),
+            )
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        let provider = VoyageProvider::new(
+            "test-api-key".to_string(),
+            VoyageConfig {
+                base_url: server.uri(),
+                dimensions: 4,
+                batch_chunk_size: 3,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let texts: Vec<&str> = vec!["a", "b", "c", "d", "e"];
+        let result = provider.embed_batch(&texts).await;
+        assert!(result.is_err(), "expected error for partial second chunk");
+        match result.unwrap_err() {
+            EmbedError::InternalError(msg) => {
+                assert!(
+                    msg.contains("chunk 1") && msg.contains("expected 2") && msg.contains("got 1"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected InternalError, got: {other:?}"),
+        }
     }
 }
