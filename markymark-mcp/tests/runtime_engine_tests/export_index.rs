@@ -6,8 +6,8 @@ use markymark_mcp::RuntimeEngine;
 
 use super::TempWorkspace;
 
-#[test]
-fn export_index_returns_full_document_data() {
+#[tokio::test]
+async fn export_index_returns_full_document_data() {
     let ws = TempWorkspace::new("export-index");
     let doc = ws.root().join("notes.md");
     fs::write(
@@ -16,14 +16,17 @@ fn export_index_returns_full_document_data() {
     )
     .expect("doc should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
     let uri = DocumentUri::from_file_path(&doc);
-    let result = engine.execute(CoreOperation::ExportIndex {
-        uri: uri.clone(),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::ExportIndex {
+            uri: uri.clone(),
+            realm: None,
+        })
+        .await;
 
     match result {
         CoreOperationResult::DocumentExport {
@@ -53,18 +56,21 @@ fn export_index_returns_full_document_data() {
     }
 }
 
-#[test]
-fn export_index_errors_for_unindexed_document() {
+#[tokio::test]
+async fn export_index_errors_for_unindexed_document() {
     let ws = TempWorkspace::new("export-index-missing");
     fs::write(ws.root().join("a.md"), "# A\n").expect("doc should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let result = engine.execute(CoreOperation::ExportIndex {
-        uri: DocumentUri::from_file_path(&ws.root().join("nonexistent.md")),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::ExportIndex {
+            uri: DocumentUri::from_file_path(&ws.root().join("nonexistent.md")),
+            realm: None,
+        })
+        .await;
 
     match result {
         CoreOperationResult::Error(_) => {} // expected
@@ -72,22 +78,25 @@ fn export_index_errors_for_unindexed_document() {
     }
 }
 
-#[test]
-fn workspace_with_mixed_formats_indexes_all_supported_types() {
+#[tokio::test]
+async fn workspace_with_mixed_formats_indexes_all_supported_types() {
     let ws = TempWorkspace::new("mixed-formats");
     fs::write(ws.root().join("notes.md"), "# Notes\n").expect("md should be created");
     fs::write(ws.root().join("config.json"), r#"{"key": "val"}"#).expect("json should be created");
     fs::write(ws.root().join("settings.yaml"), "key: val\n").expect("yaml should be created");
     fs::write(ws.root().join(".env"), "DB_HOST=localhost\n").expect("env should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let result = engine.execute(CoreOperation::RealmStats {
-        realm: "default".to_string(),
-        check_duplicates: false,
-        include_token_counts: false,
-    });
+    let result = engine
+        .execute(CoreOperation::RealmStats {
+            realm: "default".to_string(),
+            check_duplicates: false,
+            include_token_counts: false,
+        })
+        .await;
 
     match result {
         CoreOperationResult::RealmStats {
@@ -106,20 +115,23 @@ fn workspace_with_mixed_formats_indexes_all_supported_types() {
     }
 }
 
-#[test]
-fn export_index_returns_empty_lists_for_minimal_document() {
+#[tokio::test]
+async fn export_index_returns_empty_lists_for_minimal_document() {
     let ws = TempWorkspace::new("export-index-minimal");
     let doc = ws.root().join("empty.md");
     fs::write(&doc, "Just some text with no structure.\n").expect("doc should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
     let uri = DocumentUri::from_file_path(&doc);
-    let result = engine.execute(CoreOperation::ExportIndex {
-        uri: uri.clone(),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::ExportIndex {
+            uri: uri.clone(),
+            realm: None,
+        })
+        .await;
 
     match result {
         CoreOperationResult::DocumentExport {
@@ -138,8 +150,8 @@ fn export_index_returns_empty_lists_for_minimal_document() {
     }
 }
 
-#[test]
-fn export_index_includes_frontmatter() {
+#[tokio::test]
+async fn export_index_includes_frontmatter() {
     let ws = TempWorkspace::new("export-index-frontmatter");
     let doc = ws.root().join("with-frontmatter.md");
     fs::write(
@@ -148,14 +160,17 @@ fn export_index_includes_frontmatter() {
     )
     .expect("doc should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
     let uri = DocumentUri::from_file_path(&doc);
-    let result = engine.execute(CoreOperation::ExportIndex {
-        uri: uri.clone(),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::ExportIndex {
+            uri: uri.clone(),
+            realm: None,
+        })
+        .await;
 
     match result {
         CoreOperationResult::DocumentExport {

@@ -12,9 +12,15 @@ categories = ["development-tools", "text-processing"]
 [features]
 default = []
 zig-kernels = ["dep:markymark-kernels"]
+voyage = ["dep:reqwest"]
+local-embeddings = ["dep:fastembed", "dep:tokio"]
 
 [dependencies]
+async-trait = { workspace = true }
+fastembed = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
 serde = { workspace = true }
+tokio = { workspace = true, optional = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
@@ -25,3 +31,6 @@ markymark-kernels = { path = "../markymark-kernels", optional = true }
 [dev-dependencies]
 insta = { workspace = true }
 proptest = { workspace = true }
+tokio = { workspace = true }
+wiremock = { workspace = true }
+reqwest = { workspace = true }

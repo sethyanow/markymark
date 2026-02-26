@@ -34,13 +34,13 @@ fn test_empty_realm_index() {
 // Adding documents
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_add_document() {
+#[tokio::test]
+async fn test_add_document() {
     let mut realm = RealmIndex::new();
     let doc_uri = uri("notes.md");
     let idx = index_from("# Introduction\n\nSome content.\n\n## Details");
 
-    realm.add_document(doc_uri.clone(), idx);
+    realm.add_document(doc_uri.clone(), idx).await;
 
     assert_eq!(
         realm.document_count(),
@@ -58,17 +58,17 @@ fn test_add_document() {
 // Global heading lookup
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_global_heading_lookup() {
+#[tokio::test]
+async fn test_global_heading_lookup() {
     let mut realm = RealmIndex::new();
 
     let uri_a = uri("page-a.md");
     let idx_a = index_from("# Alpha\n\n## Beta");
-    realm.add_document(uri_a.clone(), idx_a);
+    realm.add_document(uri_a.clone(), idx_a).await;
 
     let uri_b = uri("page-b.md");
     let idx_b = index_from("# Gamma\n\n## Delta");
-    realm.add_document(uri_b.clone(), idx_b);
+    realm.add_document(uri_b.clone(), idx_b).await;
 
     // Look up "alpha" - should only be in page-a
     let results = realm.lookup_heading("alpha");
@@ -92,13 +92,13 @@ fn test_global_heading_lookup() {
 // Global block lookup
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_global_block_lookup() {
+#[tokio::test]
+async fn test_global_block_lookup() {
     let mut realm = RealmIndex::new();
 
     let doc_uri = uri("blocks.md");
     let idx = index_from("A paragraph ^block-abc\n\nAnother paragraph ^block-def");
-    realm.add_document(doc_uri.clone(), idx);
+    realm.add_document(doc_uri.clone(), idx).await;
 
     // Look up existing block
     let result = realm.lookup_block("block-abc");
@@ -116,14 +116,18 @@ fn test_global_block_lookup() {
     assert!(result.is_none(), "nonexistent block should return None");
 }
 
-#[test]
-fn test_block_lookup_prefers_first_inserted_doc_on_collision() {
+#[tokio::test]
+async fn test_block_lookup_prefers_first_inserted_doc_on_collision() {
     let mut realm = RealmIndex::new();
     let uri_a = uri("block-a.md");
     let uri_b = uri("block-b.md");
 
-    realm.add_document(uri_a.clone(), index_from("Doc A line ^shared-block"));
-    realm.add_document(uri_b.clone(), index_from("Doc B line ^shared-block"));
+    realm
+        .add_document(uri_a.clone(), index_from("Doc A line ^shared-block"))
+        .await;
+    realm
+        .add_document(uri_b.clone(), index_from("Doc B line ^shared-block"))
+        .await;
 
     let (resolved_uri, block) = realm
         .lookup_block("shared-block")
@@ -136,17 +140,17 @@ fn test_block_lookup_prefers_first_inserted_doc_on_collision() {
 // Global tag table
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_global_tag_table() {
+#[tokio::test]
+async fn test_global_tag_table() {
     let mut realm = RealmIndex::new();
 
     let uri_a = uri("tags-a.md");
     let idx_a = index_from("Content #rust and #programming here");
-    realm.add_document(uri_a, idx_a);
+    realm.add_document(uri_a, idx_a).await;
 
     let uri_b = uri("tags-b.md");
     let idx_b = index_from("More #rust content and #design");
-    realm.add_document(uri_b, idx_b);
+    realm.add_document(uri_b, idx_b).await;
 
     let counts = realm.tag_counts();
 
@@ -182,13 +186,13 @@ fn test_global_tag_table() {
 // Remove document
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_remove_document() {
+#[tokio::test]
+async fn test_remove_document() {
     let mut realm = RealmIndex::new();
 
     let doc_uri = uri("removable.md");
     let idx = index_from("# Temporary\n\nSome text #ephemeral ^temp-block");
-    realm.add_document(doc_uri.clone(), idx);
+    realm.add_document(doc_uri.clone(), idx).await;
 
     assert_eq!(realm.document_count(), 1);
     assert_eq!(realm.lookup_heading("temporary").len(), 1);
@@ -219,18 +223,18 @@ fn test_remove_document() {
 // Heading collision across documents
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_heading_collision_across_docs() {
+#[tokio::test]
+async fn test_heading_collision_across_docs() {
     let mut realm = RealmIndex::new();
 
     // Both documents have a heading that slugifies to "introduction"
     let uri_a = uri("doc-a.md");
     let idx_a = index_from("# Introduction\n\nDoc A content");
-    realm.add_document(uri_a.clone(), idx_a);
+    realm.add_document(uri_a.clone(), idx_a).await;
 
     let uri_b = uri("doc-b.md");
     let idx_b = index_from("# Introduction\n\nDoc B content");
-    realm.add_document(uri_b.clone(), idx_b);
+    realm.add_document(uri_b.clone(), idx_b).await;
 
     let results = realm.lookup_heading("introduction");
     assert_eq!(
@@ -249,19 +253,19 @@ fn test_heading_collision_across_docs() {
 // Targeted removal preserves sibling document entries
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_remove_document_preserves_sibling_cross_doc_entries() {
+#[tokio::test]
+async fn test_remove_document_preserves_sibling_cross_doc_entries() {
     let mut realm = RealmIndex::new();
 
     // Doc A: heading "shared", tag #rust, block ^shared-block
     let uri_a = uri("doc-a.md");
     let idx_a = index_from("# Shared\n\nContent #rust here ^shared-block");
-    realm.add_document(uri_a.clone(), idx_a);
+    realm.add_document(uri_a.clone(), idx_a).await;
 
     // Doc B: heading "shared" (collision), tag #rust (shared), block ^only-b
     let uri_b = uri("doc-b.md");
     let idx_b = index_from("# Shared\n\nMore #rust content ^only-b");
-    realm.add_document(uri_b.clone(), idx_b);
+    realm.add_document(uri_b.clone(), idx_b).await;
 
     // Verify both docs contribute to cross-doc indexes
     assert_eq!(realm.lookup_heading("shared").len(), 2);
@@ -299,20 +303,20 @@ fn test_remove_document_preserves_sibling_cross_doc_entries() {
     );
 }
 
-#[test]
-fn test_replace_document_via_add_cleans_old_entries() {
+#[tokio::test]
+async fn test_replace_document_via_add_cleans_old_entries() {
     let mut realm = RealmIndex::new();
 
     let doc_uri = uri("evolving.md");
     let idx_v1 = index_from("# Old Title\n\nOld content #deprecated ^old-block");
-    realm.add_document(doc_uri.clone(), idx_v1);
+    realm.add_document(doc_uri.clone(), idx_v1).await;
 
     assert_eq!(realm.lookup_heading("old-title").len(), 1);
     assert!(realm.lookup_block("old-block").is_some());
 
     // Replace with new content (same URI)
     let idx_v2 = index_from("# New Title\n\nNew content #fresh ^new-block");
-    realm.add_document(doc_uri.clone(), idx_v2);
+    realm.add_document(doc_uri.clone(), idx_v2).await;
 
     // Old entries gone
     assert!(
@@ -340,13 +344,13 @@ fn test_replace_document_via_add_cleans_old_entries() {
 // Document lookup by URI
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_document_lookup_by_uri() {
+#[tokio::test]
+async fn test_document_lookup_by_uri() {
     let mut realm = RealmIndex::new();
 
     let doc_uri = uri("my-notes.md");
     let idx = index_from("# My Notes\n\n## Section One\n\n## Section Two");
-    realm.add_document(doc_uri.clone(), idx);
+    realm.add_document(doc_uri.clone(), idx).await;
 
     // Look up the document
     let doc = realm.get_document(&doc_uri);
@@ -368,16 +372,20 @@ fn test_document_lookup_by_uri() {
 // String interning regression tests (marky-2yzz)
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_interned_slug_dedup_cross_doc() {
+#[tokio::test]
+async fn test_interned_slug_dedup_cross_doc() {
     // Two documents with identical heading slugs should share the same
     // interned key internally. Verify both are accessible via lookup.
     let mut realm = RealmIndex::new();
 
     let uri_a = uri("intern-a.md");
     let uri_b = uri("intern-b.md");
-    realm.add_document(uri_a.clone(), index_from("# Intro\n\nDoc A"));
-    realm.add_document(uri_b.clone(), index_from("# Intro\n\nDoc B"));
+    realm
+        .add_document(uri_a.clone(), index_from("# Intro\n\nDoc A"))
+        .await;
+    realm
+        .add_document(uri_b.clone(), index_from("# Intro\n\nDoc B"))
+        .await;
 
     let results = realm.lookup_heading("intro");
     assert_eq!(
@@ -391,15 +399,17 @@ fn test_interned_slug_dedup_cross_doc() {
     assert!(uris.contains(&uri_b.as_str()));
 }
 
-#[test]
-fn test_remove_then_readd_same_content() {
+#[tokio::test]
+async fn test_remove_then_readd_same_content() {
     // Interner retains old Spur values; re-adding same content must work.
     let mut realm = RealmIndex::new();
     let doc_uri = uri("cycle.md");
 
     let content = "# Overview\n\nContent #cycling ^block-cycle";
 
-    realm.add_document(doc_uri.clone(), index_from(content));
+    realm
+        .add_document(doc_uri.clone(), index_from(content))
+        .await;
     assert_eq!(realm.lookup_heading("overview").len(), 1);
     assert!(realm.lookup_block("block-cycle").is_some());
 
@@ -408,22 +418,28 @@ fn test_remove_then_readd_same_content() {
     assert!(realm.lookup_block("block-cycle").is_none());
 
     // Re-add same content
-    realm.add_document(doc_uri.clone(), index_from(content));
+    realm
+        .add_document(doc_uri.clone(), index_from(content))
+        .await;
     assert_eq!(realm.lookup_heading("overview").len(), 1);
     assert!(realm.lookup_block("block-cycle").is_some());
     let has_tag = realm.tag_counts().iter().any(|(n, _)| n == "cycling");
     assert!(has_tag, "tag should be present after re-add");
 }
 
-#[test]
-fn test_cross_doc_same_slug_remove_first() {
+#[tokio::test]
+async fn test_cross_doc_same_slug_remove_first() {
     // Two docs with same slug. Remove first. Verify only second remains.
     let mut realm = RealmIndex::new();
 
     let uri_a = uri("cross-a.md");
     let uri_b = uri("cross-b.md");
-    realm.add_document(uri_a.clone(), index_from("# Overview\n\nDoc A"));
-    realm.add_document(uri_b.clone(), index_from("# Overview\n\nDoc B"));
+    realm
+        .add_document(uri_a.clone(), index_from("# Overview\n\nDoc A"))
+        .await;
+    realm
+        .add_document(uri_b.clone(), index_from("# Overview\n\nDoc B"))
+        .await;
 
     assert_eq!(realm.lookup_heading("overview").len(), 2);
 
@@ -434,13 +450,15 @@ fn test_cross_doc_same_slug_remove_first() {
     assert_eq!(results[0].0.as_str(), uri_b.as_str());
 }
 
-#[test]
-fn test_lookup_heading_returns_correct_strings() {
+#[tokio::test]
+async fn test_lookup_heading_returns_correct_strings() {
     // Verify returned ResolvedHeading has correct text and slug Strings
     // (not corrupted by interning).
     let mut realm = RealmIndex::new();
     let doc_uri = uri("strings.md");
-    realm.add_document(doc_uri.clone(), index_from("# Hello World\n\nContent"));
+    realm
+        .add_document(doc_uri.clone(), index_from("# Hello World\n\nContent"))
+        .await;
 
     let results = realm.lookup_heading("hello-world");
     assert_eq!(results.len(), 1);
@@ -449,13 +467,17 @@ fn test_lookup_heading_returns_correct_strings() {
     assert_eq!(results[0].1.level, 1);
 }
 
-#[test]
-fn test_tag_counts_after_interning() {
+#[tokio::test]
+async fn test_tag_counts_after_interning() {
     // Two docs with overlapping tags. Verify counts are correct.
     let mut realm = RealmIndex::new();
 
-    realm.add_document(uri("tag-a.md"), index_from("Content #alpha #beta here"));
-    realm.add_document(uri("tag-b.md"), index_from("More #beta #gamma content"));
+    realm
+        .add_document(uri("tag-a.md"), index_from("Content #alpha #beta here"))
+        .await;
+    realm
+        .add_document(uri("tag-b.md"), index_from("More #beta #gamma content"))
+        .await;
 
     let counts = realm.tag_counts();
     let alpha = counts.iter().find(|(n, _)| n == "alpha");
@@ -467,10 +489,12 @@ fn test_tag_counts_after_interning() {
     assert_eq!(gamma.unwrap().1, 1, "gamma in 1 doc");
 }
 
-#[test]
-fn test_block_lookup_returns_correct_id() {
+#[tokio::test]
+async fn test_block_lookup_returns_correct_id() {
     let mut realm = RealmIndex::new();
-    realm.add_document(uri("block-id.md"), index_from("Paragraph ^my-block"));
+    realm
+        .add_document(uri("block-id.md"), index_from("Paragraph ^my-block"))
+        .await;
 
     let result = realm.lookup_block("my-block");
     assert!(result.is_some());
@@ -478,15 +502,17 @@ fn test_block_lookup_returns_correct_id() {
     assert_eq!(block.id, "my-block");
 }
 
-#[test]
-fn test_remove_document_clears_cross_doc_maps() {
+#[tokio::test]
+async fn test_remove_document_clears_cross_doc_maps() {
     // After removing the only doc, all cross-doc maps should be empty.
     let mut realm = RealmIndex::new();
     let doc_uri = uri("solo.md");
-    realm.add_document(
-        doc_uri.clone(),
-        index_from("# Heading\n\nContent #tag ^block-id"),
-    );
+    realm
+        .add_document(
+            doc_uri.clone(),
+            index_from("# Heading\n\nContent #tag ^block-id"),
+        )
+        .await;
 
     realm.remove_document(&doc_uri);
 

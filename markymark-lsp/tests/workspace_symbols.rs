@@ -17,30 +17,34 @@ async fn setup_workspace() -> (
         let mut state = backend.state().write().await;
 
         let uri_a = DocumentUri::new("file:///workspace/notes.md").unwrap();
-        state.open_document(
-            uri_a,
-            concat!(
-                "# Introduction\n",
-                "\n",
-                "## Details\n",
-                "\n",
-                "Some content with #rust and #programming tags.\n",
+        state
+            .open_document(
+                uri_a,
+                concat!(
+                    "# Introduction\n",
+                    "\n",
+                    "## Details\n",
+                    "\n",
+                    "Some content with #rust and #programming tags.\n",
+                )
+                .to_string(),
             )
-            .to_string(),
-        );
+            .await;
 
         let uri_b = DocumentUri::new("file:///workspace/guide.md").unwrap();
-        state.open_document(
-            uri_b,
-            concat!(
-                "# Getting Started\n",
-                "\n",
-                "## Advanced Topics\n",
-                "\n",
-                "More content with #rust tag.\n",
+        state
+            .open_document(
+                uri_b,
+                concat!(
+                    "# Getting Started\n",
+                    "\n",
+                    "## Advanced Topics\n",
+                    "\n",
+                    "More content with #rust tag.\n",
+                )
+                .to_string(),
             )
-            .to_string(),
-        );
+            .await;
     }
 
     (service, socket)
@@ -280,18 +284,24 @@ async fn test_acceptance_new_documents_appear_in_workspace_symbols() {
 
     {
         let mut state = backend.state().write().await;
-        state.open_document(
-            DocumentUri::new("file:///ws/alpha.md").unwrap(),
-            "# Alpha Title\n".to_string(),
-        );
-        state.open_document(
-            DocumentUri::new("file:///ws/beta.md").unwrap(),
-            "# Beta Title\n".to_string(),
-        );
-        state.open_document(
-            DocumentUri::new("file:///ws/gamma.md").unwrap(),
-            "# Gamma Title\n".to_string(),
-        );
+        state
+            .open_document(
+                DocumentUri::new("file:///ws/alpha.md").unwrap(),
+                "# Alpha Title\n".to_string(),
+            )
+            .await;
+        state
+            .open_document(
+                DocumentUri::new("file:///ws/beta.md").unwrap(),
+                "# Beta Title\n".to_string(),
+            )
+            .await;
+        state
+            .open_document(
+                DocumentUri::new("file:///ws/gamma.md").unwrap(),
+                "# Gamma Title\n".to_string(),
+            )
+            .await;
     }
 
     let result = backend.symbol(make_params("")).await.unwrap();
@@ -327,8 +337,12 @@ async fn test_acceptance_closed_document_removed_from_workspace_symbols() {
 
     {
         let mut state = backend.state().write().await;
-        state.open_document(uri_keep.clone(), "# Keeper\n".to_string());
-        state.open_document(uri_close.clone(), "# Temporary\n".to_string());
+        state
+            .open_document(uri_keep.clone(), "# Keeper\n".to_string())
+            .await;
+        state
+            .open_document(uri_close.clone(), "# Temporary\n".to_string())
+            .await;
     }
 
     // Verify both are present initially
@@ -373,7 +387,9 @@ async fn test_acceptance_changed_document_reflects_in_workspace_symbols() {
 
     {
         let mut state = backend.state().write().await;
-        state.open_document(uri.clone(), "# Old Title\n".to_string());
+        state
+            .open_document(uri.clone(), "# Old Title\n".to_string())
+            .await;
     }
 
     // Verify original heading
@@ -388,7 +404,9 @@ async fn test_acceptance_changed_document_reflects_in_workspace_symbols() {
     // Change the document
     {
         let mut state = backend.state().write().await;
-        state.change_document(&uri, "# New Title\n".to_string());
+        state
+            .change_document(&uri, "# New Title\n".to_string())
+            .await;
     }
 
     // Re-query: should reflect the change
@@ -418,10 +436,13 @@ async fn test_workspace_symbol_includes_xml_tags() {
 
     {
         let mut state = backend.state().write().await;
-        state.open_document(
-            DocumentUri::new("file:///ws/agents.md").unwrap(),
-            "# Config\n\n<agent>\n\ncontent\n\n</agent>\n\n<goal>\n\nwin\n\n</goal>\n".to_string(),
-        );
+        state
+            .open_document(
+                DocumentUri::new("file:///ws/agents.md").unwrap(),
+                "# Config\n\n<agent>\n\ncontent\n\n</agent>\n\n<goal>\n\nwin\n\n</goal>\n"
+                    .to_string(),
+            )
+            .await;
     }
 
     let result = backend.symbol(make_params("agent")).await.unwrap();
@@ -446,10 +467,12 @@ async fn test_workspace_symbol_includes_code_spans() {
 
     {
         let mut state = backend.state().write().await;
-        state.open_document(
-            DocumentUri::new("file:///ws/api.md").unwrap(),
-            "# API Guide\n\nUse `HashMap` for lookups.\n".to_string(),
-        );
+        state
+            .open_document(
+                DocumentUri::new("file:///ws/api.md").unwrap(),
+                "# API Guide\n\nUse `HashMap` for lookups.\n".to_string(),
+            )
+            .await;
     }
 
     let result = backend.symbol(make_params("HashMap")).await.unwrap();
@@ -470,10 +493,12 @@ async fn test_workspace_symbol_code_spans_in_empty_query() {
 
     {
         let mut state = backend.state().write().await;
-        state.open_document(
-            DocumentUri::new("file:///ws/types.md").unwrap(),
-            "# Types\n\nThe `Vec` type is useful.\n".to_string(),
-        );
+        state
+            .open_document(
+                DocumentUri::new("file:///ws/types.md").unwrap(),
+                "# Types\n\nThe `Vec` type is useful.\n".to_string(),
+            )
+            .await;
     }
 
     let result = backend.symbol(make_params("")).await.unwrap();
@@ -494,10 +519,12 @@ async fn test_workspace_symbol_xml_tags_in_empty_query() {
 
     {
         let mut state = backend.state().write().await;
-        state.open_document(
-            DocumentUri::new("file:///ws/skills.md").unwrap(),
-            "<prompt>\nHello\n</prompt>\n".to_string(),
-        );
+        state
+            .open_document(
+                DocumentUri::new("file:///ws/skills.md").unwrap(),
+                "<prompt>\nHello\n</prompt>\n".to_string(),
+            )
+            .await;
     }
 
     let result = backend.symbol(make_params("")).await.unwrap();

@@ -91,7 +91,7 @@ impl SemanticIndex {
     /// If the document has headings, one semantic entry is generated per
     /// heading. If it has no headings, a single fallback entry based on the
     /// document file stem is created.
-    pub fn add_document(
+    pub async fn add_document(
         &mut self,
         uri: DocumentUri,
         index: &DocumentIndex,
@@ -104,7 +104,7 @@ impl SemanticIndex {
 
         if index.headings().is_empty() {
             let fallback_heading = fallback_heading(&uri);
-            let embedding = self.provider.embed(&fallback_heading)?;
+            let embedding = self.provider.embed(&fallback_heading).await?;
             let id = format!("{}#fallback", uri.as_str());
             self.index
                 .add(&id, &embedding)
@@ -128,7 +128,7 @@ impl SemanticIndex {
                 if embedding_input.trim().is_empty() {
                     continue;
                 }
-                let embedding = self.provider.embed(&embedding_input)?;
+                let embedding = self.provider.embed(&embedding_input).await?;
                 let id = format!("{}#{}#{i}", uri.as_str(), heading.slug);
                 self.index
                     .add(&id, &embedding)
@@ -171,8 +171,185 @@ impl SemanticIndex {
         self.doc_token_sets.remove(uri);
     }
 
+    /// Incrementally update semantic entries for a document.
+    ///
+    /// Diffs old vs new headings by **text** (not ID) and only re-embeds
+    /// changed or added headings. Unchanged headings reuse their existing
+    /// entries with updated metadata (level, range). Deleted headings have
+    /// their metadata removed; stale Zig vectors are filtered at query time.
+    ///
+    /// If the provider fails mid-update, the old state is preserved (staged
+    /// changes are committed only on full success).
+    pub async fn update_document(
+        &mut self,
+        uri: DocumentUri,
+        index: &DocumentIndex,
+    ) -> Result<(), EmbedError> {
+        // If no prior entries exist, delegate to add_document.
+        let Some(old_ids) = self.doc_to_ids.get(&uri).cloned() else {
+            return self.add_document(uri, index).await;
+        };
+
+        // Build map: heading_text → Vec<(entry_id, SemanticEntry)> from old entries.
+        let mut old_by_text: HashMap<String, Vec<(String, SemanticEntry)>> = HashMap::new();
+        for id in &old_ids {
+            if let Some(entry) = self.entries_by_id.get(id) {
+                old_by_text
+                    .entry(entry.heading.clone())
+                    .or_default()
+                    .push((id.clone(), entry.clone()));
+            }
+        }
+
+        // Build new heading list from index.
+        let new_headings: Vec<_> = if index.headings().is_empty() {
+            let fb = fallback_heading(&uri);
+            vec![(fb, 1u8, Position::new(0, 0), Position::new(0, 0), true)]
+        } else {
+            index
+                .headings()
+                .iter()
+                .filter(|h| !h.text.trim().is_empty())
+                .map(|h| {
+                    (
+                        h.text.to_string(),
+                        h.level,
+                        h.range.start,
+                        h.range.end,
+                        false,
+                    )
+                })
+                .collect()
+        };
+
+        // Check if old entries were a fallback.
+        let old_was_fallback =
+            old_ids.len() == 1 && old_ids.first().is_some_and(|id| id.ends_with("#fallback"));
+
+        // Determine new_is_fallback.
+        let new_is_fallback = new_headings.len() == 1 && new_headings[0].4;
+
+        // If transitioning between fallback ↔ headings, delegate to full replace
+        // since there's nothing to diff (different ID formats).
+        // Snapshot before remove so we can restore on failure.
+        if old_was_fallback != new_is_fallback {
+            let snapshot_entries: Vec<(String, SemanticEntry)> = old_ids
+                .iter()
+                .filter_map(|id| self.entries_by_id.get(id).cloned().map(|e| (id.clone(), e)))
+                .collect();
+            let snapshot_tokens = self.doc_token_sets.get(&uri).cloned();
+
+            self.remove_document(&uri);
+            match self.add_document(uri.clone(), index).await {
+                Ok(()) => return Ok(()),
+                Err(err) => {
+                    // Restore old state on failure.
+                    for (id, entry) in snapshot_entries {
+                        self.entries_by_id.insert(id, entry);
+                    }
+                    self.doc_to_ids.insert(uri.clone(), old_ids);
+                    if let Some(tokens) = snapshot_tokens {
+                        self.doc_token_sets.insert(uri, tokens);
+                    }
+                    return Err(err);
+                }
+            }
+        }
+
+        // Stage: collect changes to apply atomically.
+        let mut new_ids = Vec::new();
+        let mut staged_entries: Vec<(String, SemanticEntry)> = Vec::new();
+        let mut staged_zig_adds: Vec<(String, Vec<f32>)> = Vec::new();
+        let mut token_set = BTreeSet::new();
+
+        // Track which old text entries have been consumed (for duplicate text handling).
+        let mut consumed_by_text: HashMap<String, usize> = HashMap::new();
+
+        for (text, level, start, end, is_fallback) in &new_headings {
+            token_set.extend(token_hashes(text));
+
+            // Try to match by text.
+            let consumed_idx = consumed_by_text.entry(text.clone()).or_insert(0);
+            let matched = old_by_text
+                .get(text)
+                .and_then(|entries| entries.get(*consumed_idx));
+
+            if let Some((old_id, _old_entry)) = matched {
+                // Reuse existing entry — keep OLD ID so the Zig vector remains
+                // searchable, update metadata only, no re-embed.
+                *consumed_idx += 1;
+
+                staged_entries.push((
+                    old_id.clone(),
+                    SemanticEntry {
+                        doc_uri: uri.clone(),
+                        heading: text.clone(),
+                        heading_level: *level,
+                        section_start: *start,
+                        section_end: *end,
+                    },
+                ));
+                new_ids.push(old_id.clone());
+            } else {
+                // New or changed heading — needs embedding.
+                let embedding = self.provider.embed(text).await?;
+
+                let id = if *is_fallback {
+                    format!("{}#fallback", uri.as_str())
+                } else {
+                    let slug = index
+                        .headings()
+                        .iter()
+                        .find(|h| h.text == *text && h.range.start == *start)
+                        .map(|h| h.slug)
+                        .unwrap_or("unknown");
+                    let idx = new_ids.len();
+                    format!("{}#{}#{idx}", uri.as_str(), slug)
+                };
+
+                staged_zig_adds.push((id.clone(), embedding));
+                staged_entries.push((
+                    id.clone(),
+                    SemanticEntry {
+                        doc_uri: uri.clone(),
+                        heading: text.clone(),
+                        heading_level: *level,
+                        section_start: *start,
+                        section_end: *end,
+                    },
+                ));
+                new_ids.push(id);
+            }
+        }
+
+        // --- Commit phase (all embed calls succeeded) ---
+
+        // Add new vectors to Zig index.
+        for (id, embedding) in staged_zig_adds {
+            self.index
+                .add(&id, &embedding)
+                .map_err(|e| EmbedError::InternalError(e.to_string()))?;
+        }
+
+        // Remove ALL old entries for this document.
+        for id in &old_ids {
+            self.entries_by_id.remove(id);
+        }
+
+        // Insert staged entries.
+        for (id, entry) in staged_entries {
+            self.entries_by_id.insert(id, entry);
+        }
+
+        // Update doc_to_ids and token sets.
+        self.doc_to_ids.insert(uri.clone(), new_ids);
+        self.doc_token_sets.insert(uri, token_set);
+
+        Ok(())
+    }
+
     /// Run semantic search over indexed entries.
-    pub fn search(
+    pub async fn search(
         &self,
         query: &str,
         top_k: u32,
@@ -182,7 +359,7 @@ impl SemanticIndex {
             return Ok(Vec::new());
         }
 
-        let query_embedding = self.provider.embed(query)?;
+        let query_embedding = self.provider.embed(query).await?;
         let score_floor = min_score.clamp(0.0, 1.0);
 
         let fetch_k = compute_fetch_k(self.index.count(), self.entries_by_id.len() as u32, top_k);
@@ -326,6 +503,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    use async_trait::async_trait;
     use markymark_core::prelude::EmbedError;
 
     // --- compute_fetch_k unit tests ---
@@ -382,8 +560,9 @@ mod tests {
         }
     }
 
+    #[async_trait]
     impl EmbeddingProvider for TestEmbeddingProvider {
-        fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+        async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
             if self.reject_empty && text.trim().is_empty() {
                 return Err(EmbedError::InvalidInput("empty text rejected".to_string()));
             }
@@ -419,8 +598,8 @@ mod tests {
 
     // --- P2: empty heading skip tests ---
 
-    #[test]
-    fn add_document_skips_empty_headings() {
+    #[tokio::test]
+    async fn add_document_skips_empty_headings() {
         let provider = Arc::new(TestEmbeddingProvider::new(32));
         let mut sem = SemanticIndex::new(provider).unwrap();
 
@@ -429,7 +608,7 @@ mod tests {
 
         let uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/test.md"));
         // Must succeed, not abort on empty headings.
-        sem.add_document(uri.clone(), &doc_idx).unwrap();
+        sem.add_document(uri.clone(), &doc_idx).await.unwrap();
 
         // The empty heading should be skipped; only valid headings indexed.
         assert!(
@@ -439,18 +618,421 @@ mod tests {
         );
     }
 
-    #[test]
-    fn add_document_no_headings_uses_fallback() {
+    #[tokio::test]
+    async fn add_document_no_headings_uses_fallback() {
         let provider = Arc::new(TestEmbeddingProvider::new(32));
         let mut sem = SemanticIndex::new(provider).unwrap();
 
         let doc_idx = build_doc_index("Just some text, no headings.\n");
         let uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/plain.md"));
-        sem.add_document(uri, &doc_idx).unwrap();
+        sem.add_document(uri, &doc_idx).await.unwrap();
         assert_eq!(
             sem.entry_count(),
             1,
             "no-heading doc should get fallback entry"
+        );
+    }
+
+    // --- CountingProvider: tracks embed() call count for update_document tests ---
+
+    struct CountingProvider {
+        inner: TestEmbeddingProvider,
+        count: std::sync::atomic::AtomicU32,
+    }
+
+    impl CountingProvider {
+        fn new(dims: u32) -> Self {
+            Self {
+                inner: TestEmbeddingProvider::new(dims),
+                count: std::sync::atomic::AtomicU32::new(0),
+            }
+        }
+
+        fn reset(&self) {
+            self.count.store(0, std::sync::atomic::Ordering::SeqCst);
+        }
+
+        fn embed_count(&self) -> u32 {
+            self.count.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    #[async_trait]
+    impl EmbeddingProvider for CountingProvider {
+        async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+            self.count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.inner.embed(text).await
+        }
+
+        fn dimensions(&self) -> u32 {
+            self.inner.dimensions()
+        }
+    }
+
+    // --- FailingProvider: fails after N successful embed calls ---
+
+    struct FailingProvider {
+        inner: TestEmbeddingProvider,
+        count: std::sync::atomic::AtomicU32,
+        fail_after: u32,
+    }
+
+    impl FailingProvider {
+        fn new(dims: u32, fail_after: u32) -> Self {
+            Self {
+                inner: TestEmbeddingProvider::new(dims),
+                count: std::sync::atomic::AtomicU32::new(0),
+                fail_after,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl EmbeddingProvider for FailingProvider {
+        async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+            let n = self.count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if n >= self.fail_after {
+                return Err(EmbedError::InternalError("injected failure".to_string()));
+            }
+            self.inner.embed(text).await
+        }
+
+        fn dimensions(&self) -> u32 {
+            self.inner.dimensions()
+        }
+    }
+
+    // --- update_document tests ---
+
+    fn test_uri() -> DocumentUri {
+        DocumentUri::from_file_path(&std::path::PathBuf::from("/test.md"))
+    }
+
+    #[tokio::test]
+    async fn test_update_unchanged_headings_skips_reembed() {
+        let provider = Arc::new(CountingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+        let uri = test_uri();
+
+        let doc = build_doc_index("# Alpha\n## Beta\n## Gamma\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+        assert_eq!(sem.entry_count(), 3);
+
+        provider.reset();
+        let same_doc = build_doc_index("# Alpha\n## Beta\n## Gamma\n");
+        sem.update_document(uri, &same_doc).await.unwrap();
+
+        assert_eq!(
+            provider.embed_count(),
+            0,
+            "unchanged headings should not re-embed"
+        );
+        assert_eq!(sem.entry_count(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_update_changed_heading_reembeds_only_changed() {
+        let provider = Arc::new(CountingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+        let uri = test_uri();
+
+        let doc = build_doc_index("# Alpha\n## Beta\n## Gamma\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+
+        provider.reset();
+        let updated = build_doc_index("# Alpha\n## BetaModified\n## Gamma\n");
+        sem.update_document(uri, &updated).await.unwrap();
+
+        assert_eq!(
+            provider.embed_count(),
+            1,
+            "only changed heading should re-embed"
+        );
+        assert_eq!(sem.entry_count(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_update_added_heading_embeds_new_only() {
+        let provider = Arc::new(CountingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+        let uri = test_uri();
+
+        let doc = build_doc_index("# Alpha\n## Beta\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+        assert_eq!(sem.entry_count(), 2);
+
+        provider.reset();
+        let updated = build_doc_index("# Alpha\n## Beta\n## Gamma\n");
+        sem.update_document(uri, &updated).await.unwrap();
+
+        assert_eq!(provider.embed_count(), 1, "only new heading should embed");
+        assert_eq!(sem.entry_count(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_update_deleted_heading_removes_metadata() {
+        let provider = Arc::new(CountingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+        let uri = test_uri();
+
+        let doc = build_doc_index("# Alpha\n## Beta\n## Gamma\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+        assert_eq!(sem.entry_count(), 3);
+
+        provider.reset();
+        let updated = build_doc_index("# Alpha\n## Gamma\n");
+        sem.update_document(uri, &updated).await.unwrap();
+
+        assert_eq!(
+            provider.embed_count(),
+            0,
+            "no changed/new headings, zero embed calls"
+        );
+        assert_eq!(sem.entry_count(), 2, "deleted heading metadata removed");
+    }
+
+    #[tokio::test]
+    async fn test_update_no_changes_zero_embed_calls() {
+        let provider = Arc::new(CountingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+        let uri = test_uri();
+
+        let doc = build_doc_index("# Alpha\n## Beta\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+
+        provider.reset();
+        let same = build_doc_index("# Alpha\n## Beta\n");
+        sem.update_document(uri, &same).await.unwrap();
+
+        assert_eq!(
+            provider.embed_count(),
+            0,
+            "identical doc should have zero embed calls"
+        );
+        assert_eq!(sem.entry_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_update_fallback_to_headings_reembeds() {
+        let provider = Arc::new(CountingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+        let uri = test_uri();
+
+        // Start with no headings (fallback entry).
+        let doc = build_doc_index("Just text, no headings.\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+        assert_eq!(sem.entry_count(), 1);
+
+        provider.reset();
+        // Update to a doc with headings.
+        let updated = build_doc_index("# Alpha\n## Beta\n");
+        sem.update_document(uri, &updated).await.unwrap();
+
+        assert_eq!(provider.embed_count(), 2, "new headings replace fallback");
+        assert_eq!(sem.entry_count(), 2, "fallback removed, headings added");
+    }
+
+    #[tokio::test]
+    async fn test_update_headings_to_fallback_reembeds() {
+        let provider = Arc::new(CountingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+        let uri = test_uri();
+
+        let doc = build_doc_index("# Alpha\n## Beta\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+        assert_eq!(sem.entry_count(), 2);
+
+        provider.reset();
+        // Update to doc with no headings (becomes fallback).
+        let updated = build_doc_index("Just text, no headings.\n");
+        sem.update_document(uri, &updated).await.unwrap();
+
+        assert_eq!(provider.embed_count(), 1, "fallback entry must be embedded");
+        assert_eq!(sem.entry_count(), 1, "headings replaced by fallback");
+    }
+
+    #[tokio::test]
+    async fn test_update_reordered_headings_skips_reembed() {
+        let provider = Arc::new(CountingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+        let uri = test_uri();
+
+        let doc = build_doc_index("# Alpha\n## Beta\n## Gamma\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+
+        provider.reset();
+        // Reorder: Gamma before Beta, same text.
+        let reordered = build_doc_index("# Alpha\n## Gamma\n## Beta\n");
+        sem.update_document(uri, &reordered).await.unwrap();
+
+        assert_eq!(provider.embed_count(), 0, "reorder should not re-embed");
+        assert_eq!(sem.entry_count(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_update_heading_level_change_updates_metadata() {
+        let provider = Arc::new(CountingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+        let uri = test_uri();
+
+        let doc = build_doc_index("## Foo\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+
+        provider.reset();
+        // Same text "Foo" but different level (### vs ##).
+        let updated = build_doc_index("### Foo\n");
+        sem.update_document(uri.clone(), &updated).await.unwrap();
+
+        assert_eq!(provider.embed_count(), 0, "text unchanged, no re-embed");
+        // Verify the entry's heading level was updated.
+        let ids = sem.doc_to_ids.get(&uri).unwrap();
+        assert_eq!(ids.len(), 1);
+        let entry = sem.entries_by_id.get(&ids[0]).unwrap();
+        assert_eq!(
+            entry.heading_level, 3,
+            "heading level should be updated to 3"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_update_provider_failure_leaves_old_state() {
+        // Provider that allows initial add_document (2 embeds) but fails during update.
+        let provider = Arc::new(FailingProvider::new(32, 2));
+        let mut sem = SemanticIndex::new(provider).unwrap();
+        let uri = test_uri();
+
+        let doc = build_doc_index("# Alpha\n## Beta\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+        assert_eq!(sem.entry_count(), 2);
+
+        // Update adds a new heading "Gamma" — this embed call will fail.
+        let updated = build_doc_index("# Alpha\n## Beta\n## Gamma\n");
+        let result = sem.update_document(uri.clone(), &updated).await;
+
+        assert!(
+            result.is_err(),
+            "update should return error on embed failure"
+        );
+        // Old state must be preserved — entries should still reference Alpha and Beta.
+        assert_eq!(
+            sem.entry_count(),
+            2,
+            "old entries must be preserved on failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_fallback_transition_failure_preserves_state() {
+        // Provider succeeds for initial add (1 fallback embed) but fails on transition.
+        let provider = Arc::new(FailingProvider::new(32, 1));
+        let mut sem = SemanticIndex::new(provider).unwrap();
+        let uri = test_uri();
+
+        // Start with no headings → fallback entry.
+        let doc = build_doc_index("Just text, no headings.\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+        assert_eq!(sem.entry_count(), 1, "fallback entry should exist");
+
+        // Verify the fallback entry is present.
+        let old_ids = sem.doc_to_ids.get(&uri).cloned().unwrap();
+        assert_eq!(old_ids.len(), 1);
+        assert!(old_ids[0].ends_with("#fallback"));
+
+        // Now update to a doc with headings — triggers fallback→headings transition.
+        // The provider will fail (already used its 1 allowed embed), so add_document
+        // inside the transition should fail.
+        let updated = build_doc_index("# Alpha\n## Beta\n");
+        let result = sem.update_document(uri.clone(), &updated).await;
+
+        assert!(
+            result.is_err(),
+            "transition should propagate provider failure"
+        );
+        // Old fallback state must be restored.
+        assert_eq!(
+            sem.entry_count(),
+            1,
+            "old fallback entry must survive failed transition"
+        );
+        let restored_ids = sem.doc_to_ids.get(&uri).unwrap();
+        assert_eq!(restored_ids.len(), 1, "doc_to_ids must be restored");
+        assert!(
+            restored_ids[0].ends_with("#fallback"),
+            "restored entry should be the original fallback"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_fallback_transition_success_replaces_state() {
+        let provider = Arc::new(CountingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+        let uri = test_uri();
+
+        // Start with no headings → fallback entry.
+        let doc = build_doc_index("Just text, no headings.\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+        assert_eq!(sem.entry_count(), 1);
+
+        let old_ids = sem.doc_to_ids.get(&uri).cloned().unwrap();
+        assert!(old_ids[0].ends_with("#fallback"));
+
+        provider.reset();
+        // Update to a doc with headings — successful transition.
+        let updated = build_doc_index("# Alpha\n## Beta\n");
+        sem.update_document(uri.clone(), &updated).await.unwrap();
+
+        assert_eq!(
+            provider.embed_count(),
+            2,
+            "both new headings should be embedded"
+        );
+        assert_eq!(sem.entry_count(), 2, "fallback replaced by 2 headings");
+
+        // Verify no fallback entries remain.
+        let new_ids = sem.doc_to_ids.get(&uri).unwrap();
+        assert!(
+            !new_ids.iter().any(|id| id.ends_with("#fallback")),
+            "fallback entry should be gone after successful transition"
+        );
+    }
+
+    /// Regression: heading text "Foo!" and "Foo" produce the same slug but
+    /// different embedding text. `SemanticIndex::update_document` must detect
+    /// the text change and re-embed even though the slug is identical.
+    #[tokio::test]
+    async fn test_update_document_reembeds_on_text_change_same_slug() {
+        let provider = Arc::new(CountingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+        let uri = test_uri();
+
+        // "Foo!" slugifies to "foo".
+        let doc = build_doc_index("# Foo!\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+        assert_eq!(sem.entry_count(), 1);
+
+        // Verify the initial heading text is "Foo!".
+        let ids = sem.doc_to_ids.get(&uri).unwrap();
+        assert_eq!(sem.entries_by_id.get(&ids[0]).unwrap().heading, "Foo!");
+
+        provider.reset();
+
+        // "Foo" also slugifies to "foo" — same slug, different text.
+        let updated = build_doc_index("# Foo\n");
+        sem.update_document(uri.clone(), &updated).await.unwrap();
+
+        assert_eq!(
+            provider.embed_count(),
+            1,
+            "text changed from 'Foo!' to 'Foo', must re-embed"
+        );
+        assert_eq!(sem.entry_count(), 1);
+
+        // Verify the entry's heading text was updated.
+        let ids = sem.doc_to_ids.get(&uri).unwrap();
+        assert_eq!(
+            sem.entries_by_id.get(&ids[0]).unwrap().heading,
+            "Foo",
+            "heading text should be updated from 'Foo!' to 'Foo'"
         );
     }
 }

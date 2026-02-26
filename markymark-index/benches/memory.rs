@@ -117,6 +117,7 @@ fn collect_md_files(dir: &Path, max_files: usize) -> Vec<PathBuf> {
 }
 
 fn index_n_documents(n: usize) -> RealmIndex {
+    let rt = tokio::runtime::Runtime::new().unwrap();
     let mut parser = Parser::new().expect("parser init");
     let mut realm = RealmIndex::new();
 
@@ -125,7 +126,7 @@ fn index_n_documents(n: usize) -> RealmIndex {
         let content = sample_doc(i);
         let ast = parser.parse(&content).expect("parse");
         let index = DocumentIndex::from_ast(ast);
-        realm.add_document(uri, index);
+        rt.block_on(realm.add_document(uri, index));
     }
 
     realm
@@ -251,6 +252,7 @@ fn bench_index_real_corpus(c: &mut Criterion) {
 }
 
 fn index_documents_from_slices(sections: &[String]) -> RealmIndex {
+    let rt = tokio::runtime::Runtime::new().unwrap();
     let mut parser = Parser::new().expect("parser init");
     let mut realm = RealmIndex::new();
 
@@ -258,7 +260,7 @@ fn index_documents_from_slices(sections: &[String]) -> RealmIndex {
         let uri = DocumentUri::from_file_path(&PathBuf::from(format!("/real/doc{}.md", i)));
         let ast = parser.parse(content).expect("parse");
         let index = DocumentIndex::from_ast(ast);
-        realm.add_document(uri, index);
+        rt.block_on(realm.add_document(uri, index));
     }
 
     realm
@@ -266,6 +268,7 @@ fn index_documents_from_slices(sections: &[String]) -> RealmIndex {
 
 /// Index documents from file paths. Content loaded once at init.
 fn index_documents_from_paths(paths: &[PathBuf], contents: &[String]) -> RealmIndex {
+    let rt = tokio::runtime::Runtime::new().unwrap();
     let mut parser = Parser::new().expect("parser init");
     let mut realm = RealmIndex::new();
 
@@ -273,7 +276,7 @@ fn index_documents_from_paths(paths: &[PathBuf], contents: &[String]) -> RealmIn
         let uri = DocumentUri::from_file_path(path);
         let ast = parser.parse(content).expect("parse");
         let index = DocumentIndex::from_ast(ast);
-        realm.add_document(uri, index);
+        rt.block_on(realm.add_document(uri, index));
     }
 
     realm

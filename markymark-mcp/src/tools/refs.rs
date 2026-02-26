@@ -8,7 +8,7 @@ use serde_json::json;
 use super::{parse_file_uri, tool_error, tool_error_from_core, unexpected_result_error};
 use crate::dto::*;
 
-pub(crate) fn handle_find_references(
+pub(crate) async fn handle_find_references(
     engine: &dyn CoreEngine,
     req: FindReferencesRequest,
 ) -> Result<CallToolResult, McpError> {
@@ -22,11 +22,14 @@ pub(crate) fn handle_find_references(
         Position::new(req.line, req.character),
     );
 
-    match engine.execute(CoreOperation::FindReferences {
-        uri,
-        position,
-        realm: req.realm.clone(),
-    }) {
+    match engine
+        .execute(CoreOperation::FindReferences {
+            uri,
+            position,
+            realm: req.realm.clone(),
+        })
+        .await
+    {
         CoreOperationResult::Locations(locations) => {
             let mut mapped: Vec<LocationDto> = locations
                 .into_iter()
@@ -47,7 +50,7 @@ pub(crate) fn handle_find_references(
     }
 }
 
-pub(crate) fn handle_rename(
+pub(crate) async fn handle_rename(
     engine: &dyn CoreEngine,
     req: RenameRequest,
 ) -> Result<CallToolResult, McpError> {
@@ -69,12 +72,15 @@ pub(crate) fn handle_rename(
         Position::new(req.line, req.character),
     );
 
-    match engine.execute(CoreOperation::Rename {
-        uri,
-        position,
-        new_name,
-        realm: req.realm.clone(),
-    }) {
+    match engine
+        .execute(CoreOperation::Rename {
+            uri,
+            position,
+            new_name,
+            realm: req.realm.clone(),
+        })
+        .await
+    {
         CoreOperationResult::WorkspaceEdit(edits) => {
             let mut changes: Vec<DocumentEditDto> = edits
                 .into_iter()

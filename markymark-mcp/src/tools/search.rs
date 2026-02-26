@@ -8,7 +8,7 @@ use super::{round_score, tool_error, tool_error_from_core, unexpected_result_err
 use crate::dto::*;
 use crate::SEMANTIC_SEARCH_MAX_TOP_K;
 
-pub(crate) fn handle_search_symbols(
+pub(crate) async fn handle_search_symbols(
     engine: &dyn CoreEngine,
     req: SearchSymbolsRequest,
 ) -> Result<CallToolResult, McpError> {
@@ -20,10 +20,13 @@ pub(crate) fn handle_search_symbols(
         ));
     }
 
-    match engine.execute(CoreOperation::SearchSymbols {
-        query: query.clone(),
-        realm: req.realm.clone(),
-    }) {
+    match engine
+        .execute(CoreOperation::SearchSymbols {
+            query: query.clone(),
+            realm: req.realm.clone(),
+        })
+        .await
+    {
         CoreOperationResult::Symbols(symbols) => {
             let mut mapped: Vec<SymbolMatchDto> = symbols
                 .into_iter()
@@ -46,7 +49,7 @@ pub(crate) fn handle_search_symbols(
     }
 }
 
-pub(crate) fn handle_semantic_search(
+pub(crate) async fn handle_semantic_search(
     engine: &dyn CoreEngine,
     req: SemanticSearchRequest,
 ) -> Result<CallToolResult, McpError> {
@@ -67,12 +70,15 @@ pub(crate) fn handle_semantic_search(
     let top_k = req.top_k.unwrap_or(10).min(SEMANTIC_SEARCH_MAX_TOP_K);
     let min_score = req.min_score.unwrap_or(0.5).clamp(0.0, 1.0);
 
-    match engine.execute(CoreOperation::SemanticSearch {
-        query: query.clone(),
-        realm,
-        top_k,
-        min_score,
-    }) {
+    match engine
+        .execute(CoreOperation::SemanticSearch {
+            query: query.clone(),
+            realm,
+            top_k,
+            min_score,
+        })
+        .await
+    {
         CoreOperationResult::SemanticMatches(matches) => {
             let results = matches
                 .into_iter()
@@ -95,7 +101,7 @@ pub(crate) fn handle_semantic_search(
     }
 }
 
-pub(crate) fn handle_search_workspace(
+pub(crate) async fn handle_search_workspace(
     engine: &dyn CoreEngine,
     req: SearchWorkspaceRequest,
 ) -> Result<CallToolResult, McpError> {
@@ -130,14 +136,17 @@ pub(crate) fn handle_search_workspace(
             .map(|v| (k.clone(), v.clone()))
     });
 
-    match engine.execute(CoreOperation::SearchWorkspace {
-        query: req.query.clone(),
-        frontmatter_filter,
-        property_filter,
-        tag_filter: req.tag_filter.clone(),
-        realm: req.realm.clone(),
-        limit: req.limit,
-    }) {
+    match engine
+        .execute(CoreOperation::SearchWorkspace {
+            query: req.query.clone(),
+            frontmatter_filter,
+            property_filter,
+            tag_filter: req.tag_filter.clone(),
+            realm: req.realm.clone(),
+            limit: req.limit,
+        })
+        .await
+    {
         CoreOperationResult::WorkspaceSearchResults {
             realm,
             query,
@@ -170,18 +179,21 @@ pub(crate) fn handle_search_workspace(
     }
 }
 
-pub(crate) fn handle_search_for_pattern(
+pub(crate) async fn handle_search_for_pattern(
     engine: &dyn CoreEngine,
     req: SearchForPatternRequest,
 ) -> Result<CallToolResult, McpError> {
-    match engine.execute(CoreOperation::SearchForPattern {
-        pattern: req.pattern.clone(),
-        include_glob: req.include_glob.clone(),
-        context_lines: req.context_lines,
-        limit: req.limit,
-        case_insensitive: req.case_insensitive,
-        realm: req.realm.clone(),
-    }) {
+    match engine
+        .execute(CoreOperation::SearchForPattern {
+            pattern: req.pattern.clone(),
+            include_glob: req.include_glob.clone(),
+            context_lines: req.context_lines,
+            limit: req.limit,
+            case_insensitive: req.case_insensitive,
+            realm: req.realm.clone(),
+        })
+        .await
+    {
         CoreOperationResult::PatternSearchResults {
             realm,
             pattern,

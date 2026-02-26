@@ -45,8 +45,10 @@ async fn setup_workspace() -> (
         let mut state = backend.state().write().await;
         let core_main = DocumentUri::new("file:///workspace/main.md").unwrap();
         let core_other = DocumentUri::new("file:///workspace/other-page.md").unwrap();
-        state.open_document(core_main, main_text.to_string());
-        state.open_document(core_other, other_text.to_string());
+        state.open_document(core_main, main_text.to_string()).await;
+        state
+            .open_document(core_other, other_text.to_string())
+            .await;
     }
 
     (service, socket, uri_main, uri_other)
@@ -110,7 +112,7 @@ async fn test_document_symbol_empty_document() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/empty.md").unwrap();
-        state.open_document(core_uri, String::new());
+        state.open_document(core_uri, String::new()).await;
     }
 
     let params = DocumentSymbolParams {
@@ -144,7 +146,9 @@ async fn test_document_symbol_flat_headings() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/flat.md").unwrap();
-        state.open_document(core_uri, "# First\n\n# Second\n\n# Third\n".to_string());
+        state
+            .open_document(core_uri, "# First\n\n# Second\n\n# Third\n".to_string())
+            .await;
     }
 
     let params = DocumentSymbolParams {
@@ -223,10 +227,13 @@ async fn test_document_symbol_includes_xml_tags() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/xml-doc.md").unwrap();
-        state.open_document(
-            core_uri,
-            "# Config\n\n<agent>\n\ncontent\n\n</agent>\n\n<goal>\n\nwin\n\n</goal>\n".to_string(),
-        );
+        state
+            .open_document(
+                core_uri,
+                "# Config\n\n<agent>\n\ncontent\n\n</agent>\n\n<goal>\n\nwin\n\n</goal>\n"
+                    .to_string(),
+            )
+            .await;
     }
 
     let params = DocumentSymbolParams {
@@ -268,10 +275,12 @@ async fn test_document_symbol_xml_only_document() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/xml-only.md").unwrap();
-        state.open_document(
-            core_uri,
-            "<agent>\n\ncontent\n\n</agent>\n\n<br/>\n".to_string(),
-        );
+        state
+            .open_document(
+                core_uri,
+                "<agent>\n\ncontent\n\n</agent>\n\n<br/>\n".to_string(),
+            )
+            .await;
     }
 
     let params = DocumentSymbolParams {
@@ -310,18 +319,20 @@ async fn test_document_symbol_nests_xml_tags_by_range() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/xml-nested.md").unwrap();
-        state.open_document(
-            core_uri,
-            concat!(
-                "<agent>\n",
-                "  <goal>win</goal>\n",
-                "  <task>\n",
-                "    <step>one</step>\n",
-                "  </task>\n",
-                "</agent>\n",
+        state
+            .open_document(
+                core_uri,
+                concat!(
+                    "<agent>\n",
+                    "  <goal>win</goal>\n",
+                    "  <task>\n",
+                    "    <step>one</step>\n",
+                    "  </task>\n",
+                    "</agent>\n",
+                )
+                .to_string(),
             )
-            .to_string(),
-        );
+            .await;
     }
 
     let params = DocumentSymbolParams {
@@ -385,17 +396,19 @@ async fn test_document_symbol_logseq_headings() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/logseq.md").unwrap();
-        state.open_document(
-            core_uri,
-            concat!(
-                "# Main Title\n",
-                "- ## Section A\n",
-                "\t- some content under A\n",
-                "- ## Section B\n",
-                "\t- content under B\n",
+        state
+            .open_document(
+                core_uri,
+                concat!(
+                    "# Main Title\n",
+                    "- ## Section A\n",
+                    "\t- some content under A\n",
+                    "- ## Section B\n",
+                    "\t- content under B\n",
+                )
+                .to_string(),
             )
-            .to_string(),
-        );
+            .await;
     }
 
     let params = DocumentSymbolParams {
@@ -451,19 +464,21 @@ async fn test_document_symbol_logseq_deep_nesting() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/logseq-deep.md").unwrap();
-        state.open_document(
-            core_uri,
-            concat!(
-                "- # WIP system\n",
-                "- ## Projects\n",
-                "- ### Active\n",
-                "\t- project details\n",
-                "- ### Backlog\n",
-                "\t- more stuff\n",
-                "- ## Done\n",
+        state
+            .open_document(
+                core_uri,
+                concat!(
+                    "- # WIP system\n",
+                    "- ## Projects\n",
+                    "- ### Active\n",
+                    "\t- project details\n",
+                    "- ### Backlog\n",
+                    "\t- more stuff\n",
+                    "- ## Done\n",
+                )
+                .to_string(),
             )
-            .to_string(),
-        );
+            .await;
     }
 
     let params = DocumentSymbolParams {
@@ -538,10 +553,12 @@ async fn test_document_symbol_json_file() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/config.json").unwrap();
-        state.open_document(
-            core_uri,
-            r#"{"database": {"host": "localhost", "port": 5432}, "debug": true}"#.to_string(),
-        );
+        state
+            .open_document(
+                core_uri,
+                r#"{"database": {"host": "localhost", "port": 5432}, "debug": true}"#.to_string(),
+            )
+            .await;
     }
 
     let params = DocumentSymbolParams {
@@ -610,10 +627,12 @@ async fn test_document_symbol_yaml_file() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/config.yaml").unwrap();
-        state.open_document(
-            core_uri,
-            "server:\n  host: localhost\n  port: 8080\nlogging: true\n".to_string(),
-        );
+        state
+            .open_document(
+                core_uri,
+                "server:\n  host: localhost\n  port: 8080\nlogging: true\n".to_string(),
+            )
+            .await;
     }
 
     let params = DocumentSymbolParams {
@@ -661,7 +680,7 @@ async fn test_document_symbol_empty_json() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/empty.json").unwrap();
-        state.open_document(core_uri, "{}".to_string());
+        state.open_document(core_uri, "{}".to_string()).await;
     }
 
     let params = DocumentSymbolParams {

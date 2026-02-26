@@ -45,8 +45,10 @@ async fn setup_workspace() -> (
         let mut state = backend.state().write().await;
         let core_main = DocumentUri::new("file:///workspace/main.md").unwrap();
         let core_other = DocumentUri::new("file:///workspace/other-page.md").unwrap();
-        state.open_document(core_main, main_text.to_string());
-        state.open_document(core_other, other_text.to_string());
+        state.open_document(core_main, main_text.to_string()).await;
+        state
+            .open_document(core_other, other_text.to_string())
+            .await;
     }
 
     (service, socket, uri_main, uri_other)
@@ -183,10 +185,12 @@ async fn test_hover_on_xml_tag() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/xml-doc.md").unwrap();
-        state.open_document(
-            core_uri,
-            "<agent priority=\"high\">\n\ncontent\n\n</agent>\n".to_string(),
-        );
+        state
+            .open_document(
+                core_uri,
+                "<agent priority=\"high\">\n\ncontent\n\n</agent>\n".to_string(),
+            )
+            .await;
     }
 
     let params = HoverParams {
@@ -226,10 +230,12 @@ async fn test_hover_on_xml_tag_shows_attributes() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/attrs.md").unwrap();
-        state.open_document(
-            core_uri,
-            "<goal priority=\"high\" scope=\"global\">\n\nwin\n\n</goal>\n".to_string(),
-        );
+        state
+            .open_document(
+                core_uri,
+                "<goal priority=\"high\" scope=\"global\">\n\nwin\n\n</goal>\n".to_string(),
+            )
+            .await;
     }
 
     let params = HoverParams {
@@ -279,18 +285,24 @@ async fn test_hover_on_xml_tag_shows_workspace_usage_stats() {
         let uri_b = DocumentUri::new("file:///workspace/xml-b.md").unwrap();
         let uri_c = DocumentUri::new("file:///workspace/xml-c.md").unwrap();
 
-        state.open_document(
-            uri_a,
-            "<agent priority=\"high\" scope=\"global\">\n\na\n\n</agent>\n".to_string(),
-        );
-        state.open_document(
-            uri_b,
-            "<agent priority=\"low\">\n\nb\n\n</agent>\n".to_string(),
-        );
-        state.open_document(
-            uri_c,
-            "<task priority=\"high\">\n\nc\n\n</task>\n".to_string(),
-        );
+        state
+            .open_document(
+                uri_a,
+                "<agent priority=\"high\" scope=\"global\">\n\na\n\n</agent>\n".to_string(),
+            )
+            .await;
+        state
+            .open_document(
+                uri_b,
+                "<agent priority=\"low\">\n\nb\n\n</agent>\n".to_string(),
+            )
+            .await;
+        state
+            .open_document(
+                uri_c,
+                "<task priority=\"high\">\n\nc\n\n</task>\n".to_string(),
+            )
+            .await;
     }
 
     let params = HoverParams {
@@ -335,7 +347,9 @@ async fn test_hover_on_unclosed_xml_tag_shows_warning() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/unclosed.md").unwrap();
-        state.open_document(core_uri, "<agent priority=\"high\">\n".to_string());
+        state
+            .open_document(core_uri, "<agent priority=\"high\">\n".to_string())
+            .await;
     }
 
     let params = HoverParams {
@@ -385,10 +399,12 @@ async fn test_hover_on_json_key() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/config.json").unwrap();
-        state.open_document(
-            core_uri,
-            "{\n  \"database\": {\n    \"host\": \"localhost\"\n  }\n}\n".to_string(),
-        );
+        state
+            .open_document(
+                core_uri,
+                "{\n  \"database\": {\n    \"host\": \"localhost\"\n  }\n}\n".to_string(),
+            )
+            .await;
     }
 
     // Hover on "host" key (line 2, col ~5)
@@ -434,7 +450,9 @@ async fn test_hover_on_yaml_key() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/config.yaml").unwrap();
-        state.open_document(core_uri, "server:\n  port: 8080\n".to_string());
+        state
+            .open_document(core_uri, "server:\n  port: 8080\n".to_string())
+            .await;
     }
 
     // Hover on "port" key (line 1, col 3)
@@ -480,7 +498,9 @@ async fn test_hover_on_toml_key() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/config.toml").unwrap();
-        state.open_document(core_uri, "[package]\nname = \"myapp\"\n".to_string());
+        state
+            .open_document(core_uri, "[package]\nname = \"myapp\"\n".to_string())
+            .await;
     }
 
     // Hover on "name" key (line 1, col 2)
@@ -526,7 +546,9 @@ async fn test_hover_on_json_non_key_returns_none() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/empty.json").unwrap();
-        state.open_document(core_uri, "{\n  \"key\": \"value\"\n}\n".to_string());
+        state
+            .open_document(core_uri, "{\n  \"key\": \"value\"\n}\n".to_string())
+            .await;
     }
 
     // Hover on the opening brace (line 0, col 0) -- not on a key
@@ -556,10 +578,12 @@ async fn test_hover_on_json_object_key() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/nested.json").unwrap();
-        state.open_document(
-            core_uri,
-            "{\n  \"database\": {\n    \"host\": \"localhost\"\n  }\n}\n".to_string(),
-        );
+        state
+            .open_document(
+                core_uri,
+                "{\n  \"database\": {\n    \"host\": \"localhost\"\n  }\n}\n".to_string(),
+            )
+            .await;
     }
 
     // Hover on "database" key (line 1, col 4) - an Object-typed key
@@ -614,10 +638,12 @@ async fn test_hover_on_code_span() {
         // Line 2: "Use `HashMap` for lookups."
         //          01234567890123
         //              ^--- backtick at col 4, text "HashMap" at cols 5-11, closing backtick at col 12
-        state.open_document(
-            core_uri,
-            "# API\n\nUse `HashMap` for lookups.\n".to_string(),
-        );
+        state
+            .open_document(
+                core_uri,
+                "# API\n\nUse `HashMap` for lookups.\n".to_string(),
+            )
+            .await;
     }
 
     // Hover on "HashMap" text (line 2, col 7 — inside the code span)
@@ -654,14 +680,18 @@ async fn test_hover_on_code_span_shows_cross_doc_refs() {
 
     {
         let mut state = backend.state().write().await;
-        state.open_document(
-            DocumentUri::new("file:///ws/a.md").unwrap(),
-            "# Doc A\n\nUse `Option` here.\n".to_string(),
-        );
-        state.open_document(
-            DocumentUri::new("file:///ws/b.md").unwrap(),
-            "# Doc B\n\nAlso `Option` there.\n".to_string(),
-        );
+        state
+            .open_document(
+                DocumentUri::new("file:///ws/a.md").unwrap(),
+                "# Doc A\n\nUse `Option` here.\n".to_string(),
+            )
+            .await;
+        state
+            .open_document(
+                DocumentUri::new("file:///ws/b.md").unwrap(),
+                "# Doc B\n\nAlso `Option` there.\n".to_string(),
+            )
+            .await;
     }
 
     // Hover on "Option" in doc A (line 2, col 7)

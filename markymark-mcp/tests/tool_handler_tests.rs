@@ -6,6 +6,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_core::{CoreError, DocumentUri, Position, Range};
 use markymark_mcp::dto::*;
@@ -24,8 +25,9 @@ enum MockMode {
     RejectLargeTopK,
 }
 
+#[async_trait]
 impl CoreEngine for MockEngine {
-    fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
+    async fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
         match (&self.mode, operation) {
             (MockMode::CoreError, _) => {
                 CoreOperationResult::Error(CoreError::Message("engine failed".to_string()))
@@ -216,13 +218,13 @@ impl CoreEngine for MockEngine {
     }
 }
 
-#[test]
-fn forwards_get_outline_to_core_engine() {
+#[tokio::test]
+async fn forwards_get_outline_to_core_engine() {
     let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
         mode: MockMode::Happy,
     }));
     let uri = DocumentUri::from_file_path(Path::new("/vault/notes.md"));
-    let result = mcp.get_outline(uri, None);
+    let result = mcp.get_outline(uri, None).await;
 
     match result {
         CoreOperationResult::Outline(items) => {
@@ -232,12 +234,12 @@ fn forwards_get_outline_to_core_engine() {
     }
 }
 
-#[test]
-fn forwards_search_symbols_to_core_engine() {
+#[tokio::test]
+async fn forwards_search_symbols_to_core_engine() {
     let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
         mode: MockMode::Happy,
     }));
-    let result = mcp.search_symbols("intro".to_string(), None);
+    let result = mcp.search_symbols("intro".to_string(), None).await;
 
     match result {
         CoreOperationResult::Symbols(items) => {

@@ -1,13 +1,44 @@
 //! Realm management operation handlers: CreateRealm, DestroyRealm, AddRoot, RemoveRoot, RealmStats.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+#[cfg(feature = "semantic-search")]
+use std::sync::Arc;
 
 use markymark_core::engine::CoreOperationResult;
+#[cfg(feature = "semantic-search")]
+use markymark_core::prelude::EmbeddingProvider;
 use markymark_core::CoreError;
 
-use super::{helpers, index_root_into_realm, unindex_root_from_realm, RealmData, DEFAULT_REALM};
+use super::{helpers, unindex_root_from_realm, RealmData, DEFAULT_REALM};
 
+#[cfg(feature = "semantic-search")]
+pub(crate) fn handle_create_realm(
+    state: &mut HashMap<String, RealmData>,
+    name: String,
+    provider: Option<Arc<dyn EmbeddingProvider>>,
+) -> CoreOperationResult {
+    if name.is_empty() {
+        return CoreOperationResult::Error(CoreError::Message(
+            "realm name must not be empty".to_string(),
+        ));
+    }
+
+    if state.contains_key(&name) {
+        return CoreOperationResult::Error(CoreError::Message(format!(
+            "realm already exists: {name}"
+        )));
+    }
+
+    state.insert(name.clone(), RealmData::new(provider));
+    CoreOperationResult::RealmInfo {
+        name,
+        root_count: 0,
+        document_count: 0,
+    }
+}
+
+#[cfg(not(feature = "semantic-search"))]
 pub(crate) fn handle_create_realm(
     state: &mut HashMap<String, RealmData>,
     name: String,
@@ -51,44 +82,43 @@ pub(crate) fn handle_destroy_realm(
     CoreOperationResult::Ok
 }
 
-pub(crate) fn handle_add_root(
+/// Validate a root path and register it in a realm (fast, synchronous).
+///
+/// This performs the quick portion of `AddRoot`: validation, duplicate check,
+/// and root registration. The caller handles document indexing separately
+/// so the write lock can be released before slow I/O and embedding.
+pub(crate) fn validate_and_register_root(
     state: &mut HashMap<String, RealmData>,
-    realm: String,
-    root: PathBuf,
-) -> CoreOperationResult {
-    if let Err(msg) = helpers::validate_workspace_root(&root) {
-        return CoreOperationResult::Error(CoreError::Message(msg.to_string()));
+    realm: &str,
+    root: &Path,
+) -> Result<(), CoreError> {
+    if let Err(msg) = helpers::validate_workspace_root(root) {
+        return Err(CoreError::Message(msg.to_string()));
     }
 
-    let realm_data = match state.get_mut(&realm) {
+    let realm_data = match state.get_mut(realm) {
         Some(data) => data,
         None => {
-            return CoreOperationResult::Error(CoreError::Message(format!(
+            return Err(CoreError::Message(format!(
                 "realm does not exist: {realm}"
             )));
         }
     };
 
     // Check for duplicate root (canonicalize for comparison).
-    let canonical = root.canonicalize().unwrap_or_else(|_| root.clone());
+    let canonical = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     for existing in &realm_data.roots {
         let existing_canonical = existing.canonicalize().unwrap_or_else(|_| existing.clone());
         if canonical == existing_canonical {
-            return CoreOperationResult::Error(CoreError::Message(format!(
+            return Err(CoreError::Message(format!(
                 "root already added to realm: {}",
                 root.display()
             )));
         }
     }
 
-    index_root_into_realm(&root, realm_data);
-    realm_data.roots.push(root);
-
-    CoreOperationResult::RealmInfo {
-        name: realm.clone(),
-        root_count: realm_data.roots.len(),
-        document_count: realm_data.index.document_count(),
-    }
+    realm_data.roots.push(root.to_path_buf());
+    Ok(())
 }
 
 pub(crate) fn handle_remove_root(

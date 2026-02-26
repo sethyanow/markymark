@@ -19,16 +19,20 @@ fn extract_diagnostics(result: CoreOperationResult) -> Vec<(String, Vec<CoreDiag
 
 // ---- Tests ----
 
-#[test]
-fn get_diagnostics_realm_wide_finds_broken_wiki_link() {
+#[tokio::test]
+async fn get_diagnostics_realm_wide_finds_broken_wiki_link() {
     let ws = TempWorkspace::new("broken-wiki");
     ws.write("notes.md", "# Notes\n\n[[missing-page]]\n");
-    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("engine should build");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("engine should build");
 
-    let result = engine.execute(CoreOperation::GetDiagnostics {
-        uri: None,
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::GetDiagnostics {
+            uri: None,
+            realm: None,
+        })
+        .await;
 
     let items = extract_diagnostics(result);
     let diags: Vec<_> = items.into_iter().flat_map(|(_, d)| d).collect();
@@ -39,23 +43,27 @@ fn get_diagnostics_realm_wide_finds_broken_wiki_link() {
     );
 }
 
-#[test]
-fn get_diagnostics_single_file_finds_duplicate_heading() {
+#[tokio::test]
+async fn get_diagnostics_single_file_finds_duplicate_heading() {
     let ws = TempWorkspace::new("dup-heading");
     ws.write(
         "doc.md",
         "# Overview\n\nSome text.\n\n# Overview\n\nMore text.\n",
     );
-    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("engine should build");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("engine should build");
 
     // Get a file:// URI for the file
     let file_path = ws.root().join("doc.md");
     let uri = markymark_core::DocumentUri::from_file_path(&file_path);
 
-    let result = engine.execute(CoreOperation::GetDiagnostics {
-        uri: Some(uri),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::GetDiagnostics {
+            uri: Some(uri),
+            realm: None,
+        })
+        .await;
 
     let items = extract_diagnostics(result);
     let diags: Vec<_> = items.into_iter().flat_map(|(_, d)| d).collect();
@@ -68,17 +76,21 @@ fn get_diagnostics_single_file_finds_duplicate_heading() {
     );
 }
 
-#[test]
-fn get_diagnostics_clean_workspace_returns_empty() {
+#[tokio::test]
+async fn get_diagnostics_clean_workspace_returns_empty() {
     let ws = TempWorkspace::new("clean");
     ws.write("a.md", "# Hello\n\nNo broken links here.\n");
     ws.write("b.md", "# World\n\nSee [[a]].\n");
-    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("engine should build");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("engine should build");
 
-    let result = engine.execute(CoreOperation::GetDiagnostics {
-        uri: None,
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::GetDiagnostics {
+            uri: None,
+            realm: None,
+        })
+        .await;
 
     let items = extract_diagnostics(result);
     let all_diags: Vec<_> = items.into_iter().flat_map(|(_, d)| d).collect();
@@ -89,16 +101,20 @@ fn get_diagnostics_clean_workspace_returns_empty() {
     );
 }
 
-#[test]
-fn get_diagnostics_missing_realm_returns_error() {
+#[tokio::test]
+async fn get_diagnostics_missing_realm_returns_error() {
     let ws = TempWorkspace::new("no-realm");
     ws.write("x.md", "# X\n");
-    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("engine should build");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("engine should build");
 
-    let result = engine.execute(CoreOperation::GetDiagnostics {
-        uri: None,
-        realm: Some("nonexistent".to_string()),
-    });
+    let result = engine
+        .execute(CoreOperation::GetDiagnostics {
+            uri: None,
+            realm: Some("nonexistent".to_string()),
+        })
+        .await;
 
     assert!(
         matches!(result, CoreOperationResult::Error(_)),
@@ -106,21 +122,25 @@ fn get_diagnostics_missing_realm_returns_error() {
     );
 }
 
-#[test]
-fn get_diagnostics_structured_doc_returns_empty_not_error() {
+#[tokio::test]
+async fn get_diagnostics_structured_doc_returns_empty_not_error() {
     let ws = TempWorkspace::new("structured-doc");
     ws.write("data.json", r#"{"key": "value"}"#);
     ws.write("notes.md", "# Notes\n\nSome text.\n");
-    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("engine should build");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("engine should build");
 
     // Get a file:// URI for the JSON file
     let file_path = ws.root().join("data.json");
     let uri = markymark_core::DocumentUri::from_file_path(&file_path);
 
-    let result = engine.execute(CoreOperation::GetDiagnostics {
-        uri: Some(uri),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::GetDiagnostics {
+            uri: Some(uri),
+            realm: None,
+        })
+        .await;
 
     // Should return empty diagnostics, NOT an error
     let items = extract_diagnostics(result);

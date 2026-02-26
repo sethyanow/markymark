@@ -4,12 +4,14 @@ use std::fs;
 use std::sync::Arc;
 
 use common::TempWorkspace;
+#[cfg(feature = "semantic-search")]
+use markymark_core::prelude::EmbeddingProvider;
+#[cfg(feature = "semantic-search")]
+use markymark_mcp::{HashEmbeddingProvider, SemanticSearchRequest, SemanticSearchResponse};
 use markymark_mcp::{
     MarkymarkMcp, OutlineRequest, OutlineResponse, RuntimeEngine, SearchSymbolsRequest,
     SearchSymbolsResponse,
 };
-#[cfg(feature = "semantic-search")]
-use markymark_mcp::{SemanticSearchRequest, SemanticSearchResponse};
 use rmcp::handler::server::wrapper::Parameters;
 
 #[tokio::test]
@@ -19,8 +21,9 @@ async fn mcp_tools_return_real_indexed_data() {
     fs::write(&file, "# Intro\nSome text\n## Deep Dive\n#rust #tools\n")
         .expect("markdown fixture should be written");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
     let mcp = MarkymarkMcp::new(Arc::new(engine));
 
     let outline_result = mcp
@@ -58,8 +61,10 @@ async fn semantic_search_tool_returns_real_engine_results() {
     fs::write(&file, "# Intro\nContext about embeddings.\n")
         .expect("markdown fixture should be written");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(HashEmbeddingProvider::new(128));
+    let engine = RuntimeEngine::from_workspace_roots_with_provider(vec![ws.root()], Some(provider))
+        .await
+        .expect("workspace should index");
     let mcp = MarkymarkMcp::new(Arc::new(engine));
 
     let result = mcp
