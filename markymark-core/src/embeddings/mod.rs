@@ -7,6 +7,8 @@
 use async_trait::async_trait;
 use std::fmt;
 
+#[cfg(feature = "local-embeddings")]
+pub mod local;
 #[cfg(feature = "voyage")]
 pub mod voyage;
 

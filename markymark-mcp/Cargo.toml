@@ -12,6 +12,7 @@ categories = ["development-tools", "text-processing"]
 [features]
 default = []
 semantic-search = ["markymark-index/embeddings"]
+local-embeddings = ["markymark-core/local-embeddings"]
 
 [dependencies]
 async-trait = { workspace = true }

@@ -53,6 +53,9 @@ self_cell = "1.2.2"
 # HTTP
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
+# Embedding (local ONNX inference)
+fastembed = { version = "5.11", default-features = false, features = ["ort-download-binaries", "hf-hub-native-tls"] }
+
 # Testing
 insta = { version = "1.42", features = ["yaml"] }
 proptest = "1.5"

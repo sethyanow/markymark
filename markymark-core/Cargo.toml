@@ -13,11 +13,14 @@ categories = ["development-tools", "text-processing"]
 default = []
 zig-kernels = ["dep:markymark-kernels"]
 voyage = ["dep:reqwest"]
+local-embeddings = ["dep:fastembed", "dep:tokio"]
 
 [dependencies]
 async-trait = { workspace = true }
+fastembed = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 serde = { workspace = true }
+tokio = { workspace = true, optional = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }

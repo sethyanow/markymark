@@ -17,6 +17,8 @@ use clap::Parser;
 pub enum SemanticProvider {
     /// Voyage AI API (requires VOYAGE_API_KEY env var).
     Voyage,
+    /// Local ONNX inference (all-MiniLM-L6-v2, no API key needed).
+    Local,
     /// Dev/test hash-based embedding provider.
     Hash,
 }
@@ -94,6 +96,7 @@ async fn build_engine_with_provider(
 
     let embedding: Arc<dyn EmbeddingProvider> = match provider {
         SemanticProvider::Voyage => build_voyage_provider()?,
+        SemanticProvider::Local => build_local_provider()?,
         SemanticProvider::Hash => Arc::new(markymark_mcp::HashEmbeddingProvider::new(128)),
     };
     markymark_mcp::RuntimeEngine::from_workspace_roots_with_provider(roots, Some(embedding))
@@ -108,6 +111,9 @@ async fn build_engine_with_provider(
     match provider {
         SemanticProvider::Voyage => bail!(
             "--semantic-search voyage requires compiling with --features semantic-search,voyage"
+        ),
+        SemanticProvider::Local => bail!(
+            "--semantic-search local requires compiling with --features semantic-search,local-embeddings"
         ),
         SemanticProvider::Hash => {
             bail!("--semantic-search hash requires compiling with --features semantic-search")
@@ -131,6 +137,20 @@ fn build_voyage_provider() -> Result<Arc<dyn markymark_core::prelude::EmbeddingP
 #[cfg(all(feature = "semantic-search", not(feature = "voyage")))]
 fn build_voyage_provider() -> Result<Arc<dyn markymark_core::prelude::EmbeddingProvider>> {
     bail!("--semantic-search voyage requires compiling with --features voyage")
+}
+
+#[cfg(all(feature = "semantic-search", feature = "local-embeddings"))]
+fn build_local_provider() -> Result<Arc<dyn markymark_core::prelude::EmbeddingProvider>> {
+    use markymark_core::embeddings::local::LocalOnnxProvider;
+
+    let provider = LocalOnnxProvider::new(None)
+        .map_err(|e| anyhow::anyhow!("failed to create local embedding provider: {e}"))?;
+    Ok(Arc::new(provider))
+}
+
+#[cfg(all(feature = "semantic-search", not(feature = "local-embeddings")))]
+fn build_local_provider() -> Result<Arc<dyn markymark_core::prelude::EmbeddingProvider>> {
+    bail!("--semantic-search local requires compiling with --features local-embeddings")
 }
 
 #[cfg(test)]
@@ -160,6 +180,13 @@ mod tests {
     }
 
     #[test]
+    fn cli_parses_semantic_search_local() {
+        let cli = Cli::try_parse_from(["markymark", "--mcp", "--semantic-search", "local", "."])
+            .unwrap();
+        assert!(matches!(cli.semantic_search, Some(SemanticProvider::Local)));
+    }
+
+    #[test]
     fn cli_invalid_provider_rejected() {
         let result =
             Cli::try_parse_from(["markymark", "--mcp", "--semantic-search", "openai", "."]);
@@ -186,6 +213,21 @@ mod tests {
         let err = result.err().expect("should fail without semantic-search feature");
         assert!(
             err.to_string().contains("--features semantic-search"),
+            "error should mention the required feature flag, got: {err}"
+        );
+    }
+
+    /// When semantic-search feature is compiled but local-embeddings is not,
+    /// provider construction should fail with a clear feature flag message.
+    #[cfg(all(feature = "semantic-search", not(feature = "local-embeddings")))]
+    #[tokio::test]
+    async fn build_local_without_feature_returns_error() {
+        let tmp = std::env::temp_dir().join("markymark-test-no-local");
+        let _ = std::fs::create_dir_all(&tmp);
+        let result = build_engine_with_provider(vec![tmp], SemanticProvider::Local).await;
+        let err = result.err().expect("should fail without local-embeddings feature");
+        assert!(
+            err.to_string().contains("--features local-embeddings"),
             "error should mention the required feature flag, got: {err}"
         );
     }
