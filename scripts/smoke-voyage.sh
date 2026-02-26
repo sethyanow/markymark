@@ -155,12 +155,56 @@ check() {
   fi
 }
 
+check_jsonrpc_success() {
+  local label="$1" id="$2"
+
+  if command -v python3 &>/dev/null; then
+    if python3 - "$TMPOUT" "$id" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+target_id = int(sys.argv[2])
+
+found_success = False
+with open(path, "r", encoding="utf-8") as fh:
+    for line in fh:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if msg.get("id") == target_id and "result" in msg and "error" not in msg:
+            found_success = True
+            break
+
+sys.exit(0 if found_success else 1)
+PY
+    then
+      echo "  PASS: $label"
+      PASS=$((PASS + 1))
+      return
+    fi
+  else
+    if grep -Eq "\"id\":$id.*\"result\"|\"result\".*\"id\":$id" "$TMPOUT"; then
+      echo "  PASS: $label"
+      PASS=$((PASS + 1))
+      return
+    fi
+  fi
+
+  echo "  FAIL: $label (no successful JSON-RPC result for id=$id)"
+  FAIL=$((FAIL + 1))
+}
+
 echo ""
 echo "==> Assertions:"
-check "Initialize response (id=1)"            '"id":1'
-check "Tools/list response (id=2)"            '"id":2'
+check_jsonrpc_success "Initialize response (id=1)" 1
+check_jsonrpc_success "Tools/list response (id=2)" 2
 check "semantic-search tool advertised"        'semantic-search'
-check "semantic-search response (id=3)"        '"id":3'
+check_jsonrpc_success "semantic-search response (id=3)" 3
 
 echo ""
 echo "==> Results: $PASS passed, $FAIL failed"
