@@ -3,10 +3,8 @@ use std::collections::{BTreeSet, HashMap};
 use crate::DocumentIndex;
 use markymark_core::prelude::*;
 
-use super::{
-    DuplicateMatch, SearchResult, SemanticEntry, SemanticIndex, compute_fetch_k, fallback_heading,
-    jaccard_similarity, token_hashes,
-};
+use super::helpers::{compute_fetch_k, fallback_heading, jaccard_similarity, token_hashes};
+use super::{DuplicateMatch, SearchResult, SemanticEntry, SemanticIndex};
 
 impl SemanticIndex {
     /// Incrementally update semantic entries for a document.

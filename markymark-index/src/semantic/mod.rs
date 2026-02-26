@@ -5,7 +5,6 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
-use crate::DocumentIndex;
 use markymark_core::prelude::*;
 use markymark_kernels::embed::EmbeddingIndex as ZigEmbeddingIndex;
 
@@ -13,9 +12,6 @@ mod helpers;
 mod ops_add_remove;
 mod ops_update_search;
 mod types;
-pub(super) use helpers::{
-    compute_fetch_k, fallback_heading, fnv1a32, jaccard_similarity, token_hashes,
-};
 pub use types::{DuplicateMatch, SearchResult, SemanticEntry};
 
 /// Semantic index backed by [`ZigEmbeddingIndex`].
@@ -56,7 +52,6 @@ impl SemanticIndex {
         self.entries_by_id.len()
     }
 }
-
 
 #[cfg(test)]
 mod tests;

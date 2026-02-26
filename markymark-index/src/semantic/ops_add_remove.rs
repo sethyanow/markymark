@@ -1,7 +1,8 @@
 use crate::DocumentIndex;
 use markymark_core::prelude::*;
 
-use super::{SemanticEntry, SemanticIndex, fallback_heading, token_hashes};
+use super::helpers::{fallback_heading, token_hashes};
+use super::{SemanticEntry, SemanticIndex};
 
 impl SemanticIndex {
     /// Add (or replace) semantic entries for a document.
