@@ -278,8 +278,9 @@ in Rust. Net -2,839 lines. The decisions below are historical context only.
   the MCP engine to clone the Arc handle, release the outer realm RwLock, and run async search
   without blocking realm-level write operations. `semantic_index_arc()` accessor provides the handle.
 - **tokio::sync::Mutex (not std::sync::Mutex)** because `SemanticIndex::search()` is async.
-- **blocking_lock() used in sync paths** (remove_document, detect_duplicates) — safe because
-  the critical section is microseconds with no .await inside.
+- **No `blocking_lock()` in async call chains** (marky-wnjk, 2026-02-26). `RealmIndex::remove_document`
+  and `detect_semantic_duplicates` are async and must use `lock().await`; calling
+  `blocking_lock()` from Tokio runtime paths panics ("Cannot block the current thread...").
 
 ### Build & CI
 

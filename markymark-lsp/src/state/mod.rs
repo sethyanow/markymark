@@ -277,7 +277,7 @@ impl ServerState {
                 self.realm.update_document(uri.clone(), index).await;
             }
             Some(kind) => {
-                self.realm.remove_document(uri);
+                self.realm.remove_document(uri).await;
                 if let Ok(ast) = parse_structured(&text, kind) {
                     self.realm.add_structured_document(
                         uri.clone(),
@@ -369,7 +369,7 @@ impl ServerState {
                 self.realm.update_document(uri.clone(), index).await;
             }
             Some(kind) => {
-                self.realm.remove_document(uri);
+                self.realm.remove_document(uri).await;
                 if let Ok(ast) = parse_structured(&final_text, kind) {
                     self.realm.add_structured_document(
                         uri.clone(),
@@ -381,10 +381,10 @@ impl ServerState {
     }
 
     /// Handle a document being closed: remove from store and index.
-    pub fn close_document(&mut self, uri: &DocumentUri) {
+    pub async fn close_document(&mut self, uri: &DocumentUri) {
         self.documents.remove(uri.as_str());
         self.engines.remove(uri.as_str());
-        self.realm.remove_document(uri);
+        self.realm.remove_document(uri).await;
     }
 
     /// Get the stored text for a document.

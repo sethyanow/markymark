@@ -692,7 +692,11 @@ mod concurrency_tests {
         let provider: Arc<dyn EmbeddingProvider> = Arc::new(slow_provider);
 
         let dir = make_temp_realm_dir("concurrency");
-        fs::write(dir.path().join("doc.md"), "# Hello World\n\nSome content.\n").unwrap();
+        fs::write(
+            dir.path().join("doc.md"),
+            "# Hello World\n\nSome content.\n",
+        )
+        .unwrap();
 
         let engine = Arc::new(
             RuntimeEngine::from_workspace_roots_with_provider(
@@ -830,6 +834,180 @@ mod concurrency_tests {
         assert!(
             matches!(add_root_result, CoreOperationResult::RealmInfo { .. }),
             "AddRoot should succeed, got {add_root_result:?}"
+        );
+    }
+
+    /// RemoveRoot must complete while a concurrent semantic search is running.
+    ///
+    /// This specifically guards against calling `blocking_lock()` from async
+    /// context inside RealmIndex::remove_document.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn remove_root_does_not_deadlock_during_search() {
+        let delay = Duration::from_millis(200);
+        let (slow_provider, embed_started) = SlowEmbeddingProvider::new(32, delay);
+        let provider: Arc<dyn EmbeddingProvider> = Arc::new(slow_provider);
+
+        let engine = Arc::new(RuntimeEngine {
+            state: tokio::sync::RwLock::new({
+                let mut map = std::collections::HashMap::new();
+                map.insert(
+                    "default".to_string(),
+                    RealmData::new(Some(Arc::clone(&provider))),
+                );
+                map
+            }),
+            provider: Some(provider),
+        });
+
+        let dir = make_temp_realm_dir("remove-root-concurrency");
+        fs::write(
+            dir.path().join("doc.md"),
+            "# Slow Embedding Test\n\nSome content.\n",
+        )
+        .unwrap();
+        let root = dir.path().to_path_buf();
+
+        let add_result = engine
+            .execute(CoreOperation::AddRoot {
+                realm: "default".to_string(),
+                root: root.clone(),
+            })
+            .await;
+        assert!(
+            matches!(add_result, CoreOperationResult::RealmInfo { .. }),
+            "AddRoot setup should succeed, got {add_result:?}"
+        );
+
+        // Drain setup embed notification from AddRoot.
+        embed_started.notified().await;
+
+        let engine_search = Arc::clone(&engine);
+        let search_handle = tokio::spawn(async move {
+            engine_search
+                .execute(CoreOperation::SemanticSearch {
+                    query: "slow".to_string(),
+                    realm: None,
+                    top_k: 5,
+                    min_score: 0.0,
+                })
+                .await
+        });
+
+        // Wait until SemanticSearch entered embed().
+        embed_started.notified().await;
+
+        let engine_remove = Arc::clone(&engine);
+        let remove_result = tokio::time::timeout(
+            Duration::from_secs(2),
+            engine_remove.execute(CoreOperation::RemoveRoot {
+                realm: "default".to_string(),
+                root,
+            }),
+        )
+        .await
+        .expect("RemoveRoot timed out while semantic search was running");
+
+        assert!(
+            matches!(
+                remove_result,
+                CoreOperationResult::RealmInfo {
+                    root_count: 0,
+                    document_count: 0,
+                    ..
+                }
+            ),
+            "RemoveRoot should succeed, got {remove_result:?}"
+        );
+
+        let search_result = search_handle.await.expect("search task should not panic");
+        assert!(
+            matches!(search_result, CoreOperationResult::SemanticMatches(_)),
+            "SemanticSearch should succeed, got {search_result:?}"
+        );
+    }
+
+    /// RealmStats(check_duplicates=true) must complete while a concurrent
+    /// semantic search is running.
+    ///
+    /// This specifically guards against calling `blocking_lock()` from async
+    /// context inside RealmIndex::detect_semantic_duplicates.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn realm_stats_does_not_deadlock_during_search() {
+        let delay = Duration::from_millis(200);
+        let (slow_provider, embed_started) = SlowEmbeddingProvider::new(32, delay);
+        let provider: Arc<dyn EmbeddingProvider> = Arc::new(slow_provider);
+
+        let engine = Arc::new(RuntimeEngine {
+            state: tokio::sync::RwLock::new({
+                let mut map = std::collections::HashMap::new();
+                map.insert(
+                    "default".to_string(),
+                    RealmData::new(Some(Arc::clone(&provider))),
+                );
+                map
+            }),
+            provider: Some(provider),
+        });
+
+        let dir = make_temp_realm_dir("realm-stats-concurrency");
+        fs::write(dir.path().join("doc.md"), "# Alpha\n\nsemantic content\n").unwrap();
+        let add_result = engine
+            .execute(CoreOperation::AddRoot {
+                realm: "default".to_string(),
+                root: dir.path().to_path_buf(),
+            })
+            .await;
+        assert!(
+            matches!(add_result, CoreOperationResult::RealmInfo { .. }),
+            "AddRoot setup should succeed, got {add_result:?}"
+        );
+
+        // Drain setup embed notification from AddRoot.
+        embed_started.notified().await;
+
+        let engine_search = Arc::clone(&engine);
+        let search_handle = tokio::spawn(async move {
+            engine_search
+                .execute(CoreOperation::SemanticSearch {
+                    query: "semantic".to_string(),
+                    realm: None,
+                    top_k: 5,
+                    min_score: 0.0,
+                })
+                .await
+        });
+
+        // Wait until SemanticSearch entered embed().
+        embed_started.notified().await;
+
+        let engine_stats = Arc::clone(&engine);
+        let stats_result = tokio::time::timeout(
+            Duration::from_secs(2),
+            engine_stats.execute(CoreOperation::RealmStats {
+                realm: "default".to_string(),
+                check_duplicates: true,
+                include_token_counts: false,
+            }),
+        )
+        .await
+        .expect("RealmStats timed out while semantic search was running");
+
+        match stats_result {
+            CoreOperationResult::RealmStats {
+                duplicate_pairs, ..
+            } => {
+                assert!(
+                    duplicate_pairs.is_some(),
+                    "duplicate_pairs should be present when check_duplicates=true"
+                );
+            }
+            other => panic!("RealmStats should succeed, got {other:?}"),
+        }
+
+        let search_result = search_handle.await.expect("search task should not panic");
+        assert!(
+            matches!(search_result, CoreOperationResult::SemanticMatches(_)),
+            "SemanticSearch should succeed, got {search_result:?}"
         );
     }
 }

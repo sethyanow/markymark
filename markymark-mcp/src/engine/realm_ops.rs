@@ -99,9 +99,7 @@ pub(crate) fn validate_and_register_root(
     let realm_data = match state.get_mut(realm) {
         Some(data) => data,
         None => {
-            return Err(CoreError::Message(format!(
-                "realm does not exist: {realm}"
-            )));
+            return Err(CoreError::Message(format!("realm does not exist: {realm}")));
         }
     };
 
@@ -121,7 +119,7 @@ pub(crate) fn validate_and_register_root(
     Ok(())
 }
 
-pub(crate) fn handle_remove_root(
+pub(crate) async fn handle_remove_root(
     state: &mut HashMap<String, RealmData>,
     realm: String,
     root: PathBuf,
@@ -143,7 +141,7 @@ pub(crate) fn handle_remove_root(
     match pos {
         Some(idx) => {
             let removed = realm_data.roots.remove(idx);
-            unindex_root_from_realm(&removed, realm_data);
+            unindex_root_from_realm(&removed, realm_data).await;
 
             CoreOperationResult::RealmInfo {
                 name: realm.clone(),
@@ -158,7 +156,7 @@ pub(crate) fn handle_remove_root(
     }
 }
 
-pub(crate) fn handle_realm_stats(
+pub(crate) async fn handle_realm_stats(
     realm_data: &RealmData,
     realm: String,
     check_duplicates: bool,
@@ -179,7 +177,13 @@ pub(crate) fn handle_realm_stats(
     let duplicate_pairs = if check_duplicates {
         #[cfg(feature = "semantic-search")]
         {
-            Some(realm_data.index.detect_semantic_duplicates(0.85).len())
+            Some(
+                realm_data
+                    .index
+                    .detect_semantic_duplicates(0.85)
+                    .await
+                    .len(),
+            )
         }
         #[cfg(not(feature = "semantic-search"))]
         {

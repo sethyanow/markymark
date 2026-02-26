@@ -137,7 +137,7 @@ async fn test_acceptance_closed_document_removed_from_completions() {
     );
 
     // Close one document
-    state.close_document(&uri_close);
+    state.close_document(&uri_close).await;
 
     // Only 'keep' should remain
     let candidates = state.completion_at(&uri_editor, Position::new(0, 8));
