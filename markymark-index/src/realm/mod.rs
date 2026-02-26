@@ -224,8 +224,8 @@ impl RealmIndex {
 
         if let Some(ref old_contrib) = old_contrib {
             if old_contrib == &new_contrib {
-                // Fast path: contribution sets identical — skip cross-doc index ops.
-                // Just swap the stored DocumentIndex.
+                // Fast path: contribution sets identical — skip cross-doc index ops
+                // AND semantic re-indexing (headings haven't changed).
             } else {
                 // Slow path: diff and patch only changed entries.
                 self.patch_headings(&key, &uri, old_contrib, &new_contrib, &new_index);
@@ -237,18 +237,25 @@ impl RealmIndex {
                 self.patch_code_spans(&key, &uri, old_contrib, &new_contrib, &new_index);
                 self.patch_stem(old_contrib, &new_contrib, &uri);
                 self.patch_journal_date(&key, &uri, old_contrib, &new_contrib);
+
+                // Incrementally update semantic index (only re-embeds changed headings).
+                #[cfg(feature = "embeddings")]
+                if let Some(semantic) = &mut self.semantic_index {
+                    if let Err(err) = semantic.update_document(uri.clone(), &new_index).await {
+                        log::warn!("semantic indexing failed for {}: {err}", uri.as_str());
+                    }
+                }
             }
         } else {
             // First add (no prior contribution): full population.
             self.ensure_tags_clean();
             self.populate_cross_doc_indexes(&uri, &new_index);
-        }
 
-        #[cfg(feature = "embeddings")]
-        if let Some(semantic) = &mut self.semantic_index {
-            semantic.remove_document(&uri);
-            if let Err(err) = semantic.add_document(uri.clone(), &new_index).await {
-                log::warn!("semantic indexing failed for {}: {err}", uri.as_str());
+            #[cfg(feature = "embeddings")]
+            if let Some(semantic) = &mut self.semantic_index {
+                if let Err(err) = semantic.add_document(uri.clone(), &new_index).await {
+                    log::warn!("semantic indexing failed for {}: {err}", uri.as_str());
+                }
             }
         }
 
