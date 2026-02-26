@@ -127,6 +127,13 @@ recurring patterns worth catching upfront:
   workspace crates must stay `pub` (Rust visibility is per-crate, not per-workspace). Consider
   `#[doc(hidden)]` for stability signaling, but don't attempt `pub(crate)` for cross-crate use.
 
+### Semantic add_document atomicity pattern (2026-02-26, marky-y2ne)
+
+For `SemanticIndex::add_document`, use a two-phase flow: (1) embed all headings/fallback and
+stage `(id, embedding, entry)` in memory, then (2) commit all Zig `index.add()` writes. Never
+interleave embed+insert. This prevents orphaned Zig vectors when provider embed fails mid-loop.
+Unit tests should assert both metadata (`entry_count`) and Zig state (`index.count`) on failure.
+
 ### Zig ArrayListUnmanaged scratch buffer pattern (2026-02-19)
 
 When a function builds a temporary string via `ArrayListUnmanaged(u8){}` and returns

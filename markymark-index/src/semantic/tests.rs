@@ -200,6 +200,47 @@
         }
     }
 
+    #[tokio::test]
+    async fn test_add_document_partial_embed_failure_does_not_mutate_zig_index() {
+        let provider = Arc::new(FailingProvider::new(32, 1));
+        let mut sem = SemanticIndex::new(provider).unwrap();
+        let uri = test_uri();
+
+        let doc = build_doc_index("# Alpha\n## Beta\n");
+        let result = sem.add_document(uri.clone(), &doc).await;
+        assert!(result.is_err(), "expected injected embed failure");
+
+        assert_eq!(sem.entry_count(), 0, "metadata should remain empty");
+        assert_eq!(
+            sem.index.count(),
+            0,
+            "no Zig vectors should be inserted when embeds fail",
+        );
+        assert!(
+            sem.doc_to_ids.get(&uri).is_none(),
+            "doc_to_ids should not contain failed document",
+        );
+    }
+
+    #[tokio::test]
+    async fn test_add_document_success_commits_all_vectors_and_metadata() {
+        let provider = Arc::new(CountingProvider::new(32));
+        let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+        let uri = test_uri();
+
+        let doc = build_doc_index("# Alpha\n## Beta\n## Gamma\n");
+        sem.add_document(uri.clone(), &doc).await.unwrap();
+
+        assert_eq!(provider.embed_count(), 3, "all headings should be embedded");
+        assert_eq!(sem.entry_count(), 3, "all metadata entries should be committed");
+        assert_eq!(sem.index.count(), 3, "all vectors should be committed to Zig");
+        assert_eq!(
+            sem.doc_to_ids.get(&uri).map(std::vec::Vec::len),
+            Some(3),
+            "doc_to_ids should track all committed ids",
+        );
+    }
+
     // --- update_document tests ---
 
     fn test_uri() -> DocumentUri {

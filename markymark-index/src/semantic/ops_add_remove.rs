@@ -16,6 +16,7 @@ impl SemanticIndex {
     ) -> Result<(), EmbedError> {
         self.remove_document(&uri);
 
+        let mut staged_zig_adds: Vec<(String, Vec<f32>)> = Vec::new();
         let mut ids = Vec::new();
         let mut pending_entries = Vec::new();
         let mut token_set = std::collections::BTreeSet::new();
@@ -24,11 +25,9 @@ impl SemanticIndex {
             let fallback_heading = fallback_heading(&uri);
             let embedding = self.provider.embed(&fallback_heading).await?;
             let id = format!("{}#fallback", uri.as_str());
-            self.index
-                .add(&id, &embedding)
-                .map_err(|e| EmbedError::InternalError(e.to_string()))?;
 
             token_set.extend(token_hashes(&fallback_heading));
+            staged_zig_adds.push((id.clone(), embedding));
             pending_entries.push((
                 id.clone(),
                 SemanticEntry {
@@ -48,11 +47,9 @@ impl SemanticIndex {
                 }
                 let embedding = self.provider.embed(&embedding_input).await?;
                 let id = format!("{}#{}#{i}", uri.as_str(), heading.slug);
-                self.index
-                    .add(&id, &embedding)
-                    .map_err(|e| EmbedError::InternalError(e.to_string()))?;
 
                 token_set.extend(token_hashes(&embedding_input));
+                staged_zig_adds.push((id.clone(), embedding));
                 pending_entries.push((
                     id.clone(),
                     SemanticEntry {
@@ -65,6 +62,12 @@ impl SemanticIndex {
                 ));
                 ids.push(id);
             }
+        }
+
+        for (id, embedding) in staged_zig_adds {
+            self.index
+                .add(&id, &embedding)
+                .map_err(|e| EmbedError::InternalError(e.to_string()))?;
         }
 
         for (id, entry) in pending_entries {
