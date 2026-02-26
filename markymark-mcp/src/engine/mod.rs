@@ -339,27 +339,43 @@ impl CoreEngine for RuntimeEngine {
                 top_k,
                 min_score,
             } => {
-                let realm_name = realm.unwrap_or_else(|| DEFAULT_REALM.to_string());
-                let state = self.state.read().await;
-                let realm_data = match state.get(&realm_name) {
-                    Some(data) => data,
-                    None => {
-                        return CoreOperationResult::Error(CoreError::Message(format!(
-                            "realm does not exist: {realm_name}"
-                        )));
-                    }
-                };
-
                 #[cfg(not(feature = "semantic-search"))]
                 {
-                    let _ = (realm_data, query, top_k, min_score);
+                    let realm_name = realm.unwrap_or_else(|| DEFAULT_REALM.to_string());
+                    let _ = (realm_name, query, top_k, min_score);
                     CoreOperationResult::Error(CoreError::NotImplemented(
                         "semantic-search feature is not enabled for markymark-mcp".to_string(),
                     ))
                 }
 
                 #[cfg(feature = "semantic-search")]
-                search::handle_semantic_search(&realm_data.index, query, top_k, min_score).await
+                {
+                    let realm_name = realm.unwrap_or_else(|| DEFAULT_REALM.to_string());
+                    // Phase 1: acquire read lock, clone the Arc handle, release read lock.
+                    let semantic_arc = {
+                        let state = self.state.read().await;
+                        let realm_data = match state.get(&realm_name) {
+                            Some(data) => data,
+                            None => {
+                                return CoreOperationResult::Error(CoreError::Message(format!(
+                                    "realm does not exist: {realm_name}"
+                                )));
+                            }
+                        };
+                        match realm_data.index.semantic_index_arc() {
+                            Some(arc) => arc,
+                            None => {
+                                return CoreOperationResult::Error(CoreError::Message(
+                                    "semantic search is not configured for this realm".to_string(),
+                                ));
+                            }
+                        }
+                        // state (read guard) dropped here at end of block
+                    };
+
+                    // Phase 2: search with the Arc — no outer lock held.
+                    search::handle_semantic_search(semantic_arc, query, top_k, min_score).await
+                }
             }
             CoreOperation::FindReferences {
                 uri,

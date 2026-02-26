@@ -11,7 +11,7 @@ categories = ["development-tools", "text-processing"]
 
 [features]
 bench-internals = []
-embeddings = []
+embeddings = ["dep:tokio"]
 
 [dependencies]
 async-trait = { workspace = true }
@@ -27,6 +27,7 @@ thiserror = { workspace = true }
 self_cell = { workspace = true }
 log = { workspace = true }
 lasso = "0.7.3"
+tokio = { workspace = true, optional = true }
 
 [dev-dependencies]
 insta = { workspace = true }

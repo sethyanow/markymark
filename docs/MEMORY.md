@@ -17,7 +17,7 @@ fixed by `ac3563b`), **1 already tracked** (marky-y4be), **4 new valid**:
 
 | Bead | P | Finding |
 |------|---|---------|
-| marky-ysv8 | P2 | Realm read-lock held across semantic search await (engine/mod.rs:343) |
+| marky-ysv8 | P2 | **FIXED** — Realm read-lock held across semantic search await (engine/mod.rs:343) |
 | marky-2q2b | P2 | Voyage embed_batch doesn't validate response cardinality (voyage.rs:260) |
 | marky-h7pp | P4 | `/dev/null` test not portable — needs `#[cfg(unix)]` (local.rs:221) |
 | marky-le49 | P4 | Stale `voyage-3` in README.md, code default is `voyage-4` |
@@ -252,6 +252,15 @@ in Rust. Net -2,839 lines. The decisions below are historical context only.
 - **Split C ABI exports into separate exports_*.zig files** (dec-ncz-001).
 - **comptime { _ = @import } at module level for export wiring** (dec-0u5-003).
 - **Batch fuzzy ranking in Zig with Rust fallback** (dec-8xt-batch-001/002).
+
+### Semantic Index Concurrency (marky-ysv8)
+
+- **SemanticIndex wrapped in Arc<tokio::sync::Mutex> inside RealmIndex** (dec-ysv8-001). Allows
+  the MCP engine to clone the Arc handle, release the outer realm RwLock, and run async search
+  without blocking realm-level write operations. `semantic_index_arc()` accessor provides the handle.
+- **tokio::sync::Mutex (not std::sync::Mutex)** because `SemanticIndex::search()` is async.
+- **blocking_lock() used in sync paths** (remove_document, detect_duplicates) — safe because
+  the critical section is microseconds with no .await inside.
 
 ### Build & CI
 

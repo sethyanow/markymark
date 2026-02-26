@@ -13,6 +13,8 @@ use helpers::{detect_journal_date, resolve_relative_path};
 use std::collections::{BTreeMap, HashMap, HashSet};
 #[cfg(feature = "embeddings")]
 use std::sync::Arc;
+#[cfg(feature = "embeddings")]
+use tokio::sync::Mutex as TokioMutex;
 
 use lasso::{Rodeo, Spur};
 
@@ -60,8 +62,12 @@ pub struct RealmIndex {
     /// URI → detected journal date for cleanup on removal.
     uri_to_date: HashMap<String, (u16, u8, u8)>,
     /// Optional semantic index for embedding-based search.
+    ///
+    /// Wrapped in `Arc<TokioMutex>` so callers (e.g. MCP engine) can clone
+    /// the handle, release outer realm locks, and then await search without
+    /// blocking realm-level writes.
     #[cfg(feature = "embeddings")]
-    semantic_index: Option<SemanticIndex>,
+    semantic_index: Option<Arc<TokioMutex<SemanticIndex>>>,
 }
 
 /// Extract the file stem from a DocumentUri, lowercase it, and intern via Rodeo.
@@ -146,7 +152,7 @@ impl RealmIndex {
     #[cfg(feature = "embeddings")]
     pub fn new_with_embeddings(provider: Arc<dyn EmbeddingProvider>) -> Result<Self, EmbedError> {
         let mut realm = Self::new();
-        realm.semantic_index = Some(SemanticIndex::new(provider)?);
+        realm.semantic_index = Some(Arc::new(TokioMutex::new(SemanticIndex::new(provider)?)));
         Ok(realm)
     }
 
@@ -161,8 +167,9 @@ impl RealmIndex {
         self.populate_cross_doc_indexes(&uri, &index);
 
         #[cfg(feature = "embeddings")]
-        if let Some(semantic) = &mut self.semantic_index {
-            if let Err(err) = semantic.add_document(uri.clone(), &index).await {
+        if let Some(semantic) = &self.semantic_index {
+            let mut guard = semantic.lock().await;
+            if let Err(err) = guard.add_document(uri.clone(), &index).await {
                 eprintln!(
                     "warning: semantic indexing failed for {}: {err}",
                     uri.as_str()
@@ -228,8 +235,9 @@ impl RealmIndex {
                 // Still update semantic index: heading text may have changed even
                 // though slugs are identical (e.g. "Foo!" → "Foo").
                 #[cfg(feature = "embeddings")]
-                if let Some(semantic) = &mut self.semantic_index {
-                    if let Err(err) = semantic.update_document(uri.clone(), &new_index).await {
+                if let Some(semantic) = &self.semantic_index {
+                    let mut guard = semantic.lock().await;
+                    if let Err(err) = guard.update_document(uri.clone(), &new_index).await {
                         log::warn!("semantic indexing failed for {}: {err}", uri.as_str());
                     }
                 }
@@ -247,8 +255,9 @@ impl RealmIndex {
 
                 // Incrementally update semantic index (only re-embeds changed headings).
                 #[cfg(feature = "embeddings")]
-                if let Some(semantic) = &mut self.semantic_index {
-                    if let Err(err) = semantic.update_document(uri.clone(), &new_index).await {
+                if let Some(semantic) = &self.semantic_index {
+                    let mut guard = semantic.lock().await;
+                    if let Err(err) = guard.update_document(uri.clone(), &new_index).await {
                         log::warn!("semantic indexing failed for {}: {err}", uri.as_str());
                     }
                 }
@@ -259,8 +268,9 @@ impl RealmIndex {
             self.populate_cross_doc_indexes(&uri, &new_index);
 
             #[cfg(feature = "embeddings")]
-            if let Some(semantic) = &mut self.semantic_index {
-                if let Err(err) = semantic.add_document(uri.clone(), &new_index).await {
+            if let Some(semantic) = &self.semantic_index {
+                let mut guard = semantic.lock().await;
+                if let Err(err) = guard.add_document(uri.clone(), &new_index).await {
                     log::warn!("semantic indexing failed for {}: {err}", uri.as_str());
                 }
             }
@@ -272,11 +282,15 @@ impl RealmIndex {
     }
 
     /// Remove a document from the realm index.
+    ///
+    /// Note: `remove_document` is synchronous because `SemanticIndex::remove_document`
+    /// only removes metadata (no async embed call). We use `blocking_lock()` which
+    /// is fine because the critical section is microseconds (no `.await` inside).
     pub fn remove_document(&mut self, uri: &DocumentUri) {
         let key = uri.as_str().to_string();
         #[cfg(feature = "embeddings")]
-        if let Some(semantic) = &mut self.semantic_index {
-            semantic.remove_document(uri);
+        if let Some(semantic) = &self.semantic_index {
+            semantic.blocking_lock().remove_document(uri);
         }
         self.remove_from_cross_doc_indexes(&key);
         self.contributions.remove(&key);
@@ -806,9 +820,22 @@ impl RealmIndex {
         }
     }
 
+    /// Get a cloneable handle to the semantic index.
+    ///
+    /// Callers can clone this `Arc`, release outer realm locks, and then
+    /// lock the inner `Mutex` to run searches without blocking realm-level
+    /// write operations.
+    #[cfg(feature = "embeddings")]
+    pub fn semantic_index_arc(&self) -> Option<Arc<TokioMutex<SemanticIndex>>> {
+        self.semantic_index.clone()
+    }
+
     /// Run semantic search if embeddings are enabled.
     ///
-    /// Returns an empty vector when semantic indexing is not configured.
+    /// **Warning**: this method locks the inner `TokioMutex` internally, which
+    /// means the caller's borrow on `&self` is held for the duration of the
+    /// search. If you need to release an outer realm lock before searching,
+    /// use [`semantic_index_arc`] instead and lock the `Arc` yourself.
     #[cfg(feature = "embeddings")]
     pub async fn semantic_search(
         &self,
@@ -817,7 +844,10 @@ impl RealmIndex {
         min_score: f32,
     ) -> Result<Vec<SearchResult>, EmbedError> {
         match &self.semantic_index {
-            Some(index) => index.search(query, top_k, min_score).await,
+            Some(sem) => {
+                let guard = sem.lock().await;
+                guard.search(query, top_k, min_score).await
+            }
             None => Ok(Vec::new()),
         }
     }
@@ -828,7 +858,10 @@ impl RealmIndex {
     #[cfg(feature = "embeddings")]
     pub fn detect_semantic_duplicates(&self, threshold: f32) -> Vec<DuplicateMatch> {
         match &self.semantic_index {
-            Some(index) => index.detect_duplicates(threshold),
+            Some(sem) => {
+                let guard = sem.blocking_lock();
+                guard.detect_duplicates(threshold)
+            }
             None => Vec::new(),
         }
     }

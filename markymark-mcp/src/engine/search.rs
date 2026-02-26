@@ -131,7 +131,7 @@ pub(crate) fn handle_search_symbols(realm: &RealmIndex, query: String) -> CoreOp
 
 #[cfg(feature = "semantic-search")]
 pub(crate) async fn handle_semantic_search(
-    realm: &RealmIndex,
+    semantic_index: std::sync::Arc<tokio::sync::Mutex<markymark_index::SemanticIndex>>,
     query: String,
     top_k: u32,
     min_score: f32,
@@ -143,15 +143,18 @@ pub(crate) async fn handle_semantic_search(
         ));
     }
 
-    let results = match realm
-        .semantic_search(&query, top_k, min_score.clamp(0.0, 1.0))
-        .await
-    {
-        Ok(results) => results,
-        Err(err) => {
-            return CoreOperationResult::Error(CoreError::Message(format!(
-                "semantic search failed: {err}"
-            )));
+    let results = {
+        let guard = semantic_index.lock().await;
+        match guard
+            .search(&query, top_k, min_score.clamp(0.0, 1.0))
+            .await
+        {
+            Ok(results) => results,
+            Err(err) => {
+                return CoreOperationResult::Error(CoreError::Message(format!(
+                    "semantic search failed: {err}"
+                )));
+            }
         }
     };
 

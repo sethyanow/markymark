@@ -621,6 +621,131 @@ async fn preview_io_cost_large_file() {
     }
 }
 
+// -------------------------------------------------------------------------
+// Concurrency: semantic search must NOT block realm write operations
+//
+// Before this fix (marky-ysv8), the SemanticSearch arm of CoreEngine::execute
+// held a tokio::RwLock read guard across the search .await. With a slow
+// embedding provider (200ms-2s for a Voyage HTTP round-trip), this blocked
+// all realm-level writes (CreateRealm, AddRoot, RemoveRoot, DestroyRealm).
+//
+// After the fix, the engine clones the Arc<Mutex<SemanticIndex>> and drops
+// the outer RwLock before searching, so writes proceed concurrently.
+// -------------------------------------------------------------------------
+
+#[cfg(feature = "semantic-search")]
+mod concurrency_tests {
+    use super::*;
+    use async_trait::async_trait;
+    use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
+    use markymark_core::prelude::{EmbedError, EmbeddingProvider};
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    /// Slow embedding provider that simulates a Voyage HTTP round-trip.
+    ///
+    /// `embed()` sleeps for the configured delay, then delegates to the
+    /// inner hash-based provider for deterministic output.
+    struct SlowEmbeddingProvider {
+        inner: HashEmbeddingProvider,
+        delay: Duration,
+    }
+
+    impl SlowEmbeddingProvider {
+        fn new(dims: u32, delay: Duration) -> Self {
+            Self {
+                inner: HashEmbeddingProvider::new(dims),
+                delay,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl EmbeddingProvider for SlowEmbeddingProvider {
+        async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+            tokio::time::sleep(self.delay).await;
+            self.inner.embed(text).await
+        }
+
+        fn dimensions(&self) -> u32 {
+            self.inner.dimensions()
+        }
+    }
+
+    /// Semantic search with a slow provider must not block concurrent write
+    /// operations on the realm state.
+    ///
+    /// This test:
+    /// 1. Creates an engine with a slow embedding provider (150ms per embed).
+    /// 2. Spawns a SemanticSearch that will hold the inner Mutex for ~150ms.
+    /// 3. Concurrently runs a CreateRealm write operation.
+    /// 4. Asserts CreateRealm completes quickly (well under the search time).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn semantic_search_does_not_block_realm_writes() {
+        let delay = Duration::from_millis(150);
+        let provider: Arc<dyn EmbeddingProvider> =
+            Arc::new(SlowEmbeddingProvider::new(32, delay));
+
+        let dir = make_temp_realm_dir("concurrency");
+        fs::write(dir.path().join("doc.md"), "# Hello World\n\nSome content.\n").unwrap();
+
+        let engine = Arc::new(
+            RuntimeEngine::from_workspace_roots_with_provider(
+                vec![dir.path().to_path_buf()],
+                Some(provider),
+            )
+            .await
+            .unwrap(),
+        );
+
+        // Spawn a slow semantic search in the background.
+        let engine_search = Arc::clone(&engine);
+        let search_handle = tokio::spawn(async move {
+            engine_search
+                .execute(CoreOperation::SemanticSearch {
+                    query: "hello".to_string(),
+                    realm: None,
+                    top_k: 5,
+                    min_score: 0.0,
+                })
+                .await
+        });
+
+        // Give the search task a moment to start and acquire the inner Mutex.
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        // Now run a write operation concurrently — it should NOT be blocked
+        // by the search because the outer RwLock is released before search.
+        let engine_write = Arc::clone(&engine);
+        let write_start = Instant::now();
+        let write_result = engine_write
+            .execute(CoreOperation::CreateRealm {
+                name: "write-test".to_string(),
+            })
+            .await;
+        let write_elapsed = write_start.elapsed();
+
+        // The write operation should complete in well under the search delay.
+        // If the old lock-contention bug exists, this would take >=150ms.
+        assert!(
+            write_elapsed < Duration::from_millis(100),
+            "CreateRealm took {write_elapsed:?}, expected <100ms — outer read lock may still be held across search",
+        );
+
+        assert!(
+            matches!(write_result, CoreOperationResult::RealmInfo { .. }),
+            "CreateRealm should succeed, got {write_result:?}"
+        );
+
+        // Let the search complete and verify it worked.
+        let search_result = search_handle.await.expect("search task should not panic");
+        assert!(
+            matches!(search_result, CoreOperationResult::SemanticMatches(_)),
+            "SemanticSearch should succeed, got {search_result:?}"
+        );
+    }
+}
+
 /// Profiles the cumulative I/O cost of N `preview_for_range` calls across
 /// N distinct files -- mirrors what semantic search does for top_k results.
 ///
