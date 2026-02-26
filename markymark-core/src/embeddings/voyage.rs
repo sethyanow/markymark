@@ -812,6 +812,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_embed_batch_excess_response_returns_error() {
+        // Send 2 texts but API returns 3 items → over-count caught by Check A
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/embeddings"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(custom_response(&[(0, 4), (1, 4), (2, 4)])),
+            )
+            .mount(&server)
+            .await;
+
+        let provider = VoyageProvider::new(
+            "test-api-key".to_string(),
+            VoyageConfig {
+                base_url: server.uri(),
+                dimensions: 4,
+                batch_chunk_size: 10,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let result = provider.embed_batch(&["a", "b"]).await;
+        assert!(result.is_err(), "expected error for excess response items");
+        match result.unwrap_err() {
+            EmbedError::InternalError(msg) => {
+                assert!(
+                    msg.contains("expected 2") && msg.contains("got 3"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected InternalError, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_embed_batch_multi_chunk_partial_second_chunk_returns_error() {
         // Two chunks: chunk 0 (3 items) OK, chunk 1 (2 items) returns only 1 → error
         let server = MockServer::start().await;

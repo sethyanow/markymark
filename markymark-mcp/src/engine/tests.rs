@@ -644,25 +644,30 @@ mod concurrency_tests {
 
     /// Slow embedding provider that simulates a Voyage HTTP round-trip.
     ///
-    /// `embed()` sleeps for the configured delay, then delegates to the
-    /// inner hash-based provider for deterministic output.
+    /// `embed()` signals `embed_started` before sleeping, then delegates to
+    /// the inner hash-based provider for deterministic output.
     struct SlowEmbeddingProvider {
         inner: HashEmbeddingProvider,
         delay: Duration,
+        embed_started: Arc<tokio::sync::Notify>,
     }
 
     impl SlowEmbeddingProvider {
-        fn new(dims: u32, delay: Duration) -> Self {
-            Self {
+        fn new(dims: u32, delay: Duration) -> (Self, Arc<tokio::sync::Notify>) {
+            let notify = Arc::new(tokio::sync::Notify::new());
+            let provider = Self {
                 inner: HashEmbeddingProvider::new(dims),
                 delay,
-            }
+                embed_started: Arc::clone(&notify),
+            };
+            (provider, notify)
         }
     }
 
     #[async_trait]
     impl EmbeddingProvider for SlowEmbeddingProvider {
         async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+            self.embed_started.notify_one();
             tokio::time::sleep(self.delay).await;
             self.inner.embed(text).await
         }
@@ -683,8 +688,8 @@ mod concurrency_tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn semantic_search_does_not_block_realm_writes() {
         let delay = Duration::from_millis(150);
-        let provider: Arc<dyn EmbeddingProvider> =
-            Arc::new(SlowEmbeddingProvider::new(32, delay));
+        let (slow_provider, embed_started) = SlowEmbeddingProvider::new(32, delay);
+        let provider: Arc<dyn EmbeddingProvider> = Arc::new(slow_provider);
 
         let dir = make_temp_realm_dir("concurrency");
         fs::write(dir.path().join("doc.md"), "# Hello World\n\nSome content.\n").unwrap();
@@ -711,8 +716,8 @@ mod concurrency_tests {
                 .await
         });
 
-        // Give the search task a moment to start and acquire the inner Mutex.
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        // Wait until the search task has entered embed() — deterministic sync.
+        embed_started.notified().await;
 
         // Now run a write operation concurrently — it should NOT be blocked
         // by the search because the outer RwLock is released before search.
