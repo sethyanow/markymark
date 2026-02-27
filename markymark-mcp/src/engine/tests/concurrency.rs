@@ -195,8 +195,111 @@ async fn add_root_does_not_block_realm_writes() {
         .await
         .expect("add_root task should not panic");
     assert!(
-        matches!(add_root_result, CoreOperationResult::RealmInfo { .. }),
-        "AddRoot should succeed, got {add_root_result:?}"
+        matches!(
+            add_root_result,
+            CoreOperationResult::RealmInfo {
+                root_count: 1,
+                document_count: 1,
+                ..
+            }
+        ),
+        "AddRoot should insert root+document on normal path, got {add_root_result:?}"
+    );
+}
+
+/// AddRoot must not reinsert documents if the root is removed while AddRoot is
+/// in its split-phase parsing/embedding flow.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn add_root_concurrent_remove_discards_documents() {
+    let delay = Duration::from_millis(200);
+    let (slow_provider, embed_started) = SlowEmbeddingProvider::new(32, delay);
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(slow_provider);
+
+    let engine = Arc::new(RuntimeEngine {
+        state: tokio::sync::RwLock::new({
+            let mut map = std::collections::HashMap::new();
+            map.insert(
+                "default".to_string(),
+                RealmData::new(Some(Arc::clone(&provider))),
+            );
+            map
+        }),
+        provider: Some(provider),
+    });
+
+    let dir = make_temp_realm_dir("add-root-remove-race");
+    fs::write(
+        dir.path().join("doc.md"),
+        "# Concurrent Remove\n\nBody content.\n",
+    )
+    .unwrap();
+    let root = dir.path().to_path_buf();
+
+    let engine_add = Arc::clone(&engine);
+    let root_for_add = root.clone();
+    let add_root_handle = tokio::spawn(async move {
+        engine_add
+            .execute(CoreOperation::AddRoot {
+                realm: "default".to_string(),
+                root: root_for_add,
+            })
+            .await
+    });
+
+    // Wait until AddRoot entered embedding (Phase 3), then remove root before
+    // AddRoot reaches Phase 4 structural insertion.
+    embed_started.notified().await;
+
+    let remove_result = engine
+        .execute(CoreOperation::RemoveRoot {
+            realm: "default".to_string(),
+            root: root.clone(),
+        })
+        .await;
+    assert!(
+        matches!(
+            remove_result,
+            CoreOperationResult::RealmInfo {
+                root_count: 0,
+                document_count: 0,
+                ..
+            }
+        ),
+        "RemoveRoot should empty realm while AddRoot is in-flight, got {remove_result:?}"
+    );
+
+    let add_root_result = add_root_handle
+        .await
+        .expect("add_root task should not panic");
+    assert!(
+        matches!(
+            add_root_result,
+            CoreOperationResult::RealmInfo {
+                root_count: 0,
+                document_count: 0,
+                ..
+            }
+        ),
+        "AddRoot should discard parsed docs when root was removed, got {add_root_result:?}"
+    );
+
+    let stats_result = engine
+        .execute(CoreOperation::RealmStats {
+            realm: "default".to_string(),
+            check_duplicates: false,
+            include_token_counts: false,
+        })
+        .await;
+    assert!(
+        matches!(
+            stats_result,
+            CoreOperationResult::RealmStats {
+                root_count: 0,
+                document_count: 0,
+                ..
+            }
+        ),
+        "Realm should have no roots or docs after concurrent remove, got {stats_result:?}"
     );
 }
 

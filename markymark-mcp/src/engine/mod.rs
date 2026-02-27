@@ -502,6 +502,25 @@ impl CoreEngine for RuntimeEngine {
                         )));
                     }
                 };
+
+                // Root may have been removed while Phase 2/3 ran without the write lock.
+                let root_canonical = root.canonicalize().unwrap_or_else(|_| root.clone());
+                let root_still_present = realm_data.roots.iter().any(|existing| {
+                    existing.canonicalize().unwrap_or_else(|_| existing.clone()) == root_canonical
+                });
+                if !root_still_present {
+                    log::warn!(
+                        "root removed during indexing; realm={realm}, root={}, discarding {} parsed documents",
+                        root.display(),
+                        parsed_md.len() + parsed_struct.len()
+                    );
+                    return CoreOperationResult::RealmInfo {
+                        name: realm.clone(),
+                        root_count: realm_data.roots.len(),
+                        document_count: realm_data.index.document_count(),
+                    };
+                }
+
                 for (uri, doc) in parsed_md {
                     realm_data.index.add_document_structural(uri, doc);
                 }
