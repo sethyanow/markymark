@@ -12,7 +12,7 @@ categories = ["development-tools", "text-processing"]
 [features]
 default = []
 zig-kernels = ["dep:markymark-kernels"]
-voyage = ["dep:reqwest"]
+semantic-search = ["dep:reqwest"]
 local-embeddings = ["dep:fastembed", "dep:tokio"]
 
 [dependencies]

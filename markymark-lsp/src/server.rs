@@ -315,7 +315,7 @@ impl LanguageServer for Backend {
             }
             {
                 let mut state = self.state.write().await;
-                state.close_document(&doc_uri);
+                state.close_document(&doc_uri).await;
             }
             // Clear diagnostics on close.
             self.client

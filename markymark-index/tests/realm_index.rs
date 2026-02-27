@@ -198,7 +198,7 @@ async fn test_remove_document() {
     assert_eq!(realm.lookup_heading("temporary").len(), 1);
 
     // Remove the document
-    realm.remove_document(&doc_uri);
+    realm.remove_document(&doc_uri).await;
 
     assert_eq!(
         realm.document_count(),
@@ -278,7 +278,7 @@ async fn test_remove_document_preserves_sibling_cross_doc_entries() {
     assert_eq!(rust_count, 2);
 
     // Remove doc A
-    realm.remove_document(&uri_a);
+    realm.remove_document(&uri_a).await;
 
     // Doc B's entries must survive
     let headings = realm.lookup_heading("shared");
@@ -413,7 +413,7 @@ async fn test_remove_then_readd_same_content() {
     assert_eq!(realm.lookup_heading("overview").len(), 1);
     assert!(realm.lookup_block("block-cycle").is_some());
 
-    realm.remove_document(&doc_uri);
+    realm.remove_document(&doc_uri).await;
     assert!(realm.lookup_heading("overview").is_empty());
     assert!(realm.lookup_block("block-cycle").is_none());
 
@@ -443,7 +443,7 @@ async fn test_cross_doc_same_slug_remove_first() {
 
     assert_eq!(realm.lookup_heading("overview").len(), 2);
 
-    realm.remove_document(&uri_a);
+    realm.remove_document(&uri_a).await;
 
     let results = realm.lookup_heading("overview");
     assert_eq!(results.len(), 1, "only doc B's heading should remain");
@@ -514,7 +514,7 @@ async fn test_remove_document_clears_cross_doc_maps() {
         )
         .await;
 
-    realm.remove_document(&doc_uri);
+    realm.remove_document(&doc_uri).await;
 
     assert!(realm.lookup_heading("heading").is_empty());
     assert!(realm.lookup_block("block-id").is_none());

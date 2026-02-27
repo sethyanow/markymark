@@ -120,8 +120,8 @@ async fn test_mixed_documents() {
     assert_eq!(realm.iter_all_documents().count(), 2);
 }
 
-#[test]
-fn test_remove_structured_document() {
+#[tokio::test]
+async fn test_remove_structured_document() {
     let mut realm = RealmIndex::new();
     let uri = uri("config.json");
     realm.add_structured_document(
@@ -133,7 +133,7 @@ fn test_remove_structured_document() {
     );
 
     assert_eq!(realm.structured_count(), 1);
-    realm.remove_document(&uri);
+    realm.remove_document(&uri).await;
     assert_eq!(realm.structured_count(), 0);
 }
 
@@ -412,7 +412,7 @@ async fn test_realm_remove_journal_doc_cleans_up_date_index() {
     realm
         .add_document(journal_uri.clone(), make_md_index("day"))
         .await;
-    realm.remove_document(&journal_uri);
+    realm.remove_document(&journal_uri).await;
 
     let results = realm.lookup_journal_by_month(2024, 3);
     assert!(
@@ -457,7 +457,7 @@ async fn test_remove_document_cleans_code_spans() {
     realm.add_document(u.clone(), index).await;
     assert_eq!(realm.lookup_code_span("Vec").len(), 1);
 
-    realm.remove_document(&u);
+    realm.remove_document(&u).await;
     assert!(
         realm.lookup_code_span("Vec").is_empty(),
         "code span should be cleaned up after removal"
@@ -582,7 +582,7 @@ async fn test_stem_index_remove_then_lookup() {
     realm.add_document(u.clone(), make_md_index("# Page")).await;
     assert!(realm.find_uri_by_stem("page").is_some());
 
-    realm.remove_document(&u);
+    realm.remove_document(&u).await;
     assert_eq!(
         realm.find_uri_by_stem("page"),
         None,
@@ -633,7 +633,7 @@ async fn test_stem_index_remove_one_of_two_same_stem() {
     realm.add_document(u1.clone(), make_md_index("# A")).await;
     realm.add_document(u2.clone(), make_md_index("# B")).await;
 
-    realm.remove_document(&u1);
+    realm.remove_document(&u1).await;
 
     let result = realm.find_uri_by_stem("readme");
     assert_eq!(
@@ -711,7 +711,7 @@ async fn test_contribution_removed_on_remove() {
         "contribution present after add"
     );
 
-    realm.remove_document(&u);
+    realm.remove_document(&u).await;
     assert!(
         !realm.contributions.contains_key(&key),
         "contribution removed after remove"
@@ -1022,7 +1022,7 @@ async fn test_lazy_tags_remove_after_dirty_update() {
         .await;
 
     // Remove doc2 — must clean tag index first to avoid stale entries.
-    realm.remove_document(&u2);
+    realm.remove_document(&u2).await;
 
     let counts: HashMap<String, usize> = realm.tag_counts().into_iter().collect();
     assert_eq!(counts.get("shared"), Some(&1), "only doc1 has shared now");

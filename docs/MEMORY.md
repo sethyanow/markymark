@@ -142,6 +142,13 @@ recurring patterns worth catching upfront:
   workspace crates must stay `pub` (Rust visibility is per-crate, not per-workspace). Consider
   `#[doc(hidden)]` for stability signaling, but don't attempt `pub(crate)` for cross-crate use.
 
+### Semantic add_document atomicity pattern (2026-02-26, marky-y2ne)
+
+For `SemanticIndex::add_document`, use a two-phase flow: (1) embed all headings/fallback and
+stage `(id, embedding, entry)` in memory, then (2) commit all Zig `index.add()` writes. Never
+interleave embed+insert. This prevents orphaned Zig vectors when provider embed fails mid-loop.
+Unit tests should assert both metadata (`entry_count`) and Zig state (`index.count`) on failure.
+
 ### Zig ArrayListUnmanaged scratch buffer pattern (2026-02-19)
 
 When a function builds a temporary string via `ArrayListUnmanaged(u8){}` and returns
@@ -293,8 +300,9 @@ in Rust. Net -2,839 lines. The decisions below are historical context only.
   the MCP engine to clone the Arc handle, release the outer realm RwLock, and run async search
   without blocking realm-level write operations. `semantic_index_arc()` accessor provides the handle.
 - **tokio::sync::Mutex (not std::sync::Mutex)** because `SemanticIndex::search()` is async.
-- **blocking_lock() used in sync paths** (remove_document, detect_duplicates) — safe because
-  the critical section is microseconds with no .await inside.
+- **No `blocking_lock()` in async call chains** (marky-wnjk, 2026-02-26). `RealmIndex::remove_document`
+  and `detect_semantic_duplicates` are async and must use `lock().await`; calling
+  `blocking_lock()` from Tokio runtime paths panics ("Cannot block the current thread...").
 
 ### Build & CI
 
@@ -306,6 +314,12 @@ in Rust. Net -2,839 lines. The decisions below are historical context only.
 ---
 
 ## Key Failure Patterns
+
+### bd + Dolt panics under parallel CLI invocations (2026-02-26)
+
+Running multiple `bd` commands in parallel (`list/show/ready`) can trigger a Dolt nil-pointer
+panic even with `BD_NO_DB=true BEADS_NO_DAEMON=1`. Sequential `bd` commands in the same shell
+work reliably. For plan execution, run `bd` operations one-at-a-time.
 
 ### Context window exhaustion from task chaining (fail-context-runaway)
 Agent completed B-6, then marky-eebj refactor, then started marky-j516 — all in one session

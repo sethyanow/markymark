@@ -391,7 +391,7 @@ async fn test_diagnostics_cleared_after_close() {
     );
 
     // Close the document.
-    state.close_document(&uri);
+    state.close_document(&uri).await;
 
     let diag_after = state.compute_diagnostics(&uri);
     assert!(

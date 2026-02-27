@@ -109,7 +109,7 @@ async fn build_engine_with_provider(
 ) -> Result<markymark_mcp::RuntimeEngine> {
     match provider {
         SemanticProvider::Voyage => bail!(
-            "--semantic-search voyage requires compiling with --features semantic-search,voyage"
+            "--semantic-search voyage requires compiling with --features semantic-search"
         ),
         SemanticProvider::Local => bail!(
             "--semantic-search local requires compiling with --features semantic-search,local-embeddings"
@@ -120,7 +120,7 @@ async fn build_engine_with_provider(
     }
 }
 
-#[cfg(all(feature = "semantic-search", feature = "voyage"))]
+#[cfg(feature = "semantic-search")]
 fn build_voyage_provider() -> Result<Arc<dyn markymark_core::prelude::EmbeddingProvider>> {
     use markymark_core::embeddings::voyage::{VoyageConfig, VoyageProvider};
 
@@ -131,11 +131,6 @@ fn build_voyage_provider() -> Result<Arc<dyn markymark_core::prelude::EmbeddingP
     let provider = VoyageProvider::new(api_key, VoyageConfig::default())
         .map_err(|e| anyhow::anyhow!("failed to create Voyage provider: {e}"))?;
     Ok(Arc::new(provider))
-}
-
-#[cfg(all(feature = "semantic-search", not(feature = "voyage")))]
-fn build_voyage_provider() -> Result<Arc<dyn markymark_core::prelude::EmbeddingProvider>> {
-    bail!("--semantic-search voyage requires compiling with --features voyage")
 }
 
 #[cfg(all(feature = "semantic-search", feature = "local-embeddings"))]
@@ -243,7 +238,7 @@ mod tests {
     // Note: This test mutates VOYAGE_API_KEY env var. Process isolation is
     // guaranteed by cargo-nextest (process-per-test). If running under
     // `cargo test` (shared process), this test may interfere with others.
-    #[cfg(all(feature = "semantic-search", feature = "voyage"))]
+    #[cfg(feature = "semantic-search")]
     #[test]
     fn voyage_missing_api_key_returns_error() {
         // Temporarily ensure VOYAGE_API_KEY is unset for this test.

@@ -707,8 +707,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/embeddings"))
             .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(custom_response(&[(0, 4), (1, 4)])),
+                ResponseTemplate::new(200).set_body_json(custom_response(&[(0, 4), (1, 4)])),
             )
             .mount(&server)
             .await;
@@ -743,10 +742,11 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/embeddings"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(custom_response(&[(0, 4), (1, 4), (1, 4)])),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(custom_response(&[
+                (0, 4),
+                (1, 4),
+                (1, 4),
+            ])))
             .mount(&server)
             .await;
 
@@ -780,10 +780,11 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/embeddings"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(custom_response(&[(0, 4), (1, 4), (5, 4)])),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(custom_response(&[
+                (0, 4),
+                (1, 4),
+                (5, 4),
+            ])))
             .mount(&server)
             .await;
 
@@ -817,10 +818,11 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/embeddings"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(custom_response(&[(0, 4), (1, 4), (2, 4)])),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(custom_response(&[
+                (0, 4),
+                (1, 4),
+                (2, 4),
+            ])))
             .mount(&server)
             .await;
 
@@ -856,9 +858,7 @@ mod tests {
         // First request: chunk 0 with 3 items — correct
         Mock::given(method("POST"))
             .and(path("/v1/embeddings"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(ok_response(3, 4)),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(ok_response(3, 4)))
             .up_to_n_times(1)
             .mount(&server)
             .await;
@@ -866,10 +866,7 @@ mod tests {
         // Second request: chunk 1 with 2 items — returns only 1
         Mock::given(method("POST"))
             .and(path("/v1/embeddings"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(custom_response(&[(0, 4)])),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(custom_response(&[(0, 4)])))
             .up_to_n_times(1)
             .mount(&server)
             .await;

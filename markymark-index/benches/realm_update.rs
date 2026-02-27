@@ -148,7 +148,7 @@ fn bench_update_vs_remove_add(c: &mut Criterion) {
             },
             |(mut realm, index_edited)| {
                 // Measured: only the realm remove+add operations
-                realm.remove_document(black_box(&uri));
+                rt.block_on(realm.remove_document(black_box(&uri)));
                 rt.block_on(realm.add_document(black_box(uri.clone()), black_box(index_edited)));
             },
             BatchSize::SmallInput,
@@ -218,7 +218,7 @@ fn bench_vault_update(c: &mut Criterion) {
                     (realm, edited_index)
                 },
                 |(mut realm, new_index)| {
-                    realm.remove_document(black_box(&uri));
+                    rt.block_on(realm.remove_document(black_box(&uri)));
                     rt.block_on(realm.add_document(black_box(uri.clone()), black_box(new_index)));
                     realm // return so drop is outside timing
                 },

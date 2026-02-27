@@ -295,15 +295,11 @@ impl RealmIndex {
     }
 
     /// Remove a document from the realm index.
-    ///
-    /// Note: `remove_document` is synchronous because `SemanticIndex::remove_document`
-    /// only removes metadata (no async embed call). We use `blocking_lock()` which
-    /// is fine because the critical section is microseconds (no `.await` inside).
-    pub fn remove_document(&mut self, uri: &DocumentUri) {
+    pub async fn remove_document(&mut self, uri: &DocumentUri) {
         let key = uri.as_str().to_string();
         #[cfg(feature = "embeddings")]
         if let Some(semantic) = &self.semantic_index {
-            semantic.blocking_lock().remove_document(uri);
+            semantic.lock().await.remove_document(uri);
         }
         self.remove_from_cross_doc_indexes(&key);
         self.contributions.remove(&key);
@@ -869,10 +865,10 @@ impl RealmIndex {
     ///
     /// Returns an empty vector when semantic indexing is not configured.
     #[cfg(feature = "embeddings")]
-    pub fn detect_semantic_duplicates(&self, threshold: f32) -> Vec<DuplicateMatch> {
+    pub async fn detect_semantic_duplicates(&self, threshold: f32) -> Vec<DuplicateMatch> {
         match &self.semantic_index {
             Some(sem) => {
-                let guard = sem.blocking_lock();
+                let guard = sem.lock().await;
                 guard.detect_duplicates(threshold)
             }
             None => Vec::new(),

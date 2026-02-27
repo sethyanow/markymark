@@ -67,7 +67,7 @@ async fn test_state_close_document() {
         .await;
     assert_eq!(state.document_count(), 1);
 
-    state.close_document(&uri);
+    state.close_document(&uri).await;
     assert_eq!(state.document_count(), 0);
     assert!(state.get_document_text(&uri).is_none());
     assert!(state.get_document_index(&uri).is_none());
@@ -609,7 +609,7 @@ async fn test_engine_lifecycle_open_and_close() {
         "headings should be indexed"
     );
 
-    state.close_document(&uri);
+    state.close_document(&uri).await;
     assert_eq!(state.document_count(), 0);
     assert!(
         state.get_document_index(&uri).is_none(),

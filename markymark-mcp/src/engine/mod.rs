@@ -285,7 +285,7 @@ pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
 }
 
 /// Remove all documents under a root from a realm's index.
-pub(crate) fn unindex_root_from_realm(root: &Path, realm: &mut RealmData) {
+pub(crate) async fn unindex_root_from_realm(root: &Path, realm: &mut RealmData) {
     let prefix = DocumentUri::from_file_path(root);
     let prefix_str = prefix.as_str();
 
@@ -298,7 +298,7 @@ pub(crate) fn unindex_root_from_realm(root: &Path, realm: &mut RealmData) {
         .collect();
 
     for uri in to_remove {
-        realm.index.remove_document(&uri);
+        realm.index.remove_document(&uri).await;
     }
 }
 
@@ -427,8 +427,7 @@ impl CoreEngine for RuntimeEngine {
                 // Phase 1: validate and register root (write lock, fast sync).
                 {
                     let mut state = self.state.write().await;
-                    if let Err(e) =
-                        realm_ops::validate_and_register_root(&mut state, &realm, &root)
+                    if let Err(e) = realm_ops::validate_and_register_root(&mut state, &realm, &root)
                     {
                         return CoreOperationResult::Error(e);
                     }
@@ -465,8 +464,7 @@ impl CoreEngine for RuntimeEngine {
                             Ok(ast) => ast,
                             Err(_) => continue,
                         };
-                        parsed_struct
-                            .push((uri, StructuredDocumentIndex::from_ast(ast)));
+                        parsed_struct.push((uri, StructuredDocumentIndex::from_ast(ast)));
                     }
                 }
 
@@ -482,9 +480,7 @@ impl CoreEngine for RuntimeEngine {
                     if let Some(sem) = semantic_arc {
                         for (uri, doc) in &parsed_md {
                             let mut guard = sem.lock().await;
-                            if let Err(err) =
-                                guard.add_document(uri.clone(), doc).await
-                            {
+                            if let Err(err) = guard.add_document(uri.clone(), doc).await {
                                 eprintln!(
                                     "warning: semantic indexing failed for {}: {err}",
                                     uri.as_str()
@@ -499,9 +495,9 @@ impl CoreEngine for RuntimeEngine {
                 let realm_data = match state.get_mut(&realm) {
                     Some(data) => data,
                     None => {
-                        return CoreOperationResult::Error(CoreError::Message(
-                            format!("realm was destroyed during indexing: {realm}"),
-                        ));
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "realm was destroyed during indexing: {realm}"
+                        )));
                     }
                 };
                 for (uri, doc) in parsed_md {
@@ -519,7 +515,7 @@ impl CoreEngine for RuntimeEngine {
             }
             CoreOperation::RemoveRoot { realm, root } => {
                 let mut state = self.state.write().await;
-                realm_ops::handle_remove_root(&mut state, realm, root)
+                realm_ops::handle_remove_root(&mut state, realm, root).await
             }
 
             // --- Query operations ---
@@ -543,6 +539,7 @@ impl CoreEngine for RuntimeEngine {
                     check_duplicates,
                     include_token_counts,
                 )
+                .await
             }
             CoreOperation::DependencyGraph { realm, format } => {
                 let state = self.state.read().await;

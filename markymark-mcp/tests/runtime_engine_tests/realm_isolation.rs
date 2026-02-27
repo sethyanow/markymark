@@ -183,7 +183,7 @@ async fn query_operations_error_on_never_created_realm() {
         },
     };
 
-    let operations: Vec<(&str, CoreOperation)> = vec![
+    let mut operations: Vec<(&str, CoreOperation)> = vec![
         (
             "SearchSymbols",
             CoreOperation::SearchSymbols {
@@ -253,15 +253,6 @@ async fn query_operations_error_on_never_created_realm() {
             },
         ),
         (
-            "SemanticSearch",
-            CoreOperation::SemanticSearch {
-                query: "anything".to_string(),
-                realm: Some(bogus.to_string()),
-                top_k: 5,
-                min_score: 0.0,
-            },
-        ),
-        (
             "DependencyGraph",
             CoreOperation::DependencyGraph {
                 realm: bogus.to_string(),
@@ -269,6 +260,19 @@ async fn query_operations_error_on_never_created_realm() {
             },
         ),
     ];
+
+    // SemanticSearch returns "not implemented" when the feature is disabled,
+    // which is a different error path than "realm does not exist".
+    #[cfg(feature = "semantic-search")]
+    operations.push((
+        "SemanticSearch",
+        CoreOperation::SemanticSearch {
+            query: "anything".to_string(),
+            realm: Some(bogus.to_string()),
+            top_k: 5,
+            min_score: 0.0,
+        },
+    ));
 
     for (label, op) in operations {
         let result = engine.execute(op).await;

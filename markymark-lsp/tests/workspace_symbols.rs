@@ -354,7 +354,7 @@ async fn test_acceptance_closed_document_removed_from_workspace_symbols() {
     // Close one document
     {
         let mut state = backend.state().write().await;
-        state.close_document(&uri_close);
+        state.close_document(&uri_close).await;
     }
 
     // Re-query: only Keeper should remain

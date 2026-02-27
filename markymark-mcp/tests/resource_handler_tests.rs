@@ -234,9 +234,7 @@ async fn read_outline_resource_with_percent_encoded_realm_query_decodes_value() 
 #[tokio::test]
 async fn read_symbols_resource_returns_json() {
     let mcp = make_mcp();
-    let result = mcp
-        .read_resource("markymark://symbols?query=test")
-        .await;
+    let result = mcp.read_resource("markymark://symbols?query=test").await;
     let contents = result.expect("should succeed");
     assert_eq!(contents.len(), 1);
     match &contents[0] {
