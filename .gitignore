@@ -31,6 +31,8 @@ Thumbs.db
 .zig-global-cache/
 zig/.zig-global-cache/
 zig-out/
+zig/*.a
+zig/test_exe
 
 # Local scratch / exports
 temp_coderabbit_notes.md
