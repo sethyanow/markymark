@@ -15,54 +15,91 @@ impl SemanticIndex {
         uri: DocumentUri,
         index: &DocumentIndex,
     ) -> Result<(), EmbedError> {
-        self.remove_document(&uri);
+        self.add_documents(vec![(uri, index)]).await
+    }
 
-        let mut staged_zig_adds: Vec<(String, Vec<f32>)> = Vec::new();
-        let mut ids = Vec::new();
+    /// Add (or replace) semantic entries for many documents using batch embedding.
+    pub async fn add_documents(
+        &mut self,
+        docs: Vec<(DocumentUri, &DocumentIndex)>,
+    ) -> Result<(), EmbedError> {
+        let mut docs_state = Vec::with_capacity(docs.len());
         let mut pending_entries = Vec::new();
-        let mut token_set = std::collections::BTreeSet::new();
+        let mut pending_embeddings: Vec<(String, String)> = Vec::new();
 
-        if index.headings().is_empty() {
-            let fallback_heading = fallback_heading(&uri);
-            let embedding = self.provider.embed(&fallback_heading).await?;
-            let id = format!("{}#fallback", uri.as_str());
+        for (uri, index) in docs {
+            let mut ids = Vec::new();
+            let mut token_set = std::collections::BTreeSet::new();
 
-            token_set.extend(token_hashes(&fallback_heading));
-            staged_zig_adds.push((id.clone(), embedding));
-            pending_entries.push((
-                id.clone(),
-                SemanticEntry {
-                    doc_uri: uri.clone(),
-                    heading: fallback_heading,
-                    heading_level: 1,
-                    section_start: Position::new(0, 0),
-                    section_end: Position::new(0, 0),
-                },
-            ));
-            ids.push(id);
-        } else {
-            for (i, heading) in index.headings().iter().enumerate() {
-                let embedding_input = heading.text.to_string();
-                if embedding_input.trim().is_empty() {
-                    continue;
-                }
-                let embedding = self.provider.embed(&embedding_input).await?;
-                let id = format!("{}#{}#{i}", uri.as_str(), heading.slug);
+            if index.headings().is_empty() {
+                let fallback_heading = fallback_heading(&uri);
+                let id = format!("{}#fallback", uri.as_str());
 
-                token_set.extend(token_hashes(&embedding_input));
-                staged_zig_adds.push((id.clone(), embedding));
+                token_set.extend(token_hashes(&fallback_heading));
+                pending_embeddings.push((id.clone(), fallback_heading.clone()));
                 pending_entries.push((
                     id.clone(),
                     SemanticEntry {
                         doc_uri: uri.clone(),
-                        heading: heading.text.to_string(),
-                        heading_level: heading.level,
-                        section_start: heading.range.start,
-                        section_end: heading.range.end,
+                        heading: fallback_heading,
+                        heading_level: 1,
+                        section_start: Position::new(0, 0),
+                        section_end: Position::new(0, 0),
                     },
                 ));
                 ids.push(id);
+            } else {
+                for (i, heading) in index.headings().iter().enumerate() {
+                    let embedding_input = heading.text.to_string();
+                    if embedding_input.trim().is_empty() {
+                        continue;
+                    }
+
+                    let id = format!("{}#{}#{i}", uri.as_str(), heading.slug);
+
+                    token_set.extend(token_hashes(&embedding_input));
+                    pending_embeddings.push((id.clone(), embedding_input.clone()));
+                    pending_entries.push((
+                        id.clone(),
+                        SemanticEntry {
+                            doc_uri: uri.clone(),
+                            heading: embedding_input,
+                            heading_level: heading.level,
+                            section_start: heading.range.start,
+                            section_end: heading.range.end,
+                        },
+                    ));
+                    ids.push(id);
+                }
             }
+
+            docs_state.push((uri, ids, token_set));
+        }
+
+        let mut staged_zig_adds: Vec<(String, Vec<f32>)> =
+            Vec::with_capacity(pending_embeddings.len());
+        if !pending_embeddings.is_empty() {
+            let inputs: Vec<&str> = pending_embeddings
+                .iter()
+                .map(|(_, text)| text.as_str())
+                .collect();
+            let embeddings = self.embed_with_batch_fallback(&inputs).await?;
+            if embeddings.len() != pending_embeddings.len() {
+                return Err(EmbedError::InternalError(format!(
+                    "embed_batch returned {} vectors for {} texts",
+                    embeddings.len(),
+                    pending_embeddings.len()
+                )));
+            }
+
+            for ((id, _), embedding) in pending_embeddings.into_iter().zip(embeddings.into_iter()) {
+                staged_zig_adds.push((id, embedding));
+            }
+        }
+
+        // Commit after all embedding calls succeed.
+        for (uri, _, _) in &docs_state {
+            self.remove_document(uri);
         }
 
         for (id, embedding) in staged_zig_adds {
@@ -74,8 +111,12 @@ impl SemanticIndex {
         for (id, entry) in pending_entries {
             self.entries_by_id.insert(id, entry);
         }
-        self.doc_to_ids.insert(uri.clone(), ids);
-        self.doc_token_sets.insert(uri, token_set);
+
+        for (uri, ids, token_set) in docs_state {
+            self.doc_to_ids.insert(uri.clone(), ids);
+            self.doc_token_sets.insert(uri, token_set);
+        }
+
         Ok(())
     }
 
@@ -91,5 +132,25 @@ impl SemanticIndex {
             }
         }
         self.doc_token_sets.remove(uri);
+    }
+
+    async fn embed_with_batch_fallback(
+        &self,
+        inputs: &[&str],
+    ) -> Result<Vec<Vec<f32>>, EmbedError> {
+        match self.provider.embed_batch(inputs).await {
+            Ok(embeddings) => Ok(embeddings),
+            Err(batch_err) => {
+                log::warn!(
+                    "batch embedding failed for {} inputs, falling back to sequential: {batch_err}",
+                    inputs.len()
+                );
+                let mut embeddings = Vec::with_capacity(inputs.len());
+                for input in inputs {
+                    embeddings.push(self.provider.embed(input).await?);
+                }
+                Ok(embeddings)
+            }
+        }
     }
 }

@@ -76,12 +76,65 @@ impl FailOnNthEmbeddingProvider {
 impl EmbeddingProvider for FailOnNthEmbeddingProvider {
     async fn embed(&self, _text: &str) -> Result<Vec<f32>, EmbedError> {
         let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
-        if call == self.fail_on {
+        if call >= self.fail_on {
             return Err(EmbedError::ProviderUnavailable(
                 "provider unavailable".to_string(),
             ));
         }
         Ok(vec![1.0; 5])
+    }
+
+    fn dimensions(&self) -> u32 {
+        5
+    }
+}
+
+#[derive(Debug)]
+struct BatchToggleProvider {
+    fail_batch: bool,
+    embed_calls: AtomicUsize,
+    batch_calls: AtomicUsize,
+    batch_items: AtomicUsize,
+}
+
+impl BatchToggleProvider {
+    fn new(fail_batch: bool) -> Self {
+        Self {
+            fail_batch,
+            embed_calls: AtomicUsize::new(0),
+            batch_calls: AtomicUsize::new(0),
+            batch_items: AtomicUsize::new(0),
+        }
+    }
+
+    fn embed_vector(text: &str) -> Vec<f32> {
+        let lower = text.to_ascii_lowercase();
+        vec![
+            if lower.contains("alpha") { 1.0 } else { 0.0 },
+            if lower.contains("beta") { 1.0 } else { 0.0 },
+            if lower.contains("gamma") { 1.0 } else { 0.0 },
+            if lower.contains("zeta") { 1.0 } else { 0.0 },
+            if lower.contains("topic") { 1.0 } else { 0.0 },
+        ]
+    }
+}
+
+#[async_trait]
+impl EmbeddingProvider for BatchToggleProvider {
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+        self.embed_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(Self::embed_vector(text))
+    }
+
+    async fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbedError> {
+        self.batch_calls.fetch_add(1, Ordering::SeqCst);
+        self.batch_items.fetch_add(texts.len(), Ordering::SeqCst);
+        if self.fail_batch {
+            return Err(EmbedError::InternalError(
+                "forced batch failure".to_string(),
+            ));
+        }
+        Ok(texts.iter().map(|text| Self::embed_vector(text)).collect())
     }
 
     fn dimensions(&self) -> u32 {
@@ -246,4 +299,167 @@ async fn test_realm_semantic_search_integration() {
 
     assert!(!results.is_empty());
     assert_eq!(results[0].doc_uri, rust_uri);
+}
+
+#[tokio::test]
+async fn test_add_documents_batch_results_match_sequential_fallback() {
+    let batch_provider = Arc::new(BatchToggleProvider::new(false));
+    let fallback_provider = Arc::new(BatchToggleProvider::new(true));
+
+    let mut batch_index =
+        SemanticIndex::new(batch_provider.clone()).expect("batch semantic index should initialize");
+    let mut fallback_index = SemanticIndex::new(fallback_provider.clone())
+        .expect("fallback semantic index should initialize");
+
+    let docs = [
+        (
+            uri("alpha.md"),
+            index_from("# Alpha Topic\n\nalpha body text"),
+        ),
+        (uri("beta.md"), index_from("# Beta Topic\n\nbeta body text")),
+        (
+            uri("gamma.md"),
+            index_from("# Gamma Topic\n\ngamma body text"),
+        ),
+    ];
+
+    let batch_docs: Vec<(DocumentUri, &DocumentIndex)> =
+        docs.iter().map(|(uri, doc)| (uri.clone(), doc)).collect();
+    let fallback_docs: Vec<(DocumentUri, &DocumentIndex)> =
+        docs.iter().map(|(uri, doc)| (uri.clone(), doc)).collect();
+
+    batch_index
+        .add_documents(batch_docs)
+        .await
+        .expect("batch add_documents should succeed");
+    fallback_index
+        .add_documents(fallback_docs)
+        .await
+        .expect("fallback add_documents should succeed");
+
+    let batch_results = batch_index
+        .search("alpha topic", 3, 0.0)
+        .await
+        .expect("batch search should succeed");
+    let fallback_results = fallback_index
+        .search("alpha topic", 3, 0.0)
+        .await
+        .expect("fallback search should succeed");
+
+    assert_eq!(
+        batch_results.len(),
+        fallback_results.len(),
+        "batch and sequential fallback should return same number of results",
+    );
+    let batch_uris: Vec<String> = batch_results
+        .iter()
+        .map(|result| result.doc_uri.as_str().to_string())
+        .collect();
+    let fallback_uris: Vec<String> = fallback_results
+        .iter()
+        .map(|result| result.doc_uri.as_str().to_string())
+        .collect();
+    assert_eq!(
+        batch_uris, fallback_uris,
+        "batch and sequential fallback should rank documents identically",
+    );
+
+    assert_eq!(
+        batch_provider.batch_calls.load(Ordering::SeqCst),
+        1,
+        "batch provider should be called once",
+    );
+    assert_eq!(
+        batch_provider.embed_calls.load(Ordering::SeqCst),
+        1,
+        "query embedding should use one embed() call",
+    );
+    assert_eq!(
+        fallback_provider.batch_calls.load(Ordering::SeqCst),
+        1,
+        "fallback provider should still attempt one batch call",
+    );
+    assert_eq!(
+        fallback_provider.embed_calls.load(Ordering::SeqCst),
+        4,
+        "fallback provider should embed each heading plus one query",
+    );
+}
+
+#[tokio::test]
+async fn test_add_documents_batch_skips_empty_headings() {
+    let provider = Arc::new(BatchToggleProvider::new(false));
+    let mut index = SemanticIndex::new(provider.clone()).expect("semantic index should initialize");
+
+    let doc = index_from("# Alpha Topic\n# \n## Beta Topic\n");
+    index
+        .add_documents(vec![(uri("empty.md"), &doc)])
+        .await
+        .expect("batch add_documents should succeed with empty heading");
+
+    assert_eq!(index.entry_count(), 2, "empty heading should be skipped");
+    assert_eq!(
+        provider.batch_calls.load(Ordering::SeqCst),
+        1,
+        "batch mode should issue one embed_batch call",
+    );
+    assert_eq!(
+        provider.batch_items.load(Ordering::SeqCst),
+        2,
+        "only two non-empty headings should be embedded",
+    );
+}
+
+#[tokio::test]
+async fn test_add_documents_batch_handles_mixed_headings_and_fallback_docs() {
+    let provider = Arc::new(BatchToggleProvider::new(false));
+    let mut index = SemanticIndex::new(provider.clone()).expect("semantic index should initialize");
+
+    let doc_with_heading = index_from("# Alpha Topic\n\nalpha details");
+    let doc_without_heading = index_from("plain content no heading");
+    let doc_with_other_heading = index_from("# Gamma Topic\n\ngamma details");
+
+    let docs = vec![
+        (uri("alpha.md"), &doc_with_heading),
+        (uri("zeta-fallback.md"), &doc_without_heading),
+        (uri("gamma.md"), &doc_with_other_heading),
+    ];
+    index
+        .add_documents(docs)
+        .await
+        .expect("mixed add_documents should succeed");
+
+    assert_eq!(
+        index.entry_count(),
+        3,
+        "one heading + one fallback + one heading should produce three entries",
+    );
+    assert_eq!(
+        provider.batch_calls.load(Ordering::SeqCst),
+        1,
+        "all mixed docs should be embedded in one batch call",
+    );
+    assert_eq!(
+        provider.batch_items.load(Ordering::SeqCst),
+        3,
+        "two headings plus one fallback heading should be embedded",
+    );
+
+    let alpha_results = index
+        .search("alpha", 1, 0.0)
+        .await
+        .expect("alpha search should succeed");
+    assert_eq!(alpha_results[0].doc_uri, uri("alpha.md"));
+
+    let zeta_results = index
+        .search("zeta", 1, 0.0)
+        .await
+        .expect("zeta search should succeed");
+    assert_eq!(zeta_results[0].doc_uri, uri("zeta-fallback.md"));
+
+    let gamma_results = index
+        .search("gamma", 1, 0.0)
+        .await
+        .expect("gamma search should succeed");
+    assert_eq!(gamma_results[0].doc_uri, uri("gamma.md"));
 }

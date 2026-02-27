@@ -963,3 +963,16 @@ Multiple classic patterns apply. For brainstorming reference:
 
 The hybrid proposed above is closest to sqrt decomposition + segment tree, with SIMD providing
 the "block boundary" function that sqrt decomposition typically gets for free (fixed intervals).
+
+### Semantic batch indexing commit pattern (2026-02-27, marky-y4be)
+
+`SemanticIndex::add_documents` now uses a batch-first flow:
+
+1. Stage per-doc semantic entries + text inputs without mutating state.
+2. Call `embed_batch` once for all staged texts.
+3. If batch fails, log warning and retry sequential `embed()` for resilience.
+4. Commit removals/additions only after all embeddings succeed.
+
+Key consequence: no partial metadata/Zig vector commits on embedding failure, while preserving
+provider compatibility (default `embed_batch` still works) and startup performance (single batch
+call for large root indexing in MCP startup/AddRoot paths).
