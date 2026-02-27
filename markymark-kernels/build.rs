@@ -12,43 +12,71 @@ fn main() {
         .canonicalize()
         .unwrap_or_else(|e| panic!("zig/ directory not found at {}: {e}", zig_dir.display()));
 
-    // Check Zig is installed and get version
-    let zig_version = get_zig_version();
-    check_zig_version(&zig_version);
-
-    // When cross-compiling (e.g. aarch64-unknown-linux-gnu), Zig must build the static lib
-    // for the same target; otherwise we'd link host-arch lib into target-arch binary.
-    let zig_target = env::var("TARGET")
-        .ok()
-        .and_then(|t| rust_target_to_zig_target(&t));
-
     // Use Cargo's OUT_DIR as the Zig install prefix so every Cargo compilation
     // unit (lib, test, clippy, …) writes to its own unique output directory.
-    // Multiple cargo build/test/clippy steps within one CI job each invoke
-    // build.rs separately; if they all wrote to the shared zig/zig-out/lib/
-    // path, a warm-cache `zig build lib` call on Linux x86_64 could corrupt
-    // the archive (Zig 0.15.2 bug: reusing .zig-cache while overwriting the
-    // same .a file produces a truncated archive).  Each unit's OUT_DIR is
-    // unique, so no two invocations race on the same output file.
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
 
-    // Run zig build lib, installing into Cargo's unique OUT_DIR
-    build_zig_library(&zig_dir, zig_target.as_deref(), &out_dir);
-
-    // Verify the library artifact exists and is not corrupt
-    // Zig produces libmarky_kernels.a on Unix, marky_kernels.lib on Windows
     let lib_path = out_dir.join("lib");
     let lib_file = if cfg!(target_os = "windows") {
         lib_path.join("marky_kernels.lib")
     } else {
         lib_path.join("libmarky_kernels.a")
     };
-    if !lib_file.exists() {
-        panic!(
-            "zig build lib did not produce {} at {}",
-            lib_file.file_name().unwrap().to_string_lossy(),
-            lib_file.display()
+
+    // MARKY_KERNELS_PREBUILT: path to a pre-built libmarky_kernels.a.
+    // Skips the `zig build` step entirely — useful when Zig's build system
+    // cannot run (e.g. kernel < 4.5 where copy_file_range is unavailable).
+    if let Ok(prebuilt) = env::var("MARKY_KERNELS_PREBUILT") {
+        let prebuilt = PathBuf::from(prebuilt);
+        if !prebuilt.exists() {
+            panic!(
+                "MARKY_KERNELS_PREBUILT points to non-existent file: {}",
+                prebuilt.display()
+            );
+        }
+        std::fs::create_dir_all(&lib_path).unwrap_or_else(|e| {
+            panic!("Failed to create {}: {e}", lib_path.display())
+        });
+        std::fs::copy(&prebuilt, &lib_file).unwrap_or_else(|e| {
+            panic!(
+                "Failed to copy prebuilt library from {} to {}: {e}",
+                prebuilt.display(),
+                lib_file.display()
+            )
+        });
+        println!(
+            "cargo:warning=Using prebuilt Zig library from {}",
+            prebuilt.display()
         );
+    } else {
+        // Check Zig is installed and get version
+        let zig_version = get_zig_version();
+        check_zig_version(&zig_version);
+
+        // When cross-compiling (e.g. aarch64-unknown-linux-gnu), Zig must build the static lib
+        // for the same target; otherwise we'd link host-arch lib into target-arch binary.
+        let zig_target = env::var("TARGET")
+            .ok()
+            .and_then(|t| rust_target_to_zig_target(&t));
+
+        // Multiple cargo build/test/clippy steps within one CI job each invoke
+        // build.rs separately; if they all wrote to the shared zig/zig-out/lib/
+        // path, a warm-cache `zig build lib` call on Linux x86_64 could corrupt
+        // the archive (Zig 0.15.2 bug: reusing .zig-cache while overwriting the
+        // same .a file produces a truncated archive).  Each unit's OUT_DIR is
+        // unique, so no two invocations race on the same output file.
+
+        // Run zig build lib, installing into Cargo's unique OUT_DIR
+        build_zig_library(&zig_dir, zig_target.as_deref(), &out_dir);
+
+        // Verify the library artifact exists and is not corrupt
+        if !lib_file.exists() {
+            panic!(
+                "zig build lib did not produce {} at {}",
+                lib_file.file_name().unwrap().to_string_lossy(),
+                lib_file.display()
+            );
+        }
     }
 
     // Zig 0.15.2 on Linux x86_64 produces archives that pass `ar t` but
