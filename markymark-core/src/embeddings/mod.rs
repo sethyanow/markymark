@@ -9,7 +9,7 @@ use std::fmt;
 
 #[cfg(feature = "local-embeddings")]
 pub mod local;
-#[cfg(feature = "voyage")]
+#[cfg(feature = "semantic-search")]
 pub mod voyage;
 
 // ---------------------------------------------------------------------------

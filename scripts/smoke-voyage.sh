@@ -24,8 +24,8 @@ if [[ -z "${VOYAGE_API_KEY:-}" ]]; then
   exit 1
 fi
 
-echo "==> Building with semantic-search + voyage features..."
-cargo build -p markymark-cli --features semantic-search,voyage 2>&1 | tail -3
+echo "==> Building with semantic-search feature..."
+cargo build -p markymark-cli --features semantic-search 2>&1 | tail -3
 
 BINARY="$REPO_ROOT/target/debug/markymark"
 

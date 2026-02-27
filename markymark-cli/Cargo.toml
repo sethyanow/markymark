@@ -15,8 +15,7 @@ path = "src/main.rs"
 
 [features]
 default = []
-semantic-search = ["markymark-mcp/semantic-search"]
-voyage = ["markymark-core/voyage"]
+semantic-search = ["markymark-mcp/semantic-search", "markymark-core/semantic-search"]
 local-embeddings = ["markymark-core/local-embeddings"]
 
 [dependencies]
