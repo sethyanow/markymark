@@ -244,8 +244,7 @@ impl RuntimeEngine {
 pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
     let backend = Md4cScanBackend;
     let documents = helpers::collect_documents(root);
-    let mut parsed_markdown: Vec<(DocumentUri, DocumentIndex)> = Vec::new();
-    let mut parsed_structured: Vec<(DocumentUri, StructuredDocumentIndex)> = Vec::new();
+    let mut markdown_docs = Vec::new();
 
     for (path, kind) in documents {
         let source = match fs::read_to_string(&path) {
@@ -262,7 +261,7 @@ pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
             // setext heading underline. Replace non-newline bytes with spaces
             // to preserve line counting and byte offsets.
             let scan_source = markymark_index::mask_frontmatter(&source);
-            parsed_markdown.push((
+            markdown_docs.push((
                 uri,
                 DocumentIndex::from_scan_with_frontmatter(
                     &scan_source,
@@ -276,13 +275,14 @@ pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
                 Ok(ast) => ast,
                 Err(_) => continue,
             };
-            parsed_structured.push((uri, StructuredDocumentIndex::from_ast(ast)));
+            realm
+                .index
+                .add_structured_document(uri, StructuredDocumentIndex::from_ast(ast));
         }
     }
 
-    realm.index.add_documents(parsed_markdown).await;
-    for (uri, doc) in parsed_structured {
-        realm.index.add_structured_document(uri, doc);
+    if !markdown_docs.is_empty() {
+        realm.index.add_documents(markdown_docs).await;
     }
 }
 
@@ -480,16 +480,14 @@ impl CoreEngine for RuntimeEngine {
                             .and_then(|rd| rd.index.semantic_index_arc())
                     };
                     if let Some(sem) = semantic_arc {
-                        let semantic_docs: Vec<(DocumentUri, &DocumentIndex)> = parsed_md
-                            .iter()
-                            .map(|(uri, doc)| (uri.clone(), doc))
-                            .collect();
-                        let mut guard = sem.lock().await;
-                        if let Err(err) = guard.add_documents(semantic_docs).await {
-                            eprintln!(
-                                "warning: semantic indexing failed for realm {}: {err}",
-                                realm
-                            );
+                        for (uri, doc) in &parsed_md {
+                            let mut guard = sem.lock().await;
+                            if let Err(err) = guard.add_document(uri.clone(), doc).await {
+                                eprintln!(
+                                    "warning: semantic indexing failed for {}: {err}",
+                                    uri.as_str()
+                                );
+                            }
                         }
                     }
                 }
@@ -504,6 +502,25 @@ impl CoreEngine for RuntimeEngine {
                         )));
                     }
                 };
+
+                // Root may have been removed while Phase 2/3 ran without the write lock.
+                let root_canonical = root.canonicalize().unwrap_or_else(|_| root.clone());
+                let root_still_present = realm_data.roots.iter().any(|existing| {
+                    existing.canonicalize().unwrap_or_else(|_| existing.clone()) == root_canonical
+                });
+                if !root_still_present {
+                    log::warn!(
+                        "root removed during indexing; realm={realm}, root={}, discarding {} parsed documents",
+                        root.display(),
+                        parsed_md.len() + parsed_struct.len()
+                    );
+                    return CoreOperationResult::RealmInfo {
+                        name: realm.clone(),
+                        root_count: realm_data.roots.len(),
+                        document_count: realm_data.index.document_count(),
+                    };
+                }
+
                 for (uri, doc) in parsed_md {
                     realm_data.index.add_document_structural(uri, doc);
                 }

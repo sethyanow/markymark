@@ -40,6 +40,20 @@ fixed by `ac3563b`), **1 already tracked** (marky-y4be), **4 new valid**:
 **Pattern learned:** Reviewers analyzed commit `b77c490` (pre-fix). 10/15 findings were already
 addressed. Future triage rounds should note the reviewed commit vs HEAD to fast-dismiss stale findings.
 
+### PR #46 Round 3 final-validation blocker (2026-02-26, marky-e5zl)
+
+`marky-qfg1` could not be closed after child-task completion because final validation failed on
+semantic-search builds:
+
+- Repro: `cargo nextest run -p markymark-index -p markymark-mcp --features semantic-search`
+- Failure: E0364 in `markymark-index/src/semantic/mod.rs`
+- Cause: `mod.rs` re-exports helper functions (`compute_fetch_k`, `fallback_heading`, `fnv1a32`,
+  `jaccard_similarity`, `token_hashes`) that are private in `helpers.rs`
+
+**Follow-up task:** `marky-e5zl` (P1) added under `marky-qfg1`, with SRE-refined design requiring
+internal visibility cleanup (no accidental public API expansion) plus nextest/clippy/semantic test
+validation.
+
 ### PR #44 (v0.6.0, dev→main) — CI green, ready for merge
 
 PR #43 was closed (stale merge base). Main was merged into dev, and PR #44 opened as the fresh
@@ -964,15 +978,14 @@ Multiple classic patterns apply. For brainstorming reference:
 The hybrid proposed above is closest to sqrt decomposition + segment tree, with SIMD providing
 the "block boundary" function that sqrt decomposition typically gets for free (fixed intervals).
 
-### Semantic batch indexing commit pattern (2026-02-27, marky-y4be)
+### Semantic startup batching pattern (2026-02-27, marky-y4be)
 
-`SemanticIndex::add_documents` now uses a batch-first flow:
+`SemanticIndex::add_document` and new `add_documents` now stage heading/fallback entries,
+call `embed_batch` once across staged texts, and only then commit Zig vectors + metadata.
 
-1. Stage per-doc semantic entries + text inputs without mutating state.
-2. Call `embed_batch` once for all staged texts.
-3. If batch fails, log warning and retry sequential `embed()` for resilience.
-4. Commit removals/additions only after all embeddings succeed.
+Key resilience rule: on `embed_batch` error, log warning and fall back to sequential
+`embed` per text instead of dropping all headings in the failed batch.
 
-Key consequence: no partial metadata/Zig vector commits on embedding failure, while preserving
-provider compatibility (default `embed_batch` still works) and startup performance (single batch
-call for large root indexing in MCP startup/AddRoot paths).
+`RealmIndex::add_documents` batches semantic embedding first (when enabled), then applies
+structural indexing for each document. MCP startup (`index_root_into_realm`) now collects
+markdown docs and calls `realm.index.add_documents(...)` once per root.
