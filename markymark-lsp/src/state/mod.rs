@@ -105,7 +105,7 @@ pub struct ServerState {
     realm: RealmIndex,
     /// Per-document stateful Zig document engines (keyed by URI string).
     /// Wrapped in `Mutex` so `ServerState: Sync` is derived soundly.
-    /// `DocumentEngine` is `Send` but not `Sync` (get_blob mutates Zig-side
+    /// `DocumentEngine` is `Send` but not `Sync` (get_result can mutate Zig-side
     /// cached state), so we gate shared access through a mutex even though
     /// all call-sites already hold `&mut self` and the mutex is uncontested.
     /// INVARIANT: all maps use `uri.as_str().to_string()` as the key.
@@ -119,6 +119,36 @@ impl Default for ServerState {
 }
 
 impl ServerState {
+    fn should_force_engine_update_fail_for_tests(uri_str: &str) -> bool {
+        cfg!(debug_assertions) && uri_str.contains("__marky_test_force_update_fail__")
+    }
+
+    fn should_force_engine_result_conversion_fail_for_tests(uri_str: &str) -> bool {
+        cfg!(debug_assertions) && uri_str.contains("__marky_test_force_conversion_fail__")
+    }
+
+    fn index_from_engine_result(
+        uri_str: &str,
+        engine: &DocumentEngine,
+        frontmatter: Vec<markymark_index::FrontmatterOwnedEntry>,
+        aliases: Vec<String>,
+    ) -> Result<DocumentIndex, String> {
+        let result = engine
+            .get_result()
+            .map_err(|e| format!("get_result failed: {e:?}"))?;
+        if Self::should_force_engine_result_conversion_fail_for_tests(uri_str) {
+            return Err("forced engine result conversion failure (test hook, uri)".to_string());
+        }
+        let extraction = result
+            .to_extraction()
+            .map_err(|e| format!("to_extraction failed: {e:?}"))?;
+        Ok(DocumentIndex::from_engine_result_with_frontmatter(
+            &extraction,
+            frontmatter,
+            aliases,
+        ))
+    }
+
     /// Create a new empty server state.
     pub fn new() -> Self {
         Self {
@@ -140,14 +170,16 @@ impl ServerState {
     /// Build a markdown document index via the stateful Zig DocumentEngine.
     ///
     /// If an engine for the URI exists, updates it; otherwise creates one.
-    /// On any engine or blob error, falls back to `DocumentIndex::from_scan`
-    /// with the `Md4cScanBackend` so the index is never empty.
-    ///
-    /// LIFETIME NOTE: `ScanBlob<'_>` borrows `&engine`. `from_blob()` copies
-    /// all text into its own bumpalo arena immediately, so the `DocumentIndex`
-    /// does NOT hold references to the blob after `from_blob()` returns. The
-    /// blob can safely drop and the engine can be mutated or stored.
-    fn build_markdown_index_via_engine(&mut self, uri_str: &str, text: &str) -> DocumentIndex {
+    /// On update/create/result-conversion failures, tries stale-state fallback
+    /// first. When no stale state exists, falls back to scan path.
+    fn build_markdown_index_via_engine(
+        &mut self,
+        uri: &DocumentUri,
+        text: &str,
+    ) -> Option<DocumentIndex> {
+        let uri_str = uri.as_str();
+        let has_stale_index = self.realm.get_document(uri).is_some();
+
         // Parse frontmatter and mask it so md4c doesn't misparse `---`
         // delimiters as setext headings. Masking preserves byte offsets.
         let (fm, aliases) = parse_frontmatter_owned(text);
@@ -161,81 +193,94 @@ impl ServerState {
                 Err(_poisoned) => {
                     log::warn!(
                         target: "markymark_lsp",
-                        "engine mutex poisoned for {}, falling back to from_scan",
+                        "engine mutex poisoned for {}",
                         uri_str
                     );
-                    return Self::fallback_scan_with_frontmatter(text);
+                    return if has_stale_index {
+                        None
+                    } else {
+                        Some(Self::fallback_scan_with_frontmatter(text))
+                    };
                 }
             };
-            match engine.update(&masked) {
-                Ok(()) => match engine.get_blob() {
-                    Ok(blob) => {
-                        match DocumentIndex::from_blob_with_frontmatter(blob.data(), fm, aliases) {
-                            Ok(index) => return index,
-                            Err(e) => {
-                                log::warn!(
-                                    target: "markymark_lsp",
-                                    "from_blob failed for {}: {:?}, falling back to from_scan",
-                                    uri_str, e
-                                );
-                                return Self::fallback_scan_with_frontmatter(text);
-                            }
+            let update_result = if Self::should_force_engine_update_fail_for_tests(uri_str) {
+                Err("forced engine update failure (test hook, uri)".to_string())
+            } else {
+                engine
+                    .update(&masked)
+                    .map_err(|e| format!("engine update failed: {e:?}"))
+            };
+
+            match update_result {
+                Ok(()) => {
+                    match Self::index_from_engine_result(
+                        uri_str,
+                        &engine,
+                        fm.clone(),
+                        aliases.clone(),
+                    ) {
+                        Ok(index) => return Some(index),
+                        Err(e) => {
+                            log::warn!(
+                                target: "markymark_lsp",
+                                "engine result conversion failed for {}: {}, trying stale fallback",
+                                uri_str, e
+                            );
                         }
                     }
-                    Err(e) => log::warn!(
+                }
+                Err(e) => {
+                    log::warn!(
                         target: "markymark_lsp",
-                        "get_blob failed for {}: {:?}, falling back to from_scan",
+                        "{} for {}, trying stale engine snapshot",
+                        e, uri_str
+                    );
+                }
+            }
+
+            match Self::index_from_engine_result(uri_str, &engine, fm.clone(), aliases.clone()) {
+                Ok(index) => return Some(index),
+                Err(e) => {
+                    log::warn!(
+                        target: "markymark_lsp",
+                        "stale engine snapshot failed for {}: {}",
                         uri_str, e
-                    ),
-                },
-                Err(e) => log::warn!(
-                    target: "markymark_lsp",
-                    "engine update failed for {}: {:?}, falling back to from_scan",
-                    uri_str, e
-                ),
+                    );
+                }
             }
         } else {
             // No engine yet — create one with masked text
             match DocumentEngine::new(&masked) {
-                Ok(engine) => match engine.get_blob() {
-                    Ok(blob) => {
-                        match DocumentIndex::from_blob_with_frontmatter(blob.data(), fm, aliases) {
-                            Ok(index) => {
-                                self.engines
-                                    .insert(uri_str.to_string(), std::sync::Mutex::new(engine));
-                                return index;
-                            }
-                            Err(e) => {
-                                log::warn!(
-                                    target: "markymark_lsp",
-                                    "from_blob failed (new engine) for {}: {:?}, falling back to from_scan",
-                                    uri_str, e
-                                );
-                                // Engine is valid (only blob parsing failed); store it so
-                                // future calls can do cheap delta updates via engine.update()
-                                // instead of recreating from scratch.
-                                self.engines
-                                    .insert(uri_str.to_string(), std::sync::Mutex::new(engine));
-                                return Self::fallback_scan_with_frontmatter(text);
-                            }
+                Ok(engine) => {
+                    let built = Self::index_from_engine_result(uri_str, &engine, fm, aliases);
+                    // Engine creation succeeded. Keep it even if current conversion failed.
+                    self.engines
+                        .insert(uri_str.to_string(), std::sync::Mutex::new(engine));
+                    match built {
+                        Ok(index) => return Some(index),
+                        Err(e) => {
+                            log::warn!(
+                                target: "markymark_lsp",
+                                "engine result conversion failed (new engine) for {}: {}, using fallback",
+                                uri_str, e
+                            );
                         }
                     }
-                    Err(e) => log::warn!(
-                        target: "markymark_lsp",
-                        "get_blob failed (new engine) for {}: {:?}, falling back to from_scan",
-                        uri_str, e
-                    ),
-                },
+                }
                 Err(e) => log::warn!(
                     target: "markymark_lsp",
-                    "engine create failed for {}: {:?}, falling back to from_scan",
+                    "engine create failed for {}: {:?}",
                     uri_str, e
                 ),
             }
         }
 
-        // Fallback: from_scan with Md4cScanBackend. Never panics.
-        Self::fallback_scan_with_frontmatter(text)
+        if has_stale_index {
+            None
+        } else {
+            // Secondary fallback: from_scan with Md4cScanBackend. Never panics.
+            Some(Self::fallback_scan_with_frontmatter(text))
+        }
     }
 
     /// Detect document kind from URI file extension.
@@ -253,7 +298,9 @@ impl ServerState {
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                let index = self.build_markdown_index_via_engine(uri.as_str(), &text);
+                let index = self
+                    .build_markdown_index_via_engine(&uri, &text)
+                    .unwrap_or_else(|| Self::fallback_scan_with_frontmatter(&text));
                 self.realm.add_document(uri, index).await;
             }
             Some(kind) => {
@@ -273,8 +320,9 @@ impl ServerState {
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                let index = self.build_markdown_index_via_engine(uri.as_str(), &text);
-                self.realm.update_document(uri.clone(), index).await;
+                if let Some(index) = self.build_markdown_index_via_engine(uri, &text) {
+                    self.realm.update_document(uri.clone(), index).await;
+                }
             }
             Some(kind) => {
                 self.realm.remove_document(uri).await;
@@ -364,9 +412,9 @@ impl ServerState {
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                let uri_str = uri.as_str();
-                let index = self.build_markdown_index_via_engine(uri_str, &final_text);
-                self.realm.update_document(uri.clone(), index).await;
+                if let Some(index) = self.build_markdown_index_via_engine(uri, &final_text) {
+                    self.realm.update_document(uri.clone(), index).await;
+                }
             }
             Some(kind) => {
                 self.realm.remove_document(uri).await;

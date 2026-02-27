@@ -335,6 +335,13 @@ Running multiple `bd` commands in parallel (`list/show/ready`) can trigger a Dol
 panic even with `BD_NO_DB=true BEADS_NO_DAEMON=1`. Sequential `bd` commands in the same shell
 work reliably. For plan execution, run `bd` operations one-at-a-time.
 
+### Global env fault-injection hooks leak across parallel tests (2026-02-27)
+
+Using process-wide env vars to force failure paths (`set_var`/`remove_var`) causes
+cross-test contamination under Rust's parallel test runner. Unrelated tests can observe
+the injected flags and fail nondeterministically. Prefer URI-scoped or instance-scoped
+fault hooks for integration tests; avoid global mutable process state.
+
 ### Context window exhaustion from task chaining (fail-context-runaway)
 Agent completed B-6, then marky-eebj refactor, then started marky-j516 — all in one session
 without stopping for user review. Hit context window limit mid-task, leaving from_blob/tests.rs

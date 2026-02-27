@@ -593,6 +593,86 @@ async fn test_engine_parity_block_ids() {
 }
 
 #[tokio::test]
+async fn test_engine_result_path_indexes_markdown_features() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/engine-result.md").unwrap();
+    state
+        .open_document(
+            uri.clone(),
+            "# Title\n\nSee [[target]] and #tag.\n\n- [ ] todo\n\nline ^block\n".to_string(),
+        )
+        .await;
+
+    let index = state.get_document_index(&uri).unwrap();
+    assert_eq!(index.headings().len(), 1);
+    assert_eq!(index.headings()[0].text, "Title");
+    assert_eq!(index.wiki_links().len(), 1);
+    assert_eq!(index.wiki_links()[0].target, "target");
+    assert_eq!(index.tags().len(), 1);
+    assert_eq!(index.tags()[0].name, "tag");
+    assert!(
+        index.block_by_id("block").is_some(),
+        "block id should be indexed"
+    );
+}
+
+#[tokio::test]
+async fn test_update_failure_returns_stale_index_not_empty() {
+    let mut state = ServerState::new();
+    let uri =
+        DocumentUri::new("file:///test/__marky_test_force_update_fail__/stale-update-fallback.md")
+            .unwrap();
+
+    state
+        .open_document(uri.clone(), "# Initial\n\nSome text #keep\n".to_string())
+        .await;
+    let before = state.get_document_index(&uri).unwrap();
+    assert_eq!(before.headings()[0].text, "Initial");
+    assert_eq!(before.tags()[0].name, "keep");
+
+    state.change_document(&uri, String::new()).await;
+
+    let after = state.get_document_index(&uri).unwrap();
+    assert!(
+        !after.headings().is_empty(),
+        "stale fallback should preserve prior non-empty index"
+    );
+    assert_eq!(after.headings()[0].text, "Initial");
+    assert_eq!(after.tags()[0].name, "keep");
+}
+
+#[tokio::test]
+async fn test_result_conversion_failure_uses_fallback_path() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new(
+        "file:///test/__marky_test_force_conversion_fail__/conversion-fallback.md",
+    )
+    .unwrap();
+
+    state
+        .open_document(uri.clone(), "# Old\n\nOld body #old\n".to_string())
+        .await;
+    let before = state.get_document_index(&uri).unwrap();
+    assert_eq!(before.headings()[0].text, "Old");
+
+    state
+        .change_document(&uri, "# New\n\nNew body #new\n".to_string())
+        .await;
+
+    let after = state.get_document_index(&uri).unwrap();
+    assert_eq!(
+        after.headings()[0].text,
+        "Old",
+        "conversion failure should keep stale index via fallback path"
+    );
+    let tag_names: Vec<_> = after.tags().iter().map(|t| t.name).collect();
+    assert!(
+        tag_names.contains(&"old"),
+        "fallback index should preserve previous tags"
+    );
+}
+
+#[tokio::test]
 async fn test_engine_lifecycle_open_and_close() {
     // Open a document → index is available. Close → index gone. Engine lifecycle.
     let mut state = ServerState::new();
