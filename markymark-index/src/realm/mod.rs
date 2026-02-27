@@ -176,6 +176,28 @@ impl RealmIndex {
         self.add_document_structural(uri, index);
     }
 
+    /// Add multiple markdown documents to the realm index.
+    ///
+    /// Embeddings (when enabled) are generated in a single semantic batch,
+    /// then structural indexes are updated for each document.
+    pub async fn add_documents(&mut self, docs: Vec<(DocumentUri, DocumentIndex)>) {
+        #[cfg(feature = "embeddings")]
+        if let Some(semantic) = &self.semantic_index {
+            let semantic_docs = docs
+                .iter()
+                .map(|(uri, index)| (uri.clone(), index))
+                .collect::<Vec<_>>();
+            let mut guard = semantic.lock().await;
+            if let Err(err) = guard.add_documents(semantic_docs).await {
+                eprintln!("warning: semantic indexing failed for document batch: {err}",);
+            }
+        }
+
+        for (uri, index) in docs {
+            self.add_document_structural(uri, index);
+        }
+    }
+
     /// Add a markdown document to the structural index only (no semantic embedding).
     ///
     /// This is the sync portion of [`add_document`]. It updates cross-doc indexes,

@@ -1,68 +1,148 @@
+use std::collections::BTreeSet;
+
 use crate::DocumentIndex;
 use markymark_core::prelude::*;
 
 use super::helpers::{fallback_heading, token_hashes};
 use super::{SemanticEntry, SemanticIndex};
 
-impl SemanticIndex {
-    /// Add (or replace) semantic entries for a document.
-    ///
-    /// If the document has headings, one semantic entry is generated per
-    /// heading. If it has no headings, a single fallback entry based on the
-    /// document file stem is created.
-    pub async fn add_document(
-        &mut self,
-        uri: DocumentUri,
-        index: &DocumentIndex,
-    ) -> Result<(), EmbedError> {
-        self.remove_document(&uri);
+struct EntryPlan {
+    id: String,
+    embedding_input: String,
+    entry: SemanticEntry,
+}
 
-        let mut staged_zig_adds: Vec<(String, Vec<f32>)> = Vec::new();
-        let mut ids = Vec::new();
-        let mut pending_entries = Vec::new();
-        let mut token_set = std::collections::BTreeSet::new();
+struct DocumentPlan {
+    uri: DocumentUri,
+    ids: Vec<String>,
+    token_set: BTreeSet<u32>,
+    entries: Vec<EntryPlan>,
+}
 
-        if index.headings().is_empty() {
-            let fallback_heading = fallback_heading(&uri);
-            let embedding = self.provider.embed(&fallback_heading).await?;
-            let id = format!("{}#fallback", uri.as_str());
+fn build_document_plan(uri: &DocumentUri, index: &DocumentIndex) -> DocumentPlan {
+    let mut ids = Vec::new();
+    let mut entries = Vec::new();
+    let mut token_set = BTreeSet::new();
 
-            token_set.extend(token_hashes(&fallback_heading));
-            staged_zig_adds.push((id.clone(), embedding));
-            pending_entries.push((
-                id.clone(),
-                SemanticEntry {
-                    doc_uri: uri.clone(),
-                    heading: fallback_heading,
-                    heading_level: 1,
-                    section_start: Position::new(0, 0),
-                    section_end: Position::new(0, 0),
-                },
-            ));
-            ids.push(id);
-        } else {
-            for (i, heading) in index.headings().iter().enumerate() {
-                let embedding_input = heading.text.to_string();
-                if embedding_input.trim().is_empty() {
-                    continue;
-                }
-                let embedding = self.provider.embed(&embedding_input).await?;
-                let id = format!("{}#{}#{i}", uri.as_str(), heading.slug);
+    if index.headings().is_empty() {
+        let heading = fallback_heading(uri);
+        let id = format!("{}#fallback", uri.as_str());
 
-                token_set.extend(token_hashes(&embedding_input));
-                staged_zig_adds.push((id.clone(), embedding));
-                pending_entries.push((
-                    id.clone(),
-                    SemanticEntry {
-                        doc_uri: uri.clone(),
-                        heading: heading.text.to_string(),
-                        heading_level: heading.level,
-                        section_start: heading.range.start,
-                        section_end: heading.range.end,
-                    },
-                ));
-                ids.push(id);
+        token_set.extend(token_hashes(&heading));
+        entries.push(EntryPlan {
+            id: id.clone(),
+            embedding_input: heading.clone(),
+            entry: SemanticEntry {
+                doc_uri: uri.clone(),
+                heading,
+                heading_level: 1,
+                section_start: Position::new(0, 0),
+                section_end: Position::new(0, 0),
+            },
+        });
+        ids.push(id);
+    } else {
+        for (i, heading) in index.headings().iter().enumerate() {
+            let text = heading.text.to_string();
+            if text.trim().is_empty() {
+                continue;
             }
+
+            let id = format!("{}#{}#{i}", uri.as_str(), heading.slug);
+            token_set.extend(token_hashes(&text));
+
+            entries.push(EntryPlan {
+                id: id.clone(),
+                embedding_input: text.clone(),
+                entry: SemanticEntry {
+                    doc_uri: uri.clone(),
+                    heading: text,
+                    heading_level: heading.level,
+                    section_start: heading.range.start,
+                    section_end: heading.range.end,
+                },
+            });
+            ids.push(id);
+        }
+    }
+
+    DocumentPlan {
+        uri: uri.clone(),
+        ids,
+        token_set,
+        entries,
+    }
+}
+
+impl SemanticIndex {
+    async fn embed_texts_with_batch_fallback(
+        &self,
+        texts: &[&str],
+    ) -> Result<Vec<Vec<f32>>, EmbedError> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        match self.provider.embed_batch(texts).await {
+            Ok(embeddings) => {
+                if embeddings.len() == texts.len() {
+                    Ok(embeddings)
+                } else {
+                    Err(EmbedError::InternalError(format!(
+                        "embed_batch cardinality mismatch: expected {}, got {}",
+                        texts.len(),
+                        embeddings.len()
+                    )))
+                }
+            }
+            Err(err) => {
+                log::warn!(
+                    "batch embedding failed for {} texts ({err}); falling back to sequential",
+                    texts.len()
+                );
+
+                let mut out = Vec::with_capacity(texts.len());
+                for text in texts {
+                    out.push(self.provider.embed(text).await?);
+                }
+                Ok(out)
+            }
+        }
+    }
+
+    async fn apply_document_plans(&mut self, plans: Vec<DocumentPlan>) -> Result<(), EmbedError> {
+        let total_entries = plans.iter().map(|plan| plan.entries.len()).sum::<usize>();
+        let mut texts = Vec::with_capacity(total_entries);
+        for plan in &plans {
+            for entry in &plan.entries {
+                texts.push(entry.embedding_input.as_str());
+            }
+        }
+        let embeddings = self.embed_texts_with_batch_fallback(&texts).await?;
+        let mut embedding_iter = embeddings.into_iter();
+
+        let mut staged_zig_adds: Vec<(String, Vec<f32>)> = Vec::with_capacity(total_entries);
+        let mut pending_entries: Vec<(String, SemanticEntry)> = Vec::with_capacity(total_entries);
+        let mut staged_docs: Vec<(DocumentUri, Vec<String>, BTreeSet<u32>)> =
+            Vec::with_capacity(plans.len());
+
+        for plan in plans {
+            for entry in plan.entries {
+                let Some(embedding) = embedding_iter.next() else {
+                    return Err(EmbedError::InternalError(
+                        "embedding cardinality underflow while staging documents".to_string(),
+                    ));
+                };
+                staged_zig_adds.push((entry.id.clone(), embedding));
+                pending_entries.push((entry.id, entry.entry));
+            }
+            staged_docs.push((plan.uri, plan.ids, plan.token_set));
+        }
+
+        if embedding_iter.next().is_some() {
+            return Err(EmbedError::InternalError(
+                "embedding cardinality overflow while staging documents".to_string(),
+            ));
         }
 
         for (id, embedding) in staged_zig_adds {
@@ -74,9 +154,50 @@ impl SemanticIndex {
         for (id, entry) in pending_entries {
             self.entries_by_id.insert(id, entry);
         }
-        self.doc_to_ids.insert(uri.clone(), ids);
-        self.doc_token_sets.insert(uri, token_set);
+
+        for (uri, ids, token_set) in staged_docs {
+            self.doc_to_ids.insert(uri.clone(), ids);
+            self.doc_token_sets.insert(uri, token_set);
+        }
+
         Ok(())
+    }
+
+    /// Add (or replace) semantic entries for a document.
+    ///
+    /// If the document has headings, one semantic entry is generated per
+    /// heading. If it has no headings, a single fallback entry based on the
+    /// document file stem is created.
+    pub async fn add_document(
+        &mut self,
+        uri: DocumentUri,
+        index: &DocumentIndex,
+    ) -> Result<(), EmbedError> {
+        self.remove_document(&uri);
+        self.apply_document_plans(vec![build_document_plan(&uri, index)])
+            .await
+    }
+
+    /// Add or replace semantic entries for multiple documents in one batch.
+    ///
+    /// This method batches embedding generation across all provided documents.
+    /// On batch provider failure, it logs and falls back to sequential per-text
+    /// embedding to preserve resilience.
+    pub async fn add_documents(
+        &mut self,
+        docs: Vec<(DocumentUri, &DocumentIndex)>,
+    ) -> Result<(), EmbedError> {
+        if docs.is_empty() {
+            return Ok(());
+        }
+
+        let mut plans = Vec::with_capacity(docs.len());
+        for (uri, index) in docs {
+            self.remove_document(&uri);
+            plans.push(build_document_plan(&uri, index));
+        }
+
+        self.apply_document_plans(plans).await
     }
 
     /// Remove semantic metadata for a document.

@@ -244,6 +244,7 @@ impl RuntimeEngine {
 pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
     let backend = Md4cScanBackend;
     let documents = helpers::collect_documents(root);
+    let mut markdown_docs = Vec::new();
 
     for (path, kind) in documents {
         let source = match fs::read_to_string(&path) {
@@ -260,18 +261,15 @@ pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
             // setext heading underline. Replace non-newline bytes with spaces
             // to preserve line counting and byte offsets.
             let scan_source = markymark_index::mask_frontmatter(&source);
-            realm
-                .index
-                .add_document(
-                    uri,
-                    DocumentIndex::from_scan_with_frontmatter(
-                        &scan_source,
-                        &backend,
-                        fm_owned,
-                        aliases_owned,
-                    ),
-                )
-                .await;
+            markdown_docs.push((
+                uri,
+                DocumentIndex::from_scan_with_frontmatter(
+                    &scan_source,
+                    &backend,
+                    fm_owned,
+                    aliases_owned,
+                ),
+            ));
         } else {
             let ast = match parse_structured(&source, kind) {
                 Ok(ast) => ast,
@@ -281,6 +279,10 @@ pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
                 .index
                 .add_structured_document(uri, StructuredDocumentIndex::from_ast(ast));
         }
+    }
+
+    if !markdown_docs.is_empty() {
+        realm.index.add_documents(markdown_docs).await;
     }
 }
 

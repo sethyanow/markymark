@@ -202,6 +202,99 @@ impl EmbeddingProvider for FailingProvider {
     }
 }
 
+struct BatchCountingProvider {
+    inner: TestEmbeddingProvider,
+    batch_count: std::sync::atomic::AtomicU32,
+    embed_count: std::sync::atomic::AtomicU32,
+}
+
+impl BatchCountingProvider {
+    fn new(dims: u32) -> Self {
+        Self {
+            inner: TestEmbeddingProvider::new(dims),
+            batch_count: std::sync::atomic::AtomicU32::new(0),
+            embed_count: std::sync::atomic::AtomicU32::new(0),
+        }
+    }
+
+    fn batch_count(&self) -> u32 {
+        self.batch_count.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn embed_count(&self) -> u32 {
+        self.embed_count.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+#[async_trait]
+impl EmbeddingProvider for BatchCountingProvider {
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+        self.embed_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.embed(text).await
+    }
+
+    async fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbedError> {
+        self.batch_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+        let mut out = Vec::with_capacity(texts.len());
+        for text in texts {
+            out.push(self.inner.embed(text).await?);
+        }
+        Ok(out)
+    }
+
+    fn dimensions(&self) -> u32 {
+        self.inner.dimensions()
+    }
+}
+
+struct BatchFailingProvider {
+    inner: TestEmbeddingProvider,
+    batch_count: std::sync::atomic::AtomicU32,
+    embed_count: std::sync::atomic::AtomicU32,
+}
+
+impl BatchFailingProvider {
+    fn new(dims: u32) -> Self {
+        Self {
+            inner: TestEmbeddingProvider::new(dims),
+            batch_count: std::sync::atomic::AtomicU32::new(0),
+            embed_count: std::sync::atomic::AtomicU32::new(0),
+        }
+    }
+
+    fn batch_count(&self) -> u32 {
+        self.batch_count.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn embed_count(&self) -> u32 {
+        self.embed_count.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+#[async_trait]
+impl EmbeddingProvider for BatchFailingProvider {
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+        self.embed_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.embed(text).await
+    }
+
+    async fn embed_batch(&self, _texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbedError> {
+        self.batch_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Err(EmbedError::InternalError(
+            "injected batch failure".to_string(),
+        ))
+    }
+
+    fn dimensions(&self) -> u32 {
+        self.inner.dimensions()
+    }
+}
+
 #[tokio::test]
 async fn test_add_document_partial_embed_failure_does_not_mutate_zig_index() {
     let provider = Arc::new(FailingProvider::new(32, 1));
@@ -249,6 +342,134 @@ async fn test_add_document_success_commits_all_vectors_and_metadata() {
         Some(3),
         "doc_to_ids should track all committed ids",
     );
+}
+
+#[tokio::test]
+async fn test_add_documents_batch_matches_sequential_search_results() {
+    let mut sequential = SemanticIndex::new(Arc::new(TestEmbeddingProvider::new(32))).unwrap();
+    let batch_provider = Arc::new(BatchCountingProvider::new(32));
+    let mut batched = SemanticIndex::new(batch_provider.clone()).unwrap();
+
+    let uri_a = DocumentUri::from_file_path(&std::path::PathBuf::from("/a.md"));
+    let uri_b = DocumentUri::from_file_path(&std::path::PathBuf::from("/b.md"));
+
+    let doc_a = build_doc_index("# Alpha\n## Borrow Checker\n");
+    let doc_b = build_doc_index("# Beta\n## Async Runtime\n");
+
+    sequential
+        .add_document(uri_a.clone(), &doc_a)
+        .await
+        .unwrap();
+    sequential
+        .add_document(uri_b.clone(), &doc_b)
+        .await
+        .unwrap();
+
+    batched
+        .add_documents(vec![(uri_a.clone(), &doc_a), (uri_b.clone(), &doc_b)])
+        .await
+        .unwrap();
+
+    assert_eq!(
+        batch_provider.batch_count(),
+        1,
+        "all headings across documents should use one batch request"
+    );
+    assert_eq!(
+        batch_provider.embed_count(),
+        0,
+        "no sequential fallback should run on successful batch"
+    );
+
+    let seq_results = sequential.search("borrow async", 8, 0.0).await.unwrap();
+    let batch_results = batched.search("borrow async", 8, 0.0).await.unwrap();
+
+    assert_eq!(seq_results.len(), batch_results.len());
+    for (seq, batch) in seq_results.iter().zip(batch_results.iter()) {
+        assert_eq!(seq.doc_uri, batch.doc_uri);
+        assert_eq!(seq.heading, batch.heading);
+        assert_eq!(seq.heading_level, batch.heading_level);
+        assert!(
+            (seq.score - batch.score).abs() < 1e-6,
+            "score mismatch for heading {}",
+            seq.heading
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_add_documents_skips_empty_headings_in_batch_mode() {
+    let provider = Arc::new(BatchCountingProvider::new(32));
+    let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+    let uri = test_uri();
+    let doc = build_doc_index("# Intro\n# \n## Conclusion\n");
+
+    sem.add_documents(vec![(uri.clone(), &doc)]).await.unwrap();
+
+    assert_eq!(provider.batch_count(), 1, "batch path should be used");
+    assert_eq!(sem.entry_count(), 2, "empty heading should be skipped");
+    assert_eq!(sem.doc_to_ids.get(&uri).map(std::vec::Vec::len), Some(2));
+}
+
+#[tokio::test]
+async fn test_add_documents_mixed_docs_with_and_without_headings() {
+    let provider = Arc::new(BatchCountingProvider::new(32));
+    let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+
+    let uri_a = DocumentUri::from_file_path(&std::path::PathBuf::from("/mix-a.md"));
+    let uri_b = DocumentUri::from_file_path(&std::path::PathBuf::from("/mix-b.md"));
+    let uri_c = DocumentUri::from_file_path(&std::path::PathBuf::from("/mix-c.md"));
+
+    let doc_a = build_doc_index("# Alpha\n## Beta\n");
+    let doc_b = build_doc_index("plain text without headings\n");
+    let doc_c = build_doc_index("# \n## Gamma\n");
+
+    sem.add_documents(vec![
+        (uri_a.clone(), &doc_a),
+        (uri_b.clone(), &doc_b),
+        (uri_c.clone(), &doc_c),
+    ])
+    .await
+    .unwrap();
+
+    assert_eq!(
+        provider.batch_count(),
+        1,
+        "all docs should be batched together"
+    );
+    assert_eq!(sem.entry_count(), 4, "2 + 1 fallback + 1 non-empty heading");
+    assert_eq!(sem.doc_to_ids.get(&uri_a).map(std::vec::Vec::len), Some(2));
+    assert_eq!(sem.doc_to_ids.get(&uri_b).map(std::vec::Vec::len), Some(1));
+    assert_eq!(sem.doc_to_ids.get(&uri_c).map(std::vec::Vec::len), Some(1));
+
+    let fallback_ids = sem.doc_to_ids.get(&uri_b).unwrap();
+    assert!(
+        fallback_ids[0].ends_with("#fallback"),
+        "document without headings should use fallback entry"
+    );
+}
+
+#[tokio::test]
+async fn test_add_documents_batch_failure_falls_back_to_sequential_embed() {
+    let provider = Arc::new(BatchFailingProvider::new(32));
+    let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+    let uri = test_uri();
+    let doc = build_doc_index("# Alpha\n## Beta\n## Gamma\n");
+
+    sem.add_documents(vec![(uri.clone(), &doc)]).await.unwrap();
+
+    assert_eq!(
+        provider.batch_count(),
+        1,
+        "batch path should be attempted first"
+    );
+    assert_eq!(
+        provider.embed_count(),
+        3,
+        "sequential fallback should embed each non-empty heading"
+    );
+    assert_eq!(sem.entry_count(), 3);
+    assert_eq!(sem.index.count(), 3);
 }
 
 // --- update_document tests ---
