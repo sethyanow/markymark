@@ -766,6 +766,133 @@ async fn test_fallback_transition_success_replaces_state() {
     );
 }
 
+// --- Regression tests: marky-6ri3 — non-atomic add_document loses entries on embed failure ---
+
+/// add_document must rollback to the original entries when the embed provider
+/// fails during re-indexing of an already-known document.
+#[tokio::test]
+async fn test_add_document_rollback_on_embed_failure() {
+    // 4 dims; 1 embed call allowed (for initial add), 2nd call fails.
+    let provider = Arc::new(FailingProvider::new(4, 1));
+    let mut sem = SemanticIndex::new(provider).unwrap();
+    let uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/rollback.md"));
+
+    // Initial add: 1 heading → 1 embed call (succeeds).
+    let original = build_doc_index("# Original Heading\n");
+    sem.add_document(uri.clone(), &original).await.unwrap();
+    assert_eq!(sem.entry_count(), 1, "initial add should succeed");
+
+    // Re-add with different headings — 1st embed call (count=1 >= 1) fails.
+    let updated = build_doc_index("# Updated Heading\n");
+    let result = sem.add_document(uri.clone(), &updated).await;
+
+    assert!(result.is_err(), "re-add should fail due to provider failure");
+    assert_eq!(
+        sem.entry_count(),
+        1,
+        "rollback must preserve original entry count"
+    );
+
+    // Verify original heading text is still present in the index.
+    let ids = sem.doc_to_ids.get(&uri).expect("doc_to_ids must be restored");
+    assert_eq!(ids.len(), 1);
+    let entry = sem.entries_by_id.get(&ids[0]).expect("entry must be restored");
+    assert_eq!(
+        entry.heading, "Original Heading",
+        "rollback must restore original heading text"
+    );
+}
+
+/// add_documents batch rollback: when the embed provider fails during a batch
+/// re-index, ALL documents must be rolled back to their previous state.
+#[tokio::test]
+async fn test_add_documents_batch_rollback_on_failure() {
+    // 4 dims; 2 embed calls allowed (1 per doc initial add), batch update fails.
+    let provider = Arc::new(FailingProvider::new(4, 2));
+    let mut sem = SemanticIndex::new(provider).unwrap();
+
+    let uri_a = DocumentUri::from_file_path(&std::path::PathBuf::from("/batch-a.md"));
+    let uri_b = DocumentUri::from_file_path(&std::path::PathBuf::from("/batch-b.md"));
+
+    // Add doc A with 1 heading (1 embed call, count 0→1, succeeds).
+    let doc_a = build_doc_index("# Alpha\n");
+    sem.add_document(uri_a.clone(), &doc_a).await.unwrap();
+    assert_eq!(sem.entry_count(), 1);
+
+    // Add doc B with 1 heading (1 embed call, count 1→2, count=1 < 2, succeeds).
+    let doc_b = build_doc_index("# Beta\n");
+    sem.add_document(uri_b.clone(), &doc_b).await.unwrap();
+    assert_eq!(sem.entry_count(), 2);
+
+    // Batch update: provider is now at the limit (count=2 >= 2), first embed fails.
+    let doc_a_updated = build_doc_index("# Alpha Updated\n");
+    let doc_b_updated = build_doc_index("# Beta Updated\n");
+    let result = sem
+        .add_documents(vec![
+            (uri_a.clone(), &doc_a_updated),
+            (uri_b.clone(), &doc_b_updated),
+        ])
+        .await;
+
+    assert!(result.is_err(), "batch update should fail");
+    assert_eq!(
+        sem.entry_count(),
+        2,
+        "both original entries must be restored after batch rollback"
+    );
+
+    // Verify both original headings are still present.
+    let ids_a = sem
+        .doc_to_ids
+        .get(&uri_a)
+        .expect("doc_a must be restored in doc_to_ids");
+    let entry_a = sem
+        .entries_by_id
+        .get(&ids_a[0])
+        .expect("doc_a entry must be restored");
+    assert_eq!(
+        entry_a.heading, "Alpha",
+        "doc_a original heading must be preserved"
+    );
+
+    let ids_b = sem
+        .doc_to_ids
+        .get(&uri_b)
+        .expect("doc_b must be restored in doc_to_ids");
+    let entry_b = sem
+        .entries_by_id
+        .get(&ids_b[0])
+        .expect("doc_b entry must be restored");
+    assert_eq!(
+        entry_b.heading, "Beta",
+        "doc_b original heading must be preserved"
+    );
+}
+
+/// add_document on a fresh (never-indexed) document that fails immediately must
+/// leave the index in a clean empty state with no partial entries.
+#[tokio::test]
+async fn test_add_document_fresh_failure_leaves_clean_state() {
+    // 4 dims; fail immediately on first embed call.
+    let provider = Arc::new(FailingProvider::new(4, 0));
+    let mut sem = SemanticIndex::new(provider).unwrap();
+    let uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/fresh-fail.md"));
+
+    let doc = build_doc_index("# Fresh Heading\n");
+    let result = sem.add_document(uri.clone(), &doc).await;
+
+    assert!(result.is_err(), "add should fail immediately");
+    assert_eq!(
+        sem.entry_count(),
+        0,
+        "no partial state should remain after fresh add failure"
+    );
+    assert!(
+        !sem.doc_to_ids.contains_key(&uri),
+        "doc_to_ids must not contain the failed document"
+    );
+}
+
 /// Regression: heading text "Foo!" and "Foo" produce the same slug but
 /// different embedding text. `SemanticIndex::update_document` must detect
 /// the text change and re-embed even though the slug is identical.

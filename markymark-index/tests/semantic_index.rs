@@ -76,7 +76,8 @@ impl FailOnNthEmbeddingProvider {
 impl EmbeddingProvider for FailOnNthEmbeddingProvider {
     async fn embed(&self, _text: &str) -> Result<Vec<f32>, EmbedError> {
         let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
-        if call == self.fail_on {
+        // Fail persistently from `fail_on` onwards, not just on one call.
+        if call >= self.fail_on {
             return Err(EmbedError::ProviderUnavailable(
                 "provider unavailable".to_string(),
             ));

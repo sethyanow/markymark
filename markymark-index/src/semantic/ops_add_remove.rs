@@ -168,14 +168,46 @@ impl SemanticIndex {
     /// If the document has headings, one semantic entry is generated per
     /// heading. If it has no headings, a single fallback entry based on the
     /// document file stem is created.
+    ///
+    /// On embed failure the previous state is restored (snapshot-then-rollback).
     pub async fn add_document(
         &mut self,
         uri: DocumentUri,
         index: &DocumentIndex,
     ) -> Result<(), EmbedError> {
+        // Snapshot current state for rollback on failure.
+        let prev_ids = self.doc_to_ids.get(&uri).cloned();
+        let prev_entries: Vec<(String, SemanticEntry)> = prev_ids
+            .as_ref()
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| self.entries_by_id.get(id).cloned().map(|e| (id.clone(), e)))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let prev_tokens = self.doc_token_sets.get(&uri).cloned();
+
+        // Remove old entries (optimistic).
         self.remove_document(&uri);
-        self.apply_document_plans(vec![build_document_plan(&uri, index)])
+
+        // Attempt new indexing — rollback on failure.
+        if let Err(err) = self
+            .apply_document_plans(vec![build_document_plan(&uri, index)])
             .await
+        {
+            // Rollback: restore previous state.
+            for (id, entry) in prev_entries {
+                self.entries_by_id.insert(id, entry);
+            }
+            if let Some(ids) = prev_ids {
+                self.doc_to_ids.insert(uri.clone(), ids);
+            }
+            if let Some(tokens) = prev_tokens {
+                self.doc_token_sets.insert(uri, tokens);
+            }
+            return Err(err);
+        }
+        Ok(())
     }
 
     /// Add or replace semantic entries for multiple documents in one batch.
@@ -183,6 +215,9 @@ impl SemanticIndex {
     /// This method batches embedding generation across all provided documents.
     /// On batch provider failure, it logs and falls back to sequential per-text
     /// embedding to preserve resilience.
+    ///
+    /// On embed failure ALL documents are rolled back to their previous state
+    /// (snapshot-then-rollback).
     pub async fn add_documents(
         &mut self,
         docs: Vec<(DocumentUri, &DocumentIndex)>,
@@ -191,13 +226,49 @@ impl SemanticIndex {
             return Ok(());
         }
 
+        // Snapshot all documents for rollback.
+        let snapshots: Vec<_> = docs
+            .iter()
+            .map(|(uri, _)| {
+                let prev_ids = self.doc_to_ids.get(uri).cloned();
+                let prev_entries: Vec<(String, SemanticEntry)> = prev_ids
+                    .as_ref()
+                    .map(|ids| {
+                        ids.iter()
+                            .filter_map(|id| {
+                                self.entries_by_id.get(id).cloned().map(|e| (id.clone(), e))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let prev_tokens = self.doc_token_sets.get(uri).cloned();
+                (uri.clone(), prev_ids, prev_entries, prev_tokens)
+            })
+            .collect();
+
+        // Remove all old entries and build plans.
         let mut plans = Vec::with_capacity(docs.len());
         for (uri, index) in docs {
             self.remove_document(&uri);
             plans.push(build_document_plan(&uri, index));
         }
 
-        self.apply_document_plans(plans).await
+        // Attempt batch indexing — rollback ALL on failure.
+        if let Err(err) = self.apply_document_plans(plans).await {
+            for (uri, prev_ids, prev_entries, prev_tokens) in snapshots {
+                for (id, entry) in prev_entries {
+                    self.entries_by_id.insert(id, entry);
+                }
+                if let Some(ids) = prev_ids {
+                    self.doc_to_ids.insert(uri.clone(), ids);
+                }
+                if let Some(tokens) = prev_tokens {
+                    self.doc_token_sets.insert(uri, tokens);
+                }
+            }
+            return Err(err);
+        }
+        Ok(())
     }
 
     /// Remove semantic metadata for a document.
