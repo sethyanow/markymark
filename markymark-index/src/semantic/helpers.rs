@@ -28,8 +28,8 @@ pub(super) fn compute_fetch_k(index_count: u32, active_count: u32, top_k: u32) -
     }
     // Scale fetch size by stale ratio so enough active entries survive filtering.
     // If 80% of vectors are stale, we need ~5x raw hits per desired result.
-    let stale_adjusted = ((top_k as u64 * index_count as u64) / active_count as u64)
-        .min(u32::MAX as u64) as u32;
+    let stale_adjusted =
+        ((top_k as u64 * index_count as u64) / active_count as u64).min(u32::MAX as u64) as u32;
     let baseline = top_k.saturating_mul(FETCH_OVERFETCH_MULTIPLIER);
     let needed = stale_adjusted.max(baseline);
     index_count.min(needed)

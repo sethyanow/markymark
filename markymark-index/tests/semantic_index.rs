@@ -514,10 +514,7 @@ async fn test_update_document_id_collision_same_slug() {
 
     // Initial: two headings with the same text produce 2 entries.
     index
-        .add_document(
-            doc_uri.clone(),
-            &index_from("# Notes\n\n## Notes\n"),
-        )
+        .add_document(doc_uri.clone(), &index_from("# Notes\n\n## Notes\n"))
         .await
         .expect("add initial doc");
     assert_eq!(index.entry_count(), 2, "initial doc should have 2 entries");
@@ -525,10 +522,7 @@ async fn test_update_document_id_collision_same_slug() {
     // Update: replace both headings with entirely new headings sharing the same slug.
     // Neither old heading matches the new text, so both are treated as new.
     index
-        .update_document(
-            doc_uri.clone(),
-            &index_from("# Search\n\n## Search\n"),
-        )
+        .update_document(doc_uri.clone(), &index_from("# Search\n\n## Search\n"))
         .await
         .expect("update doc");
 
@@ -561,10 +555,7 @@ async fn test_update_reused_and_new_same_slug() {
 
     // Add a doc with one "Rust" heading.
     index
-        .add_document(
-            doc_uri.clone(),
-            &index_from("# Rust\n"),
-        )
+        .add_document(doc_uri.clone(), &index_from("# Rust\n"))
         .await
         .expect("add initial doc");
     assert_eq!(index.entry_count(), 1, "initial doc should have 1 entry");
@@ -572,10 +563,7 @@ async fn test_update_reused_and_new_same_slug() {
     // Update: keep "Rust" (reused, matched by text) and add a second "Rust" heading.
     // The reused heading keeps its old ID; the new heading must get a distinct one.
     index
-        .update_document(
-            doc_uri.clone(),
-            &index_from("# Rust\n\n## Rust\n"),
-        )
+        .update_document(doc_uri.clone(), &index_from("# Rust\n\n## Rust\n"))
         .await
         .expect("update doc");
 
@@ -608,10 +596,7 @@ async fn test_update_all_new_headings_same_slug() {
 
     // Seed with a single heading that will be fully replaced.
     index
-        .add_document(
-            doc_uri.clone(),
-            &index_from("# Graph\n"),
-        )
+        .add_document(doc_uri.clone(), &index_from("# Graph\n"))
         .await
         .expect("add initial doc");
     assert_eq!(index.entry_count(), 1, "initial doc should have 1 entry");

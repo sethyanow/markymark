@@ -530,9 +530,7 @@ impl CoreEngine for RuntimeEngine {
                         .collect();
                     let mut guard = sem.lock().await;
                     if let Err(err) = guard.add_documents(docs_refs).await {
-                        eprintln!(
-                            "warning: batch semantic indexing failed: {err}",
-                        );
+                        eprintln!("warning: batch semantic indexing failed: {err}",);
                     }
                 }
 
