@@ -7,7 +7,7 @@
 |tools:{docs/tools/README.md,docs/tools/*.md}
 |plans:{docs/plans/*.md}
 |research:{docs/research/*.md}
-|memory:{docs/MEMORY.md}
+|memory:{docs/MEMORY.md,docs/memory/zig-patterns.md,docs/memory/architecture.md,docs/memory/archive.md}
 </docs_index>
 </agent>
 

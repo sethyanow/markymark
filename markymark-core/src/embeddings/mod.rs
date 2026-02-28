@@ -4,7 +4,13 @@
 //! text embeddings. The provider decision (local ONNX, API, TF-IDF) is
 //! deferred to implementation time.
 
+use async_trait::async_trait;
 use std::fmt;
+
+#[cfg(feature = "local-embeddings")]
+pub mod local;
+#[cfg(feature = "semantic-search")]
+pub mod voyage;
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -53,16 +59,21 @@ impl std::error::Error for EmbedError {}
 /// Source-agnostic interface for generating text embeddings.
 ///
 /// Implementations must be `Send + Sync` and object-safe.
+#[async_trait]
 pub trait EmbeddingProvider: Send + Sync {
     /// Generate an embedding vector for a single text input.
-    fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError>;
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError>;
 
     /// Generate embedding vectors for a batch of text inputs.
     ///
     /// Default implementation calls [`embed`](Self::embed) sequentially.
     /// Implementations may override for batch-optimized providers.
-    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbedError> {
-        texts.iter().map(|t| self.embed(t)).collect()
+    async fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbedError> {
+        let mut results = Vec::with_capacity(texts.len());
+        for t in texts {
+            results.push(self.embed(t).await?);
+        }
+        Ok(results)
     }
 
     /// Return the dimensionality of embedding vectors produced by this provider.
@@ -79,8 +90,9 @@ mod tests {
 
     struct DummyEmbeddingProvider;
 
+    #[async_trait]
     impl EmbeddingProvider for DummyEmbeddingProvider {
-        fn embed(&self, _text: &str) -> Result<Vec<f32>, EmbedError> {
+        async fn embed(&self, _text: &str) -> Result<Vec<f32>, EmbedError> {
             Ok(vec![0.0; 4])
         }
 
@@ -89,11 +101,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_embedding_provider_trait_object() {
+    #[tokio::test]
+    async fn test_embedding_provider_trait_object() {
         // Verifies EmbeddingProvider is object-safe (dyn-compatible).
         let provider: Box<dyn EmbeddingProvider> = Box::new(DummyEmbeddingProvider);
-        let result = provider.embed("hello");
+        let result = provider.embed("hello").await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 4);
     }
@@ -114,10 +126,10 @@ mod tests {
         assert_eq!(provider.dimensions(), 4);
     }
 
-    #[test]
-    fn test_embedding_provider_batch_default() {
+    #[tokio::test]
+    async fn test_embedding_provider_batch_default() {
         let provider = DummyEmbeddingProvider;
-        let results = provider.embed_batch(&["hello", "world"]).unwrap();
+        let results = provider.embed_batch(&["hello", "world"]).await.unwrap();
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].len(), 4);
         assert_eq!(results[1].len(), 4);

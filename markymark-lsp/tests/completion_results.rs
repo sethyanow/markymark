@@ -3,8 +3,8 @@
 use markymark_core::{DocumentUri, Position};
 use markymark_lsp::state::{CompletionCandidateKind, ServerState};
 
-#[test]
-fn test_wiki_link_completion_returns_page_names() {
+#[tokio::test]
+async fn test_wiki_link_completion_returns_page_names() {
     // Open 3 documents, complete inside `[[` -> returns all 3 page names.
     let mut state = ServerState::new();
     let uri_notes = DocumentUri::new("file:///test/notes.md").unwrap();
@@ -12,11 +12,17 @@ fn test_wiki_link_completion_returns_page_names() {
     let uri_todo = DocumentUri::new("file:///test/todo.md").unwrap();
     let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
 
-    state.open_document(uri_notes, "# Notes\n".to_string());
-    state.open_document(uri_readme, "# Readme\n".to_string());
-    state.open_document(uri_todo, "# Todo\n".to_string());
+    state
+        .open_document(uri_notes, "# Notes\n".to_string())
+        .await;
+    state
+        .open_document(uri_readme, "# Readme\n".to_string())
+        .await;
+    state.open_document(uri_todo, "# Todo\n".to_string()).await;
     // The editing document triggers completion
-    state.open_document(uri_editor.clone(), "Link to [[".to_string());
+    state
+        .open_document(uri_editor.clone(), "Link to [[".to_string())
+        .await;
 
     let candidates = state.completion_at(&uri_editor, Position::new(0, 10));
     assert!(
@@ -50,8 +56,8 @@ fn test_wiki_link_completion_returns_page_names() {
     );
 }
 
-#[test]
-fn test_wiki_link_completion_filters_by_partial() {
+#[tokio::test]
+async fn test_wiki_link_completion_filters_by_partial() {
     // Open 3 documents, complete `[[no` -> returns only "notes".
     let mut state = ServerState::new();
     let uri_notes = DocumentUri::new("file:///test/notes.md").unwrap();
@@ -59,10 +65,16 @@ fn test_wiki_link_completion_filters_by_partial() {
     let uri_todo = DocumentUri::new("file:///test/todo.md").unwrap();
     let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
 
-    state.open_document(uri_notes, "# Notes\n".to_string());
-    state.open_document(uri_readme, "# Readme\n".to_string());
-    state.open_document(uri_todo, "# Todo\n".to_string());
-    state.open_document(uri_editor.clone(), "Link to [[no".to_string());
+    state
+        .open_document(uri_notes, "# Notes\n".to_string())
+        .await;
+    state
+        .open_document(uri_readme, "# Readme\n".to_string())
+        .await;
+    state.open_document(uri_todo, "# Todo\n".to_string()).await;
+    state
+        .open_document(uri_editor.clone(), "Link to [[no".to_string())
+        .await;
 
     let candidates = state.completion_at(&uri_editor, Position::new(0, 12));
     assert!(
@@ -88,18 +100,22 @@ fn test_wiki_link_completion_filters_by_partial() {
     );
 }
 
-#[test]
-fn test_heading_completion_returns_target_headings() {
+#[tokio::test]
+async fn test_heading_completion_returns_target_headings() {
     // Open a target document with headings, complete `[[target#` -> returns headings.
     let mut state = ServerState::new();
     let uri_target = DocumentUri::new("file:///test/target.md").unwrap();
     let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
 
-    state.open_document(
-        uri_target,
-        "# Introduction\n\n## Getting Started\n\n## Advanced Topics\n".to_string(),
-    );
-    state.open_document(uri_editor.clone(), "See [[target#".to_string());
+    state
+        .open_document(
+            uri_target,
+            "# Introduction\n\n## Getting Started\n\n## Advanced Topics\n".to_string(),
+        )
+        .await;
+    state
+        .open_document(uri_editor.clone(), "See [[target#".to_string())
+        .await;
 
     let candidates = state.completion_at(&uri_editor, Position::new(0, 13));
     assert!(
@@ -133,18 +149,22 @@ fn test_heading_completion_returns_target_headings() {
     );
 }
 
-#[test]
-fn test_heading_completion_filters_by_partial() {
+#[tokio::test]
+async fn test_heading_completion_filters_by_partial() {
     // Complete `[[target#int` -> returns only headings containing "int".
     let mut state = ServerState::new();
     let uri_target = DocumentUri::new("file:///test/target.md").unwrap();
     let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
 
-    state.open_document(
-        uri_target,
-        "# Introduction\n\n## Getting Started\n\n## Advanced Topics\n".to_string(),
-    );
-    state.open_document(uri_editor.clone(), "See [[target#int".to_string());
+    state
+        .open_document(
+            uri_target,
+            "# Introduction\n\n## Getting Started\n\n## Advanced Topics\n".to_string(),
+        )
+        .await;
+    state
+        .open_document(uri_editor.clone(), "See [[target#int".to_string())
+        .await;
 
     let candidates = state.completion_at(&uri_editor, Position::new(0, 16));
     assert!(
@@ -165,18 +185,22 @@ fn test_heading_completion_filters_by_partial() {
     );
 }
 
-#[test]
-fn test_tag_completion_returns_tags() {
+#[tokio::test]
+async fn test_tag_completion_returns_tags() {
     // Open a document with tags, complete `#` -> returns available tags.
     let mut state = ServerState::new();
     let uri_source = DocumentUri::new("file:///test/source.md").unwrap();
     let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
 
-    state.open_document(
-        uri_source,
-        "Some text with #rust and #programming tags.\n".to_string(),
-    );
-    state.open_document(uri_editor.clone(), "Tags: #".to_string());
+    state
+        .open_document(
+            uri_source,
+            "Some text with #rust and #programming tags.\n".to_string(),
+        )
+        .await;
+    state
+        .open_document(uri_editor.clone(), "Tags: #".to_string())
+        .await;
 
     let candidates = state.completion_at(&uri_editor, Position::new(0, 7));
     assert!(
@@ -205,18 +229,22 @@ fn test_tag_completion_returns_tags() {
     );
 }
 
-#[test]
-fn test_tag_completion_filters_by_partial() {
+#[tokio::test]
+async fn test_tag_completion_filters_by_partial() {
     // Complete `#pro` -> returns only matching tags.
     let mut state = ServerState::new();
     let uri_source = DocumentUri::new("file:///test/source.md").unwrap();
     let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
 
-    state.open_document(
-        uri_source,
-        "Some text with #rust and #programming tags.\n".to_string(),
-    );
-    state.open_document(uri_editor.clone(), "Tags: #pro".to_string());
+    state
+        .open_document(
+            uri_source,
+            "Some text with #rust and #programming tags.\n".to_string(),
+        )
+        .await;
+    state
+        .open_document(uri_editor.clone(), "Tags: #pro".to_string())
+        .await;
 
     let candidates = state.completion_at(&uri_editor, Position::new(0, 10));
     assert!(
@@ -237,18 +265,22 @@ fn test_tag_completion_filters_by_partial() {
     );
 }
 
-#[test]
-fn test_block_ref_completion_returns_block_ids() {
+#[tokio::test]
+async fn test_block_ref_completion_returns_block_ids() {
     // Open a document with block IDs, complete `((` -> returns block IDs.
     let mut state = ServerState::new();
     let uri_source = DocumentUri::new("file:///test/source.md").unwrap();
     let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
 
-    state.open_document(
-        uri_source,
-        "Some paragraph ^abc123\n\nAnother paragraph ^def456\n".to_string(),
-    );
-    state.open_document(uri_editor.clone(), "Ref ((".to_string());
+    state
+        .open_document(
+            uri_source,
+            "Some paragraph ^abc123\n\nAnother paragraph ^def456\n".to_string(),
+        )
+        .await;
+    state
+        .open_document(uri_editor.clone(), "Ref ((".to_string())
+        .await;
 
     let candidates = state.completion_at(&uri_editor, Position::new(0, 6));
     assert!(
@@ -277,18 +309,22 @@ fn test_block_ref_completion_returns_block_ids() {
     );
 }
 
-#[test]
-fn test_block_ref_completion_filters_by_partial() {
+#[tokio::test]
+async fn test_block_ref_completion_filters_by_partial() {
     // Complete `((ab` -> returns only matching block IDs.
     let mut state = ServerState::new();
     let uri_source = DocumentUri::new("file:///test/source.md").unwrap();
     let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
 
-    state.open_document(
-        uri_source,
-        "Some paragraph ^abc123\n\nAnother paragraph ^def456\n".to_string(),
-    );
-    state.open_document(uri_editor.clone(), "Ref ((ab".to_string());
+    state
+        .open_document(
+            uri_source,
+            "Some paragraph ^abc123\n\nAnother paragraph ^def456\n".to_string(),
+        )
+        .await;
+    state
+        .open_document(uri_editor.clone(), "Ref ((ab".to_string())
+        .await;
 
     let candidates = state.completion_at(&uri_editor, Position::new(0, 8));
     assert!(
@@ -309,8 +345,8 @@ fn test_block_ref_completion_filters_by_partial() {
     );
 }
 
-#[test]
-fn test_xml_tag_completion_returns_tag_names() {
+#[tokio::test]
+async fn test_xml_tag_completion_returns_tag_names() {
     // Open documents with XML tags, complete `<` -> returns known tag names.
     let mut state = ServerState::new();
     let uri_source = DocumentUri::new("file:///test/source.md").unwrap();
@@ -319,8 +355,10 @@ fn test_xml_tag_completion_returns_tag_names() {
     state.open_document(
         uri_source,
         "<agent>\n\ncontent\n\n</agent>\n\n<goal>\n\nwin\n\n</goal>\n\n<routing>\n\npath\n\n</routing>\n".to_string(),
-    );
-    state.open_document(uri_editor.clone(), "New content <".to_string());
+    ).await;
+    state
+        .open_document(uri_editor.clone(), "New content <".to_string())
+        .await;
 
     let candidates = state.completion_at(&uri_editor, Position::new(0, 13));
     assert!(
@@ -354,18 +392,22 @@ fn test_xml_tag_completion_returns_tag_names() {
     );
 }
 
-#[test]
-fn test_xml_tag_completion_filters_by_partial() {
+#[tokio::test]
+async fn test_xml_tag_completion_filters_by_partial() {
     // Complete `<ag` -> returns only matching tag names.
     let mut state = ServerState::new();
     let uri_source = DocumentUri::new("file:///test/source.md").unwrap();
     let uri_editor = DocumentUri::new("file:///test/editor.md").unwrap();
 
-    state.open_document(
-        uri_source,
-        "<agent>\n\ncontent\n\n</agent>\n\n<goal>\n\nwin\n\n</goal>\n".to_string(),
-    );
-    state.open_document(uri_editor.clone(), "New <ag".to_string());
+    state
+        .open_document(
+            uri_source,
+            "<agent>\n\ncontent\n\n</agent>\n\n<goal>\n\nwin\n\n</goal>\n".to_string(),
+        )
+        .await;
+    state
+        .open_document(uri_editor.clone(), "New <ag".to_string())
+        .await;
 
     let candidates = state.completion_at(&uri_editor, Position::new(0, 7));
     assert!(

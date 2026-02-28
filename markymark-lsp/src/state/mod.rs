@@ -246,7 +246,7 @@ impl ServerState {
     }
 
     /// Handle a document being opened: store text, parse, and index.
-    pub fn open_document(&mut self, uri: DocumentUri, text: String) {
+    pub async fn open_document(&mut self, uri: DocumentUri, text: String) {
         let kind = Self::document_kind_from_uri(&uri);
         self.documents
             .insert(uri.as_str().to_string(), text.clone());
@@ -254,7 +254,7 @@ impl ServerState {
         match kind {
             Some(DocumentKind::Markdown) | None => {
                 let index = self.build_markdown_index_via_engine(uri.as_str(), &text);
-                self.realm.add_document(uri, index);
+                self.realm.add_document(uri, index).await;
             }
             Some(kind) => {
                 if let Ok(ast) = parse_structured(&text, kind) {
@@ -266,7 +266,7 @@ impl ServerState {
     }
 
     /// Handle a document being changed: apply changes, re-parse, re-index.
-    pub fn change_document(&mut self, uri: &DocumentUri, text: String) {
+    pub async fn change_document(&mut self, uri: &DocumentUri, text: String) {
         let kind = Self::document_kind_from_uri(uri);
         self.documents
             .insert(uri.as_str().to_string(), text.clone());
@@ -274,10 +274,10 @@ impl ServerState {
         match kind {
             Some(DocumentKind::Markdown) | None => {
                 let index = self.build_markdown_index_via_engine(uri.as_str(), &text);
-                self.realm.update_document(uri.clone(), index);
+                self.realm.update_document(uri.clone(), index).await;
             }
             Some(kind) => {
-                self.realm.remove_document(uri);
+                self.realm.remove_document(uri).await;
                 if let Ok(ast) = parse_structured(&text, kind) {
                     self.realm.add_structured_document(
                         uri.clone(),
@@ -293,7 +293,11 @@ impl ServerState {
     /// Changes are applied in order. Each change operates on the text as modified
     /// by the previous change (per LSP spec). Supports both incremental edits
     /// (with position range in UTF-16 code units) and full-text replacements.
-    pub fn apply_document_changes(&mut self, uri: &DocumentUri, changes: Vec<DocumentChange>) {
+    pub async fn apply_document_changes(
+        &mut self,
+        uri: &DocumentUri,
+        changes: Vec<DocumentChange>,
+    ) {
         if changes.is_empty() {
             return;
         }
@@ -362,10 +366,10 @@ impl ServerState {
             Some(DocumentKind::Markdown) | None => {
                 let uri_str = uri.as_str();
                 let index = self.build_markdown_index_via_engine(uri_str, &final_text);
-                self.realm.update_document(uri.clone(), index);
+                self.realm.update_document(uri.clone(), index).await;
             }
             Some(kind) => {
-                self.realm.remove_document(uri);
+                self.realm.remove_document(uri).await;
                 if let Ok(ast) = parse_structured(&final_text, kind) {
                     self.realm.add_structured_document(
                         uri.clone(),
@@ -377,10 +381,10 @@ impl ServerState {
     }
 
     /// Handle a document being closed: remove from store and index.
-    pub fn close_document(&mut self, uri: &DocumentUri) {
+    pub async fn close_document(&mut self, uri: &DocumentUri) {
         self.documents.remove(uri.as_str());
         self.engines.remove(uri.as_str());
-        self.realm.remove_document(uri);
+        self.realm.remove_document(uri).await;
     }
 
     /// Get the stored text for a document.

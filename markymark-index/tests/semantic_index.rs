@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use markymark_core::prelude::{EmbedError, EmbeddingProvider};
 use markymark_core::DocumentUri;
 use markymark_index::{DocumentIndex, RealmIndex, SemanticIndex};
@@ -22,8 +23,9 @@ fn index_from(source: &str) -> DocumentIndex {
 #[derive(Debug)]
 struct KeywordEmbeddingProvider;
 
+#[async_trait]
 impl EmbeddingProvider for KeywordEmbeddingProvider {
-    fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
         let lower = text.to_ascii_lowercase();
         Ok(vec![
             if lower.contains("rust") { 1.0 } else { 0.0 },
@@ -42,8 +44,9 @@ impl EmbeddingProvider for KeywordEmbeddingProvider {
 #[derive(Debug)]
 struct FailingEmbeddingProvider;
 
+#[async_trait]
 impl EmbeddingProvider for FailingEmbeddingProvider {
-    fn embed(&self, _text: &str) -> Result<Vec<f32>, EmbedError> {
+    async fn embed(&self, _text: &str) -> Result<Vec<f32>, EmbedError> {
         Err(EmbedError::ProviderUnavailable(
             "provider unavailable".to_string(),
         ))
@@ -69,10 +72,12 @@ impl FailOnNthEmbeddingProvider {
     }
 }
 
+#[async_trait]
 impl EmbeddingProvider for FailOnNthEmbeddingProvider {
-    fn embed(&self, _text: &str) -> Result<Vec<f32>, EmbedError> {
+    async fn embed(&self, _text: &str) -> Result<Vec<f32>, EmbedError> {
         let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
-        if call == self.fail_on {
+        // Fail persistently from `fail_on` onwards, not just on one call.
+        if call >= self.fail_on {
             return Err(EmbedError::ProviderUnavailable(
                 "provider unavailable".to_string(),
             ));
@@ -85,13 +90,14 @@ impl EmbeddingProvider for FailOnNthEmbeddingProvider {
     }
 }
 
-#[test]
-fn test_semantic_index_empty() {
+#[tokio::test]
+async fn test_semantic_index_empty() {
     let provider: Arc<dyn EmbeddingProvider> = Arc::new(KeywordEmbeddingProvider);
     let index = SemanticIndex::new(provider).expect("semantic index should initialize");
 
     let results = index
         .search("rust", 10, 0.0)
+        .await
         .expect("search should succeed");
     assert!(results.is_empty());
 
@@ -99,8 +105,8 @@ fn test_semantic_index_empty() {
     assert!(duplicates.is_empty());
 }
 
-#[test]
-fn test_add_document_and_search() {
+#[tokio::test]
+async fn test_add_document_and_search() {
     let provider: Arc<dyn EmbeddingProvider> = Arc::new(KeywordEmbeddingProvider);
     let mut index = SemanticIndex::new(provider).expect("semantic index should initialize");
 
@@ -110,6 +116,7 @@ fn test_add_document_and_search() {
             rust_uri.clone(),
             &index_from("# Rust SIMD\n\nFast vectorized markdown scanning."),
         )
+        .await
         .expect("add rust doc");
 
     let graph_uri = uri("graph.md");
@@ -118,10 +125,12 @@ fn test_add_document_and_search() {
             graph_uri.clone(),
             &index_from("# Link Graph\n\nGraph based backlink traversal."),
         )
+        .await
         .expect("add graph doc");
 
     let results = index
         .search("rust simd search", 5, 0.0)
+        .await
         .expect("search should succeed");
 
     assert!(!results.is_empty());
@@ -129,8 +138,8 @@ fn test_add_document_and_search() {
     assert!(results[0].score >= results.last().expect("non-empty").score);
 }
 
-#[test]
-fn test_add_document_no_headings_uses_fallback() {
+#[tokio::test]
+async fn test_add_document_no_headings_uses_fallback() {
     let provider: Arc<dyn EmbeddingProvider> = Arc::new(KeywordEmbeddingProvider);
     let mut index = SemanticIndex::new(provider).expect("semantic index should initialize");
 
@@ -140,29 +149,32 @@ fn test_add_document_no_headings_uses_fallback() {
             notes_uri.clone(),
             &index_from("plain content without headings"),
         )
+        .await
         .expect("fallback indexing should succeed");
 
     let results = index
         .search("notes", 5, 0.0)
+        .await
         .expect("search should succeed");
     assert!(!results.is_empty());
     assert_eq!(results[0].doc_uri, notes_uri);
 }
 
-#[test]
-fn test_embedding_provider_failure_propagates() {
+#[tokio::test]
+async fn test_embedding_provider_failure_propagates() {
     let provider: Arc<dyn EmbeddingProvider> = Arc::new(FailingEmbeddingProvider);
     let mut index = SemanticIndex::new(provider).expect("semantic index should initialize");
 
     let err = index
         .add_document(uri("broken.md"), &index_from("# Broken"))
+        .await
         .expect_err("expected provider failure");
 
     assert!(matches!(err, EmbedError::ProviderUnavailable(_)));
 }
 
-#[test]
-fn test_add_document_failure_does_not_leave_partial_entries() {
+#[tokio::test]
+async fn test_add_document_failure_does_not_leave_partial_entries() {
     let provider: Arc<dyn EmbeddingProvider> = Arc::new(FailOnNthEmbeddingProvider::new(2));
     let mut index = SemanticIndex::new(provider).expect("semantic index should initialize");
 
@@ -171,6 +183,7 @@ fn test_add_document_failure_does_not_leave_partial_entries() {
             uri("partial.md"),
             &index_from("# First Heading\n\n## Second Heading"),
         )
+        .await
         .expect_err("expected provider failure on second heading");
     assert!(matches!(err, EmbedError::ProviderUnavailable(_)));
 
@@ -181,6 +194,7 @@ fn test_add_document_failure_does_not_leave_partial_entries() {
     );
     let results = index
         .search("first", 10, 0.0)
+        .await
         .expect("search after failed add_document should succeed");
     assert!(
         results.is_empty(),
@@ -188,8 +202,8 @@ fn test_add_document_failure_does_not_leave_partial_entries() {
     );
 }
 
-#[test]
-fn test_detect_duplicates_threshold() {
+#[tokio::test]
+async fn test_detect_duplicates_threshold() {
     let provider: Arc<dyn EmbeddingProvider> = Arc::new(KeywordEmbeddingProvider);
     let mut index = SemanticIndex::new(provider).expect("semantic index should initialize");
 
@@ -198,12 +212,14 @@ fn test_detect_duplicates_threshold() {
             uri("doc-a.md"),
             &index_from("# Rust SIMD\n\nsearch graph rust simd"),
         )
+        .await
         .expect("add doc-a");
     index
         .add_document(
             uri("doc-b.md"),
             &index_from("# Rust SIMD\n\nsearch graph rust simd"),
         )
+        .await
         .expect("add doc-b");
 
     let duplicates = index.detect_duplicates(0.8);
@@ -211,19 +227,22 @@ fn test_detect_duplicates_threshold() {
     assert!(duplicates[0].similarity >= 0.8);
 }
 
-#[test]
-fn test_realm_semantic_search_integration() {
+#[tokio::test]
+async fn test_realm_semantic_search_integration() {
     let provider: Arc<dyn EmbeddingProvider> = Arc::new(KeywordEmbeddingProvider);
     let mut realm = RealmIndex::new_with_embeddings(provider).expect("realm with embeddings");
 
     let rust_uri = uri("r.md");
-    realm.add_document(
-        rust_uri.clone(),
-        index_from("# Rust Search\n\nSemantic search via embeddings"),
-    );
+    realm
+        .add_document(
+            rust_uri.clone(),
+            index_from("# Rust Search\n\nSemantic search via embeddings"),
+        )
+        .await;
 
     let results = realm
         .semantic_search("rust", 3, 0.0)
+        .await
         .expect("semantic search should succeed");
 
     assert!(!results.is_empty());

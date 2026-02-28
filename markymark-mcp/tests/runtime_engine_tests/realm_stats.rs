@@ -1,12 +1,18 @@
 use std::fs;
+#[cfg(feature = "semantic-search")]
+use std::sync::Arc;
 
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
+#[cfg(feature = "semantic-search")]
+use markymark_core::prelude::EmbeddingProvider;
+#[cfg(feature = "semantic-search")]
+use markymark_mcp::HashEmbeddingProvider;
 use markymark_mcp::RuntimeEngine;
 
 use super::TempWorkspace;
 
-#[test]
-fn realm_stats_returns_aggregate_counts_for_default_realm() {
+#[tokio::test]
+async fn realm_stats_returns_aggregate_counts_for_default_realm() {
     let ws = TempWorkspace::new("realm-stats");
     let doc1 = ws.root().join("notes.md");
     let doc2 = ws.root().join("links.md");
@@ -21,14 +27,17 @@ fn realm_stats_returns_aggregate_counts_for_default_realm() {
     )
     .expect("doc2 should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let result = engine.execute(CoreOperation::RealmStats {
-        realm: "default".to_string(),
-        check_duplicates: false,
-        include_token_counts: false,
-    });
+    let result = engine
+        .execute(CoreOperation::RealmStats {
+            realm: "default".to_string(),
+            check_duplicates: false,
+            include_token_counts: false,
+        })
+        .await;
 
     match result {
         CoreOperationResult::RealmStats {
@@ -53,19 +62,22 @@ fn realm_stats_returns_aggregate_counts_for_default_realm() {
     }
 }
 
-#[test]
-fn realm_stats_errors_for_nonexistent_realm() {
+#[tokio::test]
+async fn realm_stats_errors_for_nonexistent_realm() {
     let ws = TempWorkspace::new("realm-stats-missing");
     fs::write(ws.root().join("a.md"), "# A\n").expect("doc should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let result = engine.execute(CoreOperation::RealmStats {
-        realm: "nonexistent".to_string(),
-        check_duplicates: false,
-        include_token_counts: false,
-    });
+    let result = engine
+        .execute(CoreOperation::RealmStats {
+            realm: "nonexistent".to_string(),
+            check_duplicates: false,
+            include_token_counts: false,
+        })
+        .await;
 
     match result {
         CoreOperationResult::Error(_) => {} // expected
@@ -73,20 +85,24 @@ fn realm_stats_errors_for_nonexistent_realm() {
     }
 }
 
-#[test]
-fn realm_stats_works_for_empty_realm() {
+#[tokio::test]
+async fn realm_stats_works_for_empty_realm() {
     let engine = RuntimeEngine::default();
 
     // Create a new empty realm
-    engine.execute(CoreOperation::CreateRealm {
-        name: "empty-realm".to_string(),
-    });
+    engine
+        .execute(CoreOperation::CreateRealm {
+            name: "empty-realm".to_string(),
+        })
+        .await;
 
-    let result = engine.execute(CoreOperation::RealmStats {
-        realm: "empty-realm".to_string(),
-        check_duplicates: false,
-        include_token_counts: false,
-    });
+    let result = engine
+        .execute(CoreOperation::RealmStats {
+            realm: "empty-realm".to_string(),
+            check_duplicates: false,
+            include_token_counts: false,
+        })
+        .await;
 
     match result {
         CoreOperationResult::RealmStats {
@@ -111,20 +127,23 @@ fn realm_stats_works_for_empty_realm() {
     }
 }
 
-#[test]
-fn realm_stats_can_include_token_estimate() {
+#[tokio::test]
+async fn realm_stats_can_include_token_estimate() {
     let ws = TempWorkspace::new("realm-stats-token-estimate");
     fs::write(ws.root().join("notes.md"), "# Intro\nsome words here\n")
         .expect("doc should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let result = engine.execute(CoreOperation::RealmStats {
-        realm: "default".to_string(),
-        check_duplicates: false,
-        include_token_counts: true,
-    });
+    let result = engine
+        .execute(CoreOperation::RealmStats {
+            realm: "default".to_string(),
+            check_duplicates: false,
+            include_token_counts: true,
+        })
+        .await;
 
     match result {
         CoreOperationResult::RealmStats { total_tokens, .. } => {
@@ -138,23 +157,27 @@ fn realm_stats_can_include_token_estimate() {
 }
 
 #[cfg(feature = "semantic-search")]
-#[test]
-fn semantic_search_returns_ranked_matches() {
+#[tokio::test]
+async fn semantic_search_returns_ranked_matches() {
     let ws = TempWorkspace::new("semantic-search-default-realm");
     let intro = ws.root().join("intro.md");
     let setup = ws.root().join("setup.md");
     fs::write(&intro, "# Introduction\n\nA short overview.\n").expect("intro doc should exist");
     fs::write(&setup, "# Installation\n\nSetup steps.\n").expect("setup doc should exist");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(HashEmbeddingProvider::new(128));
+    let engine = RuntimeEngine::from_workspace_roots_with_provider(vec![ws.root()], Some(provider))
+        .await
+        .expect("workspace should index");
 
-    let result = engine.execute(CoreOperation::SemanticSearch {
-        query: "introduction overview".to_string(),
-        realm: None,
-        top_k: 3,
-        min_score: 0.0,
-    });
+    let result = engine
+        .execute(CoreOperation::SemanticSearch {
+            query: "introduction overview".to_string(),
+            realm: None,
+            top_k: 3,
+            min_score: 0.0,
+        })
+        .await;
 
     match result {
         CoreOperationResult::SemanticMatches(matches) => {
@@ -172,23 +195,27 @@ fn semantic_search_returns_ranked_matches() {
 }
 
 #[cfg(feature = "semantic-search")]
-#[test]
-fn semantic_search_preview_stays_within_200_bytes_for_unicode() {
+#[tokio::test]
+async fn semantic_search_preview_stays_within_200_bytes_for_unicode() {
     let ws = TempWorkspace::new("semantic-search-unicode-preview");
     let unicode_doc = ws.root().join("unicode.md");
     let long_emoji = "😀".repeat(260);
     fs::write(&unicode_doc, format!("# Unicode\n\n{}\n", long_emoji))
         .expect("unicode markdown should exist");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(HashEmbeddingProvider::new(128));
+    let engine = RuntimeEngine::from_workspace_roots_with_provider(vec![ws.root()], Some(provider))
+        .await
+        .expect("workspace should index");
 
-    let result = engine.execute(CoreOperation::SemanticSearch {
-        query: "unicode".to_string(),
-        realm: None,
-        top_k: 1,
-        min_score: 0.0,
-    });
+    let result = engine
+        .execute(CoreOperation::SemanticSearch {
+            query: "unicode".to_string(),
+            realm: None,
+            top_k: 1,
+            min_score: 0.0,
+        })
+        .await;
 
     match result {
         CoreOperationResult::SemanticMatches(matches) => {
@@ -202,21 +229,24 @@ fn semantic_search_preview_stays_within_200_bytes_for_unicode() {
     }
 }
 
-#[test]
-fn realm_stats_token_count_is_none_when_source_files_are_missing() {
+#[tokio::test]
+async fn realm_stats_token_count_is_none_when_source_files_are_missing() {
     let ws = TempWorkspace::new("realm-stats-missing-source");
     let doc = ws.root().join("missing-after-index.md");
     fs::write(&doc, "# Title\n\nsome content\n").expect("doc should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
     fs::remove_file(&doc).expect("doc should be removable after indexing");
 
-    let result = engine.execute(CoreOperation::RealmStats {
-        realm: "default".to_string(),
-        check_duplicates: false,
-        include_token_counts: true,
-    });
+    let result = engine
+        .execute(CoreOperation::RealmStats {
+            realm: "default".to_string(),
+            check_duplicates: false,
+            include_token_counts: true,
+        })
+        .await;
 
     match result {
         CoreOperationResult::RealmStats { total_tokens, .. } => {

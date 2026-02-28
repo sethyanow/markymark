@@ -5,8 +5,8 @@ use markymark_mcp::RuntimeEngine;
 
 use super::TempWorkspace;
 
-#[test]
-fn search_symbols_prefers_prefix_over_plain_substring() {
+#[tokio::test]
+async fn search_symbols_prefers_prefix_over_plain_substring() {
     let ws = TempWorkspace::new("search-symbols-fuzzy-prefix");
     let first = ws.root().join("a.md");
     let second = ws.root().join("b.md");
@@ -14,13 +14,16 @@ fn search_symbols_prefers_prefix_over_plain_substring() {
     fs::write(&first, "# setup\n# stage\n").expect("first markdown should be created");
     fs::write(&second, "# close\n").expect("second markdown should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let symbols = engine.execute(CoreOperation::SearchSymbols {
-        query: "st".to_string(),
-        realm: None,
-    });
+    let symbols = engine
+        .execute(CoreOperation::SearchSymbols {
+            query: "st".to_string(),
+            realm: None,
+        })
+        .await;
 
     match symbols {
         CoreOperationResult::Symbols(matches) => {
@@ -31,19 +34,22 @@ fn search_symbols_prefers_prefix_over_plain_substring() {
     }
 }
 
-#[test]
-fn search_symbols_matches_case_insensitively() {
+#[tokio::test]
+async fn search_symbols_matches_case_insensitively() {
     let ws = TempWorkspace::new("search-symbols-fuzzy-case");
     let file = ws.root().join("case.md");
     fs::write(&file, "# Setup\n# stage\n").expect("markdown should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let symbols = engine.execute(CoreOperation::SearchSymbols {
-        query: "ST".to_string(),
-        realm: None,
-    });
+    let symbols = engine
+        .execute(CoreOperation::SearchSymbols {
+            query: "ST".to_string(),
+            realm: None,
+        })
+        .await;
 
     match symbols {
         CoreOperationResult::Symbols(matches) => {
@@ -54,19 +60,22 @@ fn search_symbols_matches_case_insensitively() {
     }
 }
 
-#[test]
-fn search_symbols_supports_subsequence_matching() {
+#[tokio::test]
+async fn search_symbols_supports_subsequence_matching() {
     let ws = TempWorkspace::new("search-symbols-fuzzy-subseq");
     let file = ws.root().join("subseq.md");
     fs::write(&file, "# setup\n# stop\n").expect("markdown should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let symbols = engine.execute(CoreOperation::SearchSymbols {
-        query: "stp".to_string(),
-        realm: None,
-    });
+    let symbols = engine
+        .execute(CoreOperation::SearchSymbols {
+            query: "stp".to_string(),
+            realm: None,
+        })
+        .await;
 
     match symbols {
         CoreOperationResult::Symbols(matches) => {
@@ -77,19 +86,22 @@ fn search_symbols_supports_subsequence_matching() {
     }
 }
 
-#[test]
-fn search_symbols_returns_no_results_when_query_cannot_be_matched() {
+#[tokio::test]
+async fn search_symbols_returns_no_results_when_query_cannot_be_matched() {
     let ws = TempWorkspace::new("search-symbols-fuzzy-none");
     let file = ws.root().join("none.md");
     fs::write(&file, "# setup\n# stage\n").expect("markdown should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let symbols = engine.execute(CoreOperation::SearchSymbols {
-        query: "zzz".to_string(),
-        realm: None,
-    });
+    let symbols = engine
+        .execute(CoreOperation::SearchSymbols {
+            query: "zzz".to_string(),
+            realm: None,
+        })
+        .await;
 
     match symbols {
         CoreOperationResult::Symbols(matches) => {
@@ -99,19 +111,22 @@ fn search_symbols_returns_no_results_when_query_cannot_be_matched() {
     }
 }
 
-#[test]
-fn search_symbols_uses_batch_ranked_results_ordering() {
+#[tokio::test]
+async fn search_symbols_uses_batch_ranked_results_ordering() {
     let ws = TempWorkspace::new("search-symbols-batch-ranked-order");
     let file = ws.root().join("ranked.md");
     fs::write(&file, "# acb\n# adb\n# aeb\n").expect("markdown should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let symbols = engine.execute(CoreOperation::SearchSymbols {
-        query: "ab".to_string(),
-        realm: None,
-    });
+    let symbols = engine
+        .execute(CoreOperation::SearchSymbols {
+            query: "ab".to_string(),
+            realm: None,
+        })
+        .await;
 
     match symbols {
         CoreOperationResult::Symbols(matches) => {
@@ -131,8 +146,8 @@ fn search_symbols_uses_batch_ranked_results_ordering() {
 // stable regardless of which document the realm iterates first.
 // Bug introduced in feat(marky-8xt), fixed by adding the same comparator used in
 // the single-candidate fallback path.
-#[test]
-fn search_symbols_batch_path_uses_alphabetical_tiebreak_across_files() {
+#[tokio::test]
+async fn search_symbols_batch_path_uses_alphabetical_tiebreak_across_files() {
     let ws = TempWorkspace::new("batch-tiebreak-cross-file");
     // Three files, one heading each. All headings contain 'a', so all score equally
     // for query "a". The correct result is alphabetical regardless of which file the
@@ -141,13 +156,16 @@ fn search_symbols_batch_path_uses_alphabetical_tiebreak_across_files() {
     fs::write(ws.root().join("a.md"), "# Alpha\n").expect("a.md");
     fs::write(ws.root().join("b.md"), "# Beta\n").expect("b.md");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let result = engine.execute(CoreOperation::SearchSymbols {
-        query: "a".to_string(),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::SearchSymbols {
+            query: "a".to_string(),
+            realm: None,
+        })
+        .await;
 
     match result {
         CoreOperationResult::Symbols(matches) => {
