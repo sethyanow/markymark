@@ -13,10 +13,15 @@ categories = ["development-tools", "text-editors"]
 name = "markymark"
 path = "src/main.rs"
 
+[features]
+default = []
+semantic-search = ["markymark-mcp/semantic-search", "markymark-core/semantic-search"]
+local-embeddings = ["markymark-core/local-embeddings"]
+
 [dependencies]
-markymark-core = { version = "0.6.0", path = "../markymark-core" }
-markymark-lsp = { version = "0.6.0", path = "../markymark-lsp" }
-markymark-mcp = { version = "0.6.0", path = "../markymark-mcp" }
+markymark-core = { version = "0.7.0", path = "../markymark-core" }
+markymark-lsp = { version = "0.7.0", path = "../markymark-lsp" }
+markymark-mcp = { version = "0.7.0", path = "../markymark-mcp" }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 clap = { version = "4.5", features = ["derive"] }

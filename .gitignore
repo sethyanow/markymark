@@ -46,3 +46,7 @@ brza-spec.md
 docs-site/node_modules/
 docs-site/dist/
 docs-site/.astro/
+
+# Secrets
+.env
+.env.*
