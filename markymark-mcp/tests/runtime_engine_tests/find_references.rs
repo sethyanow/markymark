@@ -7,8 +7,8 @@ use markymark_mcp::RuntimeEngine;
 
 use super::{compare_ranges, TempWorkspace};
 
-#[test]
-fn find_references_returns_wiki_link_refs_to_heading() {
+#[tokio::test]
+async fn find_references_returns_wiki_link_refs_to_heading() {
     let ws = TempWorkspace::new("find-refs-heading");
     let a = ws.root().join("a.md");
     fs::write(&a, "# Title\n\n## Setup\n\nSee [[#setup]] for info.\n")
@@ -16,14 +16,17 @@ fn find_references_returns_wiki_link_refs_to_heading() {
     let b = ws.root().join("b.md");
     fs::write(&b, "# Other\n\nCheck [[a#setup]] link.\n").expect("b.md should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let result = engine.execute(CoreOperation::FindReferences {
-        uri: DocumentUri::from_file_path(&a),
-        position: Range::new(Position::new(2, 3), Position::new(2, 3)),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::FindReferences {
+            uri: DocumentUri::from_file_path(&a),
+            position: Range::new(Position::new(2, 3), Position::new(2, 3)),
+            realm: None,
+        })
+        .await;
 
     match result {
         CoreOperationResult::Locations(locations) => {
@@ -49,8 +52,8 @@ fn find_references_returns_wiki_link_refs_to_heading() {
     }
 }
 
-#[test]
-fn find_references_returns_markdown_link_refs_to_heading() {
+#[tokio::test]
+async fn find_references_returns_markdown_link_refs_to_heading() {
     let ws = TempWorkspace::new("find-refs-mdlink");
     let a = ws.root().join("a.md");
     fs::write(
@@ -59,14 +62,17 @@ fn find_references_returns_markdown_link_refs_to_heading() {
     )
     .expect("a.md should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let result = engine.execute(CoreOperation::FindReferences {
-        uri: DocumentUri::from_file_path(&a),
-        position: Range::new(Position::new(2, 4), Position::new(2, 4)),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::FindReferences {
+            uri: DocumentUri::from_file_path(&a),
+            position: Range::new(Position::new(2, 4), Position::new(2, 4)),
+            realm: None,
+        })
+        .await;
 
     match result {
         CoreOperationResult::Locations(locations) => {
@@ -79,8 +85,8 @@ fn find_references_returns_markdown_link_refs_to_heading() {
     }
 }
 
-#[test]
-fn find_references_returns_xml_tag_refs_across_documents() {
+#[tokio::test]
+async fn find_references_returns_xml_tag_refs_across_documents() {
     let ws = TempWorkspace::new("find-refs-xml");
     let a = ws.root().join("a.md");
     fs::write(
@@ -91,14 +97,17 @@ fn find_references_returns_xml_tag_refs_across_documents() {
     let b = ws.root().join("b.md");
     fs::write(&b, "# Doc B\n\n<agent>stuff</agent>\n").expect("b.md should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let result = engine.execute(CoreOperation::FindReferences {
-        uri: DocumentUri::from_file_path(&a),
-        position: Range::new(Position::new(2, 1), Position::new(2, 1)),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::FindReferences {
+            uri: DocumentUri::from_file_path(&a),
+            position: Range::new(Position::new(2, 1), Position::new(2, 1)),
+            realm: None,
+        })
+        .await;
 
     match result {
         CoreOperationResult::Locations(locations) => {
@@ -113,21 +122,24 @@ fn find_references_returns_xml_tag_refs_across_documents() {
     }
 }
 
-#[test]
-fn find_references_returns_error_for_unknown_document() {
+#[tokio::test]
+async fn find_references_returns_error_for_unknown_document() {
     let ws = TempWorkspace::new("find-refs-unknown");
     let a = ws.root().join("a.md");
     fs::write(&a, "# Heading\n").expect("a.md should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
     let unknown = ws.root().join("nonexistent.md");
-    let result = engine.execute(CoreOperation::FindReferences {
-        uri: DocumentUri::from_file_path(&unknown),
-        position: Range::new(Position::new(0, 2), Position::new(0, 2)),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::FindReferences {
+            uri: DocumentUri::from_file_path(&unknown),
+            position: Range::new(Position::new(0, 2), Position::new(0, 2)),
+            realm: None,
+        })
+        .await;
 
     match result {
         CoreOperationResult::Error(_) => { /* expected */ }
@@ -135,20 +147,23 @@ fn find_references_returns_error_for_unknown_document() {
     }
 }
 
-#[test]
-fn find_references_returns_error_for_position_without_symbol() {
+#[tokio::test]
+async fn find_references_returns_error_for_position_without_symbol() {
     let ws = TempWorkspace::new("find-refs-nosymbol");
     let a = ws.root().join("a.md");
     fs::write(&a, "# Heading\n\nSome text\n").expect("a.md should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let result = engine.execute(CoreOperation::FindReferences {
-        uri: DocumentUri::from_file_path(&a),
-        position: Range::new(Position::new(2, 2), Position::new(2, 2)),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::FindReferences {
+            uri: DocumentUri::from_file_path(&a),
+            position: Range::new(Position::new(2, 2), Position::new(2, 2)),
+            realm: None,
+        })
+        .await;
 
     match result {
         CoreOperationResult::Error(_) => { /* expected - no symbol at position */ }
@@ -161,8 +176,8 @@ fn find_references_returns_error_for_position_without_symbol() {
 const BLOCK_UUID_A: &str = "550e8400-e29b-41d4-a716-446655440000";
 const BLOCK_UUID_B: &str = "7f6c1b2a-3d4e-5f60-a7b8-c9d0e1f20304";
 
-#[test]
-fn find_references_for_block_ref_returns_all_referencing_docs() {
+#[tokio::test]
+async fn find_references_for_block_ref_returns_all_referencing_docs() {
     let ws = TempWorkspace::new("find-refs-blockref");
     let a = ws.root().join("a.md");
     let b = ws.root().join("b.md");
@@ -179,15 +194,18 @@ fn find_references_for_block_ref_returns_all_referencing_docs() {
     // Doc C: no block refs
     fs::write(&c, "# No refs\n").expect("c.md should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
     // Position cursor inside ((uuid)) in Doc A — line 0, char 3 is inside the UUID text
-    let result = engine.execute(CoreOperation::FindReferences {
-        uri: DocumentUri::from_file_path(&a),
-        position: Range::new(Position::new(0, 3), Position::new(0, 3)),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::FindReferences {
+            uri: DocumentUri::from_file_path(&a),
+            position: Range::new(Position::new(0, 3), Position::new(0, 3)),
+            realm: None,
+        })
+        .await;
 
     match result {
         CoreOperationResult::Locations(locations) => {
@@ -206,8 +224,8 @@ fn find_references_for_block_ref_returns_all_referencing_docs() {
     }
 }
 
-#[test]
-fn find_references_block_ref_results_sorted_by_uri_then_range() {
+#[tokio::test]
+async fn find_references_block_ref_results_sorted_by_uri_then_range() {
     let ws = TempWorkspace::new("find-refs-blockref-sorted");
 
     // Create files with names that sort alphabetically: a.md < b.md < c.md
@@ -218,14 +236,17 @@ fn find_references_block_ref_results_sorted_by_uri_then_range() {
     fs::write(ws.root().join("b.md"), format!("(({BLOCK_UUID_A})) in b\n"))
         .expect("b.md should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
-    let result = engine.execute(CoreOperation::FindReferences {
-        uri: DocumentUri::from_file_path(&ws.root().join("a.md")),
-        position: Range::new(Position::new(0, 3), Position::new(0, 3)),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::FindReferences {
+            uri: DocumentUri::from_file_path(&ws.root().join("a.md")),
+            position: Range::new(Position::new(0, 3), Position::new(0, 3)),
+            realm: None,
+        })
+        .await;
 
     match result {
         CoreOperationResult::Locations(locations) => {
@@ -252,8 +273,8 @@ fn find_references_block_ref_results_sorted_by_uri_then_range() {
     }
 }
 
-#[test]
-fn find_references_for_block_id_returns_block_ref_locations() {
+#[tokio::test]
+async fn find_references_for_block_id_returns_block_ref_locations() {
     let ws = TempWorkspace::new("find-refs-block-id-inverse");
 
     // Doc A: defines a block with ^uuid
@@ -266,16 +287,19 @@ fn find_references_for_block_id_returns_block_ref_locations() {
     let c = ws.root().join("c.md");
     fs::write(&c, "# No refs\n").expect("c.md should be created");
 
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
 
     // Cursor inside ^uuid in Doc A: "some content ^550e8400..."
     // ^  is at position 13, UUID starts at 14; position 16 is inside the UUID
-    let result = engine.execute(CoreOperation::FindReferences {
-        uri: DocumentUri::from_file_path(&a),
-        position: Range::new(Position::new(0, 16), Position::new(0, 16)),
-        realm: None,
-    });
+    let result = engine
+        .execute(CoreOperation::FindReferences {
+            uri: DocumentUri::from_file_path(&a),
+            position: Range::new(Position::new(0, 16), Position::new(0, 16)),
+            realm: None,
+        })
+        .await;
 
     match result {
         CoreOperationResult::Locations(locations) => {

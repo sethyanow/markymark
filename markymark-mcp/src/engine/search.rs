@@ -129,29 +129,9 @@ pub(crate) fn handle_search_symbols(realm: &RealmIndex, query: String) -> CoreOp
     CoreOperationResult::Symbols(matches)
 }
 
+/// Map a slice of [`markymark_index::SearchResult`] into [`CoreOperationResult::SemanticMatches`].
 #[cfg(feature = "semantic-search")]
-pub(crate) fn handle_semantic_search(
-    realm: &RealmIndex,
-    query: String,
-    top_k: u32,
-    min_score: f32,
-) -> CoreOperationResult {
-    let query = query.trim().to_string();
-    if query.is_empty() {
-        return CoreOperationResult::Error(CoreError::Message(
-            "semantic query cannot be empty".to_string(),
-        ));
-    }
-
-    let results = match realm.semantic_search(&query, top_k, min_score.clamp(0.0, 1.0)) {
-        Ok(results) => results,
-        Err(err) => {
-            return CoreOperationResult::Error(CoreError::Message(format!(
-                "semantic search failed: {err}"
-            )));
-        }
-    };
-
+fn to_semantic_matches(results: Vec<markymark_index::SearchResult>) -> CoreOperationResult {
     CoreOperationResult::SemanticMatches(
         results
             .into_iter()
@@ -172,6 +152,39 @@ pub(crate) fn handle_semantic_search(
             })
             .collect(),
     )
+}
+
+/// Search using a pre-computed query embedding (fast, in-memory only).
+///
+/// The caller is responsible for embedding the query outside any coarse lock.
+#[cfg(feature = "semantic-search")]
+pub(crate) async fn handle_semantic_search_with_embedding(
+    semantic_index: std::sync::Arc<tokio::sync::Mutex<markymark_index::SemanticIndex>>,
+    query: String,
+    query_embedding: &[f32],
+    top_k: u32,
+    min_score: f32,
+) -> CoreOperationResult {
+    let query = query.trim().to_string();
+    if query.is_empty() {
+        return CoreOperationResult::Error(CoreError::Message(
+            "semantic query cannot be empty".to_string(),
+        ));
+    }
+
+    let results = {
+        let guard = semantic_index.lock().await;
+        match guard.search_with_embedding(query_embedding, top_k, min_score.clamp(0.0, 1.0)) {
+            Ok(results) => results,
+            Err(err) => {
+                return CoreOperationResult::Error(CoreError::Message(format!(
+                    "semantic search failed: {err}"
+                )));
+            }
+        }
+    };
+
+    to_semantic_matches(results)
 }
 
 #[cfg(test)]
@@ -206,11 +219,11 @@ mod tests {
         DocumentIndex::from_ast(ast)
     }
 
-    #[test]
-    fn search_symbols_includes_code_span_candidates() {
+    #[tokio::test]
+    async fn search_symbols_includes_code_span_candidates() {
         let mut realm = RealmIndex::new();
         let index = make_index_with_code_spans(&["HashMap"]);
-        realm.add_document(uri("types.md"), index);
+        realm.add_document(uri("types.md"), index).await;
 
         let names = symbol_names(handle_search_symbols(&realm, "HashMap".to_string()));
         assert!(
@@ -219,12 +232,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn search_symbols_dedup_code_spans_per_document() {
+    #[tokio::test]
+    async fn search_symbols_dedup_code_spans_per_document() {
         let mut realm = RealmIndex::new();
         // Build source with 3 occurrences of `Result` — dedup should produce 1 entry
         let index = make_index_with_code_spans(&["Result", "Result", "Result"]);
-        realm.add_document(uri("results.md"), index);
+        realm.add_document(uri("results.md"), index).await;
 
         let names = symbol_names(handle_search_symbols(&realm, "Result".to_string()));
         let result_count = names.iter().filter(|n| *n == "Result").count();

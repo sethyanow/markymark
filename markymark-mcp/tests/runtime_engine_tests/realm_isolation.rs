@@ -9,8 +9,8 @@ use super::TempWorkspace;
 /// Regression test for marky-uux: search-symbols must not return results from a
 /// different realm. Both realms exist simultaneously; querying realm_a must not
 /// surface symbols that only exist in realm_b.
-#[test]
-fn search_symbols_scopes_results_to_realm() {
+#[tokio::test]
+async fn search_symbols_scopes_results_to_realm() {
     let ws_a = TempWorkspace::new("realm-isolate-a");
     let ws_b = TempWorkspace::new("realm-isolate-b");
 
@@ -22,27 +22,37 @@ fn search_symbols_scopes_results_to_realm() {
 
     let engine = RuntimeEngine::default();
 
-    engine.execute(CoreOperation::CreateRealm {
-        name: "realm-alpha".to_string(),
-    });
-    engine.execute(CoreOperation::AddRoot {
-        realm: "realm-alpha".to_string(),
-        root: ws_a.root(),
-    });
+    engine
+        .execute(CoreOperation::CreateRealm {
+            name: "realm-alpha".to_string(),
+        })
+        .await;
+    engine
+        .execute(CoreOperation::AddRoot {
+            realm: "realm-alpha".to_string(),
+            root: ws_a.root(),
+        })
+        .await;
 
-    engine.execute(CoreOperation::CreateRealm {
-        name: "realm-beta".to_string(),
-    });
-    engine.execute(CoreOperation::AddRoot {
-        realm: "realm-beta".to_string(),
-        root: ws_b.root(),
-    });
+    engine
+        .execute(CoreOperation::CreateRealm {
+            name: "realm-beta".to_string(),
+        })
+        .await;
+    engine
+        .execute(CoreOperation::AddRoot {
+            realm: "realm-beta".to_string(),
+            root: ws_b.root(),
+        })
+        .await;
 
     // Searching realm-alpha for the beta-unique heading must return empty.
-    let result = engine.execute(CoreOperation::SearchSymbols {
-        query: "HeadingOnlyInRealmBeta".to_string(),
-        realm: Some("realm-alpha".to_string()),
-    });
+    let result = engine
+        .execute(CoreOperation::SearchSymbols {
+            query: "HeadingOnlyInRealmBeta".to_string(),
+            realm: Some("realm-alpha".to_string()),
+        })
+        .await;
     match result {
         CoreOperationResult::Symbols(matches) => {
             assert!(
@@ -54,10 +64,12 @@ fn search_symbols_scopes_results_to_realm() {
     }
 
     // Searching realm-beta for the alpha-unique heading must also return empty.
-    let result = engine.execute(CoreOperation::SearchSymbols {
-        query: "HeadingOnlyInRealmAlpha".to_string(),
-        realm: Some("realm-beta".to_string()),
-    });
+    let result = engine
+        .execute(CoreOperation::SearchSymbols {
+            query: "HeadingOnlyInRealmAlpha".to_string(),
+            realm: Some("realm-beta".to_string()),
+        })
+        .await;
     match result {
         CoreOperationResult::Symbols(matches) => {
             assert!(
@@ -69,10 +81,12 @@ fn search_symbols_scopes_results_to_realm() {
     }
 
     // Each realm correctly finds its own symbol.
-    let result = engine.execute(CoreOperation::SearchSymbols {
-        query: "HeadingOnlyInRealmAlpha".to_string(),
-        realm: Some("realm-alpha".to_string()),
-    });
+    let result = engine
+        .execute(CoreOperation::SearchSymbols {
+            query: "HeadingOnlyInRealmAlpha".to_string(),
+            realm: Some("realm-alpha".to_string()),
+        })
+        .await;
     match result {
         CoreOperationResult::Symbols(matches) => {
             assert!(
@@ -86,27 +100,33 @@ fn search_symbols_scopes_results_to_realm() {
 
 /// Regression test for marky-uux: after destroy-realm, search-symbols for that
 /// realm must return an error (realm no longer exists), not stale results.
-#[test]
-fn search_symbols_returns_empty_after_destroy_realm() {
+#[tokio::test]
+async fn search_symbols_returns_empty_after_destroy_realm() {
     let ws = TempWorkspace::new("realm-destroy-symbols");
     fs::write(ws.root().join("doc.md"), "# UniqueHeadingForDestroyTest\n")
         .expect("doc.md should be created");
 
     let engine = RuntimeEngine::default();
 
-    engine.execute(CoreOperation::CreateRealm {
-        name: "transient-realm".to_string(),
-    });
-    engine.execute(CoreOperation::AddRoot {
-        realm: "transient-realm".to_string(),
-        root: ws.root(),
-    });
+    engine
+        .execute(CoreOperation::CreateRealm {
+            name: "transient-realm".to_string(),
+        })
+        .await;
+    engine
+        .execute(CoreOperation::AddRoot {
+            realm: "transient-realm".to_string(),
+            root: ws.root(),
+        })
+        .await;
 
     // Verify symbol is found before destroy.
-    let result = engine.execute(CoreOperation::SearchSymbols {
-        query: "UniqueHeadingForDestroyTest".to_string(),
-        realm: Some("transient-realm".to_string()),
-    });
+    let result = engine
+        .execute(CoreOperation::SearchSymbols {
+            query: "UniqueHeadingForDestroyTest".to_string(),
+            realm: Some("transient-realm".to_string()),
+        })
+        .await;
     match result {
         CoreOperationResult::Symbols(matches) => {
             assert!(
@@ -118,9 +138,11 @@ fn search_symbols_returns_empty_after_destroy_realm() {
     }
 
     // Destroy the realm.
-    let destroy = engine.execute(CoreOperation::DestroyRealm {
-        name: "transient-realm".to_string(),
-    });
+    let destroy = engine
+        .execute(CoreOperation::DestroyRealm {
+            name: "transient-realm".to_string(),
+        })
+        .await;
     assert!(
         matches!(destroy, CoreOperationResult::Ok),
         "destroy-realm should succeed; got: {destroy:?}"
@@ -128,10 +150,12 @@ fn search_symbols_returns_empty_after_destroy_realm() {
 
     // After destroy, searching for the symbol in that realm must return an error
     // (realm does not exist), not a stale Symbols result.
-    let result = engine.execute(CoreOperation::SearchSymbols {
-        query: "UniqueHeadingForDestroyTest".to_string(),
-        realm: Some("transient-realm".to_string()),
-    });
+    let result = engine
+        .execute(CoreOperation::SearchSymbols {
+            query: "UniqueHeadingForDestroyTest".to_string(),
+            realm: Some("transient-realm".to_string()),
+        })
+        .await;
     assert!(
         matches!(result, CoreOperationResult::Error(_)),
         "search-symbols must return error for destroyed realm, not stale results; got: {result:?}"
@@ -143,8 +167,8 @@ fn search_symbols_returns_empty_after_destroy_realm() {
 /// every query operation that accepts a realm parameter.
 ///
 /// Regression coverage for marky-w85.
-#[test]
-fn query_operations_error_on_never_created_realm() {
+#[tokio::test]
+async fn query_operations_error_on_never_created_realm() {
     let engine = RuntimeEngine::default();
     let bogus = "never-created-realm";
     let dummy_uri = DocumentUri::from_file_path(std::path::Path::new("/tmp/dummy.md"));
@@ -229,6 +253,15 @@ fn query_operations_error_on_never_created_realm() {
             },
         ),
         (
+            "DependencyGraph",
+            CoreOperation::DependencyGraph {
+                realm: bogus.to_string(),
+                format: "json".to_string(),
+            },
+        ),
+        // SemanticSearch validates realm existence before checking feature flags,
+        // so it returns "realm does not exist" regardless of feature config.
+        (
             "SemanticSearch",
             CoreOperation::SemanticSearch {
                 query: "anything".to_string(),
@@ -237,17 +270,10 @@ fn query_operations_error_on_never_created_realm() {
                 min_score: 0.0,
             },
         ),
-        (
-            "DependencyGraph",
-            CoreOperation::DependencyGraph {
-                realm: bogus.to_string(),
-                format: "json".to_string(),
-            },
-        ),
     ];
 
     for (label, op) in operations {
-        let result = engine.execute(op);
+        let result = engine.execute(op).await;
         match &result {
             CoreOperationResult::Error(err) => {
                 let msg = err.to_string();

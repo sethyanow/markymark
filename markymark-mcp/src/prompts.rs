@@ -87,14 +87,14 @@ impl MarkymarkMcp {
     /// Dispatch a prompt request by name and optional arguments.
     ///
     /// Returns `GetPromptResult` on success or `McpError` on invalid params.
-    pub fn get_prompt_by_name(
+    pub async fn get_prompt_by_name(
         &self,
         name: &str,
         arguments: Option<Map<String, serde_json::Value>>,
     ) -> Result<GetPromptResult, McpError> {
         match name {
-            "explain-link" => self.explain_link_prompt(arguments),
-            "suggest-references" => self.suggest_references_prompt(arguments),
+            "explain-link" => self.explain_link_prompt(arguments).await,
+            "suggest-references" => self.suggest_references_prompt(arguments).await,
             _ => Err(McpError::invalid_params(
                 format!("unknown prompt: {name}"),
                 None,
@@ -102,7 +102,7 @@ impl MarkymarkMcp {
         }
     }
 
-    fn explain_link_prompt(
+    async fn explain_link_prompt(
         &self,
         arguments: Option<Map<String, serde_json::Value>>,
     ) -> Result<GetPromptResult, McpError> {
@@ -140,10 +140,14 @@ impl MarkymarkMcp {
         let mut context_lines = Vec::new();
 
         // Get document structure via export-index
-        match self.engine.execute(CoreOperation::ExportIndex {
-            uri: uri.clone(),
-            realm: realm.clone(),
-        }) {
+        match self
+            .engine
+            .execute(CoreOperation::ExportIndex {
+                uri: uri.clone(),
+                realm: realm.clone(),
+            })
+            .await
+        {
             CoreOperationResult::DocumentExport {
                 headings,
                 wiki_links,
@@ -197,7 +201,7 @@ impl MarkymarkMcp {
         })
     }
 
-    fn suggest_references_prompt(
+    async fn suggest_references_prompt(
         &self,
         arguments: Option<Map<String, serde_json::Value>>,
     ) -> Result<GetPromptResult, McpError> {
@@ -246,11 +250,15 @@ impl MarkymarkMcp {
 
         let mut context_lines = Vec::new();
 
-        match self.engine.execute(CoreOperation::FindReferences {
-            uri: uri.clone(),
-            position,
-            realm: realm.clone(),
-        }) {
+        match self
+            .engine
+            .execute(CoreOperation::FindReferences {
+                uri: uri.clone(),
+                position,
+                realm: realm.clone(),
+            })
+            .await
+        {
             CoreOperationResult::Locations(locations) => {
                 if locations.is_empty() {
                     context_lines
@@ -277,10 +285,14 @@ impl MarkymarkMcp {
             headings,
             wiki_links,
             ..
-        } = self.engine.execute(CoreOperation::ExportIndex {
-            uri: uri.clone(),
-            realm,
-        }) {
+        } = self
+            .engine
+            .execute(CoreOperation::ExportIndex {
+                uri: uri.clone(),
+                realm,
+            })
+            .await
+        {
             if !headings.is_empty() {
                 context_lines.push("\nDocument headings:".to_string());
                 for (text, level, _) in &headings {

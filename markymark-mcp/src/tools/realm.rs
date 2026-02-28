@@ -14,7 +14,7 @@ pub(crate) struct RealmToolResult {
     pub(crate) notify: bool,
 }
 
-pub(crate) fn handle_create_realm(
+pub(crate) async fn handle_create_realm(
     engine: &dyn CoreEngine,
     req: CreateRealmRequest,
 ) -> RealmToolResult {
@@ -29,7 +29,7 @@ pub(crate) fn handle_create_realm(
         };
     }
 
-    match engine.execute(CoreOperation::CreateRealm { name }) {
+    match engine.execute(CoreOperation::CreateRealm { name }).await {
         CoreOperationResult::RealmInfo {
             name,
             root_count,
@@ -53,7 +53,7 @@ pub(crate) fn handle_create_realm(
     }
 }
 
-pub(crate) fn handle_destroy_realm(
+pub(crate) async fn handle_destroy_realm(
     engine: &dyn CoreEngine,
     req: DestroyRealmRequest,
 ) -> RealmToolResult {
@@ -68,7 +68,7 @@ pub(crate) fn handle_destroy_realm(
         };
     }
 
-    match engine.execute(CoreOperation::DestroyRealm { name }) {
+    match engine.execute(CoreOperation::DestroyRealm { name }).await {
         CoreOperationResult::Ok => RealmToolResult {
             result: Ok(CallToolResult::structured(json!(DestroyRealmResponse {
                 success: true
@@ -86,7 +86,10 @@ pub(crate) fn handle_destroy_realm(
     }
 }
 
-pub(crate) fn handle_add_root(engine: &dyn CoreEngine, req: AddRootRequest) -> RealmToolResult {
+pub(crate) async fn handle_add_root(
+    engine: &dyn CoreEngine,
+    req: AddRootRequest,
+) -> RealmToolResult {
     let realm = req.realm.trim().to_string();
     if realm.is_empty() {
         return RealmToolResult {
@@ -100,7 +103,7 @@ pub(crate) fn handle_add_root(engine: &dyn CoreEngine, req: AddRootRequest) -> R
 
     let root = std::path::PathBuf::from(&req.root);
 
-    match engine.execute(CoreOperation::AddRoot { realm, root }) {
+    match engine.execute(CoreOperation::AddRoot { realm, root }).await {
         CoreOperationResult::RealmInfo {
             name,
             root_count,
@@ -124,7 +127,7 @@ pub(crate) fn handle_add_root(engine: &dyn CoreEngine, req: AddRootRequest) -> R
     }
 }
 
-pub(crate) fn handle_remove_root(
+pub(crate) async fn handle_remove_root(
     engine: &dyn CoreEngine,
     req: RemoveRootRequest,
 ) -> RealmToolResult {
@@ -141,7 +144,10 @@ pub(crate) fn handle_remove_root(
 
     let root = std::path::PathBuf::from(&req.root);
 
-    match engine.execute(CoreOperation::RemoveRoot { realm, root }) {
+    match engine
+        .execute(CoreOperation::RemoveRoot { realm, root })
+        .await
+    {
         CoreOperationResult::RealmInfo {
             name,
             root_count,
@@ -165,7 +171,7 @@ pub(crate) fn handle_remove_root(
     }
 }
 
-pub(crate) fn handle_realm_stats(
+pub(crate) async fn handle_realm_stats(
     engine: &dyn CoreEngine,
     req: RealmStatsRequest,
 ) -> Result<CallToolResult, McpError> {
@@ -177,11 +183,14 @@ pub(crate) fn handle_realm_stats(
         ));
     }
 
-    match engine.execute(CoreOperation::RealmStats {
-        realm,
-        check_duplicates: req.check_duplicates,
-        include_token_counts: req.include_token_counts,
-    }) {
+    match engine
+        .execute(CoreOperation::RealmStats {
+            realm,
+            check_duplicates: req.check_duplicates,
+            include_token_counts: req.include_token_counts,
+        })
+        .await
+    {
         CoreOperationResult::RealmStats {
             name,
             root_count,

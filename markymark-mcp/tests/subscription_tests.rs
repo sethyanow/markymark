@@ -6,14 +6,16 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_core::{CoreError, DocumentUri, Position, Range};
 use markymark_mcp::MarkymarkMcp;
 
 struct MockEngine;
 
+#[async_trait]
 impl CoreEngine for MockEngine {
-    fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
+    async fn execute(&self, operation: CoreOperation) -> CoreOperationResult {
         match operation {
             CoreOperation::GetOutline { .. } => {
                 CoreOperationResult::Outline(vec!["Test".to_string()])

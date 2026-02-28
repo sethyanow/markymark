@@ -5,7 +5,7 @@ use markymark_mcp::RuntimeEngine;
 
 use super::TempWorkspace;
 
-fn engine_with_workspace_files(
+async fn engine_with_workspace_files(
     name: &str,
     files: &[(&str, &str)],
 ) -> (TempWorkspace, RuntimeEngine) {
@@ -13,12 +13,13 @@ fn engine_with_workspace_files(
     for (filename, content) in files {
         fs::write(ws.root().join(filename), content).expect("test file should be created");
     }
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("workspace should index");
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
     (ws, engine)
 }
 
-fn search_workspace(
+async fn search_workspace(
     engine: &RuntimeEngine,
     query: Option<&str>,
     fm_filter: Option<(&str, &str)>,
@@ -26,44 +27,49 @@ fn search_workspace(
     tag_filter: Option<&str>,
     limit: u32,
 ) -> Vec<markymark_core::engine::WorkspaceSearchResult> {
-    let result = engine.execute(markymark_core::engine::CoreOperation::SearchWorkspace {
-        query: query.map(str::to_string),
-        frontmatter_filter: fm_filter.map(|(k, v)| (k.to_string(), v.to_string())),
-        property_filter: prop_filter.map(|(k, v)| (k.to_string(), v.to_string())),
-        tag_filter: tag_filter.map(str::to_string),
-        realm: None,
-        limit,
-    });
+    let result = engine
+        .execute(markymark_core::engine::CoreOperation::SearchWorkspace {
+            query: query.map(str::to_string),
+            frontmatter_filter: fm_filter.map(|(k, v)| (k.to_string(), v.to_string())),
+            property_filter: prop_filter.map(|(k, v)| (k.to_string(), v.to_string())),
+            tag_filter: tag_filter.map(str::to_string),
+            realm: None,
+            limit,
+        })
+        .await;
     match result {
         CoreOperationResult::WorkspaceSearchResults { results, .. } => results,
         other => panic!("expected WorkspaceSearchResults, got: {other:?}"),
     }
 }
 
-#[test]
-fn search_workspace_returns_empty_for_no_matches() {
+#[tokio::test]
+async fn search_workspace_returns_empty_for_no_matches() {
     let (_ws, engine) = engine_with_workspace_files(
         "sw-no-match",
         &[
             ("alpha.md", "# Alpha Document\n\nSome content.\n"),
             ("beta.md", "# Beta Document\n\nOther content.\n"),
         ],
-    );
-    let results = search_workspace(&engine, Some("nonexistent_xyz_abc"), None, None, None, 20);
+    )
+    .await;
+    let results =
+        search_workspace(&engine, Some("nonexistent_xyz_abc"), None, None, None, 20).await;
     assert!(
         results.is_empty(),
         "expected no results for unmatched query"
     );
 }
 
-#[test]
-fn search_workspace_case_insensitive_query() {
+#[tokio::test]
+async fn search_workspace_case_insensitive_query() {
     // Bug caught: case-sensitive match silently drops results.
     let (_ws, engine) = engine_with_workspace_files(
         "sw-case",
         &[("notes.md", "# Project Alpha\n\nSome content.\n")],
-    );
-    let results = search_workspace(&engine, Some("project alpha"), None, None, None, 20);
+    )
+    .await;
+    let results = search_workspace(&engine, Some("project alpha"), None, None, None, 20).await;
     assert_eq!(
         results.len(),
         1,
@@ -76,8 +82,8 @@ fn search_workspace_case_insensitive_query() {
     assert!(results[0].matched_fields.contains(&"title".to_string()));
 }
 
-#[test]
-fn search_workspace_title_match_scores_higher_than_heading_match() {
+#[tokio::test]
+async fn search_workspace_title_match_scores_higher_than_heading_match() {
     // Bug caught: title and heading scoring swapped.
     let (_ws, engine) = engine_with_workspace_files(
         "sw-title-score",
@@ -88,8 +94,9 @@ fn search_workspace_title_match_scores_higher_than_heading_match() {
                 "# Other Doc\n\n## Query Term\n\nContent.\n",
             ),
         ],
-    );
-    let results = search_workspace(&engine, Some("query term"), None, None, None, 20);
+    )
+    .await;
+    let results = search_workspace(&engine, Some("query term"), None, None, None, 20).await;
     assert_eq!(results.len(), 2, "both docs should match");
     // Title match must rank first (score 1.0 > 0.8).
     assert_eq!(results[0].score, 1.0, "title match should score 1.0");
@@ -101,8 +108,8 @@ fn search_workspace_title_match_scores_higher_than_heading_match() {
     assert!(results[1].matched_fields.contains(&"heading".to_string()));
 }
 
-#[test]
-fn search_workspace_frontmatter_filter_exact_key_match() {
+#[tokio::test]
+async fn search_workspace_frontmatter_filter_exact_key_match() {
     // Bug caught: partial key match returning wrong docs ("statue" matching "status" filter).
     let (_ws, engine) = engine_with_workspace_files(
         "sw-fm-key",
@@ -110,20 +117,22 @@ fn search_workspace_frontmatter_filter_exact_key_match() {
             ("active.md", "---\nstatus: active\n---\n# Active Doc\n"),
             ("draft.md", "---\nstatus: draft\n---\n# Draft Doc\n"),
         ],
-    );
-    let results = search_workspace(&engine, None, Some(("status", "active")), None, None, 20);
+    )
+    .await;
+    let results = search_workspace(&engine, None, Some(("status", "active")), None, None, 20).await;
     assert_eq!(results.len(), 1, "only doc with status=active should match");
     assert!(results[0].title.contains("Active"), "wrong doc returned");
 }
 
-#[test]
-fn search_workspace_frontmatter_filter_case_insensitive_value() {
+#[tokio::test]
+async fn search_workspace_frontmatter_filter_case_insensitive_value() {
     // Bug caught: case-sensitive value comparison drops valid results.
     let (_ws, engine) = engine_with_workspace_files(
         "sw-fm-ci",
         &[("doc.md", "---\nstatus: Active\n---\n# Doc\n")],
-    );
-    let results = search_workspace(&engine, None, Some(("status", "active")), None, None, 20);
+    )
+    .await;
+    let results = search_workspace(&engine, None, Some(("status", "active")), None, None, 20).await;
     assert_eq!(
         results.len(),
         1,
@@ -131,8 +140,8 @@ fn search_workspace_frontmatter_filter_case_insensitive_value() {
     );
 }
 
-#[test]
-fn search_workspace_frontmatter_list_value_any_element_matches() {
+#[tokio::test]
+async fn search_workspace_frontmatter_list_value_any_element_matches() {
     // Bug caught: list values collapsed to string fails partial match.
     // Parser handles inline YAML list format: [a, b, c]
     let (_ws, engine) = engine_with_workspace_files(
@@ -141,8 +150,10 @@ fn search_workspace_frontmatter_list_value_any_element_matches() {
             "doc.md",
             "---\naliases: [Project X, Proj X, PX]\n---\n# Document\n",
         )],
-    );
-    let results = search_workspace(&engine, None, Some(("aliases", "proj x")), None, None, 20);
+    )
+    .await;
+    let results =
+        search_workspace(&engine, None, Some(("aliases", "proj x")), None, None, 20).await;
     assert_eq!(
         results.len(),
         1,
@@ -150,8 +161,8 @@ fn search_workspace_frontmatter_list_value_any_element_matches() {
     );
 }
 
-#[test]
-fn search_workspace_property_filter() {
+#[tokio::test]
+async fn search_workspace_property_filter() {
     // Bug caught: property filter not applied.
     // Logseq properties (key:: value) must appear BEFORE headings in source.
     let (_ws, engine) = engine_with_workspace_files(
@@ -160,14 +171,15 @@ fn search_workspace_property_filter() {
             ("daily.md", "type:: daily\n\n# Daily\n\nSome notes.\n"),
             ("note.md", "type:: note\n\n# Note\n\nSome notes.\n"),
         ],
-    );
-    let results = search_workspace(&engine, None, None, Some(("type", "daily")), None, 20);
+    )
+    .await;
+    let results = search_workspace(&engine, None, None, Some(("type", "daily")), None, 20).await;
     assert_eq!(results.len(), 1, "only doc with type::daily should match");
     assert!(results[0].title.contains("Daily"), "wrong doc returned");
 }
 
-#[test]
-fn search_workspace_tag_filter_case_insensitive() {
+#[tokio::test]
+async fn search_workspace_tag_filter_case_insensitive() {
     // Bug caught: case-sensitive tag matching drops valid results.
     let (_ws, engine) = engine_with_workspace_files(
         "sw-tag-ci",
@@ -175,8 +187,9 @@ fn search_workspace_tag_filter_case_insensitive() {
             ("tagged.md", "# Doc\n\n#Project content here.\n"),
             ("other.md", "# Other\n\n#daily content.\n"),
         ],
-    );
-    let results = search_workspace(&engine, None, None, None, Some("project"), 20);
+    )
+    .await;
+    let results = search_workspace(&engine, None, None, None, Some("project"), 20).await;
     assert_eq!(
         results.len(),
         1,
@@ -184,8 +197,8 @@ fn search_workspace_tag_filter_case_insensitive() {
     );
 }
 
-#[test]
-fn search_workspace_multiple_filters_and_logic() {
+#[tokio::test]
+async fn search_workspace_multiple_filters_and_logic() {
     // Bug caught: OR instead of AND logic for multiple filters.
     let (_ws, engine) = engine_with_workspace_files(
         "sw-and-logic",
@@ -193,7 +206,8 @@ fn search_workspace_multiple_filters_and_logic() {
             ("a.md", "---\nstatus: active\n---\n# Doc A\n\n#project\n"),
             ("b.md", "---\nstatus: active\n---\n# Doc B\n\n#daily\n"),
         ],
-    );
+    )
+    .await;
     let results = search_workspace(
         &engine,
         None,
@@ -201,7 +215,8 @@ fn search_workspace_multiple_filters_and_logic() {
         None,
         Some("project"),
         20,
-    );
+    )
+    .await;
     assert_eq!(
         results.len(),
         1,
@@ -210,8 +225,8 @@ fn search_workspace_multiple_filters_and_logic() {
     assert!(results[0].title.contains("Doc A"), "wrong doc returned");
 }
 
-#[test]
-fn search_workspace_respects_limit() {
+#[tokio::test]
+async fn search_workspace_respects_limit() {
     // Bug caught: limit not applied or results sorted wrong direction.
     // Search only covers title and headings, not body prose.
     // Use a heading so all 10 docs match the query.
@@ -228,8 +243,8 @@ fn search_workspace_respects_limit() {
         .map(|(name, content)| (name.as_str(), content.as_str()))
         .collect();
 
-    let (_ws, engine) = engine_with_workspace_files("sw-limit", &file_refs);
-    let results = search_workspace(&engine, Some("common query term"), None, None, None, 3);
+    let (_ws, engine) = engine_with_workspace_files("sw-limit", &file_refs).await;
+    let results = search_workspace(&engine, Some("common query term"), None, None, None, 3).await;
     assert_eq!(results.len(), 3, "limit=3 should return exactly 3 results");
     // Verify descending score order.
     for i in 1..results.len() {
@@ -240,34 +255,36 @@ fn search_workspace_respects_limit() {
     }
 }
 
-#[test]
-fn search_workspace_limit_zero_returns_empty() {
+#[tokio::test]
+async fn search_workspace_limit_zero_returns_empty() {
     // Bug caught: limit=0 causes panic or returns all docs.
     let (_ws, engine) =
-        engine_with_workspace_files("sw-limit-zero", &[("doc.md", "# Doc\n\nsome content\n")]);
-    let results = search_workspace(&engine, None, None, None, None, 0);
+        engine_with_workspace_files("sw-limit-zero", &[("doc.md", "# Doc\n\nsome content\n")])
+            .await;
+    let results = search_workspace(&engine, None, None, None, None, 0).await;
     assert!(
         results.is_empty(),
         "limit=0 should return empty results, not error"
     );
 }
 
-#[test]
-fn search_workspace_empty_realm_returns_empty() {
+#[tokio::test]
+async fn search_workspace_empty_realm_returns_empty() {
     // Bug caught: iter_documents on empty realm panics.
     let ws = TempWorkspace::new("sw-empty-realm");
     // No files — empty directory.
-    let engine =
-        RuntimeEngine::from_workspace_roots(vec![ws.root()]).expect("empty workspace should index");
-    let results = search_workspace(&engine, Some("anything"), None, None, None, 20);
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("empty workspace should index");
+    let results = search_workspace(&engine, Some("anything"), None, None, None, 20).await;
     assert!(
         results.is_empty(),
         "empty realm should return empty results, not error"
     );
 }
 
-#[test]
-fn search_workspace_no_query_no_filter_returns_all_up_to_limit() {
+#[tokio::test]
+async fn search_workspace_no_query_no_filter_returns_all_up_to_limit() {
     // Bug caught: no-filter path broken or no-query path errors.
     let (_ws, engine) = engine_with_workspace_files(
         "sw-no-filter",
@@ -276,8 +293,9 @@ fn search_workspace_no_query_no_filter_returns_all_up_to_limit() {
             ("b.md", "# Beta\n"),
             ("c.md", "# Gamma\n"),
         ],
-    );
-    let results = search_workspace(&engine, None, None, None, None, 10);
+    )
+    .await;
+    let results = search_workspace(&engine, None, None, None, None, 10).await;
     assert_eq!(results.len(), 3, "no filters should return all docs");
     for r in &results {
         assert!(
@@ -287,8 +305,8 @@ fn search_workspace_no_query_no_filter_returns_all_up_to_limit() {
     }
 }
 
-#[test]
-fn search_workspace_sort_descending_score_ties_by_uri_ascending() {
+#[tokio::test]
+async fn search_workspace_sort_descending_score_ties_by_uri_ascending() {
     // Bug caught: unstable sort, non-deterministic output across runs.
     let (_ws, engine) = engine_with_workspace_files(
         "sw-sort",
@@ -299,8 +317,9 @@ fn search_workspace_sort_descending_score_ties_by_uri_ascending() {
             ("aaa-first.md", "# Other\n\n## Query Term\n"),
             ("mmm-mid.md", "# Other\n\n## Query Term\n"),
         ],
-    );
-    let results = search_workspace(&engine, Some("query term"), None, None, None, 20);
+    )
+    .await;
+    let results = search_workspace(&engine, Some("query term"), None, None, None, 20).await;
     assert_eq!(results.len(), 3, "all three docs should match");
     // All should have the same score (0.8 for heading match) since no title match.
     for r in &results {

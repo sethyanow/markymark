@@ -45,8 +45,10 @@ async fn setup_workspace() -> (
         let mut state = backend.state().write().await;
         let core_main = DocumentUri::new("file:///workspace/main.md").unwrap();
         let core_other = DocumentUri::new("file:///workspace/other-page.md").unwrap();
-        state.open_document(core_main, main_text.to_string());
-        state.open_document(core_other, other_text.to_string());
+        state.open_document(core_main, main_text.to_string()).await;
+        state
+            .open_document(core_other, other_text.to_string())
+            .await;
     }
 
     (service, socket, uri_main, uri_other)
@@ -294,7 +296,9 @@ async fn test_goto_definition_wiki_link_nonexistent_target() {
     {
         let mut state = backend.state().write().await;
         let core_uri = DocumentUri::new("file:///workspace/orphan.md").unwrap();
-        state.open_document(core_uri, "See [[nonexistent-page]] here.\n".to_string());
+        state
+            .open_document(core_uri, "See [[nonexistent-page]] here.\n".to_string())
+            .await;
     }
 
     let params = GotoDefinitionParams {
@@ -333,14 +337,18 @@ async fn test_goto_definition_xml_tag_jumps_to_first_occurrence() {
 
     {
         let mut state = backend.state().write().await;
-        state.open_document(
-            DocumentUri::new("file:///workspace/a.md").unwrap(),
-            text_a.to_string(),
-        );
-        state.open_document(
-            DocumentUri::new("file:///workspace/b.md").unwrap(),
-            text_b.to_string(),
-        );
+        state
+            .open_document(
+                DocumentUri::new("file:///workspace/a.md").unwrap(),
+                text_a.to_string(),
+            )
+            .await;
+        state
+            .open_document(
+                DocumentUri::new("file:///workspace/b.md").unwrap(),
+                text_b.to_string(),
+            )
+            .await;
     }
 
     // Place cursor on <agent> in b.md (line 0, inside the tag name)
@@ -388,10 +396,12 @@ async fn test_goto_definition_xml_tag_same_doc_first_occurrence() {
 
     {
         let mut state = backend.state().write().await;
-        state.open_document(
-            DocumentUri::new("file:///workspace/doc.md").unwrap(),
-            text.to_string(),
-        );
+        state
+            .open_document(
+                DocumentUri::new("file:///workspace/doc.md").unwrap(),
+                text.to_string(),
+            )
+            .await;
     }
 
     // Place cursor on the second <task> (line 6)
@@ -432,10 +442,12 @@ async fn test_goto_definition_xml_tag_already_on_first_returns_none() {
 
     {
         let mut state = backend.state().write().await;
-        state.open_document(
-            DocumentUri::new("file:///workspace/single.md").unwrap(),
-            text.to_string(),
-        );
+        state
+            .open_document(
+                DocumentUri::new("file:///workspace/single.md").unwrap(),
+                text.to_string(),
+            )
+            .await;
     }
 
     let params = GotoDefinitionParams {

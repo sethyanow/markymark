@@ -258,16 +258,16 @@ mod tests {
         DocumentIndex::from_ast(ast)
     }
 
-    fn make_realm(docs: &[(&str, &str)]) -> RealmIndex {
+    async fn make_realm(docs: &[(&str, &str)]) -> RealmIndex {
         let mut realm = RealmIndex::new();
         for (name, source) in docs {
-            realm.add_document(uri(name), make_index(source));
+            realm.add_document(uri(name), make_index(source)).await;
         }
         realm
     }
 
-    #[test]
-    fn empty_realm_returns_zero_stats() {
+    #[tokio::test]
+    async fn empty_realm_returns_zero_stats() {
         let realm = RealmIndex::new();
         match super::execute_graph_analysis("default", &realm, 10, false) {
             CoreOperationResult::GraphAnalysis {
@@ -290,9 +290,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn isolated_document_is_orphan() {
-        let realm = make_realm(&[("lonely", "# Lonely\nNo links here.")]);
+    #[tokio::test]
+    async fn isolated_document_is_orphan() {
+        let realm = make_realm(&[("lonely", "# Lonely\nNo links here.")]).await;
         match super::execute_graph_analysis("default", &realm, 10, false) {
             CoreOperationResult::GraphAnalysis { orphans, .. } => {
                 assert_eq!(orphans.len(), 1);
@@ -302,9 +302,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn linked_documents_are_not_orphans() {
-        let realm = make_realm(&[("a", "[[b]]"), ("b", "# B\nNo outgoing links.")]);
+    #[tokio::test]
+    async fn linked_documents_are_not_orphans() {
+        let realm = make_realm(&[("a", "[[b]]"), ("b", "# B\nNo outgoing links.")]).await;
         match super::execute_graph_analysis("default", &realm, 10, false) {
             CoreOperationResult::GraphAnalysis { orphans, .. } => {
                 // b has in-degree 1, a has out-degree 1; neither is orphan.
@@ -314,9 +314,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn broken_wiki_link_detected() {
-        let realm = make_realm(&[("a", "[[nonexistent]]")]);
+    #[tokio::test]
+    async fn broken_wiki_link_detected() {
+        let realm = make_realm(&[("a", "[[nonexistent]]")]).await;
         match super::execute_graph_analysis("default", &realm, 10, false) {
             CoreOperationResult::GraphAnalysis {
                 broken_links,
@@ -335,10 +335,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn hub_sorted_by_incoming_count() {
+    #[tokio::test]
+    async fn hub_sorted_by_incoming_count() {
         // b is linked from both a and c.
-        let realm = make_realm(&[("a", "[[b]]"), ("b", "# B"), ("c", "[[b]]")]);
+        let realm = make_realm(&[("a", "[[b]]"), ("b", "# B"), ("c", "[[b]]")]).await;
         match super::execute_graph_analysis("default", &realm, 10, false) {
             CoreOperationResult::GraphAnalysis { hubs, .. } => {
                 assert!(!hubs.is_empty());
@@ -350,9 +350,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn top_n_hubs_limit_respected() {
-        let realm = make_realm(&[("a", "[[c]]"), ("b", "[[c]]"), ("c", "# C"), ("d", "# D")]);
+    #[tokio::test]
+    async fn top_n_hubs_limit_respected() {
+        let realm = make_realm(&[("a", "[[c]]"), ("b", "[[c]]"), ("c", "# C"), ("d", "# D")]).await;
         match super::execute_graph_analysis("default", &realm, 2, false) {
             CoreOperationResult::GraphAnalysis { hubs, .. } => {
                 assert!(hubs.len() <= 2);
@@ -361,12 +361,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn external_markdown_links_are_not_broken() {
+    #[tokio::test]
+    async fn external_markdown_links_are_not_broken() {
         let realm = make_realm(&[(
             "a",
             "[Claude](https://claude.ai)\n[Other](http://example.com)",
-        )]);
+        )])
+        .await;
         match super::execute_graph_analysis("default", &realm, 10, false) {
             CoreOperationResult::GraphAnalysis { broken_links, .. } => {
                 assert!(
@@ -378,9 +379,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn clusters_none_when_not_requested() {
-        let realm = make_realm(&[("a", "# A"), ("b", "# B")]);
+    #[tokio::test]
+    async fn clusters_none_when_not_requested() {
+        let realm = make_realm(&[("a", "# A"), ("b", "# B")]).await;
         match super::execute_graph_analysis("default", &realm, 10, false) {
             CoreOperationResult::GraphAnalysis { clusters, .. } => {
                 assert!(clusters.is_none());
@@ -389,10 +390,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn clusters_detected_when_requested() {
+    #[tokio::test]
+    async fn clusters_detected_when_requested() {
         // a→b linked; c isolated → 2 weakly-connected components.
-        let realm = make_realm(&[("a", "[[b]]"), ("b", "# B"), ("c", "# Isolated")]);
+        let realm = make_realm(&[("a", "[[b]]"), ("b", "# B"), ("c", "# Isolated")]).await;
         match super::execute_graph_analysis("default", &realm, 10, true) {
             CoreOperationResult::GraphAnalysis { clusters, .. } => {
                 let clusters = clusters.expect("clusters should be Some");
@@ -404,9 +405,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn internal_markdown_link_resolved() {
-        let realm = make_realm(&[("a", "[link](b.md)"), ("b", "# B")]);
+    #[tokio::test]
+    async fn internal_markdown_link_resolved() {
+        let realm = make_realm(&[("a", "[link](b.md)"), ("b", "# B")]).await;
         match super::execute_graph_analysis("default", &realm, 10, false) {
             CoreOperationResult::GraphAnalysis {
                 broken_links,
@@ -420,14 +421,15 @@ mod tests {
         }
     }
 
-    #[test]
-    fn duplicate_wiki_links_within_document_count_once() {
+    #[tokio::test]
+    async fn duplicate_wiki_links_within_document_count_once() {
         // marky-agv: [[b]] appears 3 times in document a.
         // In-degree for b should be 1 (one unique source), not 3.
         let realm = make_realm(&[
             ("a", "[[b]]\n\nSome text.\n\n[[b]]\n\nMore text.\n\n[[b]]"),
             ("b", "# B"),
-        ]);
+        ])
+        .await;
         match super::execute_graph_analysis("default", &realm, 10, false) {
             CoreOperationResult::GraphAnalysis {
                 hubs,
@@ -453,10 +455,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn duplicate_markdown_links_within_document_count_once() {
+    #[tokio::test]
+    async fn duplicate_markdown_links_within_document_count_once() {
         // marky-agv: [link](b.md) appears twice in document a.
-        let realm = make_realm(&[("a", "[link](b.md)\n\ntext\n\n[other](b.md)"), ("b", "# B")]);
+        let realm =
+            make_realm(&[("a", "[link](b.md)\n\ntext\n\n[other](b.md)"), ("b", "# B")]).await;
         match super::execute_graph_analysis("default", &realm, 10, false) {
             CoreOperationResult::GraphAnalysis {
                 hubs,
@@ -482,10 +485,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn unique_sources_still_count_separately() {
+    #[tokio::test]
+    async fn unique_sources_still_count_separately() {
         // a→b and c→b are distinct edges; b should have in-degree 2.
-        let realm = make_realm(&[("a", "[[b]]"), ("b", "# B"), ("c", "[[b]]")]);
+        let realm = make_realm(&[("a", "[[b]]"), ("b", "# B"), ("c", "[[b]]")]).await;
         match super::execute_graph_analysis("default", &realm, 10, false) {
             CoreOperationResult::GraphAnalysis {
                 hubs,
@@ -503,10 +506,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn self_heading_wiki_link_skipped() {
+    #[tokio::test]
+    async fn self_heading_wiki_link_skipped() {
         // [[#Heading]] is a self-heading anchor; should not appear as a broken link.
-        let realm = make_realm(&[("a", "# A\n[[#A]]")]);
+        let realm = make_realm(&[("a", "# A\n[[#A]]")]).await;
         match super::execute_graph_analysis("default", &realm, 10, false) {
             CoreOperationResult::GraphAnalysis { broken_links, .. } => {
                 assert!(broken_links.is_empty(), "broken: {broken_links:?}");

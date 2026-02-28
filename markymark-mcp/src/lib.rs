@@ -34,6 +34,8 @@ mod subscriptions;
 mod tools;
 
 pub use dto::*;
+#[cfg(feature = "semantic-search")]
+pub use engine::HashEmbeddingProvider;
 pub use engine::RuntimeEngine;
 
 pub(crate) const SEMANTIC_SEARCH_MAX_TOP_K: u32 = 100;
@@ -85,13 +87,13 @@ impl ServerHandler for MarkymarkMcp {
         }))
     }
 
-    fn get_prompt(
+    async fn get_prompt(
         &self,
         request: GetPromptRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<GetPromptResult, McpError>> + Send + '_ {
-        let result = self.get_prompt_by_name(&request.name, request.arguments);
-        std::future::ready(result)
+    ) -> Result<GetPromptResult, McpError> {
+        self.get_prompt_by_name(&request.name, request.arguments)
+            .await
     }
 
     fn list_resource_templates(
@@ -107,13 +109,13 @@ impl ServerHandler for MarkymarkMcp {
         }))
     }
 
-    fn read_resource(
+    async fn read_resource(
         &self,
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<ReadResourceResult, McpError>> + Send + '_ {
-        let result = self.read_resource_sync(&request.uri);
-        std::future::ready(result.map(|contents| ReadResourceResult { contents }))
+    ) -> Result<ReadResourceResult, McpError> {
+        let result = self.read_resource(&request.uri).await;
+        result.map(|contents| ReadResourceResult { contents })
     }
 }
 
@@ -169,61 +171,77 @@ impl MarkymarkMcp {
     }
 
     /// Request a document outline from the core engine.
-    pub fn get_outline(&self, uri: DocumentUri, realm: Option<String>) -> CoreOperationResult {
+    pub async fn get_outline(
+        &self,
+        uri: DocumentUri,
+        realm: Option<String>,
+    ) -> CoreOperationResult {
         self.engine
             .execute(CoreOperation::GetOutline { uri, realm })
+            .await
     }
 
     /// Request symbol search from the core engine.
-    pub fn search_symbols(&self, query: String, realm: Option<String>) -> CoreOperationResult {
+    pub async fn search_symbols(
+        &self,
+        query: String,
+        realm: Option<String>,
+    ) -> CoreOperationResult {
         self.engine
             .execute(CoreOperation::SearchSymbols { query, realm })
+            .await
     }
 
     /// Request semantic search from the core engine.
-    pub fn semantic_search(
+    pub async fn semantic_search(
         &self,
         query: String,
         realm: Option<String>,
         top_k: u32,
         min_score: f32,
     ) -> CoreOperationResult {
-        self.engine.execute(CoreOperation::SemanticSearch {
-            query,
-            realm,
-            top_k,
-            min_score,
-        })
+        self.engine
+            .execute(CoreOperation::SemanticSearch {
+                query,
+                realm,
+                top_k,
+                min_score,
+            })
+            .await
     }
 
     /// Request references at a target range.
-    pub fn find_references(
+    pub async fn find_references(
         &self,
         uri: DocumentUri,
         position: Range,
         realm: Option<String>,
     ) -> CoreOperationResult {
-        self.engine.execute(CoreOperation::FindReferences {
-            uri,
-            position,
-            realm,
-        })
+        self.engine
+            .execute(CoreOperation::FindReferences {
+                uri,
+                position,
+                realm,
+            })
+            .await
     }
 
     /// Request rename operation at a target range.
-    pub fn rename(
+    pub async fn rename(
         &self,
         uri: DocumentUri,
         position: Range,
         new_name: String,
         realm: Option<String>,
     ) -> CoreOperationResult {
-        self.engine.execute(CoreOperation::Rename {
-            uri,
-            position,
-            new_name,
-            realm,
-        })
+        self.engine
+            .execute(CoreOperation::Rename {
+                uri,
+                position,
+                new_name,
+                realm,
+            })
+            .await
     }
 
     /// List all registered tool definitions (for testing/introspection).
@@ -255,7 +273,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<OutlineRequest>,
     ) -> Result<CallToolResult, McpError> {
-        tools::outline::handle_get_outline(&*self.engine, params.0)
+        tools::outline::handle_get_outline(&*self.engine, params.0).await
     }
 
     /// Search symbols across indexed markdown documents.
@@ -267,7 +285,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<SearchSymbolsRequest>,
     ) -> Result<CallToolResult, McpError> {
-        tools::search::handle_search_symbols(&*self.engine, params.0)
+        tools::search::handle_search_symbols(&*self.engine, params.0).await
     }
 
     /// Search semantically similar sections across indexed documents.
@@ -279,7 +297,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<SemanticSearchRequest>,
     ) -> Result<CallToolResult, McpError> {
-        tools::search::handle_semantic_search(&*self.engine, params.0)
+        tools::search::handle_semantic_search(&*self.engine, params.0).await
     }
 
     /// Find all references to a symbol at the given position.
@@ -291,7 +309,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<FindReferencesRequest>,
     ) -> Result<CallToolResult, McpError> {
-        tools::refs::handle_find_references(&*self.engine, params.0)
+        tools::refs::handle_find_references(&*self.engine, params.0).await
     }
 
     /// Rename a heading or XML tag and all its references.
@@ -303,7 +321,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<RenameRequest>,
     ) -> Result<CallToolResult, McpError> {
-        tools::refs::handle_rename(&*self.engine, params.0)
+        tools::refs::handle_rename(&*self.engine, params.0).await
     }
 
     /// Create a new named realm.
@@ -315,7 +333,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<CreateRealmRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let r = tools::realm::handle_create_realm(&*self.engine, params.0);
+        let r = tools::realm::handle_create_realm(&*self.engine, params.0).await;
         if r.notify {
             self.subscriptions.notify_all().await;
         }
@@ -331,7 +349,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<DestroyRealmRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let r = tools::realm::handle_destroy_realm(&*self.engine, params.0);
+        let r = tools::realm::handle_destroy_realm(&*self.engine, params.0).await;
         if r.notify {
             self.subscriptions.notify_all().await;
         }
@@ -347,7 +365,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<AddRootRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let r = tools::realm::handle_add_root(&*self.engine, params.0);
+        let r = tools::realm::handle_add_root(&*self.engine, params.0).await;
         if r.notify {
             self.subscriptions.notify_all().await;
         }
@@ -363,7 +381,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<RemoveRootRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let r = tools::realm::handle_remove_root(&*self.engine, params.0);
+        let r = tools::realm::handle_remove_root(&*self.engine, params.0).await;
         if r.notify {
             self.subscriptions.notify_all().await;
         }
@@ -379,7 +397,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<RealmStatsRequest>,
     ) -> Result<CallToolResult, McpError> {
-        tools::realm::handle_realm_stats(&*self.engine, params.0)
+        tools::realm::handle_realm_stats(&*self.engine, params.0).await
     }
 
     /// Export the full document index for a single document.
@@ -391,7 +409,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<ExportIndexRequest>,
     ) -> Result<CallToolResult, McpError> {
-        tools::outline::handle_export_index(&*self.engine, params.0)
+        tools::outline::handle_export_index(&*self.engine, params.0).await
     }
 
     /// Search workspace documents by text, frontmatter, properties, or tags.
@@ -403,7 +421,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<SearchWorkspaceRequest>,
     ) -> Result<CallToolResult, McpError> {
-        tools::search::handle_search_workspace(&*self.engine, params.0)
+        tools::search::handle_search_workspace(&*self.engine, params.0).await
     }
 
     /// Search workspace files by regex pattern with optional glob file filtering.
@@ -415,7 +433,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<SearchForPatternRequest>,
     ) -> Result<CallToolResult, McpError> {
-        tools::search::handle_search_for_pattern(&*self.engine, params.0)
+        tools::search::handle_search_for_pattern(&*self.engine, params.0).await
     }
 
     /// Analyse the link graph: orphans, hubs, broken links, clusters, and summary stats.
@@ -427,7 +445,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<GraphAnalysisRequest>,
     ) -> Result<CallToolResult, McpError> {
-        tools::graph::handle_graph_analysis(&*self.engine, params.0)
+        tools::graph::handle_graph_analysis(&*self.engine, params.0).await
     }
 
     /// Compute diagnostics (broken links, duplicate headings, unclosed XML tags) for a file or
@@ -440,7 +458,7 @@ impl MarkymarkMcp {
         &self,
         params: Parameters<GetDiagnosticsRequest>,
     ) -> Result<CallToolResult, McpError> {
-        tools::diagnostics::handle_get_diagnostics(&*self.engine, params.0)
+        tools::diagnostics::handle_get_diagnostics(&*self.engine, params.0).await
     }
 }
 
