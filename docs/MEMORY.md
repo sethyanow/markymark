@@ -13,10 +13,15 @@ Detailed patterns live in topic files. Historical context lives in the archive.
 
 ---
 
-## Current State (2026-02-27)
+## Current State (2026-02-28)
 
 ### Active Work
 
+- **v0.7.0 release in progress**: Version bumped across all 7 crates + plugin.json.
+  Branch `claude/review-release-changes-3oVJr` pushed, PR needs manual creation
+  (base: `dev`). Commit `c0c48d2`. After merge: tag `v0.7.0`, follow RELEASING.md.
+  36 commits since v0.6.0 — minor bump (new features, no breaking changes).
+  CI must validate (Zig not available in session environment).
 - **PR #46** (feature-embeddings → dev): Semantic search feature. Review triage rounds 1-4
   complete. See [archive](memory/archive.md) for triage details.
 - **marky-mgfh** (P1): AddRoot Phase 4 race condition — fixed in `334d736`
