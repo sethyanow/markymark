@@ -471,24 +471,27 @@ impl CoreEngine for RuntimeEngine {
                 }
 
                 // Phase 3: semantic embedding (no outer lock, slow network I/O).
+                // Uses batch API to reduce mutex contention and enable batched
+                // embedding calls (single HTTP request for Voyage, batched ONNX
+                // inference for local).
                 #[cfg(feature = "semantic-search")]
-                {
-                    let semantic_arc = {
-                        let state = self.state.read().await;
-                        state
-                            .get(&realm)
-                            .and_then(|rd| rd.index.semantic_index_arc())
-                    };
-                    if let Some(sem) = semantic_arc {
-                        for (uri, doc) in &parsed_md {
-                            let mut guard = sem.lock().await;
-                            if let Err(err) = guard.add_document(uri.clone(), doc).await {
-                                eprintln!(
-                                    "warning: semantic indexing failed for {}: {err}",
-                                    uri.as_str()
-                                );
-                            }
-                        }
+                let semantic_arc = {
+                    let state = self.state.read().await;
+                    state
+                        .get(&realm)
+                        .and_then(|rd| rd.index.semantic_index_arc())
+                };
+                #[cfg(feature = "semantic-search")]
+                if let Some(ref sem) = semantic_arc {
+                    let docs_refs: Vec<_> = parsed_md
+                        .iter()
+                        .map(|(uri, doc)| (uri.clone(), doc as &DocumentIndex))
+                        .collect();
+                    let mut guard = sem.lock().await;
+                    if let Err(err) = guard.add_documents(docs_refs).await {
+                        eprintln!(
+                            "warning: batch semantic indexing failed: {err}",
+                        );
                     }
                 }
 
@@ -509,6 +512,17 @@ impl CoreEngine for RuntimeEngine {
                     existing.canonicalize().unwrap_or_else(|_| existing.clone()) == root_canonical
                 });
                 if !root_still_present {
+                    // Clean up semantic entries that Phase 3 may have added
+                    // for this root's documents. Without this, stale semantic
+                    // entries remain searchable after root removal.
+                    #[cfg(feature = "semantic-search")]
+                    if let Some(ref sem) = semantic_arc {
+                        let mut guard = sem.lock().await;
+                        for (uri, _) in &parsed_md {
+                            guard.remove_document(uri);
+                        }
+                    }
+
                     log::warn!(
                         "root removed during indexing; realm={realm}, root={}, discarding {} parsed documents",
                         root.display(),

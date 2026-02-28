@@ -13,14 +13,16 @@ Detailed patterns live in topic files. Historical context lives in the archive.
 
 ---
 
-## Current State (2026-02-27)
+## Current State (2026-02-28)
 
 ### Active Work
 
-- **PR #46** (feature-embeddings → dev): Semantic search feature. Review triage rounds 1-4
-  complete. See [archive](memory/archive.md) for triage details.
+- **PR #48** (dev → main): v0.7.0 release. Review triage round 5 complete (Semgrep, Copilot,
+  CodeRabbit, Greptile, Codex). 20 raw findings → 12 valid, 8 dismissed. Key findings:
+  - **marky-a2m7** (P1): Semantic writes before root validation in AddRoot — race condition
+  - **marky-qgg1** (P2): Mutex serializes concurrent semantic searches across embed I/O
+  - **marky-6ri3** (P2): Non-atomic add_document loses entries on embed failure
 - **marky-mgfh** (P1): AddRoot Phase 4 race condition — fixed in `334d736`
-- **marky-nhi0** (P4): Stale branch ref in scripts/README.md — fixed
 
 ### Rust Agent Docs: Grade A (2026-02-15)
 

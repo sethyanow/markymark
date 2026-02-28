@@ -34,6 +34,39 @@ semantic-search builds:
 **Follow-up task:** `marky-e5zl` (P1) added under `marky-qfg1`, with SRE-refined design requiring
 internal visibility cleanup plus nextest/clippy/semantic test validation.
 
+### PR #48 v0.7.0 Release — Review Triage Round 5 (2026-02-28)
+
+88 changed files. Cross-PR triage: PR #48 + PR #47 (overlapping code) + Codex note.
+Reviewers: Semgrep (4), Copilot (8+4), CodeRabbit (6+6), Greptile (1), Codex (1).
+20 raw → 12 valid, 8 dismissed.
+
+| Bead | P | Finding |
+|------|---|---------|
+| marky-a2m7 | P1 | Semantic writes before root_still_present check in AddRoot (+ batch optimization) |
+| marky-qgg1 | P2 | Mutex serializes semantic search across embed I/O (realm + engine paths) |
+| marky-6ri3 | P2 | Non-atomic add_document — embed failure loses old entries |
+| marky-ce9o | P3 | ID collision in update_document during heading reorder + slug match |
+| marky-6pap | P3 | All-blank headings skip fallback → zero semantic entries |
+| marky-qmpo | P3 | u64→u32 truncation in compute_fetch_k under-fetches |
+| marky-6igw | P4 | Stale `voyage` feature flag references in CLI doc + smoke script |
+| marky-lkw9 | P4 | reqwest 0.12 → 0.13 dependency update |
+| marky-u1ji | P4 | Test default_cache_dir_under_home assumes HOME env |
+
+**Dismissed:** (8 findings)
+- Semgrep temp_dir (main.rs:207,224) — test code only, no security risk
+- Semgrep await-holding write lock in RemoveRoot — required for consistency
+- Copilot scripts/README.md table `||` — false positive, tables are correct
+- Copilot ~23MB model size — approximately correct for all-MiniLM-L6-v2
+- Copilot smoke-embeddings.sh executable bit — scripts have shebangs, standard practice
+- CodeRabbit references_tests.rs write lock — test code, no re-entrancy risk
+- CodeRabbit realm_isolation.rs unused mut — already fixed (91bf466)
+- Copilot lib.rs read_resource naming — trait-imposed name, style preference only
+
+**Patterns learned:**
+- Semgrep temp_dir rule fires on ALL temp_dir usage regardless of context — dismiss in test code
+- CodeRabbit re-flagged the mut issue that was already fixed — verify HEAD before triaging
+- Codex produced highest-signal finding (P1 race condition) that automated tools missed
+
 ### PR #46 Round 4 (2026-02-27)
 
 3 findings from Codex + CodeRabbit pre-PR notes. **1 dismissed**, **2 valid**:
