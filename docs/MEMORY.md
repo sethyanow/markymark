@@ -17,12 +17,13 @@ Detailed patterns live in topic files. Historical context lives in the archive.
 
 ### Active Work
 
-- **PR #48** (dev → main): v0.7.0 release. Review triage round 5 complete (Semgrep, Copilot,
-  CodeRabbit, Greptile, Codex). 20 raw findings → 12 valid, 8 dismissed. Key findings:
-  - **marky-a2m7** (P1): Semantic writes before root validation in AddRoot — race condition
-  - **marky-qgg1** (P2): Mutex serializes concurrent semantic searches across embed I/O
-  - **marky-6ri3** (P2): Non-atomic add_document loses entries on embed failure
-- **marky-mgfh** (P1): AddRoot Phase 4 race condition — fixed in `334d736`
+- **PR #48** (dev → main): v0.7.0 release. Review triage round 5 complete. P1/P2 epic
+  (marky-mwss) closed — all 3 fixes landed:
+  - **marky-a2m7** (P1): AddRoot race → batch semantic + removal safety net (`334d736`)
+  - **marky-qgg1** (P2): Mutex split → 3-phase search (embed outside lock) (`479669d`)
+  - **marky-6ri3** (P2): Atomic add_document → snapshot-then-rollback (`3cb8b6d`)
+- **P3 bugs remaining**: marky-ce9o (ID collision), marky-6pap (blank headings),
+  marky-qmpo (u64→u32 truncation). SRE-reviewed designs ready to implement.
 
 ### Rust Agent Docs: Grade A (2026-02-15)
 
@@ -117,7 +118,7 @@ Use `Bash cat` heredoc with single-quoted delimiter (`'EOF'`) to bypass.
 
 ### Zig MCP Tool (mcp__zig)
 
-Generic/noisy output. Not useful for precision Zig work — stick with LSP + agent docs.
+Output is generic and noisy; not useful for precision Zig work — stick with LSP + agent docs.
 May be useful for quick build.zig scaffolding.
 
 ---

@@ -38,7 +38,7 @@ internal visibility cleanup plus nextest/clippy/semantic test validation.
 
 88 changed files. Cross-PR triage: PR #48 + PR #47 (overlapping code) + Codex note.
 Reviewers: Semgrep (4), Copilot (8+4), CodeRabbit (6+6), Greptile (1), Codex (1).
-20 raw → 12 valid, 8 dismissed.
+20 raw → 9 tracked (table below), 8 dismissed, 3 batched into marky-pk7p (Round 6).
 
 | Bead | P | Finding |
 |------|---|---------|
