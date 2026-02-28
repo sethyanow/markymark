@@ -943,6 +943,7 @@ dependencies = [
  "insta",
  "lasso",
  "libc",
+ "log",
  "markymark-core",
  "markymark-kernels",
  "markymark-parser",

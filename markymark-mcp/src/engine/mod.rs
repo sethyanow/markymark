@@ -6,8 +6,6 @@ use std::sync::Arc;
 use std::sync::RwLock;
 
 use anyhow::bail;
-#[cfg(feature = "semantic-search")]
-use markymark_core::engine::SemanticSearchMatch;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 #[cfg(feature = "semantic-search")]
 use markymark_core::prelude::{EmbedError, EmbeddingProvider};
@@ -278,26 +276,86 @@ impl CoreEngine for RuntimeEngine {
                 min_score,
             } => {
                 let realm_name = realm.unwrap_or_else(|| DEFAULT_REALM.to_string());
-                let state = self.state.read().expect("lock poisoned");
-                let realm_data = match state.get(&realm_name) {
-                    Some(data) => data,
-                    None => {
+
+                // Validate realm existence regardless of semantic-search feature flag,
+                // so that non-existent realm errors are consistent across feature configs.
+                {
+                    let state = self.state.read().expect("lock poisoned");
+                    if !state.contains_key(&realm_name) {
                         return CoreOperationResult::Error(CoreError::Message(format!(
                             "realm does not exist: {realm_name}"
                         )));
                     }
-                };
+                }
 
                 #[cfg(not(feature = "semantic-search"))]
                 {
-                    let _ = (realm_data, query, top_k, min_score);
+                    let _ = (realm_name, query, top_k, min_score);
                     CoreOperationResult::Error(CoreError::NotImplemented(
                         "semantic-search feature is not enabled for markymark-mcp".to_string(),
                     ))
                 }
 
                 #[cfg(feature = "semantic-search")]
-                search::handle_semantic_search(&realm_data.index, query, top_k, min_score)
+                {
+                    // Early validation: reject empty query before touching the lock.
+                    if query.trim().is_empty() {
+                        return CoreOperationResult::Error(CoreError::Message(
+                            "semantic query cannot be empty".to_string(),
+                        ));
+                    }
+
+                    // Phase 1: Clone the embedding provider while holding the read lock,
+                    // then drop the lock before the expensive embed step.
+                    let provider = {
+                        let state = self.state.read().expect("lock poisoned");
+                        // Realm was validated above; a missing entry here means a concurrent
+                        // remove raced with this operation — return the standard error.
+                        let realm_data = match state.get(&realm_name) {
+                            Some(data) => data,
+                            None => {
+                                return CoreOperationResult::Error(CoreError::Message(format!(
+                                    "realm does not exist: {realm_name}"
+                                )));
+                            }
+                        };
+                        realm_data.index.embedding_provider()
+                    };
+                    // read lock is released here
+
+                    // Phase 2: Embed the query outside the lock (slow: network / ONNX).
+                    let query_embedding = match provider {
+                        Some(p) => match p.embed(&query) {
+                            Ok(emb) => emb,
+                            Err(err) => {
+                                return CoreOperationResult::Error(CoreError::Message(format!(
+                                    "semantic search failed: {err}"
+                                )));
+                            }
+                        },
+                        None => {
+                            return search::handle_semantic_search_not_configured();
+                        }
+                    };
+
+                    // Phase 3: In-memory index search inside the read lock (fast).
+                    let state = self.state.read().expect("lock poisoned");
+                    let realm_data = match state.get(&realm_name) {
+                        Some(data) => data,
+                        None => {
+                            return CoreOperationResult::Error(CoreError::Message(format!(
+                                "realm does not exist: {realm_name}"
+                            )));
+                        }
+                    };
+                    search::handle_semantic_search_with_embedding(
+                        &realm_data.index,
+                        query,
+                        &query_embedding,
+                        top_k,
+                        min_score,
+                    )
+                }
             }
             CoreOperation::FindReferences {
                 uri,

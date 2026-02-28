@@ -129,29 +129,11 @@ pub(crate) fn handle_search_symbols(realm: &RealmIndex, query: String) -> CoreOp
     CoreOperationResult::Symbols(matches)
 }
 
+/// Map a slice of [`markymark_index::SearchResult`] into [`CoreOperationResult::SemanticMatches`].
 #[cfg(feature = "semantic-search")]
-pub(crate) fn handle_semantic_search(
-    realm: &RealmIndex,
-    query: String,
-    top_k: u32,
-    min_score: f32,
+fn to_semantic_matches(
+    results: Vec<markymark_index::SearchResult>,
 ) -> CoreOperationResult {
-    let query = query.trim().to_string();
-    if query.is_empty() {
-        return CoreOperationResult::Error(CoreError::Message(
-            "semantic query cannot be empty".to_string(),
-        ));
-    }
-
-    let results = match realm.semantic_search(&query, top_k, min_score.clamp(0.0, 1.0)) {
-        Ok(results) => results,
-        Err(err) => {
-            return CoreOperationResult::Error(CoreError::Message(format!(
-                "semantic search failed: {err}"
-            )));
-        }
-    };
-
     CoreOperationResult::SemanticMatches(
         results
             .into_iter()
@@ -172,6 +154,47 @@ pub(crate) fn handle_semantic_search(
             })
             .collect(),
     )
+}
+
+/// Return a result indicating semantic search is not configured for the realm.
+#[cfg(feature = "semantic-search")]
+pub(crate) fn handle_semantic_search_not_configured() -> CoreOperationResult {
+    CoreOperationResult::SemanticMatches(Vec::new())
+}
+
+/// Search using a pre-computed query embedding (fast, in-memory only).
+///
+/// The caller is responsible for embedding the query outside any coarse lock.
+/// Validates the query string before searching.
+#[cfg(feature = "semantic-search")]
+pub(crate) fn handle_semantic_search_with_embedding(
+    realm: &RealmIndex,
+    query: String,
+    query_embedding: &[f32],
+    top_k: u32,
+    min_score: f32,
+) -> CoreOperationResult {
+    let query = query.trim().to_string();
+    if query.is_empty() {
+        return CoreOperationResult::Error(CoreError::Message(
+            "semantic query cannot be empty".to_string(),
+        ));
+    }
+
+    let results = match realm.semantic_search_with_embedding(
+        query_embedding,
+        top_k,
+        min_score.clamp(0.0, 1.0),
+    ) {
+        Ok(results) => results,
+        Err(err) => {
+            return CoreOperationResult::Error(CoreError::Message(format!(
+                "semantic search failed: {err}"
+            )));
+        }
+    };
+
+    to_semantic_matches(results)
 }
 
 #[cfg(test)]

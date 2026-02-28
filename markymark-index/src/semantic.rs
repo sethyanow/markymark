@@ -171,10 +171,39 @@ impl SemanticIndex {
         self.doc_token_sets.remove(uri);
     }
 
+    /// Get a clone of the embedding provider.
+    ///
+    /// Callers that care about lock contention should clone the provider,
+    /// call [`EmbeddingProvider::embed`] outside any lock, then call
+    /// [`search_with_embedding`](Self::search_with_embedding) inside the lock.
+    pub fn provider(&self) -> Arc<dyn EmbeddingProvider> {
+        self.provider.clone()
+    }
+
     /// Run semantic search over indexed entries.
+    ///
+    /// This embeds `query` via the provider and then performs the in-memory
+    /// index search. If the caller holds a coarse lock (e.g., an `RwLock`
+    /// over the whole realm), consider using [`provider`](Self::provider) +
+    /// [`search_with_embedding`](Self::search_with_embedding) instead to avoid
+    /// holding the lock during the expensive embed step.
     pub fn search(
         &self,
         query: &str,
+        top_k: u32,
+        min_score: f32,
+    ) -> Result<Vec<SearchResult>, EmbedError> {
+        let query_embedding = self.provider.embed(query)?;
+        self.search_with_embedding(&query_embedding, top_k, min_score)
+    }
+
+    /// Search the index with a pre-computed query embedding (fast, in-memory only).
+    ///
+    /// Use this when the caller embeds the query outside any lock to avoid
+    /// serializing concurrent searches across the slow embed I/O step.
+    pub fn search_with_embedding(
+        &self,
+        query_embedding: &[f32],
         top_k: u32,
         min_score: f32,
     ) -> Result<Vec<SearchResult>, EmbedError> {
@@ -182,13 +211,11 @@ impl SemanticIndex {
             return Ok(Vec::new());
         }
 
-        let query_embedding = self.provider.embed(query)?;
         let score_floor = min_score.clamp(0.0, 1.0);
-
         let fetch_k = compute_fetch_k(self.index.count(), self.entries_by_id.len() as u32, top_k);
         let raw = self
             .index
-            .search(&query_embedding, fetch_k)
+            .search(query_embedding, fetch_k)
             .map_err(|e| EmbedError::InternalError(e.to_string()))?;
 
         let mut out = Vec::new();

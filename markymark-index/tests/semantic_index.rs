@@ -229,3 +229,124 @@ fn test_realm_semantic_search_integration() {
     assert!(!results.is_empty());
     assert_eq!(results[0].doc_uri, rust_uri);
 }
+
+// --- Two-phase search_with_embedding tests (marky-qgg1 fix) ---
+
+#[test]
+fn test_search_with_embedding_matches_search() {
+    // Verify search_with_embedding produces identical results to search() for the
+    // same query, confirming the two-phase split doesn't change behaviour.
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(KeywordEmbeddingProvider);
+    let mut index = SemanticIndex::new(Arc::clone(&provider)).expect("init");
+
+    index
+        .add_document(
+            uri("rust.md"),
+            &index_from("# Rust SIMD\n\nFast vectorized scanning."),
+        )
+        .expect("add rust");
+    index
+        .add_document(
+            uri("graph.md"),
+            &index_from("# Link Graph\n\nGraph based backlink traversal."),
+        )
+        .expect("add graph");
+
+    let query = "rust simd";
+    let embedding = provider.embed(query).expect("embed");
+
+    let via_search = index
+        .search(query, 5, 0.0)
+        .expect("search should succeed");
+    let via_embedding = index
+        .search_with_embedding(&embedding, 5, 0.0)
+        .expect("search_with_embedding should succeed");
+
+    assert_eq!(
+        via_search.len(),
+        via_embedding.len(),
+        "result counts must match"
+    );
+    for (a, b) in via_search.iter().zip(via_embedding.iter()) {
+        assert_eq!(a.doc_uri, b.doc_uri, "doc_uris must match");
+        assert_eq!(a.heading, b.heading, "headings must match");
+    }
+}
+
+#[test]
+fn test_provider_accessor_returns_cloneable_provider() {
+    // Verify provider() returns a usable Arc clone for the two-phase pattern.
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(KeywordEmbeddingProvider);
+    let index = SemanticIndex::new(Arc::clone(&provider)).expect("init");
+
+    let cloned = index.provider();
+    // The cloned provider should be callable and produce the same embeddings.
+    let emb_original = provider.embed("rust simd").expect("embed original");
+    let emb_cloned = cloned.embed("rust simd").expect("embed cloned");
+    assert_eq!(
+        emb_original, emb_cloned,
+        "cloned provider must produce identical embeddings"
+    );
+}
+
+#[test]
+fn test_search_with_embedding_empty_index_returns_empty() {
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(KeywordEmbeddingProvider);
+    let index = SemanticIndex::new(provider.clone()).expect("init");
+
+    let embedding = provider.embed("rust").expect("embed");
+    let results = index
+        .search_with_embedding(&embedding, 5, 0.0)
+        .expect("search on empty index should succeed");
+    assert!(results.is_empty());
+}
+
+#[test]
+fn test_realm_embedding_provider_and_search_with_embedding() {
+    // Verify the two-phase realm API works end-to-end.
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(KeywordEmbeddingProvider);
+    let mut realm = RealmIndex::new_with_embeddings(provider).expect("realm with embeddings");
+
+    let rust_uri = uri("rust-notes.md");
+    realm.add_document(
+        rust_uri.clone(),
+        index_from("# Rust Notes\n\nSemantic search via embeddings"),
+    );
+
+    // Phase 1: get provider outside the lock.
+    let p = realm
+        .embedding_provider()
+        .expect("embedding provider should be configured");
+
+    // Phase 2: embed outside the lock.
+    let embedding = p.embed("rust").expect("embed");
+
+    // Phase 3: search inside the lock with pre-computed embedding.
+    let results = realm
+        .semantic_search_with_embedding(&embedding, 3, 0.0)
+        .expect("search_with_embedding should succeed");
+
+    assert!(!results.is_empty());
+    assert_eq!(results[0].doc_uri, rust_uri);
+}
+
+#[test]
+fn test_realm_embedding_provider_none_when_no_embeddings() {
+    // When embeddings are not configured, embedding_provider() returns None.
+    let realm = RealmIndex::new();
+    assert!(
+        realm.embedding_provider().is_none(),
+        "no provider when embeddings not configured"
+    );
+}
+
+#[test]
+fn test_realm_semantic_search_with_embedding_none_returns_empty() {
+    // When embeddings are not configured, search_with_embedding returns empty.
+    let realm = RealmIndex::new();
+    let embedding = vec![1.0_f32; 5];
+    let results = realm
+        .semantic_search_with_embedding(&embedding, 5, 0.0)
+        .expect("should succeed with no semantic index");
+    assert!(results.is_empty());
+}

@@ -25,6 +25,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 self_cell = { workspace = true }
 lasso = "0.7.3"
+log = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

@@ -792,9 +792,24 @@ impl RealmIndex {
         }
     }
 
+    /// Return a clone of the embedding provider, if one is configured.
+    ///
+    /// Callers that hold a coarse read lock over this realm can use this to
+    /// clone the provider, drop the lock, run the expensive embed step, then
+    /// re-acquire the lock and call
+    /// [`semantic_search_with_embedding`](Self::semantic_search_with_embedding).
+    #[cfg(feature = "embeddings")]
+    pub fn embedding_provider(&self) -> Option<Arc<dyn EmbeddingProvider>> {
+        self.semantic_index.as_ref().map(|idx| idx.provider())
+    }
+
     /// Run semantic search if embeddings are enabled.
     ///
     /// Returns an empty vector when semantic indexing is not configured.
+    ///
+    /// If the caller holds a coarse lock, prefer the two-phase approach:
+    /// [`embedding_provider`](Self::embedding_provider) + embed outside the lock +
+    /// [`semantic_search_with_embedding`](Self::semantic_search_with_embedding).
     #[cfg(feature = "embeddings")]
     pub fn semantic_search(
         &self,
@@ -804,6 +819,24 @@ impl RealmIndex {
     ) -> Result<Vec<SearchResult>, EmbedError> {
         match &self.semantic_index {
             Some(index) => index.search(query, top_k, min_score),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    /// Search the semantic index with a pre-computed query embedding (fast, in-memory).
+    ///
+    /// Returns an empty vector when semantic indexing is not configured.
+    /// Use together with [`embedding_provider`](Self::embedding_provider) to
+    /// embed outside a coarse lock and search inside it.
+    #[cfg(feature = "embeddings")]
+    pub fn semantic_search_with_embedding(
+        &self,
+        query_embedding: &[f32],
+        top_k: u32,
+        min_score: f32,
+    ) -> Result<Vec<SearchResult>, EmbedError> {
+        match &self.semantic_index {
+            Some(index) => index.search_with_embedding(query_embedding, top_k, min_score),
             None => Ok(Vec::new()),
         }
     }
