@@ -36,6 +36,32 @@ This keeps Send/Sync constraints manageable.
 Key strength: decision trees for procedural knowledge (closures, errors, Send/Sync, etc.).
 Known issue: XML tag false positives in code blocks (marky-8la).
 
+### Zig Agent Docs: Needs Curation (2026-02-26)
+
+37 files, 100% orphan rate (zero cross-links). Quick Navigation uses backtick paths instead
+of markdown links — markymark graph sees no connections. 10 mistakes tracked (vs 18 in Rust).
+Two separate doc directories exist: `zig_agent_docs/` (concepts/patterns/checklists) and
+`modules/zig/` (stdlib APIs, installation, langref). Complementary with 5 overlap areas.
+Curation tracked in marky-u2mb (child of marky-b9o4).
+
+### Layered Retrieval Vision (Epic marky-b9o4, 2026-02-26)
+
+Five-layer architecture: L0 ambient docs_index (preserved, auto-generated), L1 smart retrieval
+(recommend-docs MCP tool), L2 write-back curation loop, L3 multi-project federation,
+L4 memory integration (MEMORY.md + beads in search surface). Key constraint: docs_index pattern
+stays because it ramrods symbols into agent instructions at zero latency — everything builds
+on top. Related: marky-mkr, marky-y4be, marky-c9wi.
+
+### Tree Intelligence Sub-Epic (marky-d21j, child of marky-b9o4, 2026-02-26)
+
+PageIndex-style hierarchical retrieval. Three phases: (1) expose existing OutlineNode as
+hierarchical JSON via get-outline format=tree + include_text params, (2) optional LLM enrichment
+with per-node summaries stored in configurable sidecar `.markymark/` JSON files with content-hash
+invalidation, (3) tree-based workspace search composing graph-analysis + tree navigation.
+Inference provider abstracted behind trait — implementations via Anthropic/OpenAI Agent SDKs
+for sub-based personal use. First task: marky-bgtt (Phase 1 tree export). Research via DeepWiki
+at VectifyAI/PageIndex.
+
 ### Known Bugs
 
 #### Zig 0.15.2 archive format incompatibility with rust-lld (RESOLVED, 2026-02-24)

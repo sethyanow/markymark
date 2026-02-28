@@ -149,6 +149,7 @@ has caused real bugs, wasted work, or merge conflicts.
 | 8 | **Commit Cargo.lock with version bumps** | After editing `Cargo.toml` workspace version, run `cargo build` to regenerate `Cargo.lock`, then commit both together. Forgetting this caused a fixup commit during v0.4.2 (324f744). Use the `prepare-release` skill to avoid this. |
 | 9 | **LSP-first: no unbounded Read on code files >100 lines** | Use `LSP documentSymbol` first, then `Read` with `offset`+`limit`. A PreToolUse hook warns on violations. Full-file reads on .rs/.zig waste 5-25k tokens per file. |
 | 10 | **ONE task per session turn — no autonomous chaining** | After completing a task, STOP and report to user. Do not chain into the next task without explicit approval. After 2+ commits in a session, pause before starting more. Never start a destructive refactor (file split) near context limits — incomplete splits break the build. |
+| 11 | **Use DeepWiki for GitHub repo research** | Use the `deepwiki` MCP tools (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) to research external GitHub repos instead of spawning internet-researcher agents or WebFetch to scrape GitHub directly. DeepWiki is indexed and token-efficient. Case-sensitive repo names (e.g., `VectifyAI/PageIndex` not `vectifyai/pageindex`). |
 
 ## Landing the Plane (Session Completion)
 
