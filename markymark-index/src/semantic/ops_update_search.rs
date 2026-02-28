@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::DocumentIndex;
@@ -27,6 +27,10 @@ impl SemanticIndex {
             return self.add_document(uri, index).await;
         };
 
+        // Seed reserved_ids with all existing IDs to prevent collision when
+        // new headings share a slug with reused or previously-assigned IDs.
+        let mut reserved_ids: HashSet<String> = old_ids.iter().cloned().collect();
+
         // Build map: heading_text → Vec<(entry_id, SemanticEntry)> from old entries.
         let mut old_by_text: HashMap<String, Vec<(String, SemanticEntry)>> = HashMap::new();
         for id in &old_ids {
@@ -43,7 +47,7 @@ impl SemanticIndex {
             let fb = fallback_heading(&uri);
             vec![(fb, 1u8, Position::new(0, 0), Position::new(0, 0), true)]
         } else {
-            index
+            let filtered: Vec<_> = index
                 .headings()
                 .iter()
                 .filter(|h| !h.text.trim().is_empty())
@@ -56,7 +60,14 @@ impl SemanticIndex {
                         false,
                     )
                 })
-                .collect()
+                .collect();
+            // Fallback: all headings were blank/whitespace — treat like no headings.
+            if filtered.is_empty() {
+                let fb = fallback_heading(&uri);
+                vec![(fb, 1u8, Position::new(0, 0), Position::new(0, 0), true)]
+            } else {
+                filtered
+            }
         };
 
         // Check if old entries were a fallback.
@@ -115,6 +126,7 @@ impl SemanticIndex {
                 // Reuse existing entry — keep OLD ID so the Zig vector remains
                 // searchable, update metadata only, no re-embed.
                 *consumed_idx += 1;
+                reserved_ids.insert(old_id.clone());
 
                 staged_entries.push((
                     old_id.clone(),
@@ -140,8 +152,14 @@ impl SemanticIndex {
                         .find(|h| h.text == *text && h.range.start == *start)
                         .map(|h| h.slug)
                         .unwrap_or("unknown");
-                    let idx = new_ids.len();
-                    format!("{}#{}#{idx}", uri.as_str(), slug)
+                    let mut idx = new_ids.len();
+                    loop {
+                        let candidate = format!("{}#{}#{idx}", uri.as_str(), slug);
+                        if reserved_ids.insert(candidate.clone()) {
+                            break candidate;
+                        }
+                        idx += 1;
+                    }
                 };
 
                 staged_zig_adds.push((id.clone(), embedding));
