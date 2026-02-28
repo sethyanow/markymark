@@ -17,13 +17,12 @@ Detailed patterns live in topic files. Historical context lives in the archive.
 
 ### Active Work
 
-- **PR #48** (dev → main): v0.7.0 release. Review triage round 5 complete. P1/P2 epic
-  (marky-mwss) closed — all 3 fixes landed:
-  - **marky-a2m7** (P1): AddRoot race → batch semantic + removal safety net (`334d736`)
-  - **marky-qgg1** (P2): Mutex split → 3-phase search (embed outside lock) (`479669d`)
-  - **marky-6ri3** (P2): Atomic add_document → snapshot-then-rollback (`3cb8b6d`)
-- **P3 bugs remaining**: marky-ce9o (ID collision), marky-6pap (blank headings),
-  marky-qmpo (u64→u32 truncation). SRE-reviewed designs ready to implement.
+- **PR #48** (dev → main): v0.7.0 release. All review findings resolved:
+  - P1/P2 epic (marky-mwss): 3 fixes (`334d736`, `479669d`, `3cb8b6d`)
+  - P3 bugs: 3 fixes (`8f1329b`) — ID collision, blank headings, u64 truncation
+  - P3-P4 polish (marky-pk7p): 4 doc/comment fixes (`9a55f0d`)
+  - CI blocker: cargo fmt (`06c3aa3`)
+  - Ready for human review and merge.
 
 ### Rust Agent Docs: Grade A (2026-02-15)
 
