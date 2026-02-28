@@ -67,4 +67,4 @@ The tests build with these Cargo features:
 
 - **Local test hangs on first run**: The model (~23MB) is downloading. Subsequent runs are fast.
 - **Voyage test skipped**: Set `VOYAGE_API_KEY` in env or `.env` file.
-- **Build errors**: Ensure you're on the `feature-embeddings` branch or have the semantic search code merged.
+- **Build errors**: Ensure you have the semantic search code merged into your current branch.

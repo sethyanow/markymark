@@ -8,7 +8,24 @@ Completed work details live in git history, not here.
 
 ---
 
-## Current State (2026-02-26)
+## Current State (2026-02-27)
+
+### Pre-PR Review Triage Round 4 (2026-02-27)
+
+3 findings from Codex + CodeRabbit pre-PR notes. **1 dismissed**, **2 valid**:
+
+| Bead | P | Finding |
+|------|---|---------|
+| marky-mgfh | P1 | AddRoot Phase 4 race: inserts docs after concurrent RemoveRoot removed the root (engine/mod.rs:496-510) |
+| marky-nhi0 | P4 | Stale `feature-embeddings` branch ref in scripts/README.md:70 |
+| — | — | **DISMISSED**: Zig index partial add in update_document — already tracked/risk-accepted in marky-y2ne |
+
+**Pattern learned:** CodeRabbit re-flagged the Zig partial add issue that was already analyzed and
+risk-accepted in marky-y2ne. Cross-reference closed beads before creating new ones for recurring patterns.
+
+---
+
+## Prior State (2026-02-26)
 
 ### PR #46 (feature-embeddings) — Review Triage Round 2
 
@@ -302,6 +319,24 @@ in Rust. Net -2,839 lines. The decisions below are historical context only.
 - **No `blocking_lock()` in async call chains** (marky-wnjk, 2026-02-26). `RealmIndex::remove_document`
   and `detect_semantic_duplicates` are async and must use `lock().await`; calling
   `blocking_lock()` from Tokio runtime paths panics ("Cannot block the current thread...").
+
+### Feature Flag Strategy (2026-02-27)
+
+- **Feature flags are distribution-target profiles, not end-user choices.** The `semantic-search`
+  and `local-embeddings` flags exist so each distribution channel gets the right dependency set:
+  - **Library reuse** (other projects importing markymark crates): no flags, slim deps (33 crates, 4.8 MB)
+  - **CLI/LSP power users**: default build, fast markdown tooling without semantic overhead
+  - **Editor plugins** (Obsidian, VS Code, etc.): `semantic-search` + optionally `local-embeddings`,
+    hardcoded in each plugin's build config. End users never see feature flags.
+- **Measured binary impact** (release, 2026-02-27):
+  - `semantic-search` adds reqwest/TLS: +1.7 MB, +196 deps
+  - `local-embeddings` adds fastembed/ONNX: +17.5 MB more, +236 deps, +100 MB runtime model
+- **Do NOT fold `semantic-search` into default.** Keeping core slim has real value for library
+  consumers and fast iteration without tripping over HTTP/TLS deps.
+- **Future: multi-provider support.** Voyage is the only embedding provider today. Later releases
+  need to support additional providers (OpenAI, Cohere, local-only, etc.). The `EmbeddingProvider`
+  trait in markymark-core is the extension point. Provider selection will be runtime config, not
+  compile-time flags.
 
 ### Build & CI
 
