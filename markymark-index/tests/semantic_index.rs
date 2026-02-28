@@ -192,9 +192,11 @@ async fn test_add_document_failure_does_not_leave_partial_entries() {
         0,
         "failed add_document should not commit partial semantic entries",
     );
+    // Use search_with_embedding to bypass the broken provider — we only want
+    // to verify no stale entries leaked into the index.
+    let dummy_embedding = vec![1.0_f32; 5];
     let results = index
-        .search("first", 10, 0.0)
-        .await
+        .search_with_embedding(&dummy_embedding, 10, 0.0)
         .expect("search after failed add_document should succeed");
     assert!(
         results.is_empty(),
@@ -247,4 +249,139 @@ async fn test_realm_semantic_search_integration() {
 
     assert!(!results.is_empty());
     assert_eq!(results[0].doc_uri, rust_uri);
+}
+
+// --- Two-phase search_with_embedding tests (marky-qgg1 fix) ---
+
+#[tokio::test]
+async fn test_search_with_embedding_matches_search() {
+    // Verify search_with_embedding produces identical results to search() for the
+    // same query, confirming the two-phase split doesn't change behaviour.
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(KeywordEmbeddingProvider);
+    let mut index = SemanticIndex::new(Arc::clone(&provider)).expect("init");
+
+    index
+        .add_document(
+            uri("rust.md"),
+            &index_from("# Rust SIMD\n\nFast vectorized scanning."),
+        )
+        .await
+        .expect("add rust");
+    index
+        .add_document(
+            uri("graph.md"),
+            &index_from("# Link Graph\n\nGraph based backlink traversal."),
+        )
+        .await
+        .expect("add graph");
+
+    let query = "rust simd";
+    let embedding = provider.embed(query).await.expect("embed");
+
+    let via_search = index
+        .search(query, 5, 0.0)
+        .await
+        .expect("search should succeed");
+    let via_embedding = index
+        .search_with_embedding(&embedding, 5, 0.0)
+        .expect("search_with_embedding should succeed");
+
+    assert_eq!(
+        via_search.len(),
+        via_embedding.len(),
+        "result counts must match"
+    );
+    for (a, b) in via_search.iter().zip(via_embedding.iter()) {
+        assert_eq!(a.doc_uri, b.doc_uri, "doc_uris must match");
+        assert_eq!(a.heading, b.heading, "headings must match");
+    }
+}
+
+#[tokio::test]
+async fn test_provider_accessor_returns_cloneable_provider() {
+    // Verify provider() returns a usable Arc clone for the two-phase pattern.
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(KeywordEmbeddingProvider);
+    let index = SemanticIndex::new(Arc::clone(&provider)).expect("init");
+
+    let cloned = index.provider();
+    // The cloned provider should be callable and produce the same embeddings.
+    let emb_original = provider.embed("rust simd").await.expect("embed original");
+    let emb_cloned = cloned.embed("rust simd").await.expect("embed cloned");
+    assert_eq!(
+        emb_original, emb_cloned,
+        "cloned provider must produce identical embeddings"
+    );
+}
+
+#[test]
+fn test_search_with_embedding_empty_index_returns_empty() {
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(KeywordEmbeddingProvider);
+    let index = SemanticIndex::new(provider.clone()).expect("init");
+
+    // Use a zeroed embedding since no docs are indexed.
+    let embedding = vec![0.0_f32; 5];
+    let results = index
+        .search_with_embedding(&embedding, 5, 0.0)
+        .expect("search on empty index should succeed");
+    assert!(results.is_empty());
+}
+
+#[tokio::test]
+async fn test_realm_two_phase_semantic_search() {
+    // Verify the two-phase realm API works end-to-end via semantic_index_arc().
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(KeywordEmbeddingProvider);
+    let mut realm = RealmIndex::new_with_embeddings(provider).expect("realm with embeddings");
+
+    let rust_uri = uri("rust-notes.md");
+    realm
+        .add_document(
+            rust_uri.clone(),
+            index_from("# Rust Notes\n\nSemantic search via embeddings"),
+        )
+        .await;
+
+    // Phase 1: get the semantic index Arc.
+    let sem_arc = realm
+        .semantic_index_arc()
+        .expect("semantic index should be configured");
+
+    // Phase 2: lock briefly to get provider, then embed outside the lock.
+    let embedding = {
+        let guard = sem_arc.lock().await;
+        let p = guard.provider();
+        drop(guard); // release lock before embed
+        p.embed("rust").await.expect("embed")
+    };
+
+    // Phase 3: search inside the lock with pre-computed embedding.
+    let results = {
+        let guard = sem_arc.lock().await;
+        guard
+            .search_with_embedding(&embedding, 3, 0.0)
+            .expect("search_with_embedding should succeed")
+    };
+
+    assert!(!results.is_empty());
+    assert_eq!(results[0].doc_uri, rust_uri);
+}
+
+#[test]
+fn test_realm_semantic_index_arc_none_when_no_embeddings() {
+    // When embeddings are not configured, semantic_index_arc() returns None.
+    let realm = RealmIndex::new();
+    assert!(
+        realm.semantic_index_arc().is_none(),
+        "no arc when embeddings not configured"
+    );
+}
+
+#[test]
+fn test_search_with_embedding_zero_top_k_returns_empty() {
+    let provider: Arc<dyn EmbeddingProvider> = Arc::new(KeywordEmbeddingProvider);
+    let index = SemanticIndex::new(provider).expect("init");
+    let embedding = vec![0.0_f32; 5];
+    let results = index
+        .search_with_embedding(&embedding, 0, 0.0)
+        .expect("zero top_k should succeed");
+    assert!(results.is_empty());
 }
