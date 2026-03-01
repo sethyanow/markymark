@@ -61,7 +61,7 @@ Source code is available at
 
 See the [contributing guide](/contributing/development/) for build setup,
 testing, and code style. The project uses Rust with a Zig FFI layer for parsing and extraction.
-You'll need Rust 1.80+, Zig 0.15, and cargo-nextest.
+You'll need Rust 1.80+, Zig 0.15.2+, and cargo-nextest.
 
 Bug reports and feature requests go to
 [GitHub Issues](https://github.com/sethyanow/markymark/issues).

@@ -56,16 +56,16 @@ your realm's roots with `realm-stats`.
 
 **Compilation errors when running `cargo build`.**
 
-markymark requires both Rust (1.80+) and Zig (0.15) toolchains. The Zig
+markymark requires both Rust (1.80+) and Zig (0.15.2+) toolchains. The Zig
 toolchain compiles the Zig FFI layer during the Rust build.
 
 ```bash
 rustc --version   # needs 1.80+
-zig version       # needs 0.15
+zig version       # needs 0.15.2+
 ```
 
 If Zig is missing or the wrong version, the build fails during the
-`markymark-kernels` crate compilation. Install Zig 0.15 from
+`markymark-kernels` crate compilation. Install Zig 0.15.2+ from
 [ziglang.org/download](https://ziglang.org/download/).
 
 ## Performance on large workspaces
