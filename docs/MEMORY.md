@@ -24,11 +24,14 @@ Detailed patterns live in topic files. Historical context lives in the archive.
   - **marky-6ri3** (P2): Non-atomic add_document loses entries on embed failure
 - **marky-mgfh** (P1): AddRoot Phase 4 race condition — fixed in `334d736`
 
-### docs-site branch — merging dev, follow-ups remain
+### docs-site branch — PR #49 triage complete
 
-Epic marky-dhkn (docs-site for v0.6.0) reviewed and approved. Branch: `docs-site`.
-Remaining: marky-6yuk (terminology rename), marky-xclk (human review notes), marky-03m7 (dead extract/ cleanup).
-GitHub Pages deployment researched — see archive for details.
+PR #49 (docs-site → dev): 22 findings from Greptile, CodeRabbit, Copilot. Triage: 13 valid, 9 dismissed.
+All 7 code findings (extract/ regex bugs) dismissed — dead code not compiled, tracked by marky-03m7.
+Valid findings: marky-is7l (P2, wrong GitHub URL), marky-2pv6 (P3, Zig version consistency),
+marky-up8m (P3, MCP description), marky-qc4o (P3, README separator), marky-eg8z (P4, fence langs),
+marky-4da6 (P4, Markdown capitalization).
+Prior remaining: marky-6yuk (terminology rename), marky-xclk (human review notes), marky-03m7 (dead extract/ cleanup).
 
 ### Rust Agent Docs: Grade A (2026-02-15)
 
