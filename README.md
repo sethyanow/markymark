@@ -43,8 +43,7 @@ markymark is a seven-crate Rust workspace with a Zig FFI layer:
 cargo install markymark-cli
 ```
 
-Pre-built binaries: [GitHub Releases](https://github.com/sethyanow/markymark/releases)
-| Claude Code: [Plugin README](markymark-plugin/README.md)
+Pre-built binaries: [GitHub Releases](https://github.com/sethyanow/markymark/releases) · Claude Code: [Plugin README](markymark-plugin/README.md)
 
 ## Documentation
 
