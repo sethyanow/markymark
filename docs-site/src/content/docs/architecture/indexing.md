@@ -62,6 +62,20 @@ mutation needs it (`ensure_tags_clean()`). Read-only queries like `tag_counts()`
 compute tag data directly from contributions when dirty, avoiding mutation
 entirely.
 
+## SemanticIndex — embedding search
+
+`SemanticIndex` (in `markymark-mcp/src/engine/semantic/`) stores vector
+embeddings of document sections for relevance-ranked search. It is gated
+behind the `semantic-search` feature flag and supports two providers:
+
+- **Voyage API** — cloud embeddings via the Voyage REST endpoint
+- **Local ONNX** — offline embeddings via fastembed-rs
+
+Sections are embedded in batch when a workspace root is added via `add-root`,
+and re-embedded incrementally when documents change. The index uses
+snapshot-then-rollback for atomicity — if embedding fails mid-document, no
+partial entries are left behind.
+
 ## Cross-document resolution
 
 The resolution module (`markymark-index/src/resolution.rs`) resolves link targets:

@@ -26,7 +26,9 @@ partial names and abbreviations work.
 
 ## Semantic search
 
-Rank document sections by relevance to a natural-language query.
+Rank document sections by relevance to a natural-language query using vector
+embeddings. Sections are embedded when a workspace root is added and
+re-embedded incrementally when documents change.
 
 **With MCP:**
 
@@ -35,11 +37,17 @@ semantic-search: { "query": "how to configure SSL", "top_k": 5 }
 ```
 
 Returns the top matching sections with a relevance score, heading text, and a
-section preview. Use `top_k` to control how many results come back (default varies
-by configuration) and `min_score` to filter low-confidence matches.
+section preview. Use `top_k` to control how many results come back (default 10)
+and `min_score` to filter low-confidence matches (default 0.5).
 
-Semantic search is MCP-only — it is designed for agent workflows where ranking
-by relevance matters more than exact text matching.
+Semantic search is MCP-only — designed for agent workflows where ranking by
+meaning matters more than exact text matching. Two embedding providers are
+available:
+
+- **Voyage API** — cloud embeddings, enabled with the `semantic-search` feature flag
+  (requires `VOYAGE_API_KEY` environment variable)
+- **Local ONNX** — fully offline embeddings via fastembed, enabled with the
+  `local-embeddings` feature flag (downloads a ~23 MB model on first use)
 
 ## Full-text search
 

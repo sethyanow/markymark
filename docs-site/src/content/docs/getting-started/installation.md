@@ -27,6 +27,23 @@ cargo install markymark-cli
 This builds and installs the `markymark` binary to `~/.cargo/bin/`.
 To upgrade, run the same command again.
 
+### Optional feature flags
+
+Semantic search is not included in the default build. Enable it with feature flags:
+
+```bash
+# Cloud embeddings via Voyage API
+cargo install markymark-cli --features semantic-search
+
+# Offline embeddings via local ONNX model
+cargo install markymark-cli --features semantic-search,local-embeddings
+```
+
+| Flag | What it adds |
+|------|-------------|
+| `semantic-search` | Voyage API embedding provider and `semantic-search` MCP tool |
+| `local-embeddings` | Local ONNX model via fastembed (downloads ~23 MB on first use) |
+
 ## Pre-built binaries
 
 Download a binary for your platform from

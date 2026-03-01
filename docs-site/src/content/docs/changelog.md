@@ -5,6 +5,41 @@ description: Release history for markymark
 
 All notable changes to markymark are documented here. Each release links to the full diff on GitHub.
 
+## v0.7.0 (2026-02-28)
+
+Adds semantic search powered by vector embeddings, giving AI agents the ability to find relevant document sections by meaning rather than exact text. Supports both cloud (Voyage API) and fully local (ONNX via fastembed) embedding providers. Several concurrency fixes harden the MCP workspace management layer.
+
+### Features
+
+- **Semantic search** — new `semantic-search` MCP tool ranks document sections by relevance to natural-language queries, with `top_k` and `min_score` controls
+- **Voyage embedding provider** — cloud embeddings via the Voyage API, gated behind the `semantic-search` feature flag
+- **Local ONNX embeddings** — fully offline embeddings via fastembed-rs, gated behind the `local-embeddings` feature flag
+- **Batch embedding on startup** — workspace roots are embedded in batch during `add-root` indexing
+- **Incremental re-embedding** — `update_document()` re-embeds changed sections without full workspace reindex
+
+### Bug Fixes
+
+- Split semantic search into separate embed and query phases to reduce mutex serialization across concurrent searches
+- Snapshot-then-rollback for atomic `add_document` — embedding failures no longer leave partial entries in the semantic index
+- Clean up semantic entries on concurrent root removal
+- Prevent `add-root` reinsertion after concurrent `remove-root`
+- Release state write lock before `add-root` indexing to avoid blocking concurrent MCP requests
+- Release realm read lock before semantic search await to prevent deadlock
+
+### Refactoring
+
+- Semantic module extracted into directory with data types, helpers, add/remove operations, update/search operations, and tests as separate submodules
+- Engine tests split into 3 files to stay under 500-line threshold
+
+### Infrastructure
+
+- Embedding smoke test suite — local ONNX and Voyage provider test scripts with JSON-RPC assertions
+- Feature flag consolidation — `voyage` flag folded into `semantic-search`
+
+**Full diff:** [v0.6.0...v0.7.0](https://github.com/sethyanow/markymark/compare/v0.6.0...v0.7.0)
+
+---
+
 ## v0.6.0 (2026-02-25)
 
 Completes the extraction pipeline migration started in v0.5.0. All remaining symbol types — code spans, XML tags, tasks, embeds, callouts, block refs, link definitions, query blocks, and properties — are now extracted through the full Zig→FFI→Rust→LSP/MCP stack. The legacy regex-based Rust extractors have been removed; `zig-kernels` is now mandatory. The RealmIndex has been rebuilt as v2 with string interning and incremental document updates.

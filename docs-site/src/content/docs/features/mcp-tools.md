@@ -44,8 +44,10 @@ Fuzzy-match headings, tags, and code references by name across the workspace.
 
 ### semantic-search
 
-Rank document sections by relevance to a natural-language query. This tool is
-feature-gated and may not be available in all builds.
+Rank document sections by relevance to a natural-language query using vector
+embeddings. Requires the `semantic-search` feature flag (Voyage API) or
+`local-embeddings` (offline ONNX via fastembed). See
+[Installation](/getting-started/installation/) for build flags.
 
 | Param | Required | Default | Description |
 |-------|----------|---------|-------------|
