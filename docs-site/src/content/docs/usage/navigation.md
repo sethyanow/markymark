@@ -13,8 +13,9 @@ Hold Ctrl (Cmd on macOS) and click a wiki link like `[[notes]]` to jump to its
 target document. This also works for heading references like `[[notes#setup]]` and
 block IDs. If the target is in another file, markymark opens it at the right position.
 
-**With MCP:** The `find-references` tool resolves link targets. Combine it with
-`get-outline` to navigate document structure programmatically.
+**With MCP:** Use `go-to-definition` in your editor's LSP client to resolve link
+targets. For AI agents, combine `get-outline` with `search-symbols` to locate
+target documents programmatically.
 
 ## Find all references
 
