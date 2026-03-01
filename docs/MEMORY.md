@@ -24,6 +24,12 @@ Detailed patterns live in topic files. Historical context lives in the archive.
   - CI blocker: cargo fmt (`06c3aa3`)
   - Ready for human review and merge.
 
+### docs-site branch — merging dev, follow-ups remain
+
+Epic marky-dhkn (docs-site for v0.6.0) reviewed and approved. Branch: `docs-site`.
+Remaining: marky-6yuk (terminology rename), marky-xclk (human review notes), marky-03m7 (dead extract/ cleanup).
+GitHub Pages deployment researched — see archive for details.
+
 ### Rust Agent Docs: Grade A (2026-02-15)
 
 45 files, 6,443 lines. 14 decision trees. 18 mistakes tracked. All gaps closed.
@@ -89,6 +95,12 @@ persistent memory store.
 ### Dev workflow skill placed in plugin directory (fail-skill-location)
 
 Plugin skills are user-facing features. Dev workflow skills belong in `.claude/skills/`.
+
+### Agent searched filesystem for plugin skills (fail-plugin-skill-filesystem-search)
+
+Plugin skills (`hyperpowers:*`, `pensive:*`, `beads:*`, etc.) are served by the plugin
+system, not local files. The `Skill` tool invocation IS the loading mechanism. Never search
+`~/.claude/skills/` for plugin skill files — they don't exist on disk.
 
 ### CLAUDE.md crate table stale after adding crate (fail-stale-crate-table)
 
