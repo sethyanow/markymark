@@ -9,7 +9,7 @@ export default defineConfig({
 			title: 'markymark',
 			description: 'High-performance Markdown LSP and MCP server',
 			social: [
-				{ icon: 'github', label: 'GitHub', href: 'https://github.com/markymark-rs/markymark' },
+				{ icon: 'github', label: 'GitHub', href: 'https://github.com/sethyanow/markymark' },
 			],
 			sidebar: [
 				{ label: 'About', slug: 'about' },
