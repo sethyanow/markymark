@@ -31,13 +31,13 @@ link or rename a duplicate heading, the warning clears automatically.
 
 Check diagnostics for a single document:
 
-```
+```text
 get-diagnostics: { "uri": "file:///path/to/doc.md" }
 ```
 
 Check all documents in a realm:
 
-```
+```text
 get-diagnostics: { "realm": "my-docs" }
 ```
 

@@ -19,7 +19,7 @@ See [Claude Code setup](/editors/claude-code/) for installation,
 
 Create a realm and add your documentation root:
 
-```json
+```jsonc
 // create-realm
 { "name": "my-docs" }
 
@@ -73,7 +73,7 @@ tools alone — the sections below cover MCP-only workflows.
 Get the heading hierarchy for a single document, then search for symbols
 across the workspace:
 
-```json
+```jsonc
 // get-outline
 { "uri": "file:///path/to/docs/guide.md", "realm": "my-docs" }
 
@@ -90,7 +90,7 @@ Run diagnostics to surface broken links, duplicate headings, and unclosed
 XML tags. Then fix a heading with `rename`, which updates all references
 automatically:
 
-```json
+```jsonc
 // get-diagnostics
 { "realm": "my-docs" }
 
@@ -112,7 +112,7 @@ heading issue to batch-fix an entire workspace.
 Use `graph-analysis` to find orphaned documents, broken links, and
 hub pages with the most inbound links:
 
-```json
+```jsonc
 // graph-analysis
 { "realm": "my-docs", "include_clusters": true }
 ```

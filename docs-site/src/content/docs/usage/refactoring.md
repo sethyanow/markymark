@@ -32,7 +32,7 @@ to check whether a symbol supports renaming before starting.
 
 ## With MCP tools
 
-```
+```text
 rename: {
   "uri": "file:///path/to/doc.md",
   "line": 0,
