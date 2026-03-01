@@ -102,7 +102,7 @@ Focused improvements to the Zig md4c parsing pipeline and Rust error handling.
 
 ## v0.5.0 (2026-02-20)
 
-Replaces the tree-sitter incremental indexing pipeline with a new md4c-based DocumentEngine. The new pipeline vendors Bun's md4c Zig parser for single-pass markdown extraction, serializes results to a compact binary blob format, and crosses the FFI boundary into Rust — eliminating double-parse overhead.
+Replaces the tree-sitter incremental indexing pipeline with a new md4c-based DocumentEngine. The new pipeline vendors Bun's md4c Zig parser for single-pass Markdown extraction, serializes results to a compact binary blob format, and crosses the FFI boundary into Rust — eliminating double-parse overhead.
 
 ### Features
 
@@ -173,7 +173,7 @@ Replaces the tree-sitter incremental indexing pipeline with a new md4c-based Doc
 
 - Detect edits in large gaps between extractor entries during incremental indexing
 - Deduplicate link edges per document in graph analysis
-- Improve markdown link resolution with path-relative lookup
+- Improve Markdown link resolution with path-relative lookup
 
 **Full diff:** [v0.4.0...v0.4.1](https://github.com/sethyanow/markymark/compare/v0.4.0...v0.4.1)
 

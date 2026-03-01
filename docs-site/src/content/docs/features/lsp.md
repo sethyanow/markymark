@@ -11,10 +11,10 @@ dual-protocol workflow examples.
 
 ## Go to definition
 
-Jump to the target of a wiki link, markdown anchor, XML tag declaration, or
+Jump to the target of a wiki link, Markdown anchor, XML tag declaration, or
 structured document key. Works across files in the workspace.
 
-**Supported symbols:** wiki links, markdown heading anchors, XML tags, structured keys
+**Supported symbols:** wiki links, Markdown heading anchors, XML tags, structured keys
 
 ## Find references
 
@@ -35,7 +35,7 @@ Shows contextual information when you hover over a symbol:
 
 ## Document symbols
 
-Provides a hierarchical outline of the current file. For markdown, this includes
+Provides a hierarchical outline of the current file. For Markdown, this includes
 headings and XML tags in tree form. For structured documents (JSON, YAML, TOML,
 etc.), this shows the key hierarchy.
 
@@ -80,6 +80,6 @@ problems panel.
 
 **What's checked:**
 
-- Broken wiki links and markdown links (target not found)
+- Broken wiki links and Markdown links (target not found)
 - Duplicate heading text within the same file
 - Unclosed XML tags

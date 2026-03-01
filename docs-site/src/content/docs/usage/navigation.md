@@ -1,6 +1,6 @@
 ---
 title: Navigation
-description: Jump to definitions, follow links, and navigate across your markdown files
+description: Jump to definitions, follow links, and navigate across your Markdown files
 ---
 
 markymark lets you move between documents the same way a code editor jumps between
@@ -20,7 +20,7 @@ target documents programmatically.
 ## Find all references
 
 Right-click a heading and select **Find All References** to see every document that
-links to it — including wiki links, markdown links, and heading anchors. Results
+links to it — including wiki links, Markdown links, and heading anchors. Results
 appear in the references panel with file names and line numbers.
 
 **With MCP:**

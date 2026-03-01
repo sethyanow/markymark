@@ -1,6 +1,6 @@
 ---
 title: Claude Code
-description: Using the markymark Claude Code plugin for AI-assisted markdown workflows
+description: Using the markymark Claude Code plugin for AI-assisted Markdown workflows
 ---
 
 The Claude Code plugin gives you both editor-level LSP features (diagnostics,

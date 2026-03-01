@@ -1,9 +1,9 @@
 ---
 title: Supported Formats
-description: All file formats and markdown flavors supported by markymark
+description: All file formats and Markdown flavors supported by markymark
 ---
 
-markymark indexes more than plain markdown. Structured configuration files like
+markymark indexes more than plain Markdown. Structured configuration files like
 JSON, YAML, and TOML get document outlines, hover information, and symbol search —
 the same core intelligence applied to a different surface.
 
@@ -20,7 +20,7 @@ Markdown files are the primary format — every LSP and MCP capability is availa
 
 ### Extracted elements
 
-markymark extracts these elements from markdown during indexing:
+markymark extracts these elements from Markdown during indexing:
 
 | Element | Syntax | Notes |
 |---------|--------|-------|
@@ -61,12 +61,12 @@ do **not** support find-references or rename.
 
 - **Document symbols** — hierarchical key outline in your editor's symbol panel
 - **Hover** — shows the value kind (string, number, array, etc.) and full key path
-- **Workspace symbols** — keys are searchable alongside markdown headings
+- **Workspace symbols** — keys are searchable alongside Markdown headings
 
 ### What doesn't
 
 - **Find references** — not available for structured keys across files
 - **Rename** — not available for structured keys
-- **Diagnostics** — markdown-specific checks (broken links, duplicate headings) do
+- **Diagnostics** — Markdown-specific checks (broken links, duplicate headings) do
   not apply to structured formats
 - **Completion** — not available for structured formats

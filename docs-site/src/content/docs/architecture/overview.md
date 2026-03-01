@@ -13,7 +13,7 @@ sharing the same core indexing engine.
 |-------|------|
 | `markymark-kernels` | Zig FFI layer — md4c parser and SIMD-accelerated operations |
 | `markymark-core` | Shared types, traits, error handling, scanner interface |
-| `markymark-parser` | Tree-sitter-based markdown and structured format parsing |
+| `markymark-parser` | Tree-sitter-based Markdown and structured format parsing |
 | `markymark-index` | Document indexing, cross-reference resolution, diagnostics |
 | `markymark-lsp` | LSP server (tower-lsp) |
 | `markymark-mcp` | MCP server (rmcp) |
@@ -57,9 +57,9 @@ capability requires changes in one place, and both servers can expose it.
 `markymark-kernels` contains Zig source code compiled via `build.rs` into a static
 library linked at build time. The Zig code provides:
 
-- **md4c parser bindings** — a fast markdown parser (ported from Bun's Zig md4c
+- **md4c parser bindings** — a fast Markdown parser (ported from Bun's Zig md4c
   implementation) used as the primary parsing path for LSP operations
-- **Document Engine** — a stateful per-document Zig engine that parses markdown,
+- **Document Engine** — a stateful per-document Zig engine that parses Markdown,
   extracts symbols, and serializes results into a binary blob consumed by Rust via
   `DocumentIndex::from_blob()`
 - **SIMD-accelerated operations** — vectorized search and text processing routines

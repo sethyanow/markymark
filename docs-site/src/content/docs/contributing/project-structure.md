@@ -9,7 +9,7 @@ description: Tour of the markymark codebase — what lives where and why
 markymark/
 ├── markymark-cli/         # Binary entry point
 ├── markymark-core/        # Shared types and traits
-├── markymark-parser/      # Tree-sitter markdown parser
+├── markymark-parser/      # Tree-sitter Markdown parser
 ├── markymark-index/       # Document and realm indexing
 ├── markymark-lsp/         # LSP server
 ├── markymark-mcp/         # MCP server

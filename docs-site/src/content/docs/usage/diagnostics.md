@@ -1,6 +1,6 @@
 ---
 title: Diagnostics
-description: Detect broken links, duplicate headings, and other issues in your markdown files
+description: Detect broken links, duplicate headings, and other issues in your Markdown files
 ---
 
 markymark checks your documents for structural problems as you type. Issues appear
@@ -12,7 +12,7 @@ they reach readers.
 **Broken wiki links.** A link like `[[nonexistent]]` that points to a page or heading
 that doesn't exist in the workspace. Shown as a warning underline on the link text.
 
-**Broken heading anchors.** A markdown link like `[text](other.md#missing)` where the
+**Broken heading anchors.** A Markdown link like `[text](other.md#missing)` where the
 target heading doesn't exist in the referenced document.
 
 **Duplicate headings.** Two or more headings in the same file with identical text.
