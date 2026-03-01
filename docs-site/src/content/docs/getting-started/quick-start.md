@@ -62,27 +62,27 @@ Try these tools to get oriented:
 **Get a document outline.** Call `get-outline` with a document URI to see its
 heading structure:
 
-```
+```text
 get-outline: { "uri": "file:///path/to/README.md" }
 ```
 
 **Search across files.** Call `search-symbols` to find headings and tags by name:
 
-```
+```text
 search-symbols: { "query": "installation" }
 ```
 
 **Find cross-references.** Call `find-references` to see which documents link to
 a specific heading:
 
-```
+```text
 find-references: { "uri": "file:///path/to/doc.md", "line": 0, "character": 0 }
 ```
 
 **Check for problems.** Call `get-diagnostics` to detect broken links and
 duplicate headings:
 
-```
+```text
 get-diagnostics: { "uri": "file:///path/to/doc.md" }
 ```
 

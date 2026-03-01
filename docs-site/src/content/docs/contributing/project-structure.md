@@ -5,7 +5,7 @@ description: Tour of the markymark codebase — what lives where and why
 
 ## Top-level layout
 
-```
+```text
 markymark/
 ├── markymark-cli/         # Binary entry point
 ├── markymark-core/        # Shared types and traits

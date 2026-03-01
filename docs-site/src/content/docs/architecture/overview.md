@@ -21,7 +21,7 @@ sharing the same core indexing engine.
 
 ## Dependency layers
 
-```
+```text
                   markymark-cli
                   /            \
           markymark-lsp    markymark-mcp
