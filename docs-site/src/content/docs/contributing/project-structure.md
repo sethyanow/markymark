@@ -47,7 +47,7 @@ files under the 500-line threshold.
 | Module | Files | Contents |
 |--------|-------|----------|
 | `markymark-core/src/scanner/` | `mod.rs`, `types.rs`, `md4c.rs`, `tests.rs` | Scan-pass types and md4c scan backend |
-| `markymark-parser/src/extract/` | `mod.rs`, `frontmatter.rs`, `links.rs`, `tags.rs`, `tasks.rs`, `blocks.rs` | Tree-sitter element extraction by type |
+| `markymark-parser/src/extract/` | `mod.rs`, `frontmatter.rs` | Frontmatter/property extraction (content extraction handled by Zig) |
 | `markymark-index/src/document/from_blob/` | `mod.rs`, `header.rs`, `decode.rs`, `owned.rs`, `tests/` | Blob deserialization with v1/v2 backward compat |
 | `markymark-index/src/realm/` | `mod.rs`, `types.rs`, `helpers.rs`, `tests.rs` | RealmIndex v2 — interner, incremental updates, resolution |
 
