@@ -15,9 +15,9 @@ embeddings = ["dep:tokio"]
 
 [dependencies]
 async-trait = { workspace = true }
-markymark-core = { version = "0.7.0", path = "../markymark-core", features = ["zig-kernels"] }
-markymark-kernels = { version = "0.7.0", path = "../markymark-kernels" }
-markymark-parser = { version = "0.7.0", path = "../markymark-parser" }
+markymark-core = { version = "0.7.1", path = "../markymark-core", features = ["zig-kernels"] }
+markymark-kernels = { version = "0.7.1", path = "../markymark-kernels" }
+markymark-parser = { version = "0.7.1", path = "../markymark-parser" }
 petgraph = { workspace = true }
 bumpalo = { workspace = true }
 hashbrown = { workspace = true }

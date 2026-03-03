@@ -16,10 +16,10 @@ local-embeddings = ["markymark-core/local-embeddings"]
 
 [dependencies]
 async-trait = { workspace = true }
-markymark-core = { version = "0.7.0", path = "../markymark-core" }
-markymark-parser = { version = "0.7.0", path = "../markymark-parser" }
-markymark-index = { version = "0.7.0", path = "../markymark-index" }
-markymark-kernels = { version = "0.7.0", path = "../markymark-kernels" }
+markymark-core = { version = "0.7.1", path = "../markymark-core" }
+markymark-parser = { version = "0.7.1", path = "../markymark-parser" }
+markymark-index = { version = "0.7.1", path = "../markymark-index" }
+markymark-kernels = { version = "0.7.1", path = "../markymark-kernels" }
 rmcp = { workspace = true }
 regex = { workspace = true }
 tokio = { workspace = true }
