@@ -220,13 +220,20 @@ fn uri_to_title(uri: &DocumentUri) -> String {
 }
 
 /// Check whether a `FrontmatterValueEntry` contains a given lowercase substring.
-/// For list variants, any element matching is sufficient.
+/// For list/map variants, any element matching is sufficient.
 fn fm_value_contains(value: &FrontmatterValueEntry<'_>, needle: &str) -> bool {
     match value {
         FrontmatterValueEntry::String(s) => s.to_lowercase().contains(needle),
-        FrontmatterValueEntry::List(items) => items
+        FrontmatterValueEntry::Integer(n) => n.to_string().contains(needle),
+        FrontmatterValueEntry::Float(f) => f.to_string().contains(needle),
+        FrontmatterValueEntry::Boolean(b) => b.to_string().contains(needle),
+        FrontmatterValueEntry::List(items) => {
+            items.iter().any(|item| fm_value_contains(item, needle))
+        }
+        FrontmatterValueEntry::Map(entries) => entries
             .iter()
-            .any(|item| item.to_lowercase().contains(needle)),
+            .any(|(k, v)| k.to_lowercase().contains(needle) || fm_value_contains(v, needle)),
+        FrontmatterValueEntry::Null => false,
     }
 }
 
@@ -234,7 +241,18 @@ fn fm_value_contains(value: &FrontmatterValueEntry<'_>, needle: &str) -> bool {
 fn fm_value_to_string(value: &FrontmatterValueEntry<'_>) -> String {
     match value {
         FrontmatterValueEntry::String(s) => s.to_string(),
-        FrontmatterValueEntry::List(items) => items.join(", "),
+        FrontmatterValueEntry::Integer(n) => n.to_string(),
+        FrontmatterValueEntry::Float(f) => f.to_string(),
+        FrontmatterValueEntry::Boolean(b) => b.to_string(),
+        FrontmatterValueEntry::List(items) => {
+            items.iter().map(fm_value_to_string).collect::<Vec<_>>().join(", ")
+        }
+        FrontmatterValueEntry::Map(entries) => entries
+            .iter()
+            .map(|(k, v)| format!("{}: {}", k, fm_value_to_string(v)))
+            .collect::<Vec<_>>()
+            .join(", "),
+        FrontmatterValueEntry::Null => String::new(),
     }
 }
 

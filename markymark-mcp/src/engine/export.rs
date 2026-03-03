@@ -4,6 +4,25 @@ use markymark_core::engine::CoreOperationResult;
 use markymark_core::structured::DocumentKind;
 use markymark_core::{CoreError, DocumentUri};
 use markymark_index::document::{FrontmatterValueEntry, PropertyValueEntry};
+
+/// Convert a `FrontmatterValueEntry` to a `Vec<String>` for the wire DTO.
+fn fm_entry_to_strings(value: &FrontmatterValueEntry<'_>) -> Vec<String> {
+    match value {
+        FrontmatterValueEntry::String(s) => vec![s.to_string()],
+        FrontmatterValueEntry::Integer(n) => vec![n.to_string()],
+        FrontmatterValueEntry::Float(f) => vec![f.to_string()],
+        FrontmatterValueEntry::Boolean(b) => vec![b.to_string()],
+        FrontmatterValueEntry::List(items) => items.iter().flat_map(fm_entry_to_strings).collect(),
+        FrontmatterValueEntry::Map(entries) => entries
+            .iter()
+            .map(|(k, v)| {
+                let vs = fm_entry_to_strings(v).join(", ");
+                format!("{k}: {vs}")
+            })
+            .collect(),
+        FrontmatterValueEntry::Null => vec![String::new()],
+    }
+}
 use markymark_index::RealmIndex;
 
 pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri) -> CoreOperationResult {
@@ -43,12 +62,7 @@ pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri) -> Core
                 .frontmatter()
                 .iter()
                 .map(|e| {
-                    let values = match &e.value {
-                        FrontmatterValueEntry::String(s) => vec![s.to_string()],
-                        FrontmatterValueEntry::List(items) => {
-                            items.iter().map(|s| s.to_string()).collect()
-                        }
-                    };
+                    let values = fm_entry_to_strings(&e.value);
                     (e.key.to_string(), values)
                 })
                 .collect();

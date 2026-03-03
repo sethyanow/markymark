@@ -271,6 +271,93 @@ mod tests {
         assert!(extract_page_properties(&[], source, &arena).is_none());
     }
 
+    // ---- Typed frontmatter value parsing tests ----
+
+    #[test]
+    fn frontmatter_typed_integer() {
+        let arena = Bump::new();
+        let source = "---\npriority: 42\nnegative: -3\nzero: 0\n---\n";
+        let fm = extract_frontmatter(&[], source, &arena).unwrap();
+        assert_eq!(fm.get_integer("priority"), Some(42));
+        assert_eq!(fm.get_integer("negative"), Some(-3));
+        assert_eq!(fm.get_integer("zero"), Some(0));
+        // Integer keys should NOT be returned by get_string
+        assert!(fm.get_string("priority").is_none());
+    }
+
+    #[test]
+    fn frontmatter_typed_float() {
+        let arena = Bump::new();
+        let source = "---\nweight: 2.718\nneg: -0.5\nsci: 1e10\n---\n";
+        let fm = extract_frontmatter(&[], source, &arena).unwrap();
+        assert_eq!(fm.get_float("weight"), Some(2.718));
+        assert_eq!(fm.get_float("neg"), Some(-0.5));
+        assert!(fm.get_float("sci").is_some());
+    }
+
+    #[test]
+    fn frontmatter_typed_boolean() {
+        let arena = Bump::new();
+        let source = "---\ndraft: true\npublished: false\nyes_val: yes\nno_val: no\n---\n";
+        let fm = extract_frontmatter(&[], source, &arena).unwrap();
+        assert_eq!(fm.get_boolean("draft"), Some(true));
+        assert_eq!(fm.get_boolean("published"), Some(false));
+        assert_eq!(fm.get_boolean("yes_val"), Some(true));
+        assert_eq!(fm.get_boolean("no_val"), Some(false));
+    }
+
+    #[test]
+    fn frontmatter_typed_null() {
+        let arena = Bump::new();
+        let source = "---\nempty:\nnull_val: null\ntilde: ~\n---\n";
+        let fm = extract_frontmatter(&[], source, &arena).unwrap();
+        // Empty value after colon
+        assert!(fm.iter().find(|(k, _)| *k == "empty").map(|(_, v)| v.is_null()).unwrap_or(false));
+        assert!(fm.iter().find(|(k, _)| *k == "null_val").map(|(_, v)| v.is_null()).unwrap_or(false));
+        assert!(fm.iter().find(|(k, _)| *k == "tilde").map(|(_, v)| v.is_null()).unwrap_or(false));
+    }
+
+    #[test]
+    fn frontmatter_quoted_string_not_coerced() {
+        let arena = Bump::new();
+        let source = "---\nnum: \"42\"\nbool: 'true'\n---\n";
+        let fm = extract_frontmatter(&[], source, &arena).unwrap();
+        // Quoted values should remain strings
+        assert_eq!(fm.get_string("num"), Some("42"));
+        assert_eq!(fm.get_string("bool"), Some("true"));
+        // Should NOT be detected as typed
+        assert!(fm.get_integer("num").is_none());
+        assert!(fm.get_boolean("bool").is_none());
+    }
+
+    #[test]
+    fn frontmatter_typed_inline_list() {
+        let arena = Bump::new();
+        let source = "---\nmixed: [42, true, hello]\n---\n";
+        let fm = extract_frontmatter(&[], source, &arena).unwrap();
+        let mixed = fm.iter().find(|(k, _)| *k == "mixed").map(|(_, v)| v);
+        assert!(mixed.is_some());
+        if let Some(FrontmatterValue::List(items)) = mixed {
+            assert_eq!(items.len(), 3);
+            assert!(matches!(items[0], FrontmatterValue::Integer(42)));
+            assert!(matches!(items[1], FrontmatterValue::Boolean(true)));
+            assert!(matches!(items[2], FrontmatterValue::String("hello")));
+        } else {
+            panic!("expected List");
+        }
+    }
+
+    #[test]
+    fn frontmatter_nan_inf_stay_string() {
+        let arena = Bump::new();
+        let source = "---\nnan_val: NaN\ninf_val: inf\n---\n";
+        let fm = extract_frontmatter(&[], source, &arena).unwrap();
+        assert_eq!(fm.get_string("nan_val"), Some("NaN"));
+        assert_eq!(fm.get_string("inf_val"), Some("inf"));
+        assert!(fm.get_float("nan_val").is_none());
+        assert!(fm.get_float("inf_val").is_none());
+    }
+
     #[test]
     fn frontmatter_with_lf() {
         let arena = Bump::new();

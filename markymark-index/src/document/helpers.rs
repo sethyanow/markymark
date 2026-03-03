@@ -6,7 +6,38 @@ use std::collections::HashMap as StdHashMap;
 
 use super::types::*;
 
+use markymark_core::arena::arena_alloc_str;
 use markymark_core::prelude::Position;
+
+/// Convert an owned frontmatter value to an arena-allocated entry.
+pub(super) fn owned_value_to_arena<'arena>(
+    value: FrontmatterValueOwned,
+    arena: &'arena Bump,
+) -> FrontmatterValueEntry<'arena> {
+    match value {
+        FrontmatterValueOwned::String(s) => {
+            FrontmatterValueEntry::String(arena_alloc_str(arena, &s))
+        }
+        FrontmatterValueOwned::Integer(n) => FrontmatterValueEntry::Integer(n),
+        FrontmatterValueOwned::Float(f) => FrontmatterValueEntry::Float(f),
+        FrontmatterValueOwned::Boolean(b) => FrontmatterValueEntry::Boolean(b),
+        FrontmatterValueOwned::List(items) => {
+            let mut list = BumpVec::new_in(arena);
+            for item in items {
+                list.push(owned_value_to_arena(item, arena));
+            }
+            FrontmatterValueEntry::List(list.into_bump_slice())
+        }
+        FrontmatterValueOwned::Map(entries) => {
+            let mut map = BumpVec::new_in(arena);
+            for (k, v) in entries {
+                map.push((arena_alloc_str(arena, &k), owned_value_to_arena(v, arena)));
+            }
+            FrontmatterValueEntry::Map(map.into_bump_slice())
+        }
+        FrontmatterValueOwned::Null => FrontmatterValueEntry::Null,
+    }
+}
 
 /// Convert heading text to a URL-safe slug.
 pub fn slugify(text: &str) -> String {
@@ -196,26 +227,11 @@ pub(super) fn extract_frontmatter_from_ast(
     let mut aliases_owned = Vec::new();
 
     if let Some(fm) = ast.frontmatter() {
-        use markymark_parser::FrontmatterValue;
         for (key, value) in fm.iter() {
             let key_str = (*key).to_string();
-            let value_owned = match value {
-                FrontmatterValue::String(s) => FrontmatterValueOwned::String((*s).to_string()),
-                FrontmatterValue::List(items) => {
-                    FrontmatterValueOwned::List(items.iter().map(|s| s.to_string()).collect())
-                }
-            };
+            let value_owned = parser_value_to_owned(value);
             if key_str == "aliases" {
-                match &value_owned {
-                    FrontmatterValueOwned::String(s) => {
-                        if !s.is_empty() {
-                            aliases_owned.push(s.clone());
-                        }
-                    }
-                    FrontmatterValueOwned::List(items) => {
-                        aliases_owned.extend(items.iter().cloned());
-                    }
-                }
+                collect_alias_strings(&value_owned, &mut aliases_owned);
             }
             frontmatter_owned.push(FrontmatterOwnedEntry {
                 key: key_str,
@@ -225,6 +241,48 @@ pub(super) fn extract_frontmatter_from_ast(
     }
 
     (frontmatter_owned, aliases_owned)
+}
+
+/// Convert a parser `FrontmatterValue` to an owned value.
+fn parser_value_to_owned(value: &markymark_parser::FrontmatterValue) -> FrontmatterValueOwned {
+    use markymark_parser::FrontmatterValue;
+    match value {
+        FrontmatterValue::String(s) => FrontmatterValueOwned::String((*s).to_string()),
+        FrontmatterValue::Integer(n) => FrontmatterValueOwned::Integer(*n),
+        FrontmatterValue::Float(f) => FrontmatterValueOwned::Float(*f),
+        FrontmatterValue::Boolean(b) => FrontmatterValueOwned::Boolean(*b),
+        FrontmatterValue::List(items) => {
+            FrontmatterValueOwned::List(items.iter().map(parser_value_to_owned).collect())
+        }
+        FrontmatterValue::Map(entries) => FrontmatterValueOwned::Map(
+            entries
+                .iter()
+                .map(|(k, v)| ((*k).to_string(), parser_value_to_owned(v)))
+                .collect(),
+        ),
+        FrontmatterValue::Null => FrontmatterValueOwned::Null,
+    }
+}
+
+/// Extract alias strings from a frontmatter value (String or List of Strings only).
+fn collect_alias_strings(value: &FrontmatterValueOwned, aliases: &mut Vec<String>) {
+    match value {
+        FrontmatterValueOwned::String(s) => {
+            if !s.is_empty() {
+                aliases.push(s.clone());
+            }
+        }
+        FrontmatterValueOwned::List(items) => {
+            for item in items {
+                if let FrontmatterValueOwned::String(s) = item {
+                    if !s.is_empty() {
+                        aliases.push(s.clone());
+                    }
+                }
+            }
+        }
+        _ => {} // Non-string/list types ignored for aliases
+    }
 }
 
 /// Find the earliest frontmatter close delimiter (`\n---\n` or `\n---\r\n`).
@@ -277,27 +335,19 @@ pub fn parse_frontmatter_owned(source: &str) -> (Vec<FrontmatterOwnedEntry>, Vec
 
             let value = if value_str.starts_with('[') && value_str.ends_with(']') {
                 let inner = &value_str[1..value_str.len() - 1];
-                let items: Vec<String> = inner
+                let items: Vec<FrontmatterValueOwned> = inner
                     .split(',')
-                    .map(|s| s.trim().to_string())
+                    .map(|s| s.trim())
                     .filter(|s| !s.is_empty())
+                    .map(scalar_to_owned)
                     .collect();
                 FrontmatterValueOwned::List(items)
             } else {
-                FrontmatterValueOwned::String(value_str.to_string())
+                scalar_to_owned(value_str)
             };
 
             if key == "aliases" {
-                match &value {
-                    FrontmatterValueOwned::String(s) => {
-                        if !s.is_empty() {
-                            aliases.push(s.clone());
-                        }
-                    }
-                    FrontmatterValueOwned::List(items) => {
-                        aliases.extend(items.iter().cloned());
-                    }
-                }
+                collect_alias_strings(&value, &mut aliases);
             }
 
             frontmatter.push(FrontmatterOwnedEntry { key, value });
@@ -305,6 +355,26 @@ pub fn parse_frontmatter_owned(source: &str) -> (Vec<FrontmatterOwnedEntry>, Vec
     }
 
     (frontmatter, aliases)
+}
+
+/// Convert a raw scalar string to an owned typed value using the shared detection functions.
+fn scalar_to_owned(raw: &str) -> FrontmatterValueOwned {
+    use markymark_parser::{detect_yaml_scalar, strip_yaml_quotes, YamlScalarHint};
+    let (stripped, was_quoted) = strip_yaml_quotes(raw);
+    if was_quoted {
+        return FrontmatterValueOwned::String(stripped.to_string());
+    }
+    match detect_yaml_scalar(stripped) {
+        YamlScalarHint::Null => FrontmatterValueOwned::Null,
+        YamlScalarHint::Boolean(b) => FrontmatterValueOwned::Boolean(b),
+        YamlScalarHint::Integer => {
+            FrontmatterValueOwned::Integer(stripped.parse::<i64>().unwrap_or(0))
+        }
+        YamlScalarHint::Float => {
+            FrontmatterValueOwned::Float(stripped.parse::<f64>().unwrap_or(0.0))
+        }
+        YamlScalarHint::Str => FrontmatterValueOwned::String(stripped.to_string()),
+    }
 }
 
 /// Mask YAML frontmatter so md4c doesn't misparse `---` as a setext heading.

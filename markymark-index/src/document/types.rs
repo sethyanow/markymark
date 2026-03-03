@@ -221,13 +221,23 @@ pub struct MarkdownLinkEntry<'arena> {
     pub end_byte: usize,
 }
 
-/// A frontmatter value stored in the index.
+/// A frontmatter value stored in the index (arena-allocated).
 #[derive(Debug, Clone)]
 pub enum FrontmatterValueEntry<'arena> {
     /// A simple string value.
     String(&'arena str),
-    /// A list of string values.
-    List(&'arena [&'arena str]),
+    /// An integer value.
+    Integer(i64),
+    /// A floating-point value (always finite).
+    Float(f64),
+    /// A boolean value.
+    Boolean(bool),
+    /// A list of typed values.
+    List(&'arena [FrontmatterValueEntry<'arena>]),
+    /// A map of key-value pairs.
+    Map(&'arena [(&'arena str, FrontmatterValueEntry<'arena>)]),
+    /// An explicit null value.
+    Null,
 }
 
 /// A frontmatter key-value entry stored in the index.
@@ -244,8 +254,18 @@ pub struct FrontmatterEntry<'arena> {
 pub enum FrontmatterValueOwned {
     /// A simple string value.
     String(String),
-    /// A list of string values.
-    List(Vec<String>),
+    /// An integer value.
+    Integer(i64),
+    /// A floating-point value (always finite).
+    Float(f64),
+    /// A boolean value.
+    Boolean(bool),
+    /// A list of typed values.
+    List(Vec<FrontmatterValueOwned>),
+    /// A map of key-value pairs.
+    Map(Vec<(String, FrontmatterValueOwned)>),
+    /// An explicit null value.
+    Null,
 }
 
 /// An owned frontmatter key-value entry for cross-module transfer (not arena-allocated).
