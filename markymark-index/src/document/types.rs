@@ -1,6 +1,7 @@
 //! Document index entry types.
 
 use hashbrown::HashMap;
+use markymark_core::frontmatter::{FrontmatterMap, FrontmatterValueRef};
 use markymark_core::prelude::*;
 
 /// A heading entry in the document index.
@@ -247,6 +248,38 @@ pub struct FrontmatterEntry<'arena> {
     pub key: &'arena str,
     /// The value.
     pub value: FrontmatterValueEntry<'arena>,
+}
+
+// ── Conversions to core FrontmatterValueRef / FrontmatterMap ───────
+
+impl<'a> From<&FrontmatterValueEntry<'a>> for FrontmatterValueRef<'a> {
+    fn from(value: &FrontmatterValueEntry<'a>) -> Self {
+        match value {
+            FrontmatterValueEntry::String(s) => FrontmatterValueRef::String(s),
+            FrontmatterValueEntry::Integer(n) => FrontmatterValueRef::Integer(*n),
+            FrontmatterValueEntry::Float(f) => {
+                debug_assert!(f.is_finite(), "FrontmatterValueEntry::Float must be finite");
+                FrontmatterValueRef::Float(*f)
+            }
+            FrontmatterValueEntry::Boolean(b) => FrontmatterValueRef::Boolean(*b),
+            FrontmatterValueEntry::List(items) => {
+                FrontmatterValueRef::List(items.iter().map(|v| v.into()).collect())
+            }
+            FrontmatterValueEntry::Map(entries) => FrontmatterValueRef::Map(
+                entries.iter().map(|(k, v)| (*k, v.into())).collect(),
+            ),
+            FrontmatterValueEntry::Null => FrontmatterValueRef::Null,
+        }
+    }
+}
+
+/// Build a [`FrontmatterMap`] from a slice of index [`FrontmatterEntry`] values.
+pub fn frontmatter_map_from_entries<'a>(entries: &[FrontmatterEntry<'a>]) -> FrontmatterMap<'a> {
+    let pairs: Vec<(&'a str, FrontmatterValueRef<'a>)> = entries
+        .iter()
+        .map(|e| (e.key, (&e.value).into()))
+        .collect();
+    FrontmatterMap::from(pairs)
 }
 
 /// An owned frontmatter value for cross-module transfer (not arena-allocated).

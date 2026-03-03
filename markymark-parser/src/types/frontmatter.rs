@@ -1,6 +1,7 @@
 //! Metadata and frontmatter: Frontmatter, FrontmatterValue, Properties, PropertyValue.
 
 use markymark_core::arena::ArenaHashMap;
+use markymark_core::frontmatter::{FrontmatterMap, FrontmatterValueRef};
 
 /// Frontmatter
 #[derive(Debug, Clone)]
@@ -129,6 +130,37 @@ impl<'arena> FrontmatterValue<'arena> {
             FrontmatterValue::Map(_) => "{map}".to_string(),
             FrontmatterValue::Null => String::new(),
         }
+    }
+}
+
+// ── Conversions to core FrontmatterValueRef / FrontmatterMap ───────
+
+impl<'a> From<&FrontmatterValue<'a>> for FrontmatterValueRef<'a> {
+    fn from(value: &FrontmatterValue<'a>) -> Self {
+        match value {
+            FrontmatterValue::String(s) => FrontmatterValueRef::String(s),
+            FrontmatterValue::Integer(n) => FrontmatterValueRef::Integer(*n),
+            FrontmatterValue::Float(f) => {
+                debug_assert!(f.is_finite(), "FrontmatterValue::Float must be finite");
+                FrontmatterValueRef::Float(*f)
+            }
+            FrontmatterValue::Boolean(b) => FrontmatterValueRef::Boolean(*b),
+            FrontmatterValue::List(items) => {
+                FrontmatterValueRef::List(items.iter().map(|v| v.into()).collect())
+            }
+            FrontmatterValue::Map(entries) => FrontmatterValueRef::Map(
+                entries.iter().map(|(k, v)| (*k, v.into())).collect(),
+            ),
+            FrontmatterValue::Null => FrontmatterValueRef::Null,
+        }
+    }
+}
+
+impl<'a> From<&Frontmatter<'a>> for FrontmatterMap<'a> {
+    fn from(fm: &Frontmatter<'a>) -> Self {
+        let entries: Vec<(&'a str, FrontmatterValueRef<'a>)> =
+            fm.iter().map(|(k, v)| (k, v.into())).collect();
+        FrontmatterMap::from(entries)
     }
 }
 

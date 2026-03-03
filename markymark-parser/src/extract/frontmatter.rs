@@ -17,6 +17,14 @@ pub fn extract_frontmatter<'a>(
         return None;
     };
 
+    // Handle empty frontmatter: closing --- at start of rest (no preceding newline)
+    if rest.starts_with("---\r\n") {
+        return Some(parse_simple_yaml("", arena));
+    }
+    if rest.starts_with("---\n") {
+        return Some(parse_simple_yaml("", arena));
+    }
+
     // Find the earliest closing --- (handle both LF and CRLF, pick min position)
     let end_pos = [rest.find("\n---\r\n"), rest.find("\n---\n")]
         .into_iter()
