@@ -158,8 +158,11 @@ fn from_hex(b: u8) -> Option<u8> {
 pub mod arena;
 pub mod embeddings;
 pub mod engine;
+pub mod graph_traits;
 pub mod scanner;
 pub mod structured;
+
+pub use graph_traits::{EdgeKind, GraphNode};
 
 pub mod prelude {
     //! Prelude module with common imports
