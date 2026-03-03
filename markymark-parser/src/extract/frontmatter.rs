@@ -566,7 +566,10 @@ mod tests {
         let source = "---\ntitle: Test\n---";
         let arena = Bump::new();
         let fm = extract_frontmatter(&[], source, &arena);
-        assert!(fm.is_some(), "should parse frontmatter at EOF without trailing newline");
+        assert!(
+            fm.is_some(),
+            "should parse frontmatter at EOF without trailing newline"
+        );
         let fm = fm.unwrap();
         assert_eq!(fm.get_string("title"), Some("Test"));
     }
@@ -584,7 +587,10 @@ mod tests {
         let source = "---\r\ntitle: Test\r\n---";
         let arena = Bump::new();
         let fm = extract_frontmatter(&[], source, &arena);
-        assert!(fm.is_some(), "CRLF frontmatter at EOF without trailing newline should parse");
+        assert!(
+            fm.is_some(),
+            "CRLF frontmatter at EOF without trailing newline should parse"
+        );
         let fm = fm.unwrap();
         assert_eq!(fm.get_string("title"), Some("Test"));
     }

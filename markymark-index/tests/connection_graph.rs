@@ -466,5 +466,9 @@ fn test_add_reference_one_stale_endpoint() {
     graph.remove_by_key(&"a".to_string());
     let edge_count_before = graph.edge_count();
     graph.add_reference(a, b, TestEdge::Related);
-    assert_eq!(graph.edge_count(), edge_count_before, "edge should not be added with stale source");
+    assert_eq!(
+        graph.edge_count(),
+        edge_count_before,
+        "edge should not be added with stale source"
+    );
 }
