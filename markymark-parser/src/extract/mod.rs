@@ -5,4 +5,7 @@
 //! ExtractionRenderer via the scan backend.
 
 mod frontmatter;
-pub use frontmatter::{extract_frontmatter, extract_page_properties};
+pub use frontmatter::{
+    detect_yaml_scalar, extract_frontmatter, extract_page_properties, strip_yaml_quotes,
+    YamlScalarHint,
+};

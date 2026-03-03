@@ -94,6 +94,84 @@ pub fn extract_page_properties<'a>(
     }
 }
 
+/// Hint for what type a YAML scalar value should become.
+///
+/// Used by both the parser crate's `parse_simple_yaml` and the index crate's
+/// `parse_frontmatter_owned` to ensure consistent type detection across
+/// the two YAML parsing paths.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum YamlScalarHint {
+    /// null, Null, NULL, ~, or empty string
+    Null,
+    /// true/false/yes/no/on/off (case-insensitive per YAML 1.1)
+    Boolean(bool),
+    /// Fits in i64
+    Integer,
+    /// Fits in f64 (excluding NaN/inf)
+    Float,
+    /// Quoted or unrecognized scalar — keep as string
+    Str,
+}
+
+/// Strip matching outer quotes from a YAML scalar.
+///
+/// Returns `(stripped_value, was_quoted)`. Single or double quotes are
+/// removed if they form a matching pair; otherwise the value is returned
+/// unchanged.
+pub fn strip_yaml_quotes(value: &str) -> (&str, bool) {
+    let bytes = value.as_bytes();
+    if bytes.len() >= 2 {
+        let first = bytes[0];
+        let last = bytes[bytes.len() - 1];
+        if (first == b'"' && last == b'"') || (first == b'\'' && last == b'\'') {
+            return (&value[1..value.len() - 1], true);
+        }
+    }
+    (value, false)
+}
+
+/// Detect the YAML scalar type for an unquoted value.
+///
+/// Priority: Null → Boolean → Integer → Float → Str.
+/// Quoted strings always return `Str` (caller should use `strip_yaml_quotes`
+/// first and pass `was_quoted = true` to skip detection).
+pub fn detect_yaml_scalar(value: &str) -> YamlScalarHint {
+    if value.is_empty() {
+        return YamlScalarHint::Null;
+    }
+
+    // Null variants
+    match value {
+        "null" | "Null" | "NULL" | "~" => return YamlScalarHint::Null,
+        _ => {}
+    }
+
+    // Boolean variants (YAML 1.1 compatible)
+    match value {
+        "true" | "True" | "TRUE" | "yes" | "Yes" | "YES" | "on" | "On" | "ON" => {
+            return YamlScalarHint::Boolean(true);
+        }
+        "false" | "False" | "FALSE" | "no" | "No" | "NO" | "off" | "Off" | "OFF" => {
+            return YamlScalarHint::Boolean(false);
+        }
+        _ => {}
+    }
+
+    // Integer (i64)
+    if value.parse::<i64>().is_ok() {
+        return YamlScalarHint::Integer;
+    }
+
+    // Float (f64) — reject NaN, inf, -inf
+    if let Ok(f) = value.parse::<f64>() {
+        if f.is_finite() {
+            return YamlScalarHint::Float;
+        }
+    }
+
+    YamlScalarHint::Str
+}
+
 /// Simple YAML parser for frontmatter
 fn parse_simple_yaml<'a>(content: &str, arena: &'a bumpalo::Bump) -> Frontmatter<'a> {
     let mut data = new_arena_hashmap(arena);
@@ -202,6 +280,112 @@ mod tests {
         let arena = Bump::new();
         let source = "---\ntitle: Hello\nNo closing delimiter\n";
         assert!(extract_frontmatter(&[], source, &arena).is_none());
+    }
+
+    // ---- YamlScalarHint / strip_yaml_quotes tests ----
+
+    #[test]
+    fn detect_null_variants() {
+        assert_eq!(detect_yaml_scalar(""), YamlScalarHint::Null);
+        assert_eq!(detect_yaml_scalar("null"), YamlScalarHint::Null);
+        assert_eq!(detect_yaml_scalar("Null"), YamlScalarHint::Null);
+        assert_eq!(detect_yaml_scalar("NULL"), YamlScalarHint::Null);
+        assert_eq!(detect_yaml_scalar("~"), YamlScalarHint::Null);
+    }
+
+    #[test]
+    fn detect_boolean_true_variants() {
+        for v in &["true", "True", "TRUE", "yes", "Yes", "YES", "on", "On", "ON"] {
+            assert_eq!(detect_yaml_scalar(v), YamlScalarHint::Boolean(true), "failed for {v}");
+        }
+    }
+
+    #[test]
+    fn detect_boolean_false_variants() {
+        for v in &["false", "False", "FALSE", "no", "No", "NO", "off", "Off", "OFF"] {
+            assert_eq!(detect_yaml_scalar(v), YamlScalarHint::Boolean(false), "failed for {v}");
+        }
+    }
+
+    #[test]
+    fn detect_integers() {
+        assert_eq!(detect_yaml_scalar("0"), YamlScalarHint::Integer);
+        assert_eq!(detect_yaml_scalar("42"), YamlScalarHint::Integer);
+        assert_eq!(detect_yaml_scalar("-3"), YamlScalarHint::Integer);
+        assert_eq!(detect_yaml_scalar("9223372036854775807"), YamlScalarHint::Integer); // i64::MAX
+    }
+
+    #[test]
+    fn detect_integer_overflow_falls_to_float_or_string() {
+        // Larger than i64::MAX but finite f64 → Float
+        assert_eq!(detect_yaml_scalar("99999999999999999999"), YamlScalarHint::Float);
+        // Truly unparseable number → Str
+        assert_eq!(detect_yaml_scalar("12.34.56"), YamlScalarHint::Str);
+    }
+
+    #[test]
+    fn detect_floats() {
+        assert_eq!(detect_yaml_scalar("3.14"), YamlScalarHint::Float);
+        assert_eq!(detect_yaml_scalar("-0.5"), YamlScalarHint::Float);
+        assert_eq!(detect_yaml_scalar("1e10"), YamlScalarHint::Float);
+        assert_eq!(detect_yaml_scalar("1.0"), YamlScalarHint::Float);
+    }
+
+    #[test]
+    fn detect_nan_inf_rejected_as_string() {
+        assert_eq!(detect_yaml_scalar("NaN"), YamlScalarHint::Str);
+        assert_eq!(detect_yaml_scalar("inf"), YamlScalarHint::Str);
+        assert_eq!(detect_yaml_scalar("-inf"), YamlScalarHint::Str);
+        assert_eq!(detect_yaml_scalar("Inf"), YamlScalarHint::Str);
+    }
+
+    #[test]
+    fn detect_plain_strings() {
+        assert_eq!(detect_yaml_scalar("hello"), YamlScalarHint::Str);
+        assert_eq!(detect_yaml_scalar("hello world"), YamlScalarHint::Str);
+        assert_eq!(detect_yaml_scalar("https://example.com"), YamlScalarHint::Str);
+    }
+
+    #[test]
+    fn strip_double_quotes() {
+        let (v, q) = strip_yaml_quotes("\"42\"");
+        assert_eq!(v, "42");
+        assert!(q);
+    }
+
+    #[test]
+    fn strip_single_quotes() {
+        let (v, q) = strip_yaml_quotes("'true'");
+        assert_eq!(v, "true");
+        assert!(q);
+    }
+
+    #[test]
+    fn no_quotes_unchanged() {
+        let (v, q) = strip_yaml_quotes("hello");
+        assert_eq!(v, "hello");
+        assert!(!q);
+    }
+
+    #[test]
+    fn mismatched_quotes_unchanged() {
+        let (v, q) = strip_yaml_quotes("\"hello'");
+        assert_eq!(v, "\"hello'");
+        assert!(!q);
+    }
+
+    #[test]
+    fn empty_string_no_strip() {
+        let (v, q) = strip_yaml_quotes("");
+        assert_eq!(v, "");
+        assert!(!q);
+    }
+
+    #[test]
+    fn single_char_no_strip() {
+        let (v, q) = strip_yaml_quotes("\"");
+        assert_eq!(v, "\"");
+        assert!(!q);
     }
 
     #[test]
