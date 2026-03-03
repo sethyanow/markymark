@@ -80,10 +80,7 @@ impl<'arena> FrontmatterValue<'arena> {
     pub fn as_list(&self) -> Option<Vec<&'arena str>> {
         match self {
             FrontmatterValue::List(list) => {
-                let strings: Vec<&str> = list
-                    .iter()
-                    .filter_map(|v| v.as_string())
-                    .collect();
+                let strings: Vec<&str> = list.iter().filter_map(|v| v.as_string()).collect();
                 Some(strings)
             }
             _ => None,
@@ -148,9 +145,9 @@ impl<'a> From<&FrontmatterValue<'a>> for FrontmatterValueRef<'a> {
             FrontmatterValue::List(items) => {
                 FrontmatterValueRef::List(items.iter().map(|v| v.into()).collect())
             }
-            FrontmatterValue::Map(entries) => FrontmatterValueRef::Map(
-                entries.iter().map(|(k, v)| (*k, v.into())).collect(),
-            ),
+            FrontmatterValue::Map(entries) => {
+                FrontmatterValueRef::Map(entries.iter().map(|(k, v)| (*k, v.into())).collect())
+            }
             FrontmatterValue::Null => FrontmatterValueRef::Null,
         }
     }

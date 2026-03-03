@@ -265,9 +265,9 @@ impl<'a> From<&FrontmatterValueEntry<'a>> for FrontmatterValueRef<'a> {
             FrontmatterValueEntry::List(items) => {
                 FrontmatterValueRef::List(items.iter().map(|v| v.into()).collect())
             }
-            FrontmatterValueEntry::Map(entries) => FrontmatterValueRef::Map(
-                entries.iter().map(|(k, v)| (*k, v.into())).collect(),
-            ),
+            FrontmatterValueEntry::Map(entries) => {
+                FrontmatterValueRef::Map(entries.iter().map(|(k, v)| (*k, v.into())).collect())
+            }
             FrontmatterValueEntry::Null => FrontmatterValueRef::Null,
         }
     }
@@ -275,10 +275,8 @@ impl<'a> From<&FrontmatterValueEntry<'a>> for FrontmatterValueRef<'a> {
 
 /// Build a [`FrontmatterMap`] from a slice of index [`FrontmatterEntry`] values.
 pub fn frontmatter_map_from_entries<'a>(entries: &[FrontmatterEntry<'a>]) -> FrontmatterMap<'a> {
-    let pairs: Vec<(&'a str, FrontmatterValueRef<'a>)> = entries
-        .iter()
-        .map(|e| (e.key, (&e.value).into()))
-        .collect();
+    let pairs: Vec<(&'a str, FrontmatterValueRef<'a>)> =
+        entries.iter().map(|e| (e.key, (&e.value).into())).collect();
     FrontmatterMap::from(pairs)
 }
 

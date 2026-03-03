@@ -82,16 +82,18 @@ impl TypedFrontmatter for TestTask {
             })?
             .to_string();
 
-        let priority = map.get_integer("priority").ok_or_else(|| match map.get("priority") {
-            Some(v) => FrontmatterError::TypeMismatch {
-                field: "priority".into(),
-                expected: "Integer",
-                actual: v.variant_name().into(),
-            },
-            None => FrontmatterError::MissingField {
-                field: "priority".into(),
-            },
-        })?;
+        let priority = map
+            .get_integer("priority")
+            .ok_or_else(|| match map.get("priority") {
+                Some(v) => FrontmatterError::TypeMismatch {
+                    field: "priority".into(),
+                    expected: "Integer",
+                    actual: v.variant_name().into(),
+                },
+                None => FrontmatterError::MissingField {
+                    field: "priority".into(),
+                },
+            })?;
 
         let draft = map.get_boolean("draft").unwrap_or(false);
 

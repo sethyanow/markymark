@@ -244,9 +244,11 @@ fn fm_value_to_string(value: &FrontmatterValueEntry<'_>) -> String {
         FrontmatterValueEntry::Integer(n) => n.to_string(),
         FrontmatterValueEntry::Float(f) => f.to_string(),
         FrontmatterValueEntry::Boolean(b) => b.to_string(),
-        FrontmatterValueEntry::List(items) => {
-            items.iter().map(fm_value_to_string).collect::<Vec<_>>().join(", ")
-        }
+        FrontmatterValueEntry::List(items) => items
+            .iter()
+            .map(fm_value_to_string)
+            .collect::<Vec<_>>()
+            .join(", "),
         FrontmatterValueEntry::Map(entries) => entries
             .iter()
             .map(|(k, v)| format!("{}: {}", k, fm_value_to_string(v)))

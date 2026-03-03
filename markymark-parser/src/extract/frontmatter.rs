@@ -193,9 +193,7 @@ fn scalar_to_value<'a>(raw: &str, arena: &'a bumpalo::Bump) -> FrontmatterValue<
             // Safe: detect_yaml_scalar only returns Integer when parse succeeds
             FrontmatterValue::Integer(stripped.parse::<i64>().unwrap_or(0))
         }
-        YamlScalarHint::Float => {
-            FrontmatterValue::Float(stripped.parse::<f64>().unwrap_or(0.0))
-        }
+        YamlScalarHint::Float => FrontmatterValue::Float(stripped.parse::<f64>().unwrap_or(0.0)),
         YamlScalarHint::Str => FrontmatterValue::String(arena_alloc_str(arena, stripped)),
     }
 }
@@ -296,9 +294,9 @@ mod tests {
     #[test]
     fn frontmatter_typed_float() {
         let arena = Bump::new();
-        let source = "---\nweight: 2.718\nneg: -0.5\nsci: 1e10\n---\n";
+        let source = "---\nweight: 2.75\nneg: -0.5\nsci: 1e10\n---\n";
         let fm = extract_frontmatter(&[], source, &arena).unwrap();
-        assert_eq!(fm.get_float("weight"), Some(2.718));
+        assert_eq!(fm.get_float("weight"), Some(2.75));
         assert_eq!(fm.get_float("neg"), Some(-0.5));
         assert!(fm.get_float("sci").is_some());
     }
@@ -320,9 +318,21 @@ mod tests {
         let source = "---\nempty:\nnull_val: null\ntilde: ~\n---\n";
         let fm = extract_frontmatter(&[], source, &arena).unwrap();
         // Empty value after colon
-        assert!(fm.iter().find(|(k, _)| *k == "empty").map(|(_, v)| v.is_null()).unwrap_or(false));
-        assert!(fm.iter().find(|(k, _)| *k == "null_val").map(|(_, v)| v.is_null()).unwrap_or(false));
-        assert!(fm.iter().find(|(k, _)| *k == "tilde").map(|(_, v)| v.is_null()).unwrap_or(false));
+        assert!(fm
+            .iter()
+            .find(|(k, _)| *k == "empty")
+            .map(|(_, v)| v.is_null())
+            .unwrap_or(false));
+        assert!(fm
+            .iter()
+            .find(|(k, _)| *k == "null_val")
+            .map(|(_, v)| v.is_null())
+            .unwrap_or(false));
+        assert!(fm
+            .iter()
+            .find(|(k, _)| *k == "tilde")
+            .map(|(_, v)| v.is_null())
+            .unwrap_or(false));
     }
 
     #[test]
@@ -409,15 +419,27 @@ mod tests {
 
     #[test]
     fn detect_boolean_true_variants() {
-        for v in &["true", "True", "TRUE", "yes", "Yes", "YES", "on", "On", "ON"] {
-            assert_eq!(detect_yaml_scalar(v), YamlScalarHint::Boolean(true), "failed for {v}");
+        for v in &[
+            "true", "True", "TRUE", "yes", "Yes", "YES", "on", "On", "ON",
+        ] {
+            assert_eq!(
+                detect_yaml_scalar(v),
+                YamlScalarHint::Boolean(true),
+                "failed for {v}"
+            );
         }
     }
 
     #[test]
     fn detect_boolean_false_variants() {
-        for v in &["false", "False", "FALSE", "no", "No", "NO", "off", "Off", "OFF"] {
-            assert_eq!(detect_yaml_scalar(v), YamlScalarHint::Boolean(false), "failed for {v}");
+        for v in &[
+            "false", "False", "FALSE", "no", "No", "NO", "off", "Off", "OFF",
+        ] {
+            assert_eq!(
+                detect_yaml_scalar(v),
+                YamlScalarHint::Boolean(false),
+                "failed for {v}"
+            );
         }
     }
 
@@ -426,13 +448,19 @@ mod tests {
         assert_eq!(detect_yaml_scalar("0"), YamlScalarHint::Integer);
         assert_eq!(detect_yaml_scalar("42"), YamlScalarHint::Integer);
         assert_eq!(detect_yaml_scalar("-3"), YamlScalarHint::Integer);
-        assert_eq!(detect_yaml_scalar("9223372036854775807"), YamlScalarHint::Integer); // i64::MAX
+        assert_eq!(
+            detect_yaml_scalar("9223372036854775807"),
+            YamlScalarHint::Integer
+        ); // i64::MAX
     }
 
     #[test]
     fn detect_integer_overflow_falls_to_float_or_string() {
         // Larger than i64::MAX but finite f64 → Float
-        assert_eq!(detect_yaml_scalar("99999999999999999999"), YamlScalarHint::Float);
+        assert_eq!(
+            detect_yaml_scalar("99999999999999999999"),
+            YamlScalarHint::Float
+        );
         // Truly unparseable number → Str
         assert_eq!(detect_yaml_scalar("12.34.56"), YamlScalarHint::Str);
     }
@@ -457,7 +485,10 @@ mod tests {
     fn detect_plain_strings() {
         assert_eq!(detect_yaml_scalar("hello"), YamlScalarHint::Str);
         assert_eq!(detect_yaml_scalar("hello world"), YamlScalarHint::Str);
-        assert_eq!(detect_yaml_scalar("https://example.com"), YamlScalarHint::Str);
+        assert_eq!(
+            detect_yaml_scalar("https://example.com"),
+            YamlScalarHint::Str
+        );
     }
 
     #[test]

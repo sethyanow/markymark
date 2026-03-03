@@ -91,11 +91,7 @@ impl TypedFrontmatter for BlogPost {
             })
             .unwrap_or_default();
 
-        Ok(Self {
-            title,
-            draft,
-            tags,
-        })
+        Ok(Self { title, draft, tags })
     }
 }
 
@@ -142,7 +138,16 @@ fn round_trip_parser_and_index_produce_same_values() {
     let index_map = frontmatter_map_from_entries(entries);
 
     // Both paths should produce identical typed results
-    assert_eq!(parser_map.get_string("title"), index_map.get_string("title"));
-    assert_eq!(parser_map.get_integer("priority"), index_map.get_integer("priority"));
-    assert_eq!(parser_map.get_boolean("draft"), index_map.get_boolean("draft"));
+    assert_eq!(
+        parser_map.get_string("title"),
+        index_map.get_string("title")
+    );
+    assert_eq!(
+        parser_map.get_integer("priority"),
+        index_map.get_integer("priority")
+    );
+    assert_eq!(
+        parser_map.get_boolean("draft"),
+        index_map.get_boolean("draft")
+    );
 }

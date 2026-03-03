@@ -236,8 +236,12 @@ impl EdgeKind for TestEdge {
 #[test]
 fn test_generic_graph_custom_types() {
     let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
-    let a = graph.add_node(TestNode { id: "task-a".into() });
-    let b = graph.add_node(TestNode { id: "task-b".into() });
+    let a = graph.add_node(TestNode {
+        id: "task-a".into(),
+    });
+    let b = graph.add_node(TestNode {
+        id: "task-b".into(),
+    });
     graph.add_reference(a, b, TestEdge::Blocks);
     assert_eq!(graph.node_count(), 2);
     assert_eq!(graph.edge_count(), 1);

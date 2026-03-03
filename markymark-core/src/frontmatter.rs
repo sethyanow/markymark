@@ -123,10 +123,7 @@ impl<'a> FrontmatterMap<'a> {
 
     /// Look up a value by key (first match).
     pub fn get(&self, key: &str) -> Option<&FrontmatterValueRef<'a>> {
-        self.entries
-            .iter()
-            .find(|(k, _)| *k == key)
-            .map(|(_, v)| v)
+        self.entries.iter().find(|(k, _)| *k == key).map(|(_, v)| v)
     }
 
     /// Get a string value by key.
@@ -305,8 +302,8 @@ mod tests {
 
     #[test]
     fn value_ref_float_accessor() {
-        let v = FrontmatterValueRef::Float(3.14);
-        assert_eq!(v.as_float(), Some(3.14));
+        let v = FrontmatterValueRef::Float(3.125);
+        assert_eq!(v.as_float(), Some(3.125));
         assert_eq!(v.as_string(), None);
         assert_eq!(v.variant_name(), "Float");
     }
@@ -334,9 +331,7 @@ mod tests {
 
     #[test]
     fn value_ref_map_accessor() {
-        let v = FrontmatterValueRef::Map(vec![
-            ("key", FrontmatterValueRef::String("val")),
-        ]);
+        let v = FrontmatterValueRef::Map(vec![("key", FrontmatterValueRef::String("val"))]);
         let map = v.as_map().unwrap();
         assert_eq!(map.len(), 1);
         assert_eq!(map[0].0, "key");
@@ -353,9 +348,7 @@ mod tests {
 
     #[test]
     fn value_ref_nested_list_of_lists() {
-        let inner = FrontmatterValueRef::List(vec![
-            FrontmatterValueRef::String("nested"),
-        ]);
+        let inner = FrontmatterValueRef::List(vec![FrontmatterValueRef::String("nested")]);
         let outer = FrontmatterValueRef::List(vec![inner]);
         let list = outer.as_list().unwrap();
         assert_eq!(list.len(), 1);
@@ -385,10 +378,13 @@ mod tests {
             ("count", FrontmatterValueRef::Integer(5)),
             ("ratio", FrontmatterValueRef::Float(2.5)),
             ("draft", FrontmatterValueRef::Boolean(false)),
-            ("tags", FrontmatterValueRef::List(vec![
-                FrontmatterValueRef::String("rust"),
-                FrontmatterValueRef::String("markdown"),
-            ])),
+            (
+                "tags",
+                FrontmatterValueRef::List(vec![
+                    FrontmatterValueRef::String("rust"),
+                    FrontmatterValueRef::String("markdown"),
+                ]),
+            ),
             ("empty", FrontmatterValueRef::Null),
         ])
     }
@@ -444,7 +440,10 @@ mod tests {
         assert_eq!(m.len(), 6);
         assert!(!m.is_empty());
         let keys: Vec<_> = m.keys().collect();
-        assert_eq!(keys, vec!["title", "count", "ratio", "draft", "tags", "empty"]);
+        assert_eq!(
+            keys,
+            vec!["title", "count", "ratio", "draft", "tags", "empty"]
+        );
     }
 
     #[test]
@@ -511,18 +510,18 @@ mod tests {
                 })?
                 .to_string();
 
-            let priority = map.get_integer("priority").ok_or_else(|| {
-                match map.get("priority") {
-                    Some(v) => FrontmatterError::TypeMismatch {
-                        field: "priority".into(),
-                        expected: "Integer",
-                        actual: v.variant_name().into(),
-                    },
-                    None => FrontmatterError::MissingField {
-                        field: "priority".into(),
-                    },
-                }
-            })?;
+            let priority =
+                map.get_integer("priority")
+                    .ok_or_else(|| match map.get("priority") {
+                        Some(v) => FrontmatterError::TypeMismatch {
+                            field: "priority".into(),
+                            expected: "Integer",
+                            actual: v.variant_name().into(),
+                        },
+                        None => FrontmatterError::MissingField {
+                            field: "priority".into(),
+                        },
+                    })?;
 
             let draft = map.get_boolean("draft").unwrap_or(false);
 
@@ -559,9 +558,7 @@ mod tests {
 
     #[test]
     fn typed_frontmatter_missing_required() {
-        let map = FrontmatterMap::from(vec![
-            ("priority", FrontmatterValueRef::Integer(1)),
-        ]);
+        let map = FrontmatterMap::from(vec![("priority", FrontmatterValueRef::Integer(1))]);
         let err = TestMeta::from_frontmatter(&map).unwrap_err();
         assert_eq!(
             err,
