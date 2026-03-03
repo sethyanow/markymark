@@ -6,7 +6,7 @@
 use std::fmt::Debug;
 use std::hash::Hash;
 
-/// Trait for edge types in a [`ConnectionGraph`](markymark_index::ConnectionGraph).
+/// Trait for edge types in a `ConnectionGraph`.
 ///
 /// Consumers implement this for their domain-specific edge semantics.
 /// markymark's `RefKind` (document links) is the default implementation.
@@ -19,7 +19,7 @@ pub trait EdgeKind: Clone + Eq + Hash + Debug + Send + Sync {
     fn is_blocking(&self) -> bool;
 }
 
-/// Trait for node types in a [`ConnectionGraph`](markymark_index::ConnectionGraph).
+/// Trait for node types in a `ConnectionGraph`.
 ///
 /// Provides a grouping key so that related nodes can be removed together.
 /// For documents, the key is the document URI (removing a document removes

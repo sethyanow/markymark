@@ -88,8 +88,8 @@ impl GraphNode for SymbolData {
 /// Defaults to `SymbolData` and `RefKind` for backward compatibility with
 /// existing markymark code.
 ///
-/// Uses [`petgraph::stable_graph::StableGraph`] so that node indices
-/// remain valid after removals.
+/// Uses [`petgraph::stable_graph::StableGraph`] so that indices of
+/// remaining nodes stay valid when other nodes are removed.
 pub struct ConnectionGraph<N: GraphNode = SymbolData, E: EdgeKind = RefKind> {
     graph: StableGraph<N, E>,
     key_to_nodes: HashMap<N::Key, Vec<NodeIndex>>,

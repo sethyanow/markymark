@@ -20,7 +20,7 @@ fn fm_entry_to_strings(value: &FrontmatterValueEntry<'_>) -> Vec<String> {
                 format!("{k}: {vs}")
             })
             .collect(),
-        FrontmatterValueEntry::Null => vec![String::new()],
+        FrontmatterValueEntry::Null => Vec::new(),
     }
 }
 use markymark_index::RealmIndex;
