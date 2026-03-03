@@ -189,11 +189,14 @@ fn scalar_to_value<'a>(raw: &str, arena: &'a bumpalo::Bump) -> FrontmatterValue<
     match detect_yaml_scalar(stripped) {
         YamlScalarHint::Null => FrontmatterValue::Null,
         YamlScalarHint::Boolean(b) => FrontmatterValue::Boolean(b),
-        YamlScalarHint::Integer => {
-            // Safe: detect_yaml_scalar only returns Integer when parse succeeds
-            FrontmatterValue::Integer(stripped.parse::<i64>().unwrap_or(0))
-        }
-        YamlScalarHint::Float => FrontmatterValue::Float(stripped.parse::<f64>().unwrap_or(0.0)),
+        YamlScalarHint::Integer => match stripped.parse::<i64>() {
+            Ok(n) => FrontmatterValue::Integer(n),
+            Err(_) => FrontmatterValue::String(arena_alloc_str(arena, stripped)),
+        },
+        YamlScalarHint::Float => match stripped.parse::<f64>() {
+            Ok(f) if f.is_finite() => FrontmatterValue::Float(f),
+            _ => FrontmatterValue::String(arena_alloc_str(arena, stripped)),
+        },
         YamlScalarHint::Str => FrontmatterValue::String(arena_alloc_str(arena, stripped)),
     }
 }

@@ -367,12 +367,14 @@ fn scalar_to_owned(raw: &str) -> FrontmatterValueOwned {
     match detect_yaml_scalar(stripped) {
         YamlScalarHint::Null => FrontmatterValueOwned::Null,
         YamlScalarHint::Boolean(b) => FrontmatterValueOwned::Boolean(b),
-        YamlScalarHint::Integer => {
-            FrontmatterValueOwned::Integer(stripped.parse::<i64>().unwrap_or(0))
-        }
-        YamlScalarHint::Float => {
-            FrontmatterValueOwned::Float(stripped.parse::<f64>().unwrap_or(0.0))
-        }
+        YamlScalarHint::Integer => match stripped.parse::<i64>() {
+            Ok(n) => FrontmatterValueOwned::Integer(n),
+            Err(_) => FrontmatterValueOwned::String(stripped.to_string()),
+        },
+        YamlScalarHint::Float => match stripped.parse::<f64>() {
+            Ok(f) if f.is_finite() => FrontmatterValueOwned::Float(f),
+            _ => FrontmatterValueOwned::String(stripped.to_string()),
+        },
         YamlScalarHint::Str => FrontmatterValueOwned::String(stripped.to_string()),
     }
 }
