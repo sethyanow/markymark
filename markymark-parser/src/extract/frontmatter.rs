@@ -17,16 +17,22 @@ pub fn extract_frontmatter<'a>(
         return None;
     };
 
-    // Handle empty frontmatter: closing --- at start of rest (no preceding newline)
-    if rest.starts_with("---\r\n") {
-        return Some(parse_simple_yaml("", arena));
-    }
-    if rest.starts_with("---\n") {
+    // Handle empty frontmatter: closing --- at start of rest (with or without trailing newline)
+    if rest.starts_with("---\r\n") || rest.starts_with("---\n") || rest == "---" || rest == "---\r"
+    {
         return Some(parse_simple_yaml("", arena));
     }
 
-    // Find the earliest closing --- (handle both LF and CRLF, pick min position)
-    let end_pos = [rest.find("\n---\r\n"), rest.find("\n---\n")]
+    // Find the earliest closing --- (handle LF, CRLF, and EOF without trailing newline)
+    let eof_close = if rest.ends_with("\r\n---") {
+        Some(rest.len() - 5) // len of "\r\n---"
+    } else if rest.ends_with("\n---") {
+        Some(rest.len() - 4) // len of "\n---"
+    } else {
+        None
+    };
+
+    let end_pos = [rest.find("\n---\r\n"), rest.find("\n---\n"), eof_close]
         .into_iter()
         .flatten()
         .min();
@@ -551,5 +557,35 @@ mod tests {
             fm.get_string("bogus").is_none(),
             "body content must not leak into frontmatter"
         );
+    }
+
+    // --- EOF frontmatter regression tests (marky-6vws) ---
+
+    #[test]
+    fn frontmatter_eof_no_trailing_newline() {
+        let source = "---\ntitle: Test\n---";
+        let arena = Bump::new();
+        let fm = extract_frontmatter(&[], source, &arena);
+        assert!(fm.is_some(), "should parse frontmatter at EOF without trailing newline");
+        let fm = fm.unwrap();
+        assert_eq!(fm.get_string("title"), Some("Test"));
+    }
+
+    #[test]
+    fn frontmatter_empty_eof() {
+        let source = "---\n---";
+        let arena = Bump::new();
+        let fm = extract_frontmatter(&[], source, &arena);
+        assert!(fm.is_some(), "empty frontmatter at EOF should parse");
+    }
+
+    #[test]
+    fn frontmatter_crlf_eof() {
+        let source = "---\r\ntitle: Test\r\n---";
+        let arena = Bump::new();
+        let fm = extract_frontmatter(&[], source, &arena);
+        assert!(fm.is_some(), "CRLF frontmatter at EOF without trailing newline should parse");
+        let fm = fm.unwrap();
+        assert_eq!(fm.get_string("title"), Some("Test"));
     }
 }

@@ -291,14 +291,26 @@ fn collect_alias_strings(value: &FrontmatterValueOwned, aliases: &mut Vec<String
 /// of `or_else()` prevents picking a later CRLF close over an earlier LF close
 /// in mixed-ending files.
 fn find_frontmatter_close(rest: &str) -> Option<(usize, usize)> {
+    // Empty frontmatter at EOF (rest is just the closing delimiter)
+    if rest == "---" || rest == "---\r" {
+        return Some((0, rest.len()));
+    }
+
     let lf = rest.find("\n---\n").map(|p| (p, 5));
     let crlf = rest.find("\n---\r\n").map(|p| (p, 6));
-    match (lf, crlf) {
-        (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
-        (a @ Some(_), None) => a,
-        (None, b @ Some(_)) => b,
-        (None, None) => None,
-    }
+    // Handle closing --- at EOF without trailing newline
+    let eof = if rest.ends_with("\r\n---") {
+        Some((rest.len() - 5, 5)) // content_end, delimiter_len (includes \r\n)
+    } else if rest.ends_with("\n---") {
+        Some((rest.len() - 4, 4)) // content_end, delimiter_len (includes \n)
+    } else {
+        None
+    };
+
+    [lf, crlf, eof]
+        .into_iter()
+        .flatten()
+        .min_by_key(|(pos, _)| *pos)
 }
 
 /// Parse frontmatter from raw markdown source text as owned data.
