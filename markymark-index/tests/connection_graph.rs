@@ -434,3 +434,37 @@ fn test_remove_by_key_nonexistent_is_noop() {
     graph.remove_by_key(&"nonexistent".to_string());
     assert_eq!(graph.node_count(), 1);
 }
+
+// ---------------------------------------------------------------------------
+// Stale SymbolId guards (regression tests for marky-dr0t)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_stale_symbol_id_after_removal() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    let b = graph.add_node(TestNode { id: "b".into() });
+    graph.add_reference(a, b, TestEdge::Related);
+
+    // Remove node A — its SymbolId is now stale
+    graph.remove_by_key(&"a".to_string());
+
+    // All operations with stale id should return empty, not panic
+    assert!(graph.references(a).is_empty());
+    assert!(graph.backrefs(a).is_empty());
+    assert!(graph.reachable_from(a).is_empty());
+    assert!(graph.blocking_predecessors(a).is_empty());
+}
+
+#[test]
+fn test_add_reference_one_stale_endpoint() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    let b = graph.add_node(TestNode { id: "b".into() });
+
+    // Remove A, then try to add edge from stale A to valid B
+    graph.remove_by_key(&"a".to_string());
+    let edge_count_before = graph.edge_count();
+    graph.add_reference(a, b, TestEdge::Related);
+    assert_eq!(graph.edge_count(), edge_count_before, "edge should not be added with stale source");
+}

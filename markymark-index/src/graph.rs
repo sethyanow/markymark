@@ -101,6 +101,11 @@ pub struct ConnectionGraph<N: GraphNode = SymbolData, E: EdgeKind = RefKind> {
 // ---------------------------------------------------------------------------
 
 impl<N: GraphNode, E: EdgeKind> ConnectionGraph<N, E> {
+    /// Check whether a SymbolId's underlying node still exists in the graph.
+    fn has_node(&self, id: SymbolId) -> bool {
+        self.graph.node_weight(id.0).is_some()
+    }
+
     /// Add a node and return its handle.
     pub fn add_node(&mut self, data: N) -> SymbolId {
         let key = data.key();
@@ -114,6 +119,9 @@ impl<N: GraphNode, E: EdgeKind> ConnectionGraph<N, E> {
     /// Deduplicates: if an edge with the same target and kind already exists,
     /// it is not added again.
     pub fn add_reference(&mut self, from: SymbolId, to: SymbolId, kind: E) {
+        if !self.has_node(from) || !self.has_node(to) {
+            return;
+        }
         let has_duplicate = self
             .graph
             .edges(from.0)
@@ -126,6 +134,9 @@ impl<N: GraphNode, E: EdgeKind> ConnectionGraph<N, E> {
 
     /// Get all outgoing references from a symbol.
     pub fn references(&self, symbol: SymbolId) -> Vec<(SymbolId, E)> {
+        if !self.has_node(symbol) {
+            return Vec::new();
+        }
         self.graph
             .edges(symbol.0)
             .map(|e| (SymbolId(e.target()), e.weight().clone()))
@@ -134,6 +145,9 @@ impl<N: GraphNode, E: EdgeKind> ConnectionGraph<N, E> {
 
     /// Get all incoming references (back-references) to a symbol.
     pub fn backrefs(&self, symbol: SymbolId) -> Vec<(SymbolId, E)> {
+        if !self.has_node(symbol) {
+            return Vec::new();
+        }
         self.graph
             .edges_directed(symbol.0, Direction::Incoming)
             .map(|e| (SymbolId(e.source()), e.weight().clone()))
@@ -192,6 +206,9 @@ impl<N: GraphNode, E: EdgeKind> ConnectionGraph<N, E> {
 
     /// Returns all nodes reachable from `start` via outgoing edges (excluding start).
     pub fn reachable_from(&self, start: SymbolId) -> HashSet<SymbolId> {
+        if !self.has_node(start) {
+            return HashSet::new();
+        }
         let mut dfs = petgraph::visit::Dfs::new(&self.graph, start.0);
         let mut result = HashSet::new();
         while let Some(node) = dfs.next(&self.graph) {
@@ -204,6 +221,9 @@ impl<N: GraphNode, E: EdgeKind> ConnectionGraph<N, E> {
 
     /// Returns predecessor nodes connected via blocking edges only.
     pub fn blocking_predecessors(&self, node: SymbolId) -> Vec<SymbolId> {
+        if !self.has_node(node) {
+            return Vec::new();
+        }
         self.graph
             .edges_directed(node.0, Direction::Incoming)
             .filter(|e| e.weight().is_blocking())
