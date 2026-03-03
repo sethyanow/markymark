@@ -1,4 +1,4 @@
-use markymark_core::DocumentUri;
+use markymark_core::{DocumentUri, EdgeKind, GraphNode};
 use markymark_index::{ConnectionGraph, RefKind, SymbolId};
 
 // ---------------------------------------------------------------------------
@@ -203,4 +203,268 @@ fn test_no_duplicate_edges() {
 
     // Should only have one edge (deduplication)
     assert_eq!(graph.edge_count(), 1);
+}
+
+// ---------------------------------------------------------------------------
+// Generic graph tests with custom types
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug)]
+struct TestNode {
+    id: String,
+}
+
+impl GraphNode for TestNode {
+    type Key = String;
+    fn key(&self) -> String {
+        self.id.clone()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum TestEdge {
+    Blocks,
+    Related,
+}
+
+impl EdgeKind for TestEdge {
+    fn is_blocking(&self) -> bool {
+        matches!(self, TestEdge::Blocks)
+    }
+}
+
+#[test]
+fn test_generic_graph_custom_types() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode {
+        id: "task-a".into(),
+    });
+    let b = graph.add_node(TestNode {
+        id: "task-b".into(),
+    });
+    graph.add_reference(a, b, TestEdge::Blocks);
+    assert_eq!(graph.node_count(), 2);
+    assert_eq!(graph.edge_count(), 1);
+    let refs = graph.references(a);
+    assert_eq!(refs.len(), 1);
+    assert_eq!(refs[0].0, b);
+    assert_eq!(refs[0].1, TestEdge::Blocks);
+}
+
+// ---------------------------------------------------------------------------
+// Cycle detection
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_has_cycle_no_cycle() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    let b = graph.add_node(TestNode { id: "b".into() });
+    let c = graph.add_node(TestNode { id: "c".into() });
+    graph.add_reference(a, b, TestEdge::Blocks);
+    graph.add_reference(b, c, TestEdge::Blocks);
+    assert!(!graph.has_cycle());
+}
+
+#[test]
+fn test_has_cycle_with_cycle() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    let b = graph.add_node(TestNode { id: "b".into() });
+    let c = graph.add_node(TestNode { id: "c".into() });
+    graph.add_reference(a, b, TestEdge::Blocks);
+    graph.add_reference(b, c, TestEdge::Blocks);
+    graph.add_reference(c, a, TestEdge::Blocks);
+    assert!(graph.has_cycle());
+}
+
+#[test]
+fn test_has_cycle_self_loop() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    graph.add_reference(a, a, TestEdge::Blocks);
+    assert!(graph.has_cycle());
+}
+
+#[test]
+fn test_has_cycle_empty_graph() {
+    let graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    assert!(!graph.has_cycle());
+}
+
+// ---------------------------------------------------------------------------
+// Topological sort
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_topological_sort_linear() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    let b = graph.add_node(TestNode { id: "b".into() });
+    let c = graph.add_node(TestNode { id: "c".into() });
+    graph.add_reference(a, b, TestEdge::Blocks);
+    graph.add_reference(b, c, TestEdge::Blocks);
+    let sorted = graph.topological_sort().unwrap();
+    let pos_a = sorted.iter().position(|s| *s == a).unwrap();
+    let pos_b = sorted.iter().position(|s| *s == b).unwrap();
+    let pos_c = sorted.iter().position(|s| *s == c).unwrap();
+    assert!(pos_a < pos_b);
+    assert!(pos_b < pos_c);
+}
+
+#[test]
+fn test_topological_sort_cyclic_returns_none() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    let b = graph.add_node(TestNode { id: "b".into() });
+    graph.add_reference(a, b, TestEdge::Blocks);
+    graph.add_reference(b, a, TestEdge::Blocks);
+    assert!(graph.topological_sort().is_none());
+}
+
+#[test]
+fn test_topological_sort_disconnected_components() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    let b = graph.add_node(TestNode { id: "b".into() });
+    let x = graph.add_node(TestNode { id: "x".into() });
+    let y = graph.add_node(TestNode { id: "y".into() });
+    graph.add_reference(a, b, TestEdge::Blocks);
+    graph.add_reference(x, y, TestEdge::Blocks);
+    let sorted = graph.topological_sort().unwrap();
+    assert_eq!(sorted.len(), 4);
+    let pos_a = sorted.iter().position(|s| *s == a).unwrap();
+    let pos_b = sorted.iter().position(|s| *s == b).unwrap();
+    let pos_x = sorted.iter().position(|s| *s == x).unwrap();
+    let pos_y = sorted.iter().position(|s| *s == y).unwrap();
+    assert!(pos_a < pos_b);
+    assert!(pos_x < pos_y);
+}
+
+// ---------------------------------------------------------------------------
+// Reachable from
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_reachable_from_linear() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    let b = graph.add_node(TestNode { id: "b".into() });
+    let c = graph.add_node(TestNode { id: "c".into() });
+    let d = graph.add_node(TestNode { id: "d".into() });
+    graph.add_reference(a, b, TestEdge::Blocks);
+    graph.add_reference(b, c, TestEdge::Blocks);
+    let reachable = graph.reachable_from(a);
+    assert!(reachable.contains(&b));
+    assert!(reachable.contains(&c));
+    assert!(!reachable.contains(&a));
+    assert!(!reachable.contains(&d));
+}
+
+#[test]
+fn test_reachable_from_in_cycle_terminates() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    let b = graph.add_node(TestNode { id: "b".into() });
+    let c = graph.add_node(TestNode { id: "c".into() });
+    graph.add_reference(a, b, TestEdge::Blocks);
+    graph.add_reference(b, c, TestEdge::Blocks);
+    graph.add_reference(c, a, TestEdge::Blocks);
+    let reachable = graph.reachable_from(a);
+    assert!(reachable.contains(&b));
+    assert!(reachable.contains(&c));
+    assert!(!reachable.contains(&a));
+}
+
+// ---------------------------------------------------------------------------
+// Blocking predecessors
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_blocking_predecessors_mixed_edges() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    let b = graph.add_node(TestNode { id: "b".into() });
+    let c = graph.add_node(TestNode { id: "c".into() });
+    graph.add_reference(a, c, TestEdge::Blocks);
+    graph.add_reference(b, c, TestEdge::Related);
+    let blockers = graph.blocking_predecessors(c);
+    assert_eq!(blockers.len(), 1);
+    assert!(blockers.contains(&a));
+    assert!(!blockers.contains(&b));
+}
+
+#[test]
+fn test_blocking_predecessors_no_predecessors() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    assert!(graph.blocking_predecessors(a).is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Remove by key
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_remove_by_key_removes_nodes_and_edges() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    let b = graph.add_node(TestNode { id: "b".into() });
+    graph.add_reference(a, b, TestEdge::Blocks);
+    graph.remove_by_key(&"a".to_string());
+    assert_eq!(graph.node_count(), 1);
+    assert_eq!(graph.edge_count(), 0);
+    assert!(graph.backrefs(b).is_empty());
+}
+
+#[test]
+fn test_remove_by_key_cleans_unresolved() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    graph.add_unresolved(a, "missing", TestEdge::Blocks);
+    assert_eq!(graph.unresolved_references().len(), 1);
+    graph.remove_by_key(&"a".to_string());
+    assert!(graph.unresolved_references().is_empty());
+}
+
+#[test]
+fn test_remove_by_key_nonexistent_is_noop() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let _a = graph.add_node(TestNode { id: "a".into() });
+    graph.remove_by_key(&"nonexistent".to_string());
+    assert_eq!(graph.node_count(), 1);
+}
+
+// ---------------------------------------------------------------------------
+// Stale SymbolId guards (regression tests for marky-dr0t)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_stale_symbol_id_after_removal() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    let b = graph.add_node(TestNode { id: "b".into() });
+    graph.add_reference(a, b, TestEdge::Related);
+
+    // Remove node A — its SymbolId is now stale
+    graph.remove_by_key(&"a".to_string());
+
+    // All operations with stale id should return empty, not panic
+    assert!(graph.references(a).is_empty());
+    assert!(graph.backrefs(a).is_empty());
+    assert!(graph.reachable_from(a).is_empty());
+    assert!(graph.blocking_predecessors(a).is_empty());
+}
+
+#[test]
+fn test_add_reference_one_stale_endpoint() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let a = graph.add_node(TestNode { id: "a".into() });
+    let b = graph.add_node(TestNode { id: "b".into() });
+
+    // Remove A, then try to add edge from stale A to valid B
+    graph.remove_by_key(&"a".to_string());
+    let edge_count_before = graph.edge_count();
+    graph.add_reference(a, b, TestEdge::Related);
+    assert_eq!(graph.edge_count(), edge_count_before, "edge should not be added with stale source");
 }

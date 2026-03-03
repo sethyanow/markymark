@@ -14,9 +14,8 @@ use std::collections::HashMap as StdHashMap;
 use super::{
     helpers, BlockEntry, BlockRefEntry, CalloutEntry, CodeSpanEntry, DocumentDependent,
     DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry,
-    FrontmatterOwnedEntry, FrontmatterValueEntry, FrontmatterValueOwned, HeadingEntry,
-    LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry,
-    TagEntry, TaskEntry, WikiLinkEntry, XmlTagEntry,
+    FrontmatterOwnedEntry, HeadingEntry, LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry,
+    PropertyValueEntry, QueryBlockEntry, TagEntry, TaskEntry, WikiLinkEntry, XmlTagEntry,
 };
 
 impl DocumentIndex {
@@ -274,18 +273,7 @@ impl DocumentIndex {
             let mut frontmatter_builder = BumpVec::new_in(arena_ref);
             for fm in fm_owned {
                 let key = arena_alloc_str(arena_ref, &fm.key);
-                let value = match fm.value {
-                    FrontmatterValueOwned::String(s) => {
-                        FrontmatterValueEntry::String(arena_alloc_str(arena_ref, &s))
-                    }
-                    FrontmatterValueOwned::List(items) => {
-                        let mut list = BumpVec::new_in(arena_ref);
-                        for item in items {
-                            list.push(arena_alloc_str(arena_ref, &item));
-                        }
-                        FrontmatterValueEntry::List(list.into_bump_slice())
-                    }
-                };
+                let value = helpers::owned_value_to_arena(fm.value, arena_ref);
                 frontmatter_builder.push(FrontmatterEntry { key, value });
             }
             let frontmatter = frontmatter_builder.into_bump_slice();

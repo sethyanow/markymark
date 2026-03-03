@@ -325,7 +325,7 @@ fn test_frontmatter_with_colon_in_value() {
                 "URL should not be truncated at second colon"
             );
         }
-        FrontmatterValueEntry::List(_) => panic!("URL should be a String, not List"),
+        other => panic!("URL should be a String, got {other:?}"),
     }
 }
 
