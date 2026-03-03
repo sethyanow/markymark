@@ -172,6 +172,26 @@ pub fn detect_yaml_scalar(value: &str) -> YamlScalarHint {
     YamlScalarHint::Str
 }
 
+/// Convert a trimmed scalar string to a typed `FrontmatterValue`.
+fn scalar_to_value<'a>(raw: &str, arena: &'a bumpalo::Bump) -> FrontmatterValue<'a> {
+    let (stripped, was_quoted) = strip_yaml_quotes(raw);
+    if was_quoted {
+        return FrontmatterValue::String(arena_alloc_str(arena, stripped));
+    }
+    match detect_yaml_scalar(stripped) {
+        YamlScalarHint::Null => FrontmatterValue::Null,
+        YamlScalarHint::Boolean(b) => FrontmatterValue::Boolean(b),
+        YamlScalarHint::Integer => {
+            // Safe: detect_yaml_scalar only returns Integer when parse succeeds
+            FrontmatterValue::Integer(stripped.parse::<i64>().unwrap_or(0))
+        }
+        YamlScalarHint::Float => {
+            FrontmatterValue::Float(stripped.parse::<f64>().unwrap_or(0.0))
+        }
+        YamlScalarHint::Str => FrontmatterValue::String(arena_alloc_str(arena, stripped)),
+    }
+}
+
 /// Simple YAML parser for frontmatter
 fn parse_simple_yaml<'a>(content: &str, arena: &'a bumpalo::Bump) -> Frontmatter<'a> {
     let mut data = new_arena_hashmap(arena);
@@ -193,13 +213,12 @@ fn parse_simple_yaml<'a>(content: &str, arena: &'a bumpalo::Bump) -> Frontmatter
                 for item in inner.split(',') {
                     let trimmed = item.trim();
                     if !trimmed.is_empty() {
-                        items.push(arena_alloc_str(arena, trimmed));
+                        items.push(scalar_to_value(trimmed, arena));
                     }
                 }
                 FrontmatterValue::List(items.into_bump_slice())
             } else {
-                // String value
-                FrontmatterValue::String(arena_alloc_str(arena, value_str))
+                scalar_to_value(value_str, arena)
             };
 
             data.insert(key, value);
