@@ -35,9 +35,9 @@ impl<'arena> Frontmatter<'arena> {
         self.data.get(key).and_then(|v| v.as_boolean())
     }
 
-    /// Get list value for the given key (string items only).
-    pub fn get_list(&self, key: &str) -> Option<Vec<&'arena str>> {
-        self.data.get(key).and_then(|v| v.as_list())
+    /// Get string list value for the given key (string items only).
+    pub fn get_string_list(&self, key: &str) -> Option<Vec<&'arena str>> {
+        self.data.get(key).and_then(|v| v.as_string_list())
     }
 
     /// Iterate over all key-value pairs.
@@ -77,7 +77,7 @@ impl<'arena> FrontmatterValue<'arena> {
     /// Get as string list if this is a List of Strings.
     ///
     /// Returns only the String items from the list, skipping non-string values.
-    pub fn as_list(&self) -> Option<Vec<&'arena str>> {
+    pub fn as_string_list(&self) -> Option<Vec<&'arena str>> {
         match self {
             FrontmatterValue::List(list) => {
                 let strings: Vec<&str> = list.iter().filter_map(|v| v.as_string()).collect();
