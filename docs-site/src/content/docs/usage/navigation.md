@@ -24,7 +24,7 @@ appear in the references panel with file names and line numbers.
 
 **With MCP:**
 
-```
+```json
 find-references: { "uri": "file:///path/to/doc.md", "line": 0, "character": 2 }
 ```
 
@@ -39,7 +39,7 @@ YAML, TOML), the outline shows key paths instead.
 
 **With MCP:**
 
-```
+```json
 get-outline: { "uri": "file:///path/to/doc.md" }
 ```
 
@@ -51,7 +51,7 @@ the full index.
 
 **With MCP:**
 
-```
+```json
 search-symbols: { "query": "installation" }
 ```
 

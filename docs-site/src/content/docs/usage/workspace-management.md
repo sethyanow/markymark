@@ -22,20 +22,20 @@ roots share the same realm.
 
 Create a realm, then add folder roots to it:
 
-```
+```json
 create-realm: { "name": "my-docs" }
 add-root: { "realm": "my-docs", "root": "/path/to/docs" }
 ```
 
 You can add multiple roots to a single realm. Remove a root when you no longer need it indexed:
 
-```
+```json
 remove-root: { "realm": "my-docs", "root": "/path/to/docs" }
 ```
 
 Check what's indexed with `realm-stats`:
 
-```
+```json
 realm-stats: { "realm": "my-docs" }
 ```
 
@@ -44,7 +44,7 @@ health check after adding or removing roots.
 
 When finished, destroy the realm to free resources:
 
-```
+```json
 destroy-realm: { "name": "my-docs" }
 ```
 
