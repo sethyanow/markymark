@@ -156,6 +156,9 @@ impl<N: GraphNode, E: EdgeKind> ConnectionGraph<N, E> {
 
     /// Record an unresolved reference.
     pub fn add_unresolved(&mut self, from: SymbolId, target: &str, kind: E) {
+        if !self.has_node(from) {
+            return;
+        }
         self.unresolved.push(UnresolvedRef {
             from,
             target: target.to_string(),

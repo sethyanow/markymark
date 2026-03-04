@@ -33,7 +33,7 @@ vim.api.nvim_create_autocmd('FileType', {
       cmd = { 'markymark', '--lsp' },
       root_dir = vim.fs.dirname(
         vim.fs.find({ '.git', 'package.json', 'Cargo.toml' }, { upward = true })[1]
-      ),
+      ) or vim.fs.dirname(vim.api.nvim_buf_get_name(0)),
     })
   end,
 })

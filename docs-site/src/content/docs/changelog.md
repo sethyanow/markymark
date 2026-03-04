@@ -5,6 +5,40 @@ description: Release history for markymark
 
 All notable changes to markymark are documented here. Each release links to the full diff on GitHub.
 
+## v0.7.1 (2026-03-03)
+
+Typed frontmatter values, a generic connection graph, and a full documentation site. Parser and index crates now support Boolean, Integer, Float, Null, List, and Map frontmatter variants with end-to-end type preservation through MCP. The ConnectionGraph is now generic over user-defined node and edge traits, with new cycle detection, topological sort, and reachability utilities.
+
+### Features
+
+- **Typed `FrontmatterValue`** — parser, index, and core crates support Boolean, Integer, Float, Null, List, and Map variants with shared YAML scalar detection and conversion helpers
+- **Generic `ConnectionGraph`** — `EdgeKind` and `GraphNode` traits allow consuming crates to define custom edge/node types; new `has_cycle`, `topological_sort`, and `reachable_from` utilities
+- **Documentation site** — full Starlight docs site with architecture guides, editor setup, feature reference, usage tutorials, FAQ, and changelog
+- **Code span extraction** — ix3 pipeline extracts inline code spans through Zig→FFI→Rust→LSP/MCP stack
+
+### Bug Fixes
+
+- Handle closing `---` at EOF without trailing newline in frontmatter extraction
+- Handle empty frontmatter blocks (`---\n---`) without panic
+- Guard stale `SymbolId` in `ConnectionGraph` public methods (add_reference, references, backrefs)
+- Replace `unwrap_or(0)` with match fallback in typed scalar parsing
+- Fix `Null` export semantics in MCP wire format
+- Safer `detect_yaml_scalar` with finite-float checks and proper fallback ordering
+
+### Refactoring
+
+- Extract modules split from oversized files across parser and index crates
+- Remove orphaned extract modules and pre-split Zig test files
+
+### Infrastructure
+
+- License updated to AGPL-3.0-only across workspace and plugin metadata
+- Version bump to 0.7.1 across all 7 workspace crates and plugin configuration
+
+**Full diff:** [v0.7.0...v0.7.1](https://github.com/sethyanow/markymark/compare/v0.7.0...v0.7.1)
+
+---
+
 ## v0.7.0 (2026-02-28)
 
 Adds semantic search powered by vector embeddings, giving AI agents the ability to find relevant document sections by meaning rather than exact text. Supports both cloud (Voyage API) and fully local (ONNX via fastembed) embedding providers. Several concurrency fixes harden the MCP workspace management layer.
@@ -102,7 +136,7 @@ Focused improvements to the Zig md4c parsing pipeline and Rust error handling.
 
 ## v0.5.0 (2026-02-20)
 
-Replaces the tree-sitter incremental indexing pipeline with a new md4c-based DocumentEngine. The new pipeline vendors Bun's md4c Zig parser for single-pass markdown extraction, serializes results to a compact binary blob format, and crosses the FFI boundary into Rust — eliminating double-parse overhead.
+Replaces the tree-sitter incremental indexing pipeline with a new md4c-based DocumentEngine. The new pipeline vendors Bun's md4c Zig parser for single-pass Markdown extraction, serializes results to a compact binary blob format, and crosses the FFI boundary into Rust — eliminating double-parse overhead.
 
 ### Features
 
@@ -173,7 +207,7 @@ Replaces the tree-sitter incremental indexing pipeline with a new md4c-based Doc
 
 - Detect edits in large gaps between extractor entries during incremental indexing
 - Deduplicate link edges per document in graph analysis
-- Improve markdown link resolution with path-relative lookup
+- Improve Markdown link resolution with path-relative lookup
 
 **Full diff:** [v0.4.0...v0.4.1](https://github.com/sethyanow/markymark/compare/v0.4.0...v0.4.1)
 

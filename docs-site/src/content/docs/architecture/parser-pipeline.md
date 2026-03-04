@@ -1,12 +1,12 @@
 ---
 title: Parser Pipeline
-description: How markymark parses markdown using tree-sitter and the md4c Zig engine
+description: How markymark parses Markdown using tree-sitter and the md4c Zig engine
 ---
 
-markymark uses two markdown parsers for different purposes, plus dedicated parsers
+markymark uses two Markdown parsers for different purposes, plus dedicated parsers
 for structured formats.
 
-## Two markdown parsers
+## Two Markdown parsers
 
 ### md4c (primary — LSP)
 
@@ -61,7 +61,7 @@ runs as a separate scan step after parsing.
 
 ## Structured format parsing
 
-Non-markdown files take a separate path through `markymark-parser/src/structured/`:
+Non-Markdown files take a separate path through `markymark-parser/src/structured/`:
 
 | Format | Parser |
 |--------|--------|
@@ -74,7 +74,7 @@ Non-markdown files take a separate path through `markymark-parser/src/structured
 
 These produce a `StructuredDocumentIndex` that shares the `RealmIndex`
 infrastructure but exposes key paths (e.g., `server.port`) instead of
-markdown-specific symbols.
+Markdown-specific symbols.
 
 ## The ScanBackend trait
 

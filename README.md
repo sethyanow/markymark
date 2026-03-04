@@ -44,7 +44,7 @@ cargo install markymark-cli
 ```
 
 Pre-built binaries: [GitHub Releases](https://github.com/sethyanow/markymark/releases)
-| Claude Code: [Plugin README](markymark-plugin/README.md)
+- Claude Code: [Plugin README](markymark-plugin/README.md)
 
 ## Documentation
 

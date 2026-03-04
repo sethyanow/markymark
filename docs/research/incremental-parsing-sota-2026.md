@@ -400,7 +400,7 @@ On edit:
 
 ## 10. Open Questions for Brainstorm (from MEMORY.md)
 
-See `docs/research/incremental-md4c.md` section "Open Design Questions" for the 7 brainstorm items:
+See [incremental-md4c.md — Open Design Questions](./incremental-md4c.md#open-design-questions) for the 7 brainstorm items:
 
 1. **Chunk granularity** — Fixed (sqrt) vs semantic (safe boundaries)?
 2. **block_bytes structure** — Segmented, rope, or rebuild-on-demand?

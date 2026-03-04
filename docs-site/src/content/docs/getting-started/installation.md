@@ -93,8 +93,7 @@ tar -xzf markymark-plugin-*.tar.gz
 
 ## Neovim
 
-Neovim can use markymark as an LSP server. See the Editor Setup section for configuration
-details once you have the binary installed via any method above.
+Neovim can use markymark as an LSP server. See the [Neovim](/editors/neovim/), [VS Code](/editors/vscode/), or [Claude Code](/editors/claude-code/) setup guides for configuration details once you have the binary installed via any method above.
 
 ## Verify installation
 

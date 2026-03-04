@@ -19,7 +19,7 @@ block IDs. If the target is in another file, markymark opens it at the right pos
 ## Find all references
 
 Right-click a heading and select **Find All References** to see every document that
-links to it — including wiki links, markdown links, and heading anchors. Results
+links to it — including wiki links, Markdown links, and heading anchors. Results
 appear in the references panel with file names and line numbers.
 
 **With MCP:**

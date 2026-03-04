@@ -40,10 +40,10 @@ Both modes access the same indexing engine — the difference is the interface
 
 ## How does markymark differ from marksman and markdown-oxide?
 
-All three are markdown language servers. Key differences:
+All three are Markdown language servers. Key differences:
 
 - **Multi-format support.** markymark indexes JSON, YAML, TOML, and other
-  structured formats alongside markdown. The others are markdown-only.
+  structured formats alongside Markdown. The others are Markdown-only.
 - **MCP server mode.** markymark can serve as an AI agent tool server,
   not just an editor backend.
 - **Dual parser architecture.** markymark uses a Zig-based md4c parser for
@@ -53,7 +53,7 @@ All three are markdown language servers. Key differences:
 ## Is markymark open source? What license?
 
 Yes. markymark is licensed under
-[AGPL-3.0](https://github.com/sethyanow/markymark/blob/main/LICENSE.txt).
+[AGPL-3.0-only](https://github.com/sethyanow/markymark/blob/main/LICENSE.txt).
 Source code is available at
 [github.com/sethyanow/markymark](https://github.com/sethyanow/markymark).
 

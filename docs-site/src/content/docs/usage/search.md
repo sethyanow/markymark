@@ -17,7 +17,7 @@ code reference in the index. Results update as you type.
 
 **With MCP:**
 
-```
+```text
 search-symbols: { "query": "authentication" }
 ```
 
@@ -32,7 +32,7 @@ re-embedded incrementally when documents change.
 
 **With MCP:**
 
-```
+```text
 semantic-search: { "query": "how to configure SSL", "top_k": 5 }
 ```
 
@@ -55,14 +55,14 @@ Search document content with metadata filters.
 
 **With MCP:**
 
-```
+```text
 search-workspace: { "query": "deployment", "limit": 20 }
 ```
 
 This searches across document titles and content. You can narrow results with
 filters:
 
-```
+```text
 search-workspace: {
   "query": "setup",
   "tag_filter": "guide",
@@ -79,7 +79,7 @@ Search file content with regular expressions, including context lines.
 
 **With MCP:**
 
-```
+```text
 search-for-pattern: {
   "pattern": "TODO|FIXME",
   "context_lines": 2,

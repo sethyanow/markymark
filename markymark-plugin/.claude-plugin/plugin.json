@@ -5,7 +5,7 @@
   "author": {
     "name": "Seth Yanow"
   },
-  "license": "MIT OR Apache-2.0",
+  "license": "AGPL-3.0-only",
   "repository": "https://github.com/sethyanow/markymark",
   "homepage": "https://github.com/sethyanow/markymark",
   "keywords": ["markdown", "lsp", "mcp", "language-server", "wiki-links", "obsidian", "logseq"],

@@ -12,7 +12,7 @@ they reach readers.
 **Broken wiki links.** A link like `[[nonexistent]]` that points to a page or heading
 that doesn't exist in the workspace. Shown as a warning underline on the link text.
 
-**Broken heading anchors.** A markdown link like `[text](other.md#missing)` where the
+**Broken heading anchors.** A Markdown link like `[text](other.md#missing)` where the
 target heading doesn't exist in the referenced document.
 
 **Duplicate headings.** Two or more headings in the same file with identical text.
@@ -31,13 +31,13 @@ link or rename a duplicate heading, the warning clears automatically.
 
 Check diagnostics for a single document:
 
-```
+```text
 get-diagnostics: { "uri": "file:///path/to/doc.md" }
 ```
 
 Check all documents in a realm:
 
-```
+```text
 get-diagnostics: { "realm": "my-docs" }
 ```
 

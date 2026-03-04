@@ -66,7 +66,7 @@ The full tool list covers workspace management (`create-realm`, `destroy-realm`,
 The plugin includes a `/markdown-check` skill that validates Markdown quality
 across your workspace. Run it from Claude Code:
 
-```
+```text
 /markdown-check
 ```
 

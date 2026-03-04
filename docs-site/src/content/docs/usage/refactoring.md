@@ -4,7 +4,7 @@ description: Rename headings and symbols across your entire workspace with confi
 ---
 
 markymark supports renaming headings with automatic cross-file reference updates.
-When you rename a heading, every wiki link, markdown anchor, and reference pointing
+When you rename a heading, every wiki link, Markdown anchor, and reference pointing
 to it gets updated across the workspace in a single operation.
 
 ## In your editor

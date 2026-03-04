@@ -24,7 +24,7 @@ Returns the heading hierarchy for a single document.
 ### export-index
 
 Returns all indexed symbols for a document: headings, XML tags, wiki links, and
-markdown links.
+Markdown links.
 
 | Param | Required | Description |
 |-------|----------|-------------|

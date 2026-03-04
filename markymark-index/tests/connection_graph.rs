@@ -472,3 +472,15 @@ fn test_add_reference_one_stale_endpoint() {
         "edge should not be added with stale source"
     );
 }
+
+#[test]
+fn test_add_unresolved_stale_symbol_ignored() {
+    let mut graph = ConnectionGraph::<TestNode, TestEdge>::default();
+    let id = graph.add_node(TestNode { id: "test".into() });
+    graph.remove_by_key(&"test".to_string());
+    graph.add_unresolved(id, "target.md", TestEdge::Related);
+    assert!(
+        graph.unresolved_references().is_empty(),
+        "unresolved ref from stale node should be silently ignored"
+    );
+}

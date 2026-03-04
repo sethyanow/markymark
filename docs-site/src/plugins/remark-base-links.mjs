@@ -20,13 +20,18 @@ export default function remarkBaseLinks(options = {}) {
 		if (!base) return;
 
 		visit(tree, ['link', 'image', 'definition'], (node) => {
+			const alreadyPrefixed =
+				node.url === base ||
+				node.url.startsWith(`${base}/`) ||
+				node.url.startsWith(`${base}?`) ||
+				node.url.startsWith(`${base}#`);
+
 			if (
 				node.url.startsWith('/') &&
-				!node.url.startsWith(base + '/') &&
-				node.url !== base &&
+				!alreadyPrefixed &&
 				!node.url.startsWith('//')
 			) {
-				node.url = base + node.url;
+				node.url = `${base}${node.url}`;
 			}
 		});
 	};

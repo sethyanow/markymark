@@ -2,7 +2,7 @@
 
 [![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
 
-```
+```bash
 bun create astro@latest -- --template starlight
 ```
 
@@ -12,7 +12,7 @@ bun create astro@latest -- --template starlight
 
 Inside of your Astro + Starlight project, you'll see the following folders and files:
 
-```
+```text
 .
 ├── public/
 ├── src/

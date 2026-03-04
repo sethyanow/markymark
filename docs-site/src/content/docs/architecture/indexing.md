@@ -20,7 +20,7 @@ It can be built through three construction paths:
 | `from_ast()` | Tree-sitter frontmatter + Zig scan backend | MCP batch indexing |
 
 All three produce the same `DocumentDependent` structure — typed entry slices for
-headings, wiki links, markdown links, tags, XML tags, code spans, tasks, embeds,
+headings, wiki links, Markdown links, tags, XML tags, code spans, tasks, embeds,
 frontmatter, properties, and more.
 
 `DocumentIndex` uses `self_cell` so arena-allocated references remain valid for
@@ -92,7 +92,7 @@ Path-relative resolution uses component-stack normalization rather than filesyst
 ## Diagnostics
 
 `compute_diagnostics()` in `markymark-index/src/diagnostics.rs` checks a document
-against its realm and reports broken wiki links, broken markdown links, broken
+against its realm and reports broken wiki links, broken Markdown links, broken
 heading anchors, and duplicate heading slugs. This function is shared between LSP
 and MCP — both call the same code.
 

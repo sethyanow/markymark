@@ -264,7 +264,11 @@ fn parser_value_to_owned(value: &markymark_parser::FrontmatterValue) -> Frontmat
     }
 }
 
-/// Extract alias strings from a frontmatter value (String or List of Strings only).
+/// Extract alias strings from a frontmatter value.
+///
+/// Accepts String (single alias) or List (multiple aliases, string items only).
+/// Non-string types (Integer, Float, Boolean, Null, Map) and non-string list
+/// items are silently ignored — aliases are always strings in practice.
 fn collect_alias_strings(value: &FrontmatterValueOwned, aliases: &mut Vec<String>) {
     match value {
         FrontmatterValueOwned::String(s) => {
