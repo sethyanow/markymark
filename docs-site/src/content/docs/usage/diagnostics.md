@@ -1,6 +1,6 @@
 ---
 title: Diagnostics
-description: Detect broken links, duplicate headings, and other issues in your markdown files
+description: Detect broken links, duplicate headings, and other issues in your Markdown files
 ---
 
 markymark checks your documents for structural problems as you type. Issues appear

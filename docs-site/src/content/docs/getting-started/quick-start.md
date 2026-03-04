@@ -41,7 +41,7 @@ Type a heading name to find it across all files.
 every document that links to it.
 
 **Rename.** Right-click a heading and select "Rename Symbol." All wiki links and
-markdown anchors pointing to that heading update automatically across the workspace.
+Markdown anchors pointing to that heading update automatically across the workspace.
 
 **Browse outline.** Open the document outline panel (Ctrl+Shift+O / Cmd+Shift+O)
 to see a hierarchical tree of headings and tags in the current file.

@@ -74,9 +74,9 @@ markymark is designed for fast response times. If you notice lag:
 
 - **Initial indexing** of thousands of files takes a moment on first open.
   Subsequent edits are incremental and fast (sub-5ms for typical documents).
-- **Very large files** (100KB+ markdown) take longer to parse. This is rare in
+- **Very large files** (100KB+ Markdown) take longer to parse. This is rare in
   practice.
-- **Structured format indexing** (JSON, YAML) is lighter than markdown since
+- **Structured format indexing** (JSON, YAML) is lighter than Markdown since
   fewer features apply.
 
 ## Filing a bug report

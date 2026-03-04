@@ -1,6 +1,6 @@
 ---
 title: Navigation
-description: Jump to definitions, follow links, and navigate across your markdown files
+description: Jump to definitions, follow links, and navigate across your Markdown files
 ---
 
 markymark lets you move between documents the same way a code editor jumps between
