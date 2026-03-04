@@ -300,6 +300,16 @@ fn find_frontmatter_close(rest: &str) -> Option<(usize, usize)> {
         return Some((0, rest.len()));
     }
 
+    // Empty frontmatter with trailing newline (rest starts with closing delimiter).
+    // CRLF check MUST come before LF check ("---\r\n".starts_with("---\n") is false,
+    // but ordering is safer for consistency with the rest of this function).
+    if rest.starts_with("---\r\n") {
+        return Some((0, 5));
+    }
+    if rest.starts_with("---\n") {
+        return Some((0, 4));
+    }
+
     let lf = rest.find("\n---\n").map(|p| (p, 5));
     let crlf = rest.find("\n---\r\n").map(|p| (p, 6));
     // Handle closing --- at EOF without trailing newline
