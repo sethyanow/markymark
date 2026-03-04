@@ -179,11 +179,18 @@ impl SemanticIndex {
 
         // --- Commit phase (all embed calls succeeded) ---
 
-        // Add new vectors to Zig index.
+        // Add new vectors to Zig index (with rollback on partial failure).
+        let mut added_ids: Vec<String> = Vec::new();
         for (id, embedding) in staged_zig_adds {
-            self.index
-                .add(&id, &embedding)
-                .map_err(|e| EmbedError::InternalError(e.to_string()))?;
+            match self.index.add(&id, &embedding) {
+                Ok(()) => added_ids.push(id),
+                Err(e) => {
+                    for rollback_id in &added_ids {
+                        let _ = self.index.remove(rollback_id);
+                    }
+                    return Err(EmbedError::InternalError(e.to_string()));
+                }
+            }
         }
 
         // Remove ALL old entries for this document.
