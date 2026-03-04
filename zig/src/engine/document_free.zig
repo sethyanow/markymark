@@ -126,7 +126,7 @@ pub fn freeXmlTags(allocator: Allocator, xml_tags: []StoredXmlTag) void {
 pub fn freeStoredHeadingsList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredHeading), free_texts: bool) void {
     for (list.items) |h| {
         // h.text was transferred from extraction; only free it when texts_transferred=true
-        // (i.e., after extraction.headings/links slice containers were freed at line 289-290).
+        // (i.e., after extraction slice containers were freed during extraction cleanup).
         if (free_texts) allocator.free(h.text);
         allocator.free(h.slug);
     }
@@ -135,7 +135,7 @@ pub fn freeStoredHeadingsList(allocator: Allocator, list: *std.ArrayListUnmanage
 
 pub fn freeStoredLinksList(allocator: Allocator, list: *std.ArrayListUnmanaged(StoredLink), free_texts: bool) void {
     // l.text and l.target were transferred from extraction; free them only when
-    // texts_transferred=true (after extraction slice containers freed at line 289-290).
+    // texts_transferred=true (after extraction slice containers freed during extraction cleanup).
     if (free_texts) {
         for (list.items) |l| {
             allocator.free(l.text);

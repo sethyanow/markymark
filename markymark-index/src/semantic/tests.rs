@@ -786,7 +786,10 @@ async fn test_add_document_rollback_on_embed_failure() {
     let updated = build_doc_index("# Updated Heading\n");
     let result = sem.add_document(uri.clone(), &updated).await;
 
-    assert!(result.is_err(), "re-add should fail due to provider failure");
+    assert!(
+        result.is_err(),
+        "re-add should fail due to provider failure"
+    );
     assert_eq!(
         sem.entry_count(),
         1,
@@ -794,9 +797,15 @@ async fn test_add_document_rollback_on_embed_failure() {
     );
 
     // Verify original heading text is still present in the index.
-    let ids = sem.doc_to_ids.get(&uri).expect("doc_to_ids must be restored");
+    let ids = sem
+        .doc_to_ids
+        .get(&uri)
+        .expect("doc_to_ids must be restored");
     assert_eq!(ids.len(), 1);
-    let entry = sem.entries_by_id.get(&ids[0]).expect("entry must be restored");
+    let entry = sem
+        .entries_by_id
+        .get(&ids[0])
+        .expect("entry must be restored");
     assert_eq!(
         entry.heading, "Original Heading",
         "rollback must restore original heading text"

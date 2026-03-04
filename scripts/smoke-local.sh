@@ -5,7 +5,7 @@
 #   ./scripts/smoke-local.sh              # uses a small test workspace
 #   ./scripts/smoke-local.sh /path/to/dir # custom workspace root
 #
-# Requires: local-embeddings feature compiled in (downloads model on first run).
+# Requires: semantic-search + local-embeddings features compiled in (downloads model on first run).
 
 set -euo pipefail
 

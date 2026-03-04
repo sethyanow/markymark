@@ -129,32 +129,9 @@ pub(crate) fn handle_search_symbols(realm: &RealmIndex, query: String) -> CoreOp
     CoreOperationResult::Symbols(matches)
 }
 
+/// Map a slice of [`markymark_index::SearchResult`] into [`CoreOperationResult::SemanticMatches`].
 #[cfg(feature = "semantic-search")]
-pub(crate) async fn handle_semantic_search(
-    semantic_index: std::sync::Arc<tokio::sync::Mutex<markymark_index::SemanticIndex>>,
-    query: String,
-    top_k: u32,
-    min_score: f32,
-) -> CoreOperationResult {
-    let query = query.trim().to_string();
-    if query.is_empty() {
-        return CoreOperationResult::Error(CoreError::Message(
-            "semantic query cannot be empty".to_string(),
-        ));
-    }
-
-    let results = {
-        let guard = semantic_index.lock().await;
-        match guard.search(&query, top_k, min_score.clamp(0.0, 1.0)).await {
-            Ok(results) => results,
-            Err(err) => {
-                return CoreOperationResult::Error(CoreError::Message(format!(
-                    "semantic search failed: {err}"
-                )));
-            }
-        }
-    };
-
+fn to_semantic_matches(results: Vec<markymark_index::SearchResult>) -> CoreOperationResult {
     CoreOperationResult::SemanticMatches(
         results
             .into_iter()
@@ -175,6 +152,39 @@ pub(crate) async fn handle_semantic_search(
             })
             .collect(),
     )
+}
+
+/// Search using a pre-computed query embedding (fast, in-memory only).
+///
+/// The caller is responsible for embedding the query outside any coarse lock.
+#[cfg(feature = "semantic-search")]
+pub(crate) async fn handle_semantic_search_with_embedding(
+    semantic_index: std::sync::Arc<tokio::sync::Mutex<markymark_index::SemanticIndex>>,
+    query: String,
+    query_embedding: &[f32],
+    top_k: u32,
+    min_score: f32,
+) -> CoreOperationResult {
+    let query = query.trim().to_string();
+    if query.is_empty() {
+        return CoreOperationResult::Error(CoreError::Message(
+            "semantic query cannot be empty".to_string(),
+        ));
+    }
+
+    let results = {
+        let guard = semantic_index.lock().await;
+        match guard.search_with_embedding(query_embedding, top_k, min_score.clamp(0.0, 1.0)) {
+            Ok(results) => results,
+            Err(err) => {
+                return CoreOperationResult::Error(CoreError::Message(format!(
+                    "semantic search failed: {err}"
+                )));
+            }
+        }
+    };
+
+    to_semantic_matches(results)
 }
 
 #[cfg(test)]

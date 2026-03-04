@@ -259,20 +259,18 @@ async fn query_operations_error_on_never_created_realm() {
                 format: "json".to_string(),
             },
         ),
+        // SemanticSearch validates realm existence before checking feature flags,
+        // so it returns "realm does not exist" regardless of feature config.
+        (
+            "SemanticSearch",
+            CoreOperation::SemanticSearch {
+                query: "anything".to_string(),
+                realm: Some(bogus.to_string()),
+                top_k: 5,
+                min_score: 0.0,
+            },
+        ),
     ];
-
-    // SemanticSearch returns "not implemented" when the feature is disabled,
-    // which is a different error path than "realm does not exist".
-    #[cfg(feature = "semantic-search")]
-    operations.push((
-        "SemanticSearch",
-        CoreOperation::SemanticSearch {
-            query: "anything".to_string(),
-            realm: Some(bogus.to_string()),
-            top_k: 5,
-            min_score: 0.0,
-        },
-    ));
 
     for (label, op) in operations {
         let result = engine.execute(op).await;

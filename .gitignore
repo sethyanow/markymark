@@ -42,6 +42,11 @@ bd_export_laptop*.jsonl
 
 brza-spec.md
 
+# Docs site (Starlight/Astro)
+docs-site/node_modules/
+docs-site/dist/
+docs-site/.astro/
+
 # Secrets
 .env
 .env.*

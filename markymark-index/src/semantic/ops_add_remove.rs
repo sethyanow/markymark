@@ -64,6 +64,26 @@ fn build_document_plan(uri: &DocumentUri, index: &DocumentIndex) -> DocumentPlan
             });
             ids.push(id);
         }
+
+        // Fallback: all headings were blank/whitespace — treat like no headings.
+        if entries.is_empty() {
+            let heading = fallback_heading(uri);
+            let id = format!("{}#fallback", uri.as_str());
+
+            token_set.extend(token_hashes(&heading));
+            entries.push(EntryPlan {
+                id: id.clone(),
+                embedding_input: heading.clone(),
+                entry: SemanticEntry {
+                    doc_uri: uri.clone(),
+                    heading,
+                    heading_level: 1,
+                    section_start: Position::new(0, 0),
+                    section_end: Position::new(0, 0),
+                },
+            });
+            ids.push(id);
+        }
     }
 
     DocumentPlan {

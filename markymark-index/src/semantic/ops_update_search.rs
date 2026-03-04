@@ -1,4 +1,5 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::sync::Arc;
 
 use crate::DocumentIndex;
 use markymark_core::prelude::*;
@@ -26,6 +27,10 @@ impl SemanticIndex {
             return self.add_document(uri, index).await;
         };
 
+        // Seed reserved_ids with all existing IDs to prevent collision when
+        // new headings share a slug with reused or previously-assigned IDs.
+        let mut reserved_ids: HashSet<String> = old_ids.iter().cloned().collect();
+
         // Build map: heading_text → Vec<(entry_id, SemanticEntry)> from old entries.
         let mut old_by_text: HashMap<String, Vec<(String, SemanticEntry)>> = HashMap::new();
         for id in &old_ids {
@@ -42,7 +47,7 @@ impl SemanticIndex {
             let fb = fallback_heading(&uri);
             vec![(fb, 1u8, Position::new(0, 0), Position::new(0, 0), true)]
         } else {
-            index
+            let filtered: Vec<_> = index
                 .headings()
                 .iter()
                 .filter(|h| !h.text.trim().is_empty())
@@ -55,7 +60,14 @@ impl SemanticIndex {
                         false,
                     )
                 })
-                .collect()
+                .collect();
+            // Fallback: all headings were blank/whitespace — treat like no headings.
+            if filtered.is_empty() {
+                let fb = fallback_heading(&uri);
+                vec![(fb, 1u8, Position::new(0, 0), Position::new(0, 0), true)]
+            } else {
+                filtered
+            }
         };
 
         // Check if old entries were a fallback.
@@ -114,6 +126,7 @@ impl SemanticIndex {
                 // Reuse existing entry — keep OLD ID so the Zig vector remains
                 // searchable, update metadata only, no re-embed.
                 *consumed_idx += 1;
+                reserved_ids.insert(old_id.clone());
 
                 staged_entries.push((
                     old_id.clone(),
@@ -139,8 +152,14 @@ impl SemanticIndex {
                         .find(|h| h.text == *text && h.range.start == *start)
                         .map(|h| h.slug)
                         .unwrap_or("unknown");
-                    let idx = new_ids.len();
-                    format!("{}#{}#{idx}", uri.as_str(), slug)
+                    let mut idx = new_ids.len();
+                    loop {
+                        let candidate = format!("{}#{}#{idx}", uri.as_str(), slug);
+                        if reserved_ids.insert(candidate.clone()) {
+                            break candidate;
+                        }
+                        idx += 1;
+                    }
                 };
 
                 staged_zig_adds.push((id.clone(), embedding));
@@ -184,10 +203,39 @@ impl SemanticIndex {
         Ok(())
     }
 
+    /// Get a clone of the embedding provider.
+    ///
+    /// Callers that care about lock contention should clone the provider,
+    /// call [`EmbeddingProvider::embed`] outside any lock, then call
+    /// [`search_with_embedding`](Self::search_with_embedding) inside the lock.
+    pub fn provider(&self) -> Arc<dyn EmbeddingProvider> {
+        self.provider.clone()
+    }
+
     /// Run semantic search over indexed entries.
+    ///
+    /// This embeds `query` via the provider and then performs the in-memory
+    /// index search. If the caller holds a lock (e.g., a `TokioMutex`),
+    /// consider using [`provider`](Self::provider) +
+    /// [`search_with_embedding`](Self::search_with_embedding) instead to avoid
+    /// holding the lock during the expensive embed step.
     pub async fn search(
         &self,
         query: &str,
+        top_k: u32,
+        min_score: f32,
+    ) -> Result<Vec<SearchResult>, EmbedError> {
+        let query_embedding = self.provider.embed(query).await?;
+        self.search_with_embedding(&query_embedding, top_k, min_score)
+    }
+
+    /// Search the index with a pre-computed query embedding (fast, in-memory only).
+    ///
+    /// Use this when the caller embeds the query outside any lock to avoid
+    /// serializing concurrent searches across the slow embed I/O step.
+    pub fn search_with_embedding(
+        &self,
+        query_embedding: &[f32],
         top_k: u32,
         min_score: f32,
     ) -> Result<Vec<SearchResult>, EmbedError> {
@@ -195,13 +243,11 @@ impl SemanticIndex {
             return Ok(Vec::new());
         }
 
-        let query_embedding = self.provider.embed(query).await?;
         let score_floor = min_score.clamp(0.0, 1.0);
-
         let fetch_k = compute_fetch_k(self.index.count(), self.entries_by_id.len() as u32, top_k);
         let raw = self
             .index
-            .search(&query_embedding, fetch_k)
+            .search(query_embedding, fetch_k)
             .map_err(|e| EmbedError::InternalError(e.to_string()))?;
 
         let mut out = Vec::new();

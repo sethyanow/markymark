@@ -19,7 +19,7 @@ date: 2024-01-15
     let fm = frontmatter.unwrap();
 
     assert_eq!(fm.get_string("title"), Some("My Document"));
-    assert_eq!(fm.get_list("tags"), Some(vec!["rust", "markdown"]));
+    assert_eq!(fm.get_string_list("tags"), Some(vec!["rust", "markdown"]));
     assert_eq!(fm.get_string("date"), Some("2024-01-15"));
 }
 

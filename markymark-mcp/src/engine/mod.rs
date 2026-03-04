@@ -341,9 +341,21 @@ impl CoreEngine for RuntimeEngine {
                 top_k,
                 min_score,
             } => {
+                let realm_name = realm.unwrap_or_else(|| DEFAULT_REALM.to_string());
+
+                // Validate realm existence regardless of semantic-search feature flag,
+                // so that non-existent realm errors are consistent across feature configs.
+                {
+                    let state = self.state.read().await;
+                    if !state.contains_key(&realm_name) {
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "realm does not exist: {realm_name}"
+                        )));
+                    }
+                }
+
                 #[cfg(not(feature = "semantic-search"))]
                 {
-                    let realm_name = realm.unwrap_or_else(|| DEFAULT_REALM.to_string());
                     let _ = (realm_name, query, top_k, min_score);
                     CoreOperationResult::Error(CoreError::NotImplemented(
                         "semantic-search feature is not enabled for markymark-mcp".to_string(),
@@ -352,10 +364,19 @@ impl CoreEngine for RuntimeEngine {
 
                 #[cfg(feature = "semantic-search")]
                 {
-                    let realm_name = realm.unwrap_or_else(|| DEFAULT_REALM.to_string());
-                    // Phase 1: acquire read lock, clone the Arc handle, release read lock.
-                    let semantic_arc = {
+                    // Early validation: reject empty query before touching the lock.
+                    if query.trim().is_empty() {
+                        return CoreOperationResult::Error(CoreError::Message(
+                            "semantic query cannot be empty".to_string(),
+                        ));
+                    }
+
+                    // Phase 1: Clone the semantic Arc and embedding provider while
+                    // holding the read lock, then drop the lock.
+                    let (semantic_arc, provider) = {
                         let state = self.state.read().await;
+                        // Realm was validated above; a missing entry here means a concurrent
+                        // remove raced with this operation.
                         let realm_data = match state.get(&realm_name) {
                             Some(data) => data,
                             None => {
@@ -364,19 +385,39 @@ impl CoreEngine for RuntimeEngine {
                                 )));
                             }
                         };
-                        match realm_data.index.semantic_index_arc() {
+                        let arc = match realm_data.index.semantic_index_arc() {
                             Some(arc) => arc,
                             None => {
-                                return CoreOperationResult::Error(CoreError::Message(
-                                    "semantic search is not configured for this realm".to_string(),
-                                ));
+                                return CoreOperationResult::SemanticMatches(Vec::new());
                             }
-                        }
-                        // state (read guard) dropped here at end of block
+                        };
+                        let provider = {
+                            let guard = arc.lock().await;
+                            guard.provider()
+                        };
+                        (arc, provider)
+                        // state (read guard) dropped here
                     };
 
-                    // Phase 2: search with the Arc — no outer lock held.
-                    search::handle_semantic_search(semantic_arc, query, top_k, min_score).await
+                    // Phase 2: Embed the query outside any lock (slow: network / ONNX).
+                    let query_embedding = match provider.embed(&query).await {
+                        Ok(emb) => emb,
+                        Err(err) => {
+                            return CoreOperationResult::Error(CoreError::Message(format!(
+                                "semantic search failed: {err}"
+                            )));
+                        }
+                    };
+
+                    // Phase 3: In-memory index search inside the mutex (fast).
+                    search::handle_semantic_search_with_embedding(
+                        semantic_arc,
+                        query,
+                        &query_embedding,
+                        top_k,
+                        min_score,
+                    )
+                    .await
                 }
             }
             CoreOperation::FindReferences {
@@ -489,9 +530,7 @@ impl CoreEngine for RuntimeEngine {
                         .collect();
                     let mut guard = sem.lock().await;
                     if let Err(err) = guard.add_documents(docs_refs).await {
-                        eprintln!(
-                            "warning: batch semantic indexing failed: {err}",
-                        );
+                        eprintln!("warning: batch semantic indexing failed: {err}",);
                     }
                 }
 

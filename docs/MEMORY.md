@@ -17,12 +17,18 @@ Detailed patterns live in topic files. Historical context lives in the archive.
 
 ### Active Work
 
-- **PR #48** (dev → main): v0.7.0 release. Review triage round 5 complete (Semgrep, Copilot,
-  CodeRabbit, Greptile, Codex). 20 raw findings → 12 valid, 8 dismissed. Key findings:
-  - **marky-a2m7** (P1): Semantic writes before root validation in AddRoot — race condition
-  - **marky-qgg1** (P2): Mutex serializes concurrent semantic searches across embed I/O
-  - **marky-6ri3** (P2): Non-atomic add_document loses entries on embed failure
-- **marky-mgfh** (P1): AddRoot Phase 4 race condition — fixed in `334d736`
+- **PR #48** (dev → main): v0.7.0 release. All review findings resolved:
+  - P1/P2 epic (marky-mwss): 3 fixes (`334d736`, `479669d`, `3cb8b6d`)
+  - P3 bugs: 3 fixes (`8f1329b`) — ID collision, blank headings, u64 truncation
+  - P3-P4 polish (marky-pk7p): 4 doc/comment fixes (`9a55f0d`)
+  - CI blocker: cargo fmt (`06c3aa3`)
+  - Ready for human review and merge.
+
+### docs-site branch — merging dev, follow-ups remain
+
+Epic marky-dhkn (docs-site for v0.6.0) reviewed and approved. Branch: `docs-site`.
+Remaining: marky-6yuk (terminology rename), marky-xclk (human review notes), marky-03m7 (dead extract/ cleanup).
+GitHub Pages deployment researched — see archive for details.
 
 ### Rust Agent Docs: Grade A (2026-02-15)
 
@@ -116,6 +122,12 @@ persistent memory store.
 
 Plugin skills are user-facing features. Dev workflow skills belong in `.claude/skills/`.
 
+### Agent searched filesystem for plugin skills (fail-plugin-skill-filesystem-search)
+
+Plugin skills (`hyperpowers:*`, `pensive:*`, `beads:*`, etc.) are served by the plugin
+system, not local files. The `Skill` tool invocation IS the loading mechanism. Never search
+`~/.claude/skills/` for plugin skill files — they don't exist on disk.
+
 ### CLAUDE.md crate table stale after adding crate (fail-stale-crate-table)
 
 When adding a crate to workspace, update CLAUDE.md crate table in the same PR.
@@ -143,13 +155,22 @@ Use `Bash cat` heredoc with single-quoted delimiter (`'EOF'`) to bypass.
 
 ### Zig MCP Tool (mcp__zig)
 
-Generic/noisy output. Not useful for precision Zig work — stick with LSP + agent docs.
+Output is generic and noisy; not useful for precision Zig work — stick with LSP + agent docs.
 May be useful for quick build.zig scaffolding.
 
 ---
 
 ## Project-Specific
 
-- Plugin directory: `markymark-plugin/.claude-plugin/plugin.json` (version bumped manually)
+- Plugin directory: `markymark-plugin/.claude-plugin/plugin.json` (version bumped manually, license now AGPL-3.0-only as of 2026-03-03)
 - `require_marksman!` macro for graceful test skip in CI
 - lefthook YAML: quote command values containing colons/braces
+
+## License Status (2026-03-03)
+
+Plugin license updated to AGPL-3.0-only. Remaining "MIT OR Apache-2.0" references in docs are examples/documentation only:
+- `markymark-plugin/README.md` (doc example for workspace manifest)
+- `docs/rust_agent_docs/reference/cargo-ref.md` (reference doc showing example syntax)
+- `docs/rust_crates/core.md` (reference doc showing example syntax)
+
+No code or configuration files need updating — these are documentation references only.

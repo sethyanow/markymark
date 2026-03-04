@@ -42,7 +42,8 @@ struct Cli {
     /// Enable semantic search with the given provider.
     ///
     /// Only meaningful with `--mcp`. Ignored in LSP mode.
-    /// Requires the `semantic-search` feature (and `voyage` for Voyage provider).
+    /// Requires the `semantic-search` feature. For local ONNX inference, also enable
+    /// `local-embeddings`. No separate feature flag exists for the Voyage API provider.
     #[arg(long, value_enum)]
     semantic_search: Option<SemanticProvider>,
 
