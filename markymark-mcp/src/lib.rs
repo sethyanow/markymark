@@ -490,6 +490,18 @@ impl MarkymarkMcp {
     ) -> Result<CallToolResult, McpError> {
         tools::enrich::handle_enrich_document(&*self.engine, params.0).await
     }
+
+    /// Recommend documents matching an intent query using combined text search and graph analysis.
+    #[tool(
+        name = "recommend-docs",
+        description = "Recommend documents matching an intent query. Combines text search relevance with graph hub scores for two-stage retrieval. Returns ranked documents with optional section summaries from enrichment sidecars. Use this tool when an agent needs to find the most relevant documentation for a given task or question."
+    )]
+    pub async fn recommend_docs_tool(
+        &self,
+        params: Parameters<RecommendDocsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::recommend::handle_recommend_docs(&*self.engine, params.0).await
+    }
 }
 
 /// Run markymark MCP over stdio using the provided shared core engine.

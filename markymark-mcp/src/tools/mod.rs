@@ -9,6 +9,7 @@ pub(crate) mod export_docs_index;
 pub(crate) mod graph;
 pub(crate) mod outline;
 pub(crate) mod realm;
+pub(crate) mod recommend;
 pub(crate) mod refs;
 pub(crate) mod search;
 

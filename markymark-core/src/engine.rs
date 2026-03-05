@@ -235,6 +235,18 @@ pub enum CoreOperation {
         /// Force re-enrichment even if sidecar is fresh.
         force: bool,
     },
+
+    /// Recommend documents matching an intent query using combined text + graph ranking.
+    RecommendDocs {
+        /// Intent or search query.
+        query: String,
+        /// Realm to query. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+        /// Maximum recommendations to return.
+        top_k: u32,
+        /// Whether to include per-section summaries from sidecars.
+        include_sections: bool,
+    },
 }
 
 /// A single match result from a regex pattern search.
@@ -256,6 +268,40 @@ pub struct PatternMatch {
     pub context_after: Vec<String>,
     /// 0-based line number of `context_before[0]`.
     pub context_start_line: u32,
+}
+
+/// A section summary within a recommended document.
+#[derive(Debug, Clone)]
+pub struct RecommendedSection {
+    /// Heading path (e.g. "Overview > Getting Started").
+    pub heading_path: String,
+    /// Heading level (1-6).
+    pub level: u8,
+    /// LLM-generated summary text.
+    pub summary: String,
+}
+
+/// A single document recommendation from the recommend-docs operation.
+#[derive(Debug, Clone)]
+pub struct DocRecommendation {
+    /// Document URI.
+    pub uri: DocumentUri,
+    /// Document title.
+    pub title: String,
+    /// Combined relevance score (0.0-1.0).
+    pub relevance_score: f32,
+    /// Text search score (0.0-1.0).
+    pub search_score: f32,
+    /// Normalized graph hub score (0.0-1.0).
+    pub hub_score: f32,
+    /// Fields that matched the query.
+    pub matched_fields: Vec<String>,
+    /// Document tags.
+    pub tags: Vec<String>,
+    /// Document-level summary from sidecar.
+    pub document_summary: Option<String>,
+    /// Per-section summaries from sidecar.
+    pub sections: Option<Vec<RecommendedSection>>,
 }
 
 /// Transport-agnostic interface for executing core operations.
@@ -435,6 +481,16 @@ pub enum CoreOperationResult {
         was_stale: bool,
         /// Model used for enrichment.
         model_id: String,
+    },
+    /// Result of recommend-docs: ranked document recommendations.
+    Recommendations {
+        /// Realm that was searched.
+        realm: String,
+        /// The original query.
+        query: String,
+        /// Ranked recommendations: (uri, title, relevance_score, search_score, hub_score,
+        /// matched_fields, tags, document_summary, sections).
+        results: Vec<DocRecommendation>,
     },
     /// Success with no payload.
     Ok,

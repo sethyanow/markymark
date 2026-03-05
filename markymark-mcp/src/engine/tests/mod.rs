@@ -29,6 +29,7 @@ mod concurrency;
 
 mod enrich;
 mod export_docs_index;
+mod recommend;
 
 #[cfg(feature = "semantic-search")]
 mod preview_profiling;

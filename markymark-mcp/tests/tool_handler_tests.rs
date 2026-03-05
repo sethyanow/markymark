@@ -234,6 +234,13 @@ impl CoreEngine for MockEngine {
                     model_id: "mock-model".to_string(),
                 }
             }
+            (_, CoreOperation::RecommendDocs { query, realm, .. }) => {
+                CoreOperationResult::Recommendations {
+                    realm: realm.unwrap_or_else(|| "default".to_string()),
+                    query,
+                    results: vec![],
+                }
+            }
         }
     }
 }
@@ -285,6 +292,7 @@ fn registers_expected_rmcp_tools() {
     assert!(names.contains(&"search-for-pattern"));
     assert!(names.contains(&"graph-analysis"));
     assert!(names.contains(&"export-docs-index"));
+    assert!(names.contains(&"recommend-docs"));
 }
 
 #[tokio::test]
@@ -1049,4 +1057,69 @@ async fn get_diagnostics_tool_rejects_non_file_uri() {
     assert_eq!(result.is_error, Some(true));
     let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
     assert_eq!(payload.error.code, "non_file_uri");
+}
+
+// ---------------------------------------------------------------------------
+// recommend-docs tool
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn recommend_docs_tool_returns_structured_success() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .recommend_docs_tool(Parameters(RecommendDocsRequest {
+            query: "test query".to_string(),
+            realm: None,
+            top_k: 5,
+            include_sections: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: RecommendDocsResponse = result.into_typed().expect("typed response");
+    assert_eq!(payload.realm, "default");
+    assert_eq!(payload.query, "test query");
+}
+
+#[tokio::test]
+async fn recommend_docs_tool_maps_core_error() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::CoreError,
+    }));
+    let result = mcp
+        .recommend_docs_tool(Parameters(RecommendDocsRequest {
+            query: "test".to_string(),
+            realm: None,
+            top_k: 5,
+            include_sections: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "core_error");
+}
+
+#[tokio::test]
+async fn recommend_docs_tool_rejects_empty_query() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .recommend_docs_tool(Parameters(RecommendDocsRequest {
+            query: "   ".to_string(),
+            realm: None,
+            top_k: 5,
+            include_sections: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "invalid_query");
 }

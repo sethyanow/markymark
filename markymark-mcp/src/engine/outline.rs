@@ -141,7 +141,7 @@ fn extract_section_text(
 /// Checks each workspace root for a `.markymark/<relative_path>.json` sidecar.
 /// Returns None if no sidecar exists or the sidecar is stale (we don't validate
 /// staleness here — the caller gets whatever exists; enrichment validates freshness).
-fn try_load_sidecar(
+pub(crate) fn try_load_sidecar(
     uri: &DocumentUri,
     roots: &[std::path::PathBuf],
 ) -> Option<DocumentSidecar> {

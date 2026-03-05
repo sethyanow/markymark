@@ -764,3 +764,77 @@ pub struct EnrichDocumentResponse {
     /// Model identifier used for enrichment.
     pub model_id: String,
 }
+
+// ---------------------------------------------------------------------------
+// recommend-docs
+// ---------------------------------------------------------------------------
+
+/// Request payload for `recommend-docs`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RecommendDocsRequest {
+    /// Intent or search query describing what the agent is looking for.
+    pub query: String,
+
+    /// Realm to search. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+
+    /// Maximum number of document recommendations to return (default 5, max 20).
+    #[serde(default = "default_recommend_top_k")]
+    pub top_k: u32,
+
+    /// When true, include per-section summaries from enrichment sidecars.
+    #[serde(default)]
+    pub include_sections: bool,
+}
+
+fn default_recommend_top_k() -> u32 {
+    5
+}
+
+/// A single section summary within a recommended document.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RecommendedSectionDto {
+    /// Heading path (e.g. "Overview > Getting Started").
+    pub heading_path: String,
+    /// Heading level (1-6).
+    pub level: u8,
+    /// LLM-generated summary of this section.
+    pub summary: String,
+}
+
+/// A single document recommendation with combined relevance scoring.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DocRecommendationDto {
+    /// Document URI.
+    pub uri: String,
+    /// Document title (first H1 or derived from filename).
+    pub title: String,
+    /// Combined relevance score (0.0-1.0).
+    pub relevance_score: f32,
+    /// Text search score from workspace search (0.0-1.0).
+    pub search_score: f32,
+    /// Normalized graph hub score (0.0-1.0).
+    pub hub_score: f32,
+    /// Fields that matched the query (e.g. "title", "heading").
+    pub matched_fields: Vec<String>,
+    /// Document tags.
+    pub tags: Vec<String>,
+    /// Document-level summary from enrichment sidecar, if available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_summary: Option<String>,
+    /// Per-section summaries when `include_sections` is true and sidecar exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sections: Option<Vec<RecommendedSectionDto>>,
+}
+
+/// Response payload for `recommend-docs`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RecommendDocsResponse {
+    /// The realm that was searched.
+    pub realm: String,
+    /// The original query.
+    pub query: String,
+    /// Ranked document recommendations.
+    pub recommendations: Vec<DocRecommendationDto>,
+}

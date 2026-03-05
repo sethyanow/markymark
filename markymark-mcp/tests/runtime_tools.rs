@@ -10,7 +10,8 @@ use markymark_core::prelude::EmbeddingProvider;
 use markymark_mcp::{HashEmbeddingProvider, SemanticSearchRequest, SemanticSearchResponse};
 use markymark_mcp::{
     ExportDocsIndexRequest, ExportDocsIndexResponse, MarkymarkMcp, OutlineRequest, OutlineResponse,
-    RuntimeEngine, SearchSymbolsRequest, SearchSymbolsResponse,
+    RecommendDocsRequest, RecommendDocsResponse, RuntimeEngine, SearchSymbolsRequest,
+    SearchSymbolsResponse,
 };
 use rmcp::handler::server::wrapper::Parameters;
 
@@ -119,4 +120,46 @@ async fn semantic_search_tool_returns_real_engine_results() {
     assert!(!payload.results.is_empty());
     assert_eq!(payload.results[0].heading, "Intro");
     assert!(payload.results[0].section_preview.len() <= 200);
+}
+
+#[tokio::test]
+async fn recommend_docs_tool_returns_real_ranked_results() {
+    let ws = TempWorkspace::new("recommend-docs");
+    fs::write(
+        ws.root().join("rust_guide.md"),
+        "# Rust Guide\n\nLearn Rust programming with examples.\n",
+    )
+    .expect("write rust guide");
+    fs::write(
+        ws.root().join("python_guide.md"),
+        "# Python Guide\n\nLearn Python programming with examples.\n",
+    )
+    .expect("write python guide");
+
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
+    let mcp = MarkymarkMcp::new(Arc::new(engine));
+
+    let result = mcp
+        .recommend_docs_tool(Parameters(RecommendDocsRequest {
+            query: "Rust".to_string(),
+            realm: None,
+            top_k: 5,
+            include_sections: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: RecommendDocsResponse = result.into_typed().expect("typed response");
+    assert_eq!(payload.realm, "default");
+    assert_eq!(payload.query, "Rust");
+    assert!(!payload.recommendations.is_empty());
+
+    // Rust guide should be the top recommendation (title match)
+    let top = &payload.recommendations[0];
+    assert_eq!(top.title, "Rust Guide");
+    assert!(top.relevance_score > 0.0);
+    assert!(top.search_score > 0.0);
 }

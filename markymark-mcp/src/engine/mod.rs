@@ -24,6 +24,7 @@ mod export_docs_index;
 mod helpers;
 mod outline;
 mod realm_ops;
+mod recommend;
 mod references;
 mod search;
 
@@ -784,6 +785,28 @@ impl CoreEngine for RuntimeEngine {
                     self.inference_provider.as_deref(),
                 )
                 .await
+            }
+            CoreOperation::RecommendDocs {
+                query,
+                realm,
+                top_k,
+                include_sections,
+            } => {
+                let realm_key = realm.as_deref().unwrap_or(DEFAULT_REALM);
+                let state = self.state.read().await;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                recommend::handle_recommend_docs(
+                    realm_key,
+                    &realm_data.index,
+                    &realm_data.roots,
+                    &query,
+                    top_k,
+                    include_sections,
+                )
             }
         }
     }
