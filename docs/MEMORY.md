@@ -50,7 +50,7 @@ L4 memory integration (MEMORY.md + beads in search surface). Key constraint: doc
 stays because it ramrods symbols into agent instructions at zero latency — everything builds
 on top. Related: marky-mkr, marky-y4be, marky-c9wi.
 
-**Layer progress:** L0 ✅ (export-docs-index) → L1 ✅ (recommend-docs + tree intelligence) → L2 ✅ (curation-diagnostics) → L3 ✅ (multi-root federation) → L4 ○
+**Layer progress:** L0 ✅ (export-docs-index) → L1 ✅ (recommend-docs + tree intelligence) → L2 ✅ (curation-diagnostics) → L3 ✅ (multi-root federation) → L4 ✅ (structured doc search)
 
 ### Layer 3: Multi-Root Federation (marky-eluj, 2026-03-05)
 
@@ -71,6 +71,18 @@ realm, single-doc realm (no self-link suggestions), max_suggestions/max_items_pe
 Key modules: `engine/curation.rs` (handler with `GraphData` struct for extracted state),
 `tools/curation.rs` (MCP tool), `engine/tests/curation.rs` (11 tests). Algorithm recomputes
 degree maps from RealmIndex since graph-analysis doesn't expose per-doc degree.
+
+### Layer 4: Structured Document Search (marky-6m1o, 2026-03-05)
+
+Extended search-workspace to include structured documents (JSON, YAML, TOML, JSONL, etc.).
+Key implementation decisions: SRE plan assumed `value_range` had byte offsets, but `Range` is
+line/col-based — adapted to simpler `source_contains()` full-text search instead of per-value
+extraction. Scoring mirrors markdown tiers: URI stem (1.0), key-path via `search_keys()` (0.8),
+source text (0.6). Filters (frontmatter, tag, property) correctly exclude structured docs.
+`uri_to_title()` generalized with `TITLE_STRIP_EXTENSIONS` constant for all file types.
+Key modules: `markymark-index/src/structured_document.rs` (source_contains method),
+`markymark-mcp/src/search.rs` (score_structured_document + integration). 9 new tests (2 unit,
+7 integration), 270 total passing. All epic success criteria met — L0 through L4 complete.
 
 ### Tree Intelligence Sub-Epic (marky-d21j, child of marky-b9o4, 2026-02-26)
 
