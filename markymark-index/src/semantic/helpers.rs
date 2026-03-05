@@ -1,7 +1,9 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 
 use markymark_core::prelude::DocumentUri;
+
+use crate::DocumentIndex;
 
 const FETCH_OVERFETCH_MULTIPLIER: u32 = 4;
 
@@ -59,6 +61,45 @@ pub(super) fn jaccard_similarity(a: &BTreeSet<u32>, b: &BTreeSet<u32>) -> f32 {
         0.0
     } else {
         intersection / union
+    }
+}
+
+/// Group content blocks by parent heading and concatenate their text.
+///
+/// Returns a map from heading index (or `None` for blocks before any heading)
+/// to concatenated block text. Empty blocks are skipped.
+pub(super) fn section_block_texts(index: &DocumentIndex) -> HashMap<Option<usize>, String> {
+    let blocks = index.content_blocks();
+    if blocks.is_empty() {
+        return HashMap::new();
+    }
+
+    let mut sections: HashMap<Option<usize>, String> = HashMap::new();
+    for block in blocks {
+        let text = index.block_text(block).trim();
+        if text.is_empty() {
+            continue;
+        }
+        let entry = sections.entry(block.parent_heading).or_default();
+        if !entry.is_empty() {
+            entry.push('\n');
+        }
+        entry.push_str(text);
+    }
+    sections
+}
+
+/// Build the embedding input for a section: heading text + block text (if any).
+pub(super) fn build_embedding_input(heading_text: &str, block_text: Option<&str>) -> String {
+    match block_text {
+        Some(bt) if !bt.is_empty() => {
+            let mut input = String::with_capacity(heading_text.len() + 1 + bt.len());
+            input.push_str(heading_text);
+            input.push('\n');
+            input.push_str(bt);
+            input
+        }
+        _ => heading_text.to_string(),
     }
 }
 

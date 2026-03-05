@@ -4,7 +4,10 @@ use std::sync::Arc;
 use crate::DocumentIndex;
 use markymark_core::prelude::*;
 
-use super::helpers::{compute_fetch_k, fallback_heading, jaccard_similarity, token_hashes};
+use super::helpers::{
+    build_embedding_input, compute_fetch_k, fallback_heading, jaccard_similarity,
+    section_block_texts, token_hashes,
+};
 use super::{DuplicateMatch, SearchResult, SemanticEntry, SemanticIndex};
 
 impl SemanticIndex {
@@ -42,29 +45,49 @@ impl SemanticIndex {
             }
         }
 
+        // Build section text map for per-section embedding.
+        let section_texts = section_block_texts(index);
+
         // Build new heading list from index.
+        // Tuple: (text, level, start, end, is_fallback, heading_idx)
         let new_headings: Vec<_> = if index.headings().is_empty() {
             let fb = fallback_heading(&uri);
-            vec![(fb, 1u8, Position::new(0, 0), Position::new(0, 0), true)]
+            vec![(
+                fb,
+                1u8,
+                Position::new(0, 0),
+                Position::new(0, 0),
+                true,
+                None,
+            )]
         } else {
             let filtered: Vec<_> = index
                 .headings()
                 .iter()
-                .filter(|h| !h.text.trim().is_empty())
-                .map(|h| {
+                .enumerate()
+                .filter(|(_, h)| !h.text.trim().is_empty())
+                .map(|(i, h)| {
                     (
                         h.text.to_string(),
                         h.level,
                         h.range.start,
                         h.range.end,
                         false,
+                        Some(i),
                     )
                 })
                 .collect();
             // Fallback: all headings were blank/whitespace — treat like no headings.
             if filtered.is_empty() {
                 let fb = fallback_heading(&uri);
-                vec![(fb, 1u8, Position::new(0, 0), Position::new(0, 0), true)]
+                vec![(
+                    fb,
+                    1u8,
+                    Position::new(0, 0),
+                    Position::new(0, 0),
+                    true,
+                    None,
+                )]
             } else {
                 filtered
             }
@@ -113,8 +136,15 @@ impl SemanticIndex {
         // Track which old text entries have been consumed (for duplicate text handling).
         let mut consumed_by_text: HashMap<String, usize> = HashMap::new();
 
-        for (text, level, start, end, is_fallback) in &new_headings {
-            token_set.extend(token_hashes(text));
+        for (text, level, start, end, is_fallback, heading_idx) in &new_headings {
+            // Build per-section embedding input: heading + block text.
+            let block_text = match heading_idx {
+                Some(idx) => section_texts.get(&Some(*idx)).map(String::as_str),
+                None if *is_fallback => section_texts.get(&None).map(String::as_str),
+                _ => None,
+            };
+            let embedding_input = build_embedding_input(text, block_text);
+            token_set.extend(token_hashes(&embedding_input));
 
             // Try to match by text.
             let consumed_idx = consumed_by_text.entry(text.clone()).or_insert(0);
@@ -141,7 +171,7 @@ impl SemanticIndex {
                 new_ids.push(old_id.clone());
             } else {
                 // New or changed heading — needs embedding.
-                let embedding = self.provider.embed(text).await?;
+                let embedding = self.provider.embed(&embedding_input).await?;
 
                 let id = if *is_fallback {
                     format!("{}#fallback", uri.as_str())

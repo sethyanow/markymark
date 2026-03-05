@@ -472,6 +472,179 @@ async fn test_add_documents_batch_failure_falls_back_to_sequential_embed() {
     assert_eq!(sem.index.count(), 3);
 }
 
+// --- RecordingProvider: records all texts passed to embed() ---
+
+struct RecordingProvider {
+    inner: TestEmbeddingProvider,
+    recorded: std::sync::Mutex<Vec<String>>,
+}
+
+impl RecordingProvider {
+    fn new(dims: u32) -> Self {
+        Self {
+            inner: TestEmbeddingProvider::new(dims),
+            recorded: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    fn recorded_texts(&self) -> Vec<String> {
+        self.recorded.lock().unwrap().clone()
+    }
+}
+
+#[async_trait]
+impl EmbeddingProvider for RecordingProvider {
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+        self.recorded.lock().unwrap().push(text.to_string());
+        self.inner.embed(text).await
+    }
+
+    fn dimensions(&self) -> u32 {
+        self.inner.dimensions()
+    }
+}
+
+// --- Per-section content embedding tests (marky-29c9) ---
+
+#[tokio::test]
+async fn embedding_input_includes_paragraph_text() {
+    let provider = Arc::new(RecordingProvider::new(32));
+    let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+
+    let doc = build_doc_index("# Design\n\nThis is the design section.\n");
+    let uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/test.md"));
+    sem.add_document(uri, &doc).await.unwrap();
+
+    let texts = provider.recorded_texts();
+    assert_eq!(texts.len(), 1);
+    assert!(
+        texts[0].contains("This is the design section"),
+        "embedding_input should contain paragraph text, got: {:?}",
+        texts[0]
+    );
+}
+
+#[tokio::test]
+async fn embedding_input_concatenates_multiple_paragraphs() {
+    let provider = Arc::new(RecordingProvider::new(32));
+    let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+
+    let doc = build_doc_index("# Intro\n\nFirst paragraph.\n\nSecond paragraph.\n");
+    let uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/test.md"));
+    sem.add_document(uri, &doc).await.unwrap();
+
+    let texts = provider.recorded_texts();
+    assert_eq!(texts.len(), 1);
+    assert!(
+        texts[0].contains("First paragraph"),
+        "should contain first paragraph, got: {:?}",
+        texts[0]
+    );
+    assert!(
+        texts[0].contains("Second paragraph"),
+        "should contain second paragraph, got: {:?}",
+        texts[0]
+    );
+}
+
+#[tokio::test]
+async fn fallback_entry_includes_intro_blocks() {
+    let provider = Arc::new(RecordingProvider::new(32));
+    let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+
+    let doc = build_doc_index("No headings, just text.\n");
+    let uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/intro.md"));
+    sem.add_document(uri, &doc).await.unwrap();
+
+    let texts = provider.recorded_texts();
+    assert_eq!(texts.len(), 1);
+    assert!(
+        texts[0].contains("No headings, just text"),
+        "fallback embedding_input should include intro block text, got: {:?}",
+        texts[0]
+    );
+}
+
+#[tokio::test]
+async fn empty_section_uses_heading_only() {
+    let provider = Arc::new(RecordingProvider::new(32));
+    let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+
+    // Two headings in a row, first has no blocks under it
+    let doc = build_doc_index("# Alpha\n# Beta\n\nSome text under beta.\n");
+    let uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/test.md"));
+    sem.add_document(uri, &doc).await.unwrap();
+
+    let texts = provider.recorded_texts();
+    assert_eq!(texts.len(), 2);
+    assert_eq!(
+        texts[0], "Alpha",
+        "empty section should use heading text only"
+    );
+    assert!(
+        texts[1].contains("Some text under beta"),
+        "non-empty section should include block text, got: {:?}",
+        texts[1]
+    );
+}
+
+#[tokio::test]
+async fn headings_without_blocks_degrade_to_heading_only() {
+    let provider = Arc::new(RecordingProvider::new(32));
+    let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+
+    let doc = build_doc_index("# Alpha\n## Beta\n");
+    let uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/test.md"));
+    sem.add_document(uri, &doc).await.unwrap();
+
+    let texts = provider.recorded_texts();
+    assert_eq!(texts.len(), 2);
+    assert_eq!(texts[0], "Alpha");
+    assert_eq!(texts[1], "Beta");
+}
+
+#[tokio::test]
+async fn frontmatter_only_uses_fallback_heading() {
+    let provider = Arc::new(RecordingProvider::new(32));
+    let mut sem = SemanticIndex::new(provider.clone()).unwrap();
+
+    let doc = build_doc_index("---\ntitle: Test\n---\n");
+    let uri = DocumentUri::from_file_path(&std::path::PathBuf::from("/frontmatter.md"));
+    sem.add_document(uri, &doc).await.unwrap();
+
+    let texts = provider.recorded_texts();
+    assert_eq!(texts.len(), 1);
+    // No blocks, no headings → embedding_input = file stem "frontmatter"
+    assert_eq!(
+        texts[0], "frontmatter",
+        "frontmatter-only doc should use file stem as embedding"
+    );
+}
+
+#[tokio::test]
+async fn token_set_includes_block_text_tokens() {
+    let provider = Arc::new(TestEmbeddingProvider::new(32));
+    let mut sem = SemanticIndex::new(provider).unwrap();
+
+    let uri_a = DocumentUri::from_file_path(&std::path::PathBuf::from("/a.md"));
+    let uri_b = DocumentUri::from_file_path(&std::path::PathBuf::from("/b.md"));
+
+    // Same heading, different body text
+    let doc_a = build_doc_index("# Design\n\nApple banana cherry.\n");
+    let doc_b = build_doc_index("# Design\n\nXray yankee zebra.\n");
+
+    sem.add_document(uri_a, &doc_a).await.unwrap();
+    sem.add_document(uri_b, &doc_b).await.unwrap();
+
+    // With heading-only tokens, both have {"design"} → Jaccard = 1.0 → duplicates.
+    // With block text tokens, they share only "design" → Jaccard ≈ 0.14 → NOT duplicates.
+    let dupes = sem.detect_duplicates(0.5);
+    assert!(
+        dupes.is_empty(),
+        "docs with same heading but different body should NOT be duplicates at threshold 0.5"
+    );
+}
+
 // --- update_document tests ---
 
 fn test_uri() -> DocumentUri {
