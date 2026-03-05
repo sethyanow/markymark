@@ -35,9 +35,23 @@ quality assessments, and lessons learned.
   MEMORY.md as the sole persistent memory store. claude-mem search/timeline/get_observations
   are fine for reading cross-project history.
 
+## Development Philosophy
+
+**Everything gets built. The question is sequencing, not cutting.**
+
+AI agents are the builders. Human effort is NOT the bottleneck — context quality, planning discipline, and iteration cadence are. Do not "defer to future" as a coping mechanism. Instead:
+
+1. **Brainstorm** — Refine the design with Socratic Q&A, one section at a time
+2. **Plan** — Create one task, SRE-refine it, execute it
+3. **Execute** — Build it. One loop iteration, one commit, tests green.
+4. **Review** — Shakedown testing. Verify against requirements.
+5. **Next** — Create the next task based on what you learned. Repeat.
+
+If a piece needs design exploration before building, give it a brainstorm bead and come back to it in sequence. Never leave stubs, never say "later." Build it or don't ship it.
+
 ## Agent Dogma
 
-**NOTE:**  
+**NOTE:**
 **Agents have LSP tools available—use them!**  
 Always leverage the LSP (Language Server Protocol) tools for improved accuracy, context, and developer experience.
 
@@ -149,7 +163,8 @@ has caused real bugs, wasted work, or merge conflicts.
 | 8 | **Commit Cargo.lock with version bumps** | After editing `Cargo.toml` workspace version, run `cargo build` to regenerate `Cargo.lock`, then commit both together. Forgetting this caused a fixup commit during v0.4.2 (324f744). Use the `prepare-release` skill to avoid this. |
 | 9 | **LSP-first: no unbounded Read on code files >100 lines** | Use `LSP documentSymbol` first, then `Read` with `offset`+`limit`. A PreToolUse hook warns on violations. Full-file reads on .rs/.zig waste 5-25k tokens per file. |
 | 10 | **ONE task per session turn — no autonomous chaining** | After completing a task, STOP and report to user. Do not chain into the next task without explicit approval. After 2+ commits in a session, pause before starting more. Never start a destructive refactor (file split) near context limits — incomplete splits break the build. |
-| 11 | **Use DeepWiki for GitHub repo research** | Use the `deepwiki` MCP tools (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) to research external GitHub repos instead of spawning internet-researcher agents or WebFetch to scrape GitHub directly. DeepWiki is indexed and token-efficient. Case-sensitive repo names (e.g., `VectifyAI/PageIndex` not `vectifyai/pageindex`). |
+| 11 | **No scoping out the integration layer** | Epics must be user-complete. If you build internal capability (index, engine, data model), the epic MUST include the tools/API/MCP/LSP that exposes it to users. Deferring the integration layer "out of scope" creates half-done features that nobody can use. If the full vertical slice is too large, split into phases within the same epic — don't cut the user-facing part. The work isn't done until someone outside the codebase can benefit from it. |
+| 12 | **Use DeepWiki for GitHub repo research** | Use the `deepwiki` MCP tools (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) to research external GitHub repos instead of spawning internet-researcher agents or WebFetch to scrape GitHub directly. DeepWiki is indexed and token-efficient. Case-sensitive repo names (e.g., `VectifyAI/PageIndex` not `vectifyai/pageindex`). |
 
 ## Landing the Plane (Session Completion)
 

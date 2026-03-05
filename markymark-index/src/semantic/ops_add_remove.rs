@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use crate::DocumentIndex;
 use markymark_core::prelude::*;
 
-use super::helpers::{fallback_heading, token_hashes};
+use super::helpers::{build_embedding_input, fallback_heading, section_block_texts, token_hashes};
 use super::{SemanticEntry, SemanticIndex};
 
 struct EntryPlan {
@@ -23,15 +23,18 @@ fn build_document_plan(uri: &DocumentUri, index: &DocumentIndex) -> DocumentPlan
     let mut ids = Vec::new();
     let mut entries = Vec::new();
     let mut token_set = BTreeSet::new();
+    let section_texts = section_block_texts(index);
 
     if index.headings().is_empty() {
         let heading = fallback_heading(uri);
         let id = format!("{}#fallback", uri.as_str());
+        let embedding_input =
+            build_embedding_input(&heading, section_texts.get(&None).map(String::as_str));
 
-        token_set.extend(token_hashes(&heading));
+        token_set.extend(token_hashes(&embedding_input));
         entries.push(EntryPlan {
             id: id.clone(),
-            embedding_input: heading.clone(),
+            embedding_input,
             entry: SemanticEntry {
                 doc_uri: uri.clone(),
                 heading,
@@ -49,11 +52,15 @@ fn build_document_plan(uri: &DocumentUri, index: &DocumentIndex) -> DocumentPlan
             }
 
             let id = format!("{}#{}#{i}", uri.as_str(), heading.slug);
-            token_set.extend(token_hashes(&text));
+            let embedding_input = build_embedding_input(
+                &text,
+                section_texts.get(&Some(i)).map(String::as_str),
+            );
+            token_set.extend(token_hashes(&embedding_input));
 
             entries.push(EntryPlan {
                 id: id.clone(),
-                embedding_input: text.clone(),
+                embedding_input,
                 entry: SemanticEntry {
                     doc_uri: uri.clone(),
                     heading: text,
@@ -69,11 +76,13 @@ fn build_document_plan(uri: &DocumentUri, index: &DocumentIndex) -> DocumentPlan
         if entries.is_empty() {
             let heading = fallback_heading(uri);
             let id = format!("{}#fallback", uri.as_str());
+            let embedding_input =
+                build_embedding_input(&heading, section_texts.get(&None).map(String::as_str));
 
-            token_set.extend(token_hashes(&heading));
+            token_set.extend(token_hashes(&embedding_input));
             entries.push(EntryPlan {
                 id: id.clone(),
-                embedding_input: heading.clone(),
+                embedding_input,
                 entry: SemanticEntry {
                     doc_uri: uri.clone(),
                     heading,

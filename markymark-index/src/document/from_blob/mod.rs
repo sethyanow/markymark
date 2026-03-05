@@ -28,10 +28,11 @@ use markymark_core::arena::{arena_alloc_str, DocumentArena};
 use markymark_core::{Position, Range};
 
 use super::{
-    helpers, BlockEntry, BlockRefEntry, CalloutEntry, CodeSpanEntry, DocumentDependent,
-    DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry,
-    FrontmatterOwnedEntry, HeadingEntry, LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry,
-    PropertyValueEntry, QueryBlockEntry, TagEntry, TaskEntry, WikiLinkEntry, XmlTagEntry,
+    helpers, BlockKind, BlockRefEntry, CalloutEntry, CodeSpanEntry, ContentBlock,
+    DocumentDependent, DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry,
+    FrontmatterEntry, FrontmatterOwnedEntry, HeadingEntry, LinkDefinitionEntry,
+    MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry, TagEntry, TaskEntry,
+    WikiLinkEntry, XmlTagEntry,
 };
 
 mod decode;
@@ -114,6 +115,7 @@ impl DocumentIndex {
         // ── Build DocumentIndex via self_cell ────────────────────────
         let owner = DocumentOwner {
             arena: DocumentArena::new(),
+            source_text: String::new(), // No source text available from blob
         };
         let cell = DocumentIndexCell::new(owner, move |owner| {
             let arena_ref = owner.arena.bump();
@@ -203,8 +205,8 @@ impl DocumentIndex {
             }
             let tags = tags_builder.into_bump_slice();
 
-            // --- Block IDs ---
-            let mut blocks: HashMap<&str, BlockEntry<'_>> = HashMap::new();
+            // --- Block IDs (Obsidian ^block-id markers) ---
+            let mut block_id_map: HashMap<&str, ContentBlock<'_>> = HashMap::new();
             for b in &blocks_owned {
                 let id = arena_alloc_str(arena_ref, &b.id);
                 let start_pos = Position::new(b.start_line, b.start_col);
@@ -212,16 +214,21 @@ impl DocumentIndex {
                 let start_byte = b.source_offset as usize;
                 // end_byte = offset of '^' + 1 (for '^') + id_len
                 let end_byte = start_byte + 1 + b.id_len as usize;
-                blocks.insert(
+                block_id_map.insert(
                     id,
-                    BlockEntry {
-                        id,
+                    ContentBlock {
+                        kind: BlockKind::Paragraph,
                         range: Range::new(start_pos, end_pos),
                         start_byte,
                         end_byte,
+                        parent_heading: None,
+                        block_id: Some(id),
                     },
                 );
             }
+
+            // Content blocks: empty (no source text available from blob)
+            let content_blocks: &[ContentBlock<'_>] = &[];
 
             // --- XML Tags (decoded from blob v2) ---
             let mut xt_builder = BumpVec::new_in(arena_ref);
@@ -397,7 +404,8 @@ impl DocumentIndex {
             DocumentDependent {
                 headings,
                 slug_to_heading,
-                blocks,
+                content_blocks,
+                block_id_map,
                 toc,
                 outline,
                 wiki_links,

@@ -1636,6 +1636,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+ "tree-sitter",
 ]
 
 [[package]]

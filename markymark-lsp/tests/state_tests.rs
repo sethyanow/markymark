@@ -589,7 +589,7 @@ async fn test_engine_parity_block_ids() {
     let index = state.get_document_index(&uri).unwrap();
     let block = index.block_by_id("myblock");
     assert!(block.is_some(), "block ^myblock should be indexed");
-    assert_eq!(block.unwrap().id, "myblock");
+    assert_eq!(block.unwrap().block_id, Some("myblock"));
 }
 
 #[tokio::test]

@@ -15,8 +15,8 @@ fn document_index_internal_storage_no_longer_uses_static_or_ptr_read_transfer() 
         "DocumentIndex should not store slug index keys as &'static internals",
     );
     assert!(
-        !source.contains("blocks: HashMap<&'static str, BlockEntry<'static>>"),
-        "DocumentIndex should not store blocks as &'static internals",
+        !source.contains("block_id_map: HashMap<&'static str, ContentBlock<'static>>"),
+        "DocumentIndex should not store block_id_map as &'static internals",
     );
     assert!(
         !source.contains("std::ptr::read(doc_arena_ptr)"),

@@ -2,7 +2,7 @@ use markymark_index::DocumentIndex;
 use markymark_parser::Parser;
 
 // Types used indirectly via DocumentIndex methods:
-// HeadingEntry, BlockEntry, TocEntry, OutlineNode,
+// HeadingEntry, ContentBlock, TocEntry, OutlineNode,
 // WikiLinkEntry, TagEntry, MarkdownLinkEntry
 
 /// Helper: parse markdown source and build a DocumentIndex.
@@ -104,11 +104,17 @@ fn test_block_id_index() {
     let block = idx.block_by_id("my-block-id");
     assert!(block.is_some(), "block ID should be indexed");
     let b = block.unwrap();
-    assert_eq!(b.id, "my-block-id");
-    // Range propagates from source for go-to-definition (not 0,0,0,0)
+    assert_eq!(b.block_id, Some("my-block-id"));
+    // When merged into a content block, the range covers the full paragraph,
+    // not just the ^marker. block_by_id returns the content block that
+    // contains the ^block-id marker.
     assert_eq!(b.range.start.line, 0);
-    assert_eq!(b.range.start.character, 15); // position of ^ in "Some paragraph ^"
-    assert_eq!(b.range.end.character, 27); // exclusive end of "my-block-id"
+    assert_eq!(
+        b.range.start.character, 0,
+        "merged block should have paragraph start"
+    );
+    // Range should cover more than the marker alone
+    assert_ne!(b.range.start, b.range.end, "range must have non-zero width");
 }
 
 // ---------------------------------------------------------------------------

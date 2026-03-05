@@ -13,7 +13,20 @@ Detailed patterns live in topic files. Historical context lives in the archive.
 
 ---
 
-## Current State (2026-03-04)
+## Current State (2026-03-05)
+
+### Investigation Complete: Semantic Index and Block Model
+
+Comprehensive investigation of semantic indexing, search, and document index completed (2026-03-05).
+Full findings documented in `docs/research/semantic-index-block-model.md`.
+
+**Key findings:**
+- SemanticEntry is heading-centric; stores heading text, level, and section bounds (Position, not full section content)
+- build_document_plan() creates entries per heading (fallback for headless docs)
+- Search returns heading-level results via SearchResult struct (no paragraph/block-level search)
+- Duplicate detection uses Jaccard similarity over token hash sets
+- DocumentIndex stores 15 types of indexed elements (headings, blocks, tags, code spans, etc.)
+- Incremental updates diff headings by text; no stable block IDs in semantic index
 
 ### Active Work
 
