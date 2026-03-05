@@ -409,3 +409,104 @@ fn inject_summaries_no_match_leaves_none() {
     assert!(tree.summary.is_none());
     assert!(tree.children[0].summary.is_none());
 }
+
+// ---------------------------------------------------------------------------
+// End-to-end: enrich then get-outline returns summaries
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn get_outline_tree_includes_sidecar_summaries() {
+    let dir = make_temp_realm_dir("enrich-outline-e2e");
+    fs::write(
+        dir.path().join("doc.md"),
+        "# Title\n\nSome content.\n\n## Section\n\nMore content.\n",
+    )
+    .unwrap();
+
+    let engine = make_engine_with_custom_realm("enrich-e2e", dir.path()).await;
+    let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
+
+    // Step 1: Enrich the document via the handler directly.
+    let provider = TestInferenceProvider;
+    {
+        let state = engine.state.read().await;
+        let realm_data = state.get("enrich-e2e").unwrap();
+        let result = enrich::handle_enrich_document(
+            &realm_data.index,
+            &realm_data.roots,
+            &uri,
+            None,
+            false,
+            Some(&provider),
+        )
+        .await;
+        assert!(
+            matches!(result, CoreOperationResult::EnrichmentResult { was_stale: true, .. }),
+            "enrichment should succeed"
+        );
+    }
+
+    // Step 2: Get outline with format=tree — should include sidecar summaries.
+    let result = engine
+        .execute(CoreOperation::GetOutline {
+            uri,
+            realm: Some("enrich-e2e".to_string()),
+            format: "tree".to_string(),
+            include_text: false,
+        })
+        .await;
+
+    match result {
+        CoreOperationResult::OutlineTree(tree) => {
+            // Root node should have document summary.
+            assert!(
+                tree.summary.is_some(),
+                "root node should have document summary from sidecar"
+            );
+            // H1 should have section summary.
+            let h1 = &tree.children[0];
+            assert_eq!(h1.title, "Title");
+            assert!(
+                h1.summary.is_some(),
+                "h1 should have section summary from sidecar"
+            );
+            // H2 should have section summary.
+            let h2 = &h1.children[0];
+            assert_eq!(h2.title, "Section");
+            assert!(
+                h2.summary.is_some(),
+                "h2 should have section summary from sidecar"
+            );
+        }
+        other => panic!("expected OutlineTree with summaries, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn get_outline_tree_without_enrichment_has_no_summaries() {
+    let dir = make_temp_realm_dir("outline-no-enrich");
+    fs::write(dir.path().join("doc.md"), "# Title\n\nContent.\n").unwrap();
+
+    let engine = make_engine_with_custom_realm("no-enrich", dir.path()).await;
+    let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
+
+    let result = engine
+        .execute(CoreOperation::GetOutline {
+            uri,
+            realm: Some("no-enrich".to_string()),
+            format: "tree".to_string(),
+            include_text: false,
+        })
+        .await;
+
+    match result {
+        CoreOperationResult::OutlineTree(tree) => {
+            assert!(tree.summary.is_none(), "no sidecar = no summary");
+            assert!(
+                tree.children[0].summary.is_none(),
+                "no sidecar = no section summary"
+            );
+        }
+        other => panic!("expected OutlineTree without summaries, got {other:?}"),
+    }
+}

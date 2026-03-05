@@ -1,11 +1,15 @@
 //! GetOutline operation handler.
 
 use markymark_core::engine::{CoreOperationResult, OutlineTreeNode};
+use markymark_core::sidecar::{self as sidecar_types, DocumentSidecar, DEFAULT_SIDECAR_DIR};
 use markymark_core::{CoreError, DocumentUri, Range};
 use markymark_index::{HeadingEntry, OutlineNode, RealmIndex};
 
+use super::enrich;
+
 pub(crate) fn handle_get_outline(
     realm: &RealmIndex,
+    roots: &[std::path::PathBuf],
     uri: &DocumentUri,
     format: &str,
     include_text: bool,
@@ -19,11 +23,17 @@ pub(crate) fn handle_get_outline(
                 } else {
                     None
                 };
-                let tree = outline_node_to_owned(
+                let mut tree = outline_node_to_owned(
                     index.outline(),
                     source.as_deref(),
                     index.headings(),
                 );
+
+                // Try to inject sidecar summaries if available.
+                if let Some(sidecar) = try_load_sidecar(uri, roots) {
+                    enrich::inject_summaries(&mut tree, &sidecar);
+                }
+
                 CoreOperationResult::OutlineTree(tree)
             } else {
                 CoreOperationResult::Outline(
@@ -124,4 +134,36 @@ fn extract_section_text(
 
     let section: String = lines[content_start..content_end].join("\n");
     Some(section.trim_end().to_string())
+}
+
+/// Try to load a sidecar file for the given document URI.
+///
+/// Checks each workspace root for a `.markymark/<relative_path>.json` sidecar.
+/// Returns None if no sidecar exists or the sidecar is stale (we don't validate
+/// staleness here — the caller gets whatever exists; enrichment validates freshness).
+fn try_load_sidecar(
+    uri: &DocumentUri,
+    roots: &[std::path::PathBuf],
+) -> Option<DocumentSidecar> {
+    let file_path = uri.to_file_path()?;
+
+    for root in roots {
+        if let Ok(relative) = file_path.strip_prefix(root) {
+            let sidecar_dir = root.join(DEFAULT_SIDECAR_DIR);
+            let sidecar_file = sidecar_types::sidecar_path(&sidecar_dir, relative);
+            if let Ok(json) = std::fs::read_to_string(&sidecar_file) {
+                if let Ok(sidecar) = serde_json::from_str::<DocumentSidecar>(&json) {
+                    // Validate content hash to avoid stale summaries.
+                    if let Ok(source) = std::fs::read(&file_path) {
+                        let current_hash = sidecar_types::content_hash(&source);
+                        if !sidecar.is_stale(&current_hash) {
+                            return Some(sidecar);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
 }
