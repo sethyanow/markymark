@@ -38,7 +38,7 @@ pub enum BlockKind {
 ///
 /// Represents a first-class content block (paragraph, list item, code block, etc.).
 /// Optionally carries an Obsidian `^block-id` marker. Replaces the former `BlockEntry`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct ContentBlock<'arena> {
     /// The kind of content block.
     pub kind: BlockKind,

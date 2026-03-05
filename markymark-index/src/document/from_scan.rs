@@ -19,6 +19,8 @@ use super::{
     WikiLinkEntry, XmlTagEntry,
 };
 
+use super::from_ast::RawBlock;
+
 impl DocumentIndex {
     /// Build a document index from a scan backend (Zig SIMD path).
     ///
@@ -26,7 +28,7 @@ impl DocumentIndex {
     /// provides heading, link, tag, block-id, and XML tag extraction via SIMD
     /// kernels. Frontmatter is not available and returns empty slices.
     pub fn from_scan(text: &str, backend: &dyn ScanBackend) -> Self {
-        Self::from_scan_inner(text, backend, Vec::new(), Vec::new())
+        Self::from_scan_inner(text, backend, Vec::new(), Vec::new(), Vec::new())
     }
 
     /// Build a document index from a scan backend with pre-parsed frontmatter.
@@ -41,14 +43,17 @@ impl DocumentIndex {
         frontmatter: Vec<FrontmatterOwnedEntry>,
         aliases: Vec<String>,
     ) -> Self {
-        Self::from_scan_inner(text, backend, frontmatter, aliases)
+        Self::from_scan_inner(text, backend, frontmatter, aliases, Vec::new())
     }
 
-    fn from_scan_inner(
+    /// Build a document index with pre-parsed frontmatter and content blocks
+    /// extracted from the tree-sitter AST.
+    pub(super) fn from_scan_inner(
         text: &str,
         backend: &dyn ScanBackend,
         fm_owned: Vec<FrontmatterOwnedEntry>,
         aliases_owned: Vec<String>,
+        raw_blocks: Vec<RawBlock>,
     ) -> Self {
         // Pre-compute line starts for byte-offset → Position conversion
         let line_starts = helpers::byte_offset_line_starts(text);
@@ -209,32 +214,82 @@ impl DocumentIndex {
             }
             let tags = tags_builder.into_bump_slice();
 
+            // --- Content blocks (from tree-sitter AST, if available) ---
+            let mut cb_builder = BumpVec::new_in(arena_ref);
+            for rb in &raw_blocks {
+                let pos = helpers::byte_offset_to_position(&line_starts, rb.start_byte as u32);
+                let end_pos =
+                    helpers::byte_offset_to_position(&line_starts, rb.end_byte as u32);
+                // Parent heading: find the nearest heading whose range starts
+                // before this block. Binary search on heading start positions.
+                let parent_heading = if headings.is_empty() {
+                    None
+                } else {
+                    // Find rightmost heading whose start byte <= block start byte.
+                    // Headings are ordered by position (from md4c scan).
+                    let block_line = pos.line;
+                    let mut best: Option<usize> = None;
+                    for (i, h) in headings.iter().enumerate() {
+                        if h.range.start.line < block_line {
+                            best = Some(i);
+                        } else {
+                            break;
+                        }
+                    }
+                    best
+                };
+                cb_builder.push(ContentBlock {
+                    kind: rb.kind,
+                    range: Range::new(pos, end_pos),
+                    start_byte: rb.start_byte,
+                    end_byte: rb.end_byte,
+                    parent_heading,
+                    block_id: None, // merged below
+                });
+            }
+            let content_blocks_mut = cb_builder.into_bump_slice_mut();
+
             // --- Block IDs (Obsidian ^block-id markers) ---
+            // Merge ^block-id markers into content blocks where byte ranges overlap.
             let mut block_id_map = HashMap::new();
             for b in scan_blocks {
                 let id = arena_alloc_str(arena_ref, &b.id);
-                let pos = helpers::byte_offset_to_position(&line_starts, b.offset);
-                let end_pos = helpers::byte_offset_to_position(
-                    &line_starts,
-                    b.offset + 1 + b.id.len() as u32,
-                );
-                let start_byte = b.offset as usize;
-                let end_byte = (b.offset + 1 + b.id.len() as u32) as usize;
-                block_id_map.insert(
-                    id,
-                    ContentBlock {
-                        kind: BlockKind::Paragraph,
-                        range: Range::new(pos, end_pos),
-                        start_byte,
-                        end_byte,
-                        parent_heading: None,
-                        block_id: Some(id),
-                    },
-                );
-            }
+                let marker_byte = b.offset as usize;
 
-            // Content blocks: empty until AST extraction is implemented.
-            let content_blocks: &[ContentBlock<'_>] = &[];
+                // Try to find an overlapping content block
+                let mut merged = false;
+                for cb in content_blocks_mut.iter_mut() {
+                    if marker_byte >= cb.start_byte && marker_byte < cb.end_byte {
+                        cb.block_id = Some(id);
+                        block_id_map.insert(id, *cb);
+                        merged = true;
+                        break;
+                    }
+                }
+                if !merged {
+                    // Orphan ^block-id — keep in map with synthetic block
+                    let pos = helpers::byte_offset_to_position(&line_starts, b.offset);
+                    let end_pos = helpers::byte_offset_to_position(
+                        &line_starts,
+                        b.offset + 1 + b.id.len() as u32,
+                    );
+                    let start_byte = b.offset as usize;
+                    let end_byte = (b.offset + 1 + b.id.len() as u32) as usize;
+                    block_id_map.insert(
+                        id,
+                        ContentBlock {
+                            kind: BlockKind::Paragraph,
+                            range: Range::new(pos, end_pos),
+                            start_byte,
+                            end_byte,
+                            parent_heading: None,
+                            block_id: Some(id),
+                        },
+                    );
+                }
+            }
+            // Convert to immutable slice for storage
+            let content_blocks: &[ContentBlock<'_>] = content_blocks_mut;
 
             // Build TOC and outline from headings
             let toc = helpers::build_toc(arena_ref, headings);

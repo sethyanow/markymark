@@ -498,11 +498,18 @@ fn block_text_blob_constructed_returns_empty() {
 }
 
 #[test]
-fn content_blocks_returns_empty_slice() {
+fn content_blocks_populated_from_ast() {
     let index = build_index("# Heading\n\nParagraph content.\n");
     assert!(
-        index.content_blocks().is_empty(),
-        "content_blocks should be empty until AST extraction is implemented"
+        !index.content_blocks().is_empty(),
+        "content_blocks should be populated via from_ast tree-sitter extraction"
+    );
+    assert!(
+        index
+            .content_blocks()
+            .iter()
+            .any(|b| b.kind == BlockKind::Paragraph),
+        "should have a Paragraph block"
     );
 }
 
@@ -627,6 +634,7 @@ fn from_ast_extracts_code_spans_via_scan() {
 // md4c scan-based construction tests (feature-gated)
 // ---------------------------------------------------------------------------
 
+mod content_block_tests;
 mod incremental_tests;
 mod md4c_scan_tests;
 

@@ -434,3 +434,21 @@ pub fn mask_frontmatter(source: &str) -> String {
     // UTF-8: multi-byte sequences have all bytes replaced, yielding ASCII spaces.
     String::from_utf8(bytes).unwrap_or_else(|_| source.to_string())
 }
+
+/// Return the byte offset where the frontmatter region ends (exclusive).
+///
+/// Returns 0 if the source has no frontmatter. Used by content block extraction
+/// to exclude blocks whose start_byte falls within the frontmatter region.
+pub fn frontmatter_byte_end(source: &str) -> usize {
+    let (prefix_len, rest) = if let Some(r) = source.strip_prefix("---\r\n") {
+        (5, r)
+    } else if let Some(r) = source.strip_prefix("---\n") {
+        (4, r)
+    } else {
+        return 0;
+    };
+    match find_frontmatter_close(rest) {
+        Some((close_pos, close_len)) => prefix_len + close_pos + close_len,
+        None => 0,
+    }
+}
