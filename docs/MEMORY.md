@@ -52,13 +52,15 @@ on top. Related: marky-mkr, marky-y4be, marky-c9wi.
 
 ### Tree Intelligence Sub-Epic (marky-d21j, child of marky-b9o4, 2026-02-26)
 
-PageIndex-style hierarchical retrieval. Three phases: (1) expose existing OutlineNode as
-hierarchical JSON via get-outline format=tree + include_text params, (2) optional LLM enrichment
+PageIndex-style hierarchical retrieval. Three phases: (1) ✅ expose existing OutlineNode as
+hierarchical JSON via get-outline format=tree + include_text params, (2) ✅ optional LLM enrichment
 with per-node summaries stored in configurable sidecar `.markymark/` JSON files with content-hash
-invalidation, (3) tree-based workspace search composing graph-analysis + tree navigation.
-Inference provider abstracted behind trait — implementations via Anthropic/OpenAI Agent SDKs
-for sub-based personal use. First task: marky-bgtt (Phase 1 tree export). Research via DeepWiki
-at VectifyAI/PageIndex.
+invalidation, (3) tree-based workspace search composing graph-analysis + tree navigation (marky-kbpu).
+Phase 2 modules: `markymark-core/src/inference/mod.rs` (InferenceProvider trait),
+`markymark-core/src/sidecar.rs` (types + SHA-256 content hash), `markymark-mcp/src/engine/enrich.rs`
+(enrichment handler + inject_summaries), `markymark-mcp/src/tools/enrich.rs` (MCP tool handler).
+Sidecar auto-loaded by get-outline when format=tree — no explicit API call needed.
+Next: Phase 3 recommend-docs (marky-kbpu).
 
 ---
 
