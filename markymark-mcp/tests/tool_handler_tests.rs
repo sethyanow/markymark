@@ -214,6 +214,18 @@ impl CoreEngine for MockEngine {
                 realm: realm.unwrap_or_else(|| "default".to_string()),
                 items: vec![],
             },
+            (_, CoreOperation::ExportDocsIndex { realm, .. }) => {
+                CoreOperationResult::DocsIndexExport {
+                    realm: realm.unwrap_or_else(|| "default".to_string()),
+                    entries: vec![
+                        "[test-docs]|root: ./docs/test|.:{README.md}|core:{_index.md,types.md}"
+                            .to_string(),
+                    ],
+                    doc_count: 3,
+                    root_count: 1,
+                    skipped_count: 0,
+                }
+            }
         }
     }
 }
@@ -264,6 +276,7 @@ fn registers_expected_rmcp_tools() {
     assert!(names.contains(&"search-workspace"));
     assert!(names.contains(&"search-for-pattern"));
     assert!(names.contains(&"graph-analysis"));
+    assert!(names.contains(&"export-docs-index"));
 }
 
 #[tokio::test]
@@ -918,6 +931,49 @@ async fn export_index_tool_maps_core_error() {
         .export_index_tool(Parameters(ExportIndexRequest {
             uri: "file:///vault/notes.md".to_string(),
             realm: None,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "core_error");
+}
+
+// --- export-docs-index tool tests ---
+
+#[tokio::test]
+async fn export_docs_index_tool_returns_structured_response() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .export_docs_index_tool(Parameters(ExportDocsIndexRequest {
+            realm: None,
+            name_override: None,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: ExportDocsIndexResponse = result.into_typed().expect("typed response");
+    assert_eq!(payload.realm, "default");
+    assert_eq!(payload.entries.len(), 1);
+    assert_eq!(payload.doc_count, 3);
+    assert_eq!(payload.root_count, 1);
+    assert_eq!(payload.skipped_count, 0);
+    assert!(payload.entries[0].contains("[test-docs]"));
+}
+
+#[tokio::test]
+async fn export_docs_index_tool_maps_core_error() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::CoreError,
+    }));
+    let result = mcp
+        .export_docs_index_tool(Parameters(ExportDocsIndexRequest {
+            realm: None,
+            name_override: None,
         }))
         .await
         .expect("tool call should not return protocol error");

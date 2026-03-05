@@ -698,3 +698,32 @@ pub struct GraphAnalysisResponse {
     /// Weakly-connected clusters. `null` when `include_clusters` was `false`.
     pub clusters: Option<Vec<ClusterDto>>,
 }
+
+// ── export-docs-index ──
+
+/// Request payload for `export-docs-index`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExportDocsIndexRequest {
+    /// Realm to export. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+    /// Override the name used in the `[name]` prefix of each entry.
+    /// When omitted, the last path component of each root is used (kebab-case).
+    #[serde(default)]
+    pub name_override: Option<String>,
+}
+
+/// Response payload for `export-docs-index`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExportDocsIndexResponse {
+    /// Realm that was exported.
+    pub realm: String,
+    /// One pipe-delimited docs_index entry per root.
+    pub entries: Vec<String>,
+    /// Number of markdown documents included.
+    pub doc_count: usize,
+    /// Number of roots that produced entries.
+    pub root_count: usize,
+    /// Number of documents skipped (URI didn't match any root).
+    pub skipped_count: usize,
+}

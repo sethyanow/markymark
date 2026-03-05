@@ -465,6 +465,19 @@ impl MarkymarkMcp {
     ) -> Result<CallToolResult, McpError> {
         tools::diagnostics::handle_get_diagnostics(&*self.engine, params.0).await
     }
+
+    /// Export a pipe-delimited docs_index block from realm state, matching the format
+    /// used in CLAUDE.md for ambient agent documentation awareness.
+    #[tool(
+        name = "export-docs-index",
+        description = "Generate a pipe-delimited docs_index block from a realm's indexed documents. Output is ready to paste into CLAUDE.md for ambient agent doc awareness. Groups files by directory (category) with deterministic sorting."
+    )]
+    pub async fn export_docs_index_tool(
+        &self,
+        params: Parameters<ExportDocsIndexRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::export_docs_index::handle_export_docs_index(&*self.engine, params.0).await
+    }
 }
 
 /// Run markymark MCP over stdio using the provided shared core engine.

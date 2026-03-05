@@ -19,6 +19,7 @@ use markymark_parser::structured::parse_structured;
 
 mod diagnostics;
 mod export;
+mod export_docs_index;
 mod helpers;
 mod outline;
 mod realm_ops;
@@ -737,6 +738,23 @@ impl CoreEngine for RuntimeEngine {
                     }
                     None => diagnostics::handle_get_diagnostics_realm(realm_data, realm_key),
                 }
+            }
+            CoreOperation::ExportDocsIndex {
+                realm,
+                name_override,
+            } => {
+                let realm_key = realm.as_deref().unwrap_or(DEFAULT_REALM);
+                let state = self.state.read().await;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                export_docs_index::handle_export_docs_index(
+                    realm_data,
+                    realm_key.to_string(),
+                    name_override,
+                )
             }
         }
     }

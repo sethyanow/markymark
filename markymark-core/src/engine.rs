@@ -217,6 +217,13 @@ pub enum CoreOperation {
         /// Realm to query. Defaults to `"default"` when `None`.
         realm: Option<String>,
     },
+    /// Export a pipe-delimited docs_index block from realm state.
+    ExportDocsIndex {
+        /// Realm to export. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+        /// Override the `[name]` prefix for each root entry.
+        name_override: Option<String>,
+    },
 }
 
 /// A single match result from a regex pattern search.
@@ -391,6 +398,19 @@ pub enum CoreOperationResult {
         /// Per-file diagnostics: `(document_uri, diagnostics)`.
         /// Only files that have at least one diagnostic are included.
         items: Vec<(crate::DocumentUri, Vec<CoreDiagnostic>)>,
+    },
+    /// Exported docs_index entries (one per root).
+    DocsIndexExport {
+        /// Realm that was exported.
+        realm: String,
+        /// Pipe-delimited docs_index entry strings.
+        entries: Vec<String>,
+        /// Number of markdown documents included.
+        doc_count: usize,
+        /// Number of roots that produced entries.
+        root_count: usize,
+        /// Number of documents skipped (URI didn't match any root).
+        skipped_count: usize,
     },
     /// Success with no payload.
     Ok,

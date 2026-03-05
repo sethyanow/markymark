@@ -9,8 +9,8 @@ use markymark_core::prelude::EmbeddingProvider;
 #[cfg(feature = "semantic-search")]
 use markymark_mcp::{HashEmbeddingProvider, SemanticSearchRequest, SemanticSearchResponse};
 use markymark_mcp::{
-    MarkymarkMcp, OutlineRequest, OutlineResponse, RuntimeEngine, SearchSymbolsRequest,
-    SearchSymbolsResponse,
+    ExportDocsIndexRequest, ExportDocsIndexResponse, MarkymarkMcp, OutlineRequest, OutlineResponse,
+    RuntimeEngine, SearchSymbolsRequest, SearchSymbolsResponse,
 };
 use rmcp::handler::server::wrapper::Parameters;
 
@@ -53,6 +53,40 @@ async fn mcp_tools_return_real_indexed_data() {
     let symbols: SearchSymbolsResponse = symbols_result.into_typed().expect("typed symbols");
     assert_eq!(symbols.symbols.len(), 1);
     assert_eq!(symbols.symbols[0].name, "Deep Dive");
+}
+
+#[tokio::test]
+async fn export_docs_index_tool_returns_real_indexed_data() {
+    let ws = TempWorkspace::new("export-docs-index");
+    fs::create_dir_all(ws.root().join("core")).expect("create core dir");
+    fs::write(ws.root().join("README.md"), "# My Docs\n").expect("write README");
+    fs::write(ws.root().join("core/_index.md"), "# Core Index\n").expect("write core index");
+    fs::write(ws.root().join("core/types.md"), "# Types\n").expect("write types");
+
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
+    let mcp = MarkymarkMcp::new(Arc::new(engine));
+
+    let result = mcp
+        .export_docs_index_tool(Parameters(ExportDocsIndexRequest {
+            realm: None,
+            name_override: Some("my-docs".to_string()),
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: ExportDocsIndexResponse = result.into_typed().expect("typed response");
+    assert_eq!(payload.realm, "default");
+    assert_eq!(payload.entries.len(), 1);
+    assert_eq!(payload.doc_count, 3);
+    assert_eq!(payload.skipped_count, 0);
+
+    let entry = &payload.entries[0];
+    assert!(entry.starts_with("[my-docs]|root: "), "expected [my-docs] prefix, got: {entry}");
+    assert!(entry.contains("|.:{README.md}"), "expected root-level README.md");
+    assert!(entry.contains("|core:{_index.md,types.md}"), "expected core category with sorted files");
 }
 
 #[cfg(feature = "semantic-search")]
