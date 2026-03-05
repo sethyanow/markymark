@@ -34,8 +34,7 @@ pub(crate) async fn handle_enrich_document(
     };
 
     // Resolve the document in the index.
-    let Some(markymark_index::AnyDocumentIndex::Markdown(index)) =
-        realm.get_any_document(uri)
+    let Some(markymark_index::AnyDocumentIndex::Markdown(index)) = realm.get_any_document(uri)
     else {
         return CoreOperationResult::Error(CoreError::Message(format!(
             "document is not indexed as markdown: {}",
@@ -137,7 +136,10 @@ pub(crate) async fn handle_enrich_document(
         .collect::<Vec<_>>()
         .join("\n");
     if let Ok(doc_summary) = provider
-        .summarize(&doc_context, Some("Summarize this document based on its sections"))
+        .summarize(
+            &doc_context,
+            Some("Summarize this document based on its sections"),
+        )
         .await
     {
         sidecar.document_summary = Some(doc_summary);
@@ -275,17 +277,11 @@ fn write_sidecar(path: &Path, sidecar: &DocumentSidecar) {
 /// Inject sidecar summaries into an OutlineTreeNode tree.
 ///
 /// Walks the tree and matches nodes by slug to sidecar section summaries.
-pub(crate) fn inject_summaries(
-    node: &mut OutlineTreeNode,
-    sidecar: &DocumentSidecar,
-) {
+pub(crate) fn inject_summaries(node: &mut OutlineTreeNode, sidecar: &DocumentSidecar) {
     inject_summaries_recursive(node, sidecar);
 }
 
-fn inject_summaries_recursive(
-    node: &mut OutlineTreeNode,
-    sidecar: &DocumentSidecar,
-) {
+fn inject_summaries_recursive(node: &mut OutlineTreeNode, sidecar: &DocumentSidecar) {
     // Match by title (case-insensitive) — slugs aren't available on OutlineTreeNode.
     // For the root node (level 0), inject document summary.
     if node.level == 0 {
@@ -295,7 +291,9 @@ fn inject_summaries_recursive(
     } else {
         // Find matching section summary by heading text in heading_path.
         for section in &sidecar.sections {
-            if section.level == node.level && heading_path_ends_with(&section.heading_path, &node.title) {
+            if section.level == node.level
+                && heading_path_ends_with(&section.heading_path, &node.title)
+            {
                 node.summary = Some(section.summary.clone());
                 break;
             }

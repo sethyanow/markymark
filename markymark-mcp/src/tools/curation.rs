@@ -1,6 +1,8 @@
 //! curation-diagnostics tool handler.
 
-use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult, CurationSuggestionType};
+use markymark_core::engine::{
+    CoreEngine, CoreOperation, CoreOperationResult, CurationSuggestionType,
+};
 use rmcp::{model::CallToolResult, ErrorData as McpError};
 use serde_json::json;
 
@@ -61,15 +63,15 @@ pub(crate) async fn handle_curation_diagnostics(
                 broken_link_count: report.stats.broken_link_count,
             };
 
-            Ok(CallToolResult::structured(
-                json!(CurationDiagnosticsResponse {
+            Ok(CallToolResult::structured(json!(
+                CurationDiagnosticsResponse {
                     realm,
                     orphan_docs,
                     low_connectivity_docs,
                     suggestions,
                     stats,
-                }),
-            ))
+                }
+            )))
         }
         CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
         other => Ok(unexpected_result_error("curation-diagnostics", &other)),

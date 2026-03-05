@@ -19,10 +19,7 @@ use markymark_mcp::{
 use rmcp::handler::server::wrapper::Parameters;
 
 /// Helper: create a RuntimeEngine with two roots added to the default realm.
-async fn engine_with_two_roots(
-    ws_a: &TempWorkspace,
-    ws_b: &TempWorkspace,
-) -> Arc<RuntimeEngine> {
+async fn engine_with_two_roots(ws_a: &TempWorkspace, ws_b: &TempWorkspace) -> Arc<RuntimeEngine> {
     use markymark_core::engine::{CoreEngine, CoreOperation};
 
     let engine = RuntimeEngine::default();
@@ -48,8 +45,16 @@ async fn search_workspace_finds_docs_from_both_roots() {
     let ws_a = TempWorkspace::new("fed-search-a");
     let ws_b = TempWorkspace::new("fed-search-b");
 
-    fs::write(ws_a.root().join("alpha.md"), "# Alpha Guide\n\nContent about alpha.\n").unwrap();
-    fs::write(ws_b.root().join("beta.md"), "# Beta Guide\n\nContent about beta.\n").unwrap();
+    fs::write(
+        ws_a.root().join("alpha.md"),
+        "# Alpha Guide\n\nContent about alpha.\n",
+    )
+    .unwrap();
+    fs::write(
+        ws_b.root().join("beta.md"),
+        "# Beta Guide\n\nContent about beta.\n",
+    )
+    .unwrap();
 
     let engine = engine_with_two_roots(&ws_a, &ws_b).await;
     let mcp = MarkymarkMcp::new(engine);
@@ -183,7 +188,11 @@ async fn recommend_docs_ranks_across_roots() {
     let payload: RecommendDocsResponse = result.into_typed().expect("typed response");
 
     // Should return results — at minimum the hub.md title match.
-    let uris: Vec<&str> = payload.recommendations.iter().map(|r| r.uri.as_str()).collect();
+    let uris: Vec<&str> = payload
+        .recommendations
+        .iter()
+        .map(|r| r.uri.as_str())
+        .collect();
     assert!(
         !payload.recommendations.is_empty(),
         "should return at least one recommendation"
@@ -204,11 +213,7 @@ async fn curation_diagnostics_cross_root_orphan_detection() {
     let ws_b = TempWorkspace::new("fed-curation-b");
 
     // Hub in root A, linker in root B points to hub, orphan in root B is isolated.
-    fs::write(
-        ws_a.root().join("hub.md"),
-        "# Hub\n\nCentral document.\n",
-    )
-    .unwrap();
+    fs::write(ws_a.root().join("hub.md"), "# Hub\n\nCentral document.\n").unwrap();
     fs::write(
         ws_b.root().join("linker.md"),
         "# Linker\n\nSee [[hub]] for details.\n",
@@ -315,7 +320,10 @@ async fn root_removal_breaks_cross_root_links() {
         after.broken_links
     );
     assert!(
-        after.broken_links.iter().any(|bl| bl.target.contains("target")),
+        after
+            .broken_links
+            .iter()
+            .any(|bl| bl.target.contains("target")),
         "broken link should reference 'target'; broken_links: {:?}",
         after.broken_links
     );

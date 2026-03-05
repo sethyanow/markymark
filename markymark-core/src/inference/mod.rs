@@ -53,11 +53,7 @@ pub trait InferenceProvider: Send + Sync {
     /// `text` is the section content to summarize.
     /// `context` is optional surrounding context (e.g. parent heading path,
     /// document title) to improve summary quality.
-    async fn summarize(
-        &self,
-        text: &str,
-        context: Option<&str>,
-    ) -> Result<String, InferenceError>;
+    async fn summarize(&self, text: &str, context: Option<&str>) -> Result<String, InferenceError>;
 
     /// Summarize multiple text sections in batch.
     ///
@@ -109,7 +105,10 @@ mod tests {
                 return Err(InferenceError::InvalidInput("empty text".to_string()));
             }
             let prefix = context.unwrap_or("no context");
-            Ok(format!("[{prefix}] summary of: {}", &text[..text.len().min(30)]))
+            Ok(format!(
+                "[{prefix}] summary of: {}",
+                &text[..text.len().min(30)]
+            ))
         }
 
         fn model_id(&self) -> &str {
@@ -167,10 +166,7 @@ mod tests {
     #[tokio::test]
     async fn test_inference_provider_batch_default() {
         let provider = MockInferenceProvider::new("test");
-        let items = vec![
-            ("first section", Some("ctx1")),
-            ("second section", None),
-        ];
+        let items = vec![("first section", Some("ctx1")), ("second section", None)];
         let results = provider.summarize_batch(&items).await.unwrap();
         assert_eq!(results.len(), 2);
         assert!(results[0].contains("ctx1"));

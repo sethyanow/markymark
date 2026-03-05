@@ -394,8 +394,14 @@ mod tests {
         );
         let idx = StructuredDocumentIndex::from_ast(ast);
 
-        assert!(idx.source_contains("localhost"), "should find value in source");
-        assert!(idx.source_contains("LOCALHOST"), "should be case-insensitive");
+        assert!(
+            idx.source_contains("localhost"),
+            "should find value in source"
+        );
+        assert!(
+            idx.source_contains("LOCALHOST"),
+            "should be case-insensitive"
+        );
         assert!(idx.source_contains("8080"), "should find numeric values");
         assert!(
             !idx.source_contains("nonexistent"),

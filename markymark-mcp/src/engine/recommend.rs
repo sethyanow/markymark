@@ -42,22 +42,20 @@ pub fn handle_recommend_docs(
     }
 
     // Stage 1a: Text search — get scored documents matching the query.
-    let search_results = extract_search_results(
-        &crate::search::execute_search_workspace(
-            realm_key,
-            realm,
-            Some(query.to_string()),
-            None,
-            None,
-            None,
-            100, // Get a wide net; we'll narrow to top_k after merging hub scores.
-        ),
-    );
+    let search_results = extract_search_results(&crate::search::execute_search_workspace(
+        realm_key,
+        realm,
+        Some(query.to_string()),
+        None,
+        None,
+        None,
+        100, // Get a wide net; we'll narrow to top_k after merging hub scores.
+    ));
 
     // Stage 1b: Graph analysis — get hub documents for centrality boost.
-    let hub_map = extract_hub_map(
-        &crate::graph::execute_graph_analysis(realm_key, realm, 100, false),
-    );
+    let hub_map = extract_hub_map(&crate::graph::execute_graph_analysis(
+        realm_key, realm, 100, false,
+    ));
 
     // Stage 2: Merge scores and rank.
     let max_incoming = hub_map.values().copied().max().unwrap_or(1) as f32;

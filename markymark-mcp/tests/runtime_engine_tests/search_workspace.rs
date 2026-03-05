@@ -376,7 +376,9 @@ async fn search_workspace_finds_jsonl_by_value() {
 
     let results = search_workspace(&engine, Some("authentication"), None, None, None, 20).await;
     assert!(
-        results.iter().any(|r| r.uri.as_str().contains("issues.jsonl")),
+        results
+            .iter()
+            .any(|r| r.uri.as_str().contains("issues.jsonl")),
         "search should find JSONL file when query matches content value"
     );
 }
@@ -396,7 +398,9 @@ async fn search_workspace_finds_yaml_by_key_path() {
 
     let results = search_workspace(&engine, Some("database"), None, None, None, 20).await;
     assert!(
-        results.iter().any(|r| r.uri.as_str().contains("config.yaml")),
+        results
+            .iter()
+            .any(|r| r.uri.as_str().contains("config.yaml")),
         "search should find YAML file when query matches key path"
     );
 }
@@ -440,18 +444,14 @@ async fn search_workspace_filters_exclude_structured_docs() {
     let (_ws, engine) = engine_with_mixed_files(
         "sw-filter-exclude",
         &[
-            (
-                "doc.md",
-                "---\nstatus: active\n---\n# Doc\n\nContent.\n",
-            ),
+            ("doc.md", "---\nstatus: active\n---\n# Doc\n\nContent.\n"),
             ("config.yaml", yaml_content),
         ],
     )
     .await;
 
     // Frontmatter filter should only return markdown docs.
-    let results =
-        search_workspace(&engine, None, Some(("status", "active")), None, None, 20).await;
+    let results = search_workspace(&engine, None, Some(("status", "active")), None, None, 20).await;
     for r in &results {
         assert!(
             !r.uri.as_str().ends_with(".yaml"),
@@ -473,7 +473,9 @@ async fn search_workspace_no_query_includes_structured_docs() {
 
     let results = search_workspace(&engine, None, None, None, None, 20).await;
     assert!(
-        results.iter().any(|r| r.uri.as_str().contains("config.json")),
+        results
+            .iter()
+            .any(|r| r.uri.as_str().contains("config.json")),
         "no-query mode should include structured docs"
     );
     // All should score 1.0 in no-query mode.
@@ -506,16 +508,15 @@ async fn search_workspace_empty_structured_doc_excluded_by_query() {
     // An empty JSON file has 0 keys and empty source — should not match any query.
     let (_ws, engine) = engine_with_mixed_files(
         "sw-empty-struct",
-        &[
-            ("readme.md", "# Readme\n"),
-            ("empty.json", "{}"),
-        ],
+        &[("readme.md", "# Readme\n"), ("empty.json", "{}")],
     )
     .await;
 
     let results = search_workspace(&engine, Some("anything"), None, None, None, 20).await;
     assert!(
-        !results.iter().any(|r| r.uri.as_str().contains("empty.json")),
+        !results
+            .iter()
+            .any(|r| r.uri.as_str().contains("empty.json")),
         "empty structured doc should not match a query"
     );
 }

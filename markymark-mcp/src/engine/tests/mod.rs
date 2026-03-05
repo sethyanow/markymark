@@ -234,11 +234,7 @@ async fn outline_tree_root_node_no_heading() {
 #[tokio::test]
 async fn outline_include_text_false_omits_field() {
     let dir = make_temp_realm_dir("outline-notext");
-    fs::write(
-        dir.path().join("doc.md"),
-        "# Title\n\nSome content here.\n",
-    )
-    .unwrap();
+    fs::write(dir.path().join("doc.md"), "# Title\n\nSome content here.\n").unwrap();
     let engine = make_engine_with_custom_realm("notext-realm", dir.path()).await;
     let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
 
@@ -254,7 +250,10 @@ async fn outline_include_text_false_omits_field() {
         CoreOperationResult::OutlineTree(tree) => {
             assert!(tree.text.is_none(), "root should have no text");
             let h1 = &tree.children[0];
-            assert!(h1.text.is_none(), "h1 should have no text when include_text=false");
+            assert!(
+                h1.text.is_none(),
+                "h1 should have no text when include_text=false"
+            );
         }
         other => panic!("expected OutlineTree, got {other:?}"),
     }

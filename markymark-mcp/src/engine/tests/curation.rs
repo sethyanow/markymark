@@ -172,17 +172,9 @@ async fn connectivity_scoring() {
     // Hub: linked by a and b (in-degree=2)
     fs::write(dir.path().join("hub.md"), "# Hub\n\nCentral.\n").unwrap();
     // a links to hub (out-degree=1)
-    fs::write(
-        dir.path().join("a.md"),
-        "# Doc A\n\nSee [Hub](hub.md).\n",
-    )
-    .unwrap();
+    fs::write(dir.path().join("a.md"), "# Doc A\n\nSee [Hub](hub.md).\n").unwrap();
     // b links to hub (out-degree=1)
-    fs::write(
-        dir.path().join("b.md"),
-        "# Doc B\n\n[Hub](hub.md) ref.\n",
-    )
-    .unwrap();
+    fs::write(dir.path().join("b.md"), "# Doc B\n\n[Hub](hub.md) ref.\n").unwrap();
     // orphan: connectivity=0
     fs::write(dir.path().join("orphan.md"), "# Orphan\n\nAlone.\n").unwrap();
     let engine = make_engine_with_root(dir.path()).await;
@@ -220,11 +212,7 @@ async fn max_suggestions_capped() {
     let dir = tempfile::tempdir().unwrap();
     // Create a hub and many orphans
     fs::write(dir.path().join("hub.md"), "# Hub\n\nCentral reference.\n").unwrap();
-    fs::write(
-        dir.path().join("linked.md"),
-        "# Linked\n\n[Hub](hub.md)\n",
-    )
-    .unwrap();
+    fs::write(dir.path().join("linked.md"), "# Linked\n\n[Hub](hub.md)\n").unwrap();
     for i in 0..10 {
         fs::write(
             dir.path().join(format!("orphan{i}.md")),
@@ -309,16 +297,8 @@ async fn named_realm_works() {
 async fn suggestion_types_are_reduce_orphan() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(dir.path().join("hub.md"), "# Hub\n\nCentral.\n").unwrap();
-    fs::write(
-        dir.path().join("linked.md"),
-        "# Linked\n\n[Hub](hub.md)\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("orphan.md"),
-        "# Orphan\n\nIsolated.\n",
-    )
-    .unwrap();
+    fs::write(dir.path().join("linked.md"), "# Linked\n\n[Hub](hub.md)\n").unwrap();
+    fs::write(dir.path().join("orphan.md"), "# Orphan\n\nIsolated.\n").unwrap();
     let engine = make_engine_with_root(dir.path()).await;
 
     let result = engine
@@ -348,16 +328,8 @@ async fn suggestion_types_are_reduce_orphan() {
 async fn include_suggestions_false_returns_no_suggestions() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(dir.path().join("hub.md"), "# Hub\n\nCentral.\n").unwrap();
-    fs::write(
-        dir.path().join("linked.md"),
-        "# Linked\n\n[Hub](hub.md)\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("orphan.md"),
-        "# Orphan\n\nIsolated.\n",
-    )
-    .unwrap();
+    fs::write(dir.path().join("linked.md"), "# Linked\n\n[Hub](hub.md)\n").unwrap();
+    fs::write(dir.path().join("orphan.md"), "# Orphan\n\nIsolated.\n").unwrap();
     let engine = make_engine_with_root(dir.path()).await;
 
     let result = engine

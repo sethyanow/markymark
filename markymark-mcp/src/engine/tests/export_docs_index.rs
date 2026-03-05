@@ -84,7 +84,10 @@ async fn single_root_flat_files() {
 
     let entry = &entries[0];
     // Should have "." category for root-level files.
-    assert!(entry.contains("|.:{"), "expected dot category, got: {entry}");
+    assert!(
+        entry.contains("|.:{"),
+        "expected dot category, got: {entry}"
+    );
     assert!(entry.contains("README.md"), "expected README.md in entry");
     assert!(entry.contains("guide.md"), "expected guide.md in entry");
 }
@@ -114,10 +117,7 @@ async fn single_root_nested_dirs() {
     // Categories should be sorted alphabetically.
     let advanced_pos = entry.find("advanced:").expect("missing advanced category");
     let core_pos = entry.find("core:").expect("missing core category");
-    assert!(
-        advanced_pos < core_pos,
-        "categories should be alphabetical"
-    );
+    assert!(advanced_pos < core_pos, "categories should be alphabetical");
 
     // _index.md should appear first in its category.
     let core_section = entry.split('|').find(|p| p.starts_with("core:")).unwrap();
@@ -131,11 +131,7 @@ async fn single_root_nested_dirs() {
 async fn deep_nesting_preserves_subpath() {
     let dir = make_temp_realm_dir("export-deep");
     fs::create_dir_all(dir.path().join("tooling/sub")).unwrap();
-    fs::write(
-        dir.path().join("tooling/sub/deep.md"),
-        "# Deep Doc\n",
-    )
-    .unwrap();
+    fs::write(dir.path().join("tooling/sub/deep.md"), "# Deep Doc\n").unwrap();
 
     let engine = make_engine_with_root(dir.path()).await;
     let result = engine
@@ -282,10 +278,7 @@ async fn mixed_root_and_nested_files() {
     // "." category should come before "core" alphabetically.
     let dot_pos = entry.find("|.:{").unwrap();
     let core_pos = entry.find("|core:{").unwrap();
-    assert!(
-        dot_pos < core_pos,
-        "dot category should come before core"
-    );
+    assert!(dot_pos < core_pos, "dot category should come before core");
 }
 
 #[tokio::test]

@@ -3,8 +3,7 @@
 use markymark_core::engine::{CoreOperationResult, WorkspaceSearchResult};
 use markymark_core::DocumentUri;
 use markymark_index::{
-    DocumentIndex, FrontmatterValueEntry, PropertyValueEntry, RealmIndex,
-    StructuredDocumentIndex,
+    DocumentIndex, FrontmatterValueEntry, PropertyValueEntry, RealmIndex, StructuredDocumentIndex,
 };
 
 /// Execute a workspace search across all documents in a realm.
@@ -289,8 +288,8 @@ fn extract_title(uri: &DocumentUri, doc: &DocumentIndex) -> String {
 
 /// Known file extensions to strip when deriving a display title from a URI.
 const TITLE_STRIP_EXTENSIONS: &[&str] = &[
-    ".mdx", ".md", ".json", ".jsonc", ".json5", ".jsonl", ".yaml", ".yml", ".toml", ".env",
-    ".ini", ".cfg",
+    ".mdx", ".md", ".json", ".jsonc", ".json5", ".jsonl", ".yaml", ".yml", ".toml", ".env", ".ini",
+    ".cfg",
 ];
 
 /// Derive a display title from a URI by extracting the filename, stripping known

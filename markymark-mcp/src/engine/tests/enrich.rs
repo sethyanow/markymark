@@ -16,11 +16,7 @@ struct TestInferenceProvider;
 
 #[async_trait]
 impl markymark_core::inference::InferenceProvider for TestInferenceProvider {
-    async fn summarize(
-        &self,
-        text: &str,
-        context: Option<&str>,
-    ) -> Result<String, InferenceError> {
+    async fn summarize(&self, text: &str, context: Option<&str>) -> Result<String, InferenceError> {
         if text.is_empty() {
             return Err(InferenceError::InvalidInput("empty text".to_string()));
         }
@@ -54,7 +50,10 @@ async fn enrich_document_no_provider_returns_not_implemented() {
         .await;
 
     assert!(
-        matches!(result, CoreOperationResult::Error(CoreError::NotImplemented(_))),
+        matches!(
+            result,
+            CoreOperationResult::Error(CoreError::NotImplemented(_))
+        ),
         "expected NotImplemented without provider, got {result:?}"
     );
 }
@@ -134,7 +133,10 @@ async fn enrich_document_skips_when_fresh() {
     .await;
     assert!(matches!(
         result,
-        CoreOperationResult::EnrichmentResult { was_stale: true, .. }
+        CoreOperationResult::EnrichmentResult {
+            was_stale: true,
+            ..
+        }
     ));
 
     // Second enrichment should skip (sidecar is fresh).
@@ -363,10 +365,7 @@ fn inject_summaries_populates_matching_nodes() {
     enrich::inject_summaries(&mut tree, &sidecar);
 
     assert_eq!(tree.summary, Some("Doc summary".to_string()));
-    assert_eq!(
-        tree.children[0].summary,
-        Some("Intro summary".to_string())
-    );
+    assert_eq!(tree.children[0].summary, Some("Intro summary".to_string()));
     assert_eq!(
         tree.children[0].children[0].summary,
         Some("Details summary".to_string())
@@ -441,7 +440,13 @@ async fn get_outline_tree_includes_sidecar_summaries() {
         )
         .await;
         assert!(
-            matches!(result, CoreOperationResult::EnrichmentResult { was_stale: true, .. }),
+            matches!(
+                result,
+                CoreOperationResult::EnrichmentResult {
+                    was_stale: true,
+                    ..
+                }
+            ),
             "enrichment should succeed"
         );
     }

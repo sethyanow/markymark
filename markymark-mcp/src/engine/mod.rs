@@ -331,7 +331,13 @@ impl CoreEngine for RuntimeEngine {
                         "realm does not exist: {realm_key}"
                     )));
                 };
-                outline::handle_get_outline(&realm_data.index, &realm_data.roots, &uri, &format, include_text)
+                outline::handle_get_outline(
+                    &realm_data.index,
+                    &realm_data.roots,
+                    &uri,
+                    &format,
+                    include_text,
+                )
             }
             CoreOperation::SearchSymbols {
                 query,

@@ -30,8 +30,7 @@ pub fn handle_curation_diagnostics(
     max_items_per_category: u32,
 ) -> CoreOperationResult {
     // Compose graph-analysis to get orphans, hubs, and link stats.
-    let graph_result =
-        crate::graph::execute_graph_analysis(realm_key, realm, 100, false);
+    let graph_result = crate::graph::execute_graph_analysis(realm_key, realm, 100, false);
 
     let gd = extract_graph_data(&graph_result, realm);
 
@@ -73,11 +72,7 @@ pub fn handle_curation_diagnostics(
 
     // Generate suggestions.
     let suggestions = if include_suggestions && !capped_orphans.is_empty() && !gd.hubs.is_empty() {
-        generate_suggestions(
-            &capped_orphans,
-            &gd.hubs,
-            max_suggestions as usize,
-        )
+        generate_suggestions(&capped_orphans, &gd.hubs, max_suggestions as usize)
     } else {
         vec![]
     };
@@ -93,7 +88,10 @@ pub fn handle_curation_diagnostics(
     let avg_connectivity = if connectivities.is_empty() {
         0.0
     } else {
-        connectivities.iter().map(|(_, c, _, _)| *c as f32).sum::<f32>()
+        connectivities
+            .iter()
+            .map(|(_, c, _, _)| *c as f32)
+            .sum::<f32>()
             / connectivities.len() as f32
     };
 

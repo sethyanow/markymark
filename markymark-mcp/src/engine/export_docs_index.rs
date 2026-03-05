@@ -67,10 +67,7 @@ pub(crate) fn handle_export_docs_index(
                 (cat, rest)
             };
 
-            category_files
-                .entry(category)
-                .or_default()
-                .push(filename);
+            category_files.entry(category).or_default().push(filename);
             doc_count_for_root += 1;
         }
 

@@ -6,13 +6,13 @@ use std::sync::Arc;
 use common::TempWorkspace;
 #[cfg(feature = "semantic-search")]
 use markymark_core::prelude::EmbeddingProvider;
-#[cfg(feature = "semantic-search")]
-use markymark_mcp::{HashEmbeddingProvider, SemanticSearchRequest, SemanticSearchResponse};
 use markymark_mcp::{
     CurationDiagnosticsRequest, CurationDiagnosticsResponse, ExportDocsIndexRequest,
     ExportDocsIndexResponse, MarkymarkMcp, OutlineRequest, OutlineResponse, RecommendDocsRequest,
     RecommendDocsResponse, RuntimeEngine, SearchSymbolsRequest, SearchSymbolsResponse,
 };
+#[cfg(feature = "semantic-search")]
+use markymark_mcp::{HashEmbeddingProvider, SemanticSearchRequest, SemanticSearchResponse};
 use rmcp::handler::server::wrapper::Parameters;
 
 #[tokio::test]
@@ -85,9 +85,18 @@ async fn export_docs_index_tool_returns_real_indexed_data() {
     assert_eq!(payload.skipped_count, 0);
 
     let entry = &payload.entries[0];
-    assert!(entry.starts_with("[my-docs]|root: "), "expected [my-docs] prefix, got: {entry}");
-    assert!(entry.contains("|.:{README.md}"), "expected root-level README.md");
-    assert!(entry.contains("|core:{_index.md,types.md}"), "expected core category with sorted files");
+    assert!(
+        entry.starts_with("[my-docs]|root: "),
+        "expected [my-docs] prefix, got: {entry}"
+    );
+    assert!(
+        entry.contains("|.:{README.md}"),
+        "expected root-level README.md"
+    );
+    assert!(
+        entry.contains("|core:{_index.md,types.md}"),
+        "expected core category with sorted files"
+    );
 }
 
 #[cfg(feature = "semantic-search")]

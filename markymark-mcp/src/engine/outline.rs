@@ -23,11 +23,8 @@ pub(crate) fn handle_get_outline(
                 } else {
                     None
                 };
-                let mut tree = outline_node_to_owned(
-                    index.outline(),
-                    source.as_deref(),
-                    index.headings(),
-                );
+                let mut tree =
+                    outline_node_to_owned(index.outline(), source.as_deref(), index.headings());
 
                 // Try to inject sidecar summaries if available.
                 if let Some(sidecar) = try_load_sidecar(uri, roots) {
@@ -76,10 +73,14 @@ fn outline_node_to_owned(
 ) -> OutlineTreeNode {
     let (title, level, range) = match &node.heading {
         Some(h) => (h.text.to_string(), h.level, h.range),
-        None => (String::new(), 0, Range::new(
-            markymark_core::Position::new(0, 0),
-            markymark_core::Position::new(0, 0),
-        )),
+        None => (
+            String::new(),
+            0,
+            Range::new(
+                markymark_core::Position::new(0, 0),
+                markymark_core::Position::new(0, 0),
+            ),
+        ),
     };
 
     let text = match (source, &node.heading) {

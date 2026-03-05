@@ -17,7 +17,11 @@ async fn make_engine_with_root(dir: &Path) -> RuntimeEngine {
 
 fn extract_recommendations(
     result: CoreOperationResult,
-) -> (String, String, Vec<markymark_core::engine::DocRecommendation>) {
+) -> (
+    String,
+    String,
+    Vec<markymark_core::engine::DocRecommendation>,
+) {
     match result {
         CoreOperationResult::Recommendations {
             realm,
@@ -88,7 +92,11 @@ async fn top_k_zero_returns_empty() {
 #[tokio::test]
 async fn basic_query_returns_matching_docs() {
     let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("rust.md"), "# Rust Guide\n\nLearn Rust programming.\n").unwrap();
+    fs::write(
+        dir.path().join("rust.md"),
+        "# Rust Guide\n\nLearn Rust programming.\n",
+    )
+    .unwrap();
     fs::write(
         dir.path().join("python.md"),
         "# Python Guide\n\nLearn Python programming.\n",
@@ -298,10 +306,7 @@ async fn named_realm_works() {
         })
         .await;
     let (_, _, results) = extract_recommendations(result);
-    assert!(
-        results.is_empty(),
-        "default realm should have no docs"
-    );
+    assert!(results.is_empty(), "default realm should have no docs");
 
     // Should succeed on named realm
     let result = engine
