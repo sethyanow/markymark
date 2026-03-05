@@ -136,13 +136,13 @@ May be useful for quick build.zig scaffolding.
 
 ## Project-Specific
 
-- Plugin directory: `markymark-plugin/.claude-plugin/plugin.json` (version bumped manually, license now AGPL-3.0-only as of 2026-03-03)
+- Plugin directory: `markymark-plugin/.claude-plugin/plugin.json` (version bumped manually, license now AGPL-3.0 as of 2026-03-03)
 - `require_marksman!` macro for graceful test skip in CI
 - lefthook YAML: quote command values containing colons/braces
 
 ## License Status (2026-03-03)
 
-Plugin license updated to AGPL-3.0-only. Remaining "MIT OR Apache-2.0" references in docs are examples/documentation only:
+Plugin license updated to AGPL-3.0. Remaining "MIT OR Apache-2.0" references in docs are examples/documentation only:
 - `markymark-plugin/README.md` (doc example for workspace manifest)
 - `docs/rust_agent_docs/reference/cargo-ref.md` (reference doc showing example syntax)
 - `docs/rust_crates/core.md` (reference doc showing example syntax)

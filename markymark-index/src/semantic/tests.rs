@@ -927,9 +927,7 @@ impl ZigAddFailProvider {
 #[async_trait]
 impl EmbeddingProvider for ZigAddFailProvider {
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
-        let n = self
-            .count
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let n = self.count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let out_dims = if n == self.fail_at {
             // Return 1-element vector — wrong dims, causes Zig add failure.
             1
@@ -1014,10 +1012,7 @@ async fn test_update_document_zig_add_rollback_preserves_original() {
     let updated = build_doc_index("# New One\n## New Two\n## New Three\n");
     let result = sem.update_document(uri.clone(), &updated).await;
 
-    assert!(
-        result.is_err(),
-        "update should fail due to Zig add failure"
-    );
+    assert!(result.is_err(), "update should fail due to Zig add failure");
 
     // Original state must be preserved.
     assert_eq!(

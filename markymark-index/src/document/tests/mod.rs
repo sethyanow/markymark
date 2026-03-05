@@ -556,14 +556,20 @@ fn parse_frontmatter_owned_empty_lf() {
 fn parse_frontmatter_owned_empty_crlf() {
     let source = "---\r\n---\r\nBody";
     let (fm, _aliases) = helpers::parse_frontmatter_owned(source);
-    assert!(fm.is_empty(), "empty CRLF frontmatter should produce no keys");
+    assert!(
+        fm.is_empty(),
+        "empty CRLF frontmatter should produce no keys"
+    );
 }
 
 #[test]
 fn parse_frontmatter_owned_empty_eof_newline() {
     let source = "---\n---\n";
     let (fm, _aliases) = helpers::parse_frontmatter_owned(source);
-    assert!(fm.is_empty(), "empty frontmatter at EOF should produce no keys");
+    assert!(
+        fm.is_empty(),
+        "empty frontmatter at EOF should produce no keys"
+    );
 }
 
 #[test]
@@ -574,7 +580,10 @@ fn mask_frontmatter_empty_lf() {
         !masked.starts_with("---"),
         "empty frontmatter delimiters should be masked"
     );
-    assert!(masked.contains("Body"), "body after empty frontmatter should be preserved");
+    assert!(
+        masked.contains("Body"),
+        "body after empty frontmatter should be preserved"
+    );
 }
 
 #[test]
@@ -585,5 +594,8 @@ fn mask_frontmatter_empty_crlf() {
         !masked.starts_with("---"),
         "empty CRLF frontmatter delimiters should be masked"
     );
-    assert!(masked.contains("Body"), "body after empty CRLF frontmatter should be preserved");
+    assert!(
+        masked.contains("Body"),
+        "body after empty CRLF frontmatter should be preserved"
+    );
 }

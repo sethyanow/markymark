@@ -37,11 +37,8 @@ extern "C" {
         k: u32,
         written: *mut u32,
     ) -> i32;
-    fn zig_embedding_index_remove(
-        handle: *mut std::ffi::c_void,
-        id: *const u8,
-        id_len: u32,
-    ) -> i32;
+    fn zig_embedding_index_remove(handle: *mut std::ffi::c_void, id: *const u8, id_len: u32)
+        -> i32;
     fn zig_embedding_index_count(handle: *mut std::ffi::c_void) -> i32;
 }
 
