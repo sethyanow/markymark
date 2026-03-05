@@ -13,7 +13,7 @@ Detailed patterns live in topic files. Historical context lives in the archive.
 
 ---
 
-## Current State (2026-02-28)
+## Current State (2026-03-04)
 
 ### Active Work
 
@@ -23,6 +23,12 @@ Detailed patterns live in topic files. Historical context lives in the archive.
   - P3-P4 polish (marky-pk7p): 4 doc/comment fixes (`9a55f0d`)
   - CI blocker: cargo fmt (`06c3aa3`)
   - Ready for human review and merge.
+
+### docs-site branch — merging dev, follow-ups remain
+
+Epic marky-dhkn (docs-site for v0.6.0) reviewed and approved. Branch: `docs-site`.
+Remaining: marky-6yuk (terminology rename), marky-xclk (human review notes), marky-03m7 (dead extract/ cleanup).
+GitHub Pages deployment researched — see archive for details.
 
 ### Rust Agent Docs: Grade A (2026-02-15)
 
@@ -90,6 +96,12 @@ persistent memory store.
 
 Plugin skills are user-facing features. Dev workflow skills belong in `.claude/skills/`.
 
+### Agent searched filesystem for plugin skills (fail-plugin-skill-filesystem-search)
+
+Plugin skills (`hyperpowers:*`, `pensive:*`, `beads:*`, etc.) are served by the plugin
+system, not local files. The `Skill` tool invocation IS the loading mechanism. Never search
+`~/.claude/skills/` for plugin skill files — they don't exist on disk.
+
 ### CLAUDE.md crate table stale after adding crate (fail-stale-crate-table)
 
 When adding a crate to workspace, update CLAUDE.md crate table in the same PR.
@@ -124,6 +136,15 @@ May be useful for quick build.zig scaffolding.
 
 ## Project-Specific
 
-- Plugin directory: `markymark-plugin/.claude-plugin/plugin.json` (version bumped manually)
+- Plugin directory: `markymark-plugin/.claude-plugin/plugin.json` (version bumped manually, license now AGPL-3.0 as of 2026-03-03)
 - `require_marksman!` macro for graceful test skip in CI
 - lefthook YAML: quote command values containing colons/braces
+
+## License Status (2026-03-03)
+
+Plugin license updated to AGPL-3.0. Remaining "MIT OR Apache-2.0" references in docs are examples/documentation only:
+- `markymark-plugin/README.md` (doc example for workspace manifest)
+- `docs/rust_agent_docs/reference/cargo-ref.md` (reference doc showing example syntax)
+- `docs/rust_crates/core.md` (reference doc showing example syntax)
+
+No code or configuration files need updating — these are documentation references only.

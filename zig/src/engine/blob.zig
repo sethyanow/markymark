@@ -3,15 +3,23 @@
 // Flat binary format: header + packed struct arrays + contiguous text pool.
 // mmap-compatible layout, zero pointer chasing.
 //
-// Section order (fixed, offsets computed from counts):
-//   [ScanBlobHeader]             (v2: 128 bytes)
+// Section order (fixed, offsets computed from counts — see computeSectionOffsets):
+//   [ScanBlobHeader]                    (v2: 128 bytes)
 //   [BlobHeading × heading_count]
 //   [BlobLink × link_count]
 //   [BlobTag × tag_count]
 //   [BlobBlockId × block_id_count]
 //   [BlobCodeSpan × code_span_count]
-//   [u32 × line_count]           (line_starts)
-//   [u8 × text_pool_size]        (text pool)
+//   [BlobTask × task_count]
+//   [BlobEmbed × embed_count]
+//   [BlobCallout × callout_count]
+//   [BlobBlockRef × block_ref_count]
+//   [BlobQueryBlock × query_block_count]
+//   [BlobLinkDefinition × link_def_count]
+//   [BlobProperty × property_count]
+//   [BlobXmlTag × xml_tag_count]
+//   [u32 × line_count]                  (line_starts)
+//   [u8 × text_pool_size]               (text pool)
 
 const std = @import("std");
 

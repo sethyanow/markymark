@@ -289,7 +289,10 @@ fn test_from_blob_with_frontmatter_populates_entries() {
         },
         FrontmatterOwnedEntry {
             key: "tags".to_string(),
-            value: FrontmatterValueOwned::List(vec!["a".to_string(), "b".to_string()]),
+            value: FrontmatterValueOwned::List(vec![
+                FrontmatterValueOwned::String("a".to_string()),
+                FrontmatterValueOwned::String("b".to_string()),
+            ]),
         },
     ];
     let aliases = vec!["hi".to_string(), "hey".to_string()];

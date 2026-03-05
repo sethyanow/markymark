@@ -325,7 +325,7 @@ fn test_frontmatter_with_colon_in_value() {
                 "URL should not be truncated at second colon"
             );
         }
-        FrontmatterValueEntry::List(_) => panic!("URL should be a String, not List"),
+        other => panic!("URL should be a String, got {other:?}"),
     }
 }
 
@@ -534,5 +534,68 @@ fn mask_frontmatter_mixed_endings_picks_earliest_close() {
     assert!(
         masked.contains("bogus"),
         "body content after LF close must be preserved, not masked"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Empty frontmatter with trailing newline (marky-840n)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn parse_frontmatter_owned_empty_lf() {
+    // With the bug, find_frontmatter_close("---\nBody") returns None,
+    // so parse_frontmatter_owned returns empty (frontmatter not detected).
+    // With the fix, it returns Some((0, 4)), yaml="" → empty but detected.
+    // We verify via mask_frontmatter that the delimiter is actually recognized.
+    let source = "---\n---\nBody";
+    let (fm, _aliases) = helpers::parse_frontmatter_owned(source);
+    assert!(fm.is_empty(), "empty frontmatter should produce no keys");
+}
+
+#[test]
+fn parse_frontmatter_owned_empty_crlf() {
+    let source = "---\r\n---\r\nBody";
+    let (fm, _aliases) = helpers::parse_frontmatter_owned(source);
+    assert!(
+        fm.is_empty(),
+        "empty CRLF frontmatter should produce no keys"
+    );
+}
+
+#[test]
+fn parse_frontmatter_owned_empty_eof_newline() {
+    let source = "---\n---\n";
+    let (fm, _aliases) = helpers::parse_frontmatter_owned(source);
+    assert!(
+        fm.is_empty(),
+        "empty frontmatter at EOF should produce no keys"
+    );
+}
+
+#[test]
+fn mask_frontmatter_empty_lf() {
+    let source = "---\n---\nBody";
+    let masked = helpers::mask_frontmatter(source);
+    assert!(
+        !masked.starts_with("---"),
+        "empty frontmatter delimiters should be masked"
+    );
+    assert!(
+        masked.contains("Body"),
+        "body after empty frontmatter should be preserved"
+    );
+}
+
+#[test]
+fn mask_frontmatter_empty_crlf() {
+    let source = "---\r\n---\r\nBody";
+    let masked = helpers::mask_frontmatter(source);
+    assert!(
+        !masked.starts_with("---"),
+        "empty CRLF frontmatter delimiters should be masked"
+    );
+    assert!(
+        masked.contains("Body"),
+        "body after empty CRLF frontmatter should be preserved"
     );
 }

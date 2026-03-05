@@ -192,7 +192,8 @@ fn repack_archive(archive: &std::path::Path) {
         }
     }
 
-    // Collect all .o files
+    // Collect all .o files and ensure they are readable (Zig/cache can produce
+    // archives with restrictive permissions on the contained objects).
     let o_files: Vec<PathBuf> = std::fs::read_dir(&tmp)
         .into_iter()
         .flatten()
@@ -200,6 +201,12 @@ fn repack_archive(archive: &std::path::Path) {
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|ext| ext == "o"))
         .collect();
+
+    #[cfg(unix)]
+    for f in &o_files {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(f, std::fs::Permissions::from_mode(0o644));
+    }
 
     if o_files.is_empty() {
         println!("cargo:warning=Skipping archive repack: no .o files extracted");

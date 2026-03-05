@@ -1,11 +1,11 @@
 {
   "name": "markymark",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "High-performance Markdown language server with LSP and MCP support. Provides go-to-definition, find-references, hover, completion, rename, diagnostics, and document symbols for Markdown files including wiki links, XML tags, and cross-document references.",
   "author": {
     "name": "Seth Yanow"
   },
-  "license": "MIT OR Apache-2.0",
+  "license": "AGPL-3.0-only",
   "repository": "https://github.com/sethyanow/markymark",
   "homepage": "https://github.com/sethyanow/markymark",
   "keywords": ["markdown", "lsp", "mcp", "language-server", "wiki-links", "obsidian", "logseq"],
