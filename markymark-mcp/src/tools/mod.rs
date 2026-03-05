@@ -4,6 +4,7 @@
 //! The `#[tool]`-decorated method signatures remain in `lib.rs` and delegate here.
 
 pub(crate) mod diagnostics;
+pub(crate) mod enrich;
 pub(crate) mod export_docs_index;
 pub(crate) mod graph;
 pub(crate) mod outline;

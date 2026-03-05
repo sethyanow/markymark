@@ -44,6 +44,9 @@ pub struct OutlineTreeNodeDto {
     /// Section text content (present only when `include_text=true`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// LLM-generated summary (from sidecar enrichment).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
     /// Child nodes in the outline hierarchy.
     pub children: Vec<OutlineTreeNodeDto>,
 }
@@ -726,4 +729,38 @@ pub struct ExportDocsIndexResponse {
     pub root_count: usize,
     /// Number of documents skipped (URI didn't match any root).
     pub skipped_count: usize,
+}
+
+// ---------------------------------------------------------------------------
+// enrich-document
+// ---------------------------------------------------------------------------
+
+/// Request payload for `enrich-document`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct EnrichDocumentRequest {
+    /// Document URI (`file://...`) to enrich.
+    pub uri: String,
+    /// Realm to query. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+    /// Override the sidecar directory path.
+    /// When omitted, uses `.markymark/` under the workspace root.
+    #[serde(default)]
+    pub sidecar_dir: Option<String>,
+    /// Force re-enrichment even if the existing sidecar is fresh.
+    #[serde(default)]
+    pub force: bool,
+}
+
+/// Response payload for `enrich-document`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct EnrichDocumentResponse {
+    /// Document URI that was enriched.
+    pub uri: String,
+    /// Number of sections that were summarized.
+    pub sections_enriched: usize,
+    /// Whether the sidecar was stale (regenerated) or fresh (skipped).
+    pub was_stale: bool,
+    /// Model identifier used for enrichment.
+    pub model_id: String,
 }

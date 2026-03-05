@@ -224,6 +224,17 @@ pub enum CoreOperation {
         /// Override the `[name]` prefix for each root entry.
         name_override: Option<String>,
     },
+    /// Enrich a document's outline with LLM-generated summaries.
+    EnrichDocument {
+        /// Target document.
+        uri: DocumentUri,
+        /// Realm to query. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+        /// Directory for sidecar files. When `None`, uses `.markymark/` under the workspace root.
+        sidecar_dir: Option<std::path::PathBuf>,
+        /// Force re-enrichment even if sidecar is fresh.
+        force: bool,
+    },
 }
 
 /// A single match result from a regex pattern search.
@@ -268,6 +279,8 @@ pub struct OutlineTreeNode {
     pub range: Range,
     /// Section text content (when include_text requested).
     pub text: Option<String>,
+    /// LLM-generated summary (from sidecar enrichment).
+    pub summary: Option<String>,
     /// Child nodes.
     pub children: Vec<OutlineTreeNode>,
 }
@@ -411,6 +424,17 @@ pub enum CoreOperationResult {
         root_count: usize,
         /// Number of documents skipped (URI didn't match any root).
         skipped_count: usize,
+    },
+    /// Result of enriching a document with LLM summaries.
+    EnrichmentResult {
+        /// Document URI that was enriched.
+        uri: DocumentUri,
+        /// Number of sections that were summarized.
+        sections_enriched: usize,
+        /// Whether the sidecar was fresh (skipped) or regenerated.
+        was_stale: bool,
+        /// Model used for enrichment.
+        model_id: String,
     },
     /// Success with no payload.
     Ok,

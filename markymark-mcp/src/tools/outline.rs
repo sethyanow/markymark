@@ -14,6 +14,7 @@ fn outline_tree_node_to_dto(node: OutlineTreeNode) -> OutlineTreeNodeDto {
         level: node.level,
         range: range_to_dto(node.range),
         text: node.text,
+        summary: node.summary,
         children: node.children.into_iter().map(outline_tree_node_to_dto).collect(),
     }
 }

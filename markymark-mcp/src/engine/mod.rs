@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-#[cfg(feature = "semantic-search")]
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
@@ -9,6 +8,7 @@ use tokio::sync::RwLock;
 use anyhow::bail;
 use async_trait::async_trait;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
+use markymark_core::inference::InferenceProvider;
 #[cfg(feature = "semantic-search")]
 use markymark_core::prelude::{EmbedError, EmbeddingProvider};
 use markymark_core::scanner::Md4cScanBackend;
@@ -18,6 +18,7 @@ use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
 use markymark_parser::structured::parse_structured;
 
 mod diagnostics;
+mod enrich;
 mod export;
 mod export_docs_index;
 mod helpers;
@@ -155,6 +156,8 @@ pub struct RuntimeEngine {
     /// Embedding provider shared across all realms (only when semantic-search feature enabled).
     #[cfg(feature = "semantic-search")]
     pub(crate) provider: Option<Arc<dyn EmbeddingProvider>>,
+    /// Inference provider for LLM-powered enrichment (optional).
+    pub(crate) inference_provider: Option<Arc<dyn InferenceProvider>>,
 }
 
 impl Default for RuntimeEngine {
@@ -168,6 +171,7 @@ impl Default for RuntimeEngine {
             state: RwLock::new(realms),
             #[cfg(feature = "semantic-search")]
             provider: None,
+            inference_provider: None,
         }
     }
 }
@@ -201,6 +205,7 @@ impl RuntimeEngine {
             state: RwLock::new(realms),
             #[cfg(feature = "semantic-search")]
             provider: None,
+            inference_provider: None,
         })
     }
 
@@ -231,6 +236,7 @@ impl RuntimeEngine {
         Ok(Self {
             state: RwLock::new(realms),
             provider,
+            inference_provider: None,
         })
     }
 }
@@ -755,6 +761,29 @@ impl CoreEngine for RuntimeEngine {
                     realm_key.to_string(),
                     name_override,
                 )
+            }
+            CoreOperation::EnrichDocument {
+                uri,
+                realm,
+                sidecar_dir,
+                force,
+            } => {
+                let realm_key = realm.as_deref().unwrap_or(DEFAULT_REALM);
+                let state = self.state.read().await;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                enrich::handle_enrich_document(
+                    &realm_data.index,
+                    &realm_data.roots,
+                    &uri,
+                    sidecar_dir.as_deref(),
+                    force,
+                    self.inference_provider.as_deref(),
+                )
+                .await
             }
         }
     }

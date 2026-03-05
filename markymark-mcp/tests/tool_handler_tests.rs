@@ -226,6 +226,14 @@ impl CoreEngine for MockEngine {
                     skipped_count: 0,
                 }
             }
+            (_, CoreOperation::EnrichDocument { uri, .. }) => {
+                CoreOperationResult::EnrichmentResult {
+                    uri,
+                    sections_enriched: 3,
+                    was_stale: true,
+                    model_id: "mock-model".to_string(),
+                }
+            }
         }
     }
 }

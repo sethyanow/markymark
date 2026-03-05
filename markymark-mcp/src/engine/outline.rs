@@ -88,6 +88,7 @@ fn outline_node_to_owned(
         level,
         range,
         text,
+        summary: None,
         children,
     }
 }

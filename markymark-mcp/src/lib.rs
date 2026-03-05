@@ -478,6 +478,18 @@ impl MarkymarkMcp {
     ) -> Result<CallToolResult, McpError> {
         tools::export_docs_index::handle_export_docs_index(&*self.engine, params.0).await
     }
+
+    /// Enrich a document's outline with LLM-generated summaries stored in sidecar files.
+    #[tool(
+        name = "enrich-document",
+        description = "Enrich a document's outline with LLM-generated summaries. Summaries are stored in sidecar JSON files under .markymark/ (or a custom directory). Requires an inference provider to be configured. Skips enrichment if the sidecar is fresh (content hash matches) unless force=true."
+    )]
+    pub async fn enrich_document_tool(
+        &self,
+        params: Parameters<EnrichDocumentRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::enrich::handle_enrich_document(&*self.engine, params.0).await
+    }
 }
 
 /// Run markymark MCP over stdio using the provided shared core engine.
