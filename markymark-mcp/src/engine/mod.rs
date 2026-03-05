@@ -312,6 +312,8 @@ impl CoreEngine for RuntimeEngine {
             CoreOperation::GetOutline {
                 uri,
                 realm: realm_name,
+                format,
+                include_text,
             } => {
                 let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
                 let state = self.state.read().await;
@@ -320,7 +322,7 @@ impl CoreEngine for RuntimeEngine {
                         "realm does not exist: {realm_key}"
                     )));
                 };
-                outline::handle_get_outline(&realm_data.index, &uri)
+                outline::handle_get_outline(&realm_data.index, &uri, &format, include_text)
             }
             CoreOperation::SearchSymbols {
                 query,

@@ -74,6 +74,10 @@ pub enum CoreOperation {
         uri: DocumentUri,
         /// Realm to query. Defaults to "default" when `None`.
         realm: Option<String>,
+        /// Output format: "flat" (default) or "tree" (hierarchical).
+        format: String,
+        /// When true (and format="tree"), inline section text in each node.
+        include_text: bool,
     },
     /// Find all references to the symbol at a position.
     FindReferences {
@@ -246,11 +250,28 @@ pub trait CoreEngine: Send + Sync {
     async fn execute(&self, operation: CoreOperation) -> CoreOperationResult;
 }
 
+/// An owned node in the hierarchical outline tree.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutlineTreeNode {
+    /// Heading title (empty string for root node).
+    pub title: String,
+    /// Heading level (0 for root, 1-6 for headings).
+    pub level: u8,
+    /// Source range of the heading line.
+    pub range: Range,
+    /// Section text content (when include_text requested).
+    pub text: Option<String>,
+    /// Child nodes.
+    pub children: Vec<OutlineTreeNode>,
+}
+
 /// The result of a core engine operation.
 #[derive(Debug)]
 pub enum CoreOperationResult {
-    /// An outline (list of heading descriptions).
+    /// An outline (list of heading descriptions, flat format).
     Outline(Vec<String>),
+    /// A hierarchical outline tree.
+    OutlineTree(OutlineTreeNode),
     /// A list of locations (uri, range).
     Locations(Vec<(DocumentUri, Range)>),
     /// A workspace edit (uri, list of (range, replacement text)).

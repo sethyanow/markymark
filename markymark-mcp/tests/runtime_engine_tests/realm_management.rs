@@ -412,6 +412,8 @@ async fn skips_non_utf8_documents_without_failing_startup() {
         .execute(CoreOperation::GetOutline {
             uri: markymark_core::DocumentUri::from_file_path(&good),
             realm: None,
+            format: "flat".to_string(),
+            include_text: false,
         })
         .await;
     match outline {

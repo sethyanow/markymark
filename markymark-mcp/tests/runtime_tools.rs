@@ -30,6 +30,8 @@ async fn mcp_tools_return_real_indexed_data() {
         .get_outline_tool(Parameters(OutlineRequest {
             uri: format!("file://{}", file.to_string_lossy()),
             realm: None,
+            format: None,
+            include_text: false,
         }))
         .await
         .expect("outline tool should return a result");

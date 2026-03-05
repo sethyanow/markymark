@@ -1,11 +1,22 @@
 //! get-outline and export-index tool handlers.
 
-use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
+use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult, OutlineTreeNode};
 use rmcp::{model::CallToolResult, ErrorData as McpError};
 use serde_json::json;
 
 use super::{parse_file_uri, tool_error, tool_error_from_core, unexpected_result_error};
 use crate::dto::*;
+
+/// Convert an owned `OutlineTreeNode` to the DTO for serialization.
+fn outline_tree_node_to_dto(node: OutlineTreeNode) -> OutlineTreeNodeDto {
+    OutlineTreeNodeDto {
+        title: node.title,
+        level: node.level,
+        range: range_to_dto(node.range),
+        text: node.text,
+        children: node.children.into_iter().map(outline_tree_node_to_dto).collect(),
+    }
+}
 
 pub(crate) async fn handle_get_outline(
     engine: &dyn CoreEngine,
@@ -16,10 +27,15 @@ pub(crate) async fn handle_get_outline(
         Err(err) => return Ok(tool_error(&err.code, err.message)),
     };
 
+    let format = req.format.as_deref().unwrap_or("flat").to_string();
+    let include_text = req.include_text;
+
     match engine
         .execute(CoreOperation::GetOutline {
             uri,
             realm: req.realm.clone(),
+            format: format.clone(),
+            include_text,
         })
         .await
     {
@@ -27,6 +43,13 @@ pub(crate) async fn handle_get_outline(
             Ok(CallToolResult::structured(json!(OutlineResponse {
                 uri: req.uri,
                 headings,
+            })))
+        }
+        CoreOperationResult::OutlineTree(tree) => {
+            let tree_dto = outline_tree_node_to_dto(tree);
+            Ok(CallToolResult::structured(json!(OutlineTreeResponse {
+                uri: req.uri,
+                tree: tree_dto,
             })))
         }
         CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),

@@ -177,7 +177,12 @@ impl MarkymarkMcp {
         realm: Option<String>,
     ) -> CoreOperationResult {
         self.engine
-            .execute(CoreOperation::GetOutline { uri, realm })
+            .execute(CoreOperation::GetOutline {
+                uri,
+                realm,
+                format: "flat".to_string(),
+                include_text: false,
+            })
             .await
     }
 

@@ -275,6 +275,8 @@ async fn outline_tool_returns_structured_success() {
         .get_outline_tool(Parameters(OutlineRequest {
             uri: "file:///vault/notes.md".to_string(),
             realm: None,
+            format: None,
+            include_text: false,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -294,6 +296,8 @@ async fn outline_tool_rejects_non_file_uri() {
         .get_outline_tool(Parameters(OutlineRequest {
             uri: "https://example.com/notes.md".to_string(),
             realm: None,
+            format: None,
+            include_text: false,
         }))
         .await
         .expect("tool call should not return protocol error");

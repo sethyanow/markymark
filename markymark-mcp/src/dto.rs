@@ -15,15 +15,46 @@ pub struct OutlineRequest {
     /// Realm to query. Defaults to `"default"` when omitted.
     #[serde(default)]
     pub realm: Option<String>,
+    /// Output format: `"flat"` (default, backward-compatible list) or `"tree"` (hierarchical JSON).
+    #[serde(default)]
+    pub format: Option<String>,
+    /// When `true` and `format="tree"`, inline section text content within each node.
+    #[serde(default)]
+    pub include_text: bool,
 }
 
-/// Response payload for `get-outline`.
+/// Response payload for `get-outline` (flat format).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct OutlineResponse {
     /// Input document URI.
     pub uri: String,
     /// Heading outline entries.
     pub headings: Vec<String>,
+}
+
+/// A node in the hierarchical outline tree.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct OutlineTreeNodeDto {
+    /// Heading title (empty string for the root node).
+    pub title: String,
+    /// Heading level (0 for root, 1-6 for headings).
+    pub level: u8,
+    /// Source range of the heading line.
+    pub range: RangeDto,
+    /// Section text content (present only when `include_text=true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Child nodes in the outline hierarchy.
+    pub children: Vec<OutlineTreeNodeDto>,
+}
+
+/// Response payload for `get-outline` (tree format).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct OutlineTreeResponse {
+    /// Input document URI.
+    pub uri: String,
+    /// Root of the outline tree.
+    pub tree: OutlineTreeNodeDto,
 }
 
 /// Request payload for `search-symbols`.

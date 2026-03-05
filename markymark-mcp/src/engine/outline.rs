@@ -1,31 +1,126 @@
 //! GetOutline operation handler.
 
-use markymark_core::engine::CoreOperationResult;
-use markymark_core::{CoreError, DocumentUri};
-use markymark_index::RealmIndex;
+use markymark_core::engine::{CoreOperationResult, OutlineTreeNode};
+use markymark_core::{CoreError, DocumentUri, Range};
+use markymark_index::{HeadingEntry, OutlineNode, RealmIndex};
 
-pub(crate) fn handle_get_outline(realm: &RealmIndex, uri: &DocumentUri) -> CoreOperationResult {
+pub(crate) fn handle_get_outline(
+    realm: &RealmIndex,
+    uri: &DocumentUri,
+    format: &str,
+    include_text: bool,
+) -> CoreOperationResult {
     match realm.get_any_document(uri) {
-        Some(markymark_index::AnyDocumentIndex::Markdown(index)) => CoreOperationResult::Outline(
-            index
-                .headings()
-                .iter()
-                .map(|heading| heading.text.to_string())
-                .collect(),
-        ),
-        Some(markymark_index::AnyDocumentIndex::Structured(index)) => CoreOperationResult::Outline(
-            index
-                .keys()
-                .iter()
-                .map(|k| {
-                    let indent = "  ".repeat(k.depth);
-                    format!("{indent}{}: {:?}", k.path, k.value_kind)
-                })
-                .collect(),
-        ),
+        Some(markymark_index::AnyDocumentIndex::Markdown(index)) => {
+            if format == "tree" {
+                let source = if include_text {
+                    uri.to_file_path()
+                        .and_then(|p| std::fs::read_to_string(p).ok())
+                } else {
+                    None
+                };
+                let tree = outline_node_to_owned(
+                    index.outline(),
+                    source.as_deref(),
+                    index.headings(),
+                );
+                CoreOperationResult::OutlineTree(tree)
+            } else {
+                CoreOperationResult::Outline(
+                    index
+                        .headings()
+                        .iter()
+                        .map(|heading| heading.text.to_string())
+                        .collect(),
+                )
+            }
+        }
+        Some(markymark_index::AnyDocumentIndex::Structured(index)) => {
+            // Structured documents don't have outline trees — always return flat.
+            CoreOperationResult::Outline(
+                index
+                    .keys()
+                    .iter()
+                    .map(|k| {
+                        let indent = "  ".repeat(k.depth);
+                        format!("{indent}{}: {:?}", k.path, k.value_kind)
+                    })
+                    .collect(),
+            )
+        }
         None => CoreOperationResult::Error(CoreError::Message(format!(
             "document is not indexed: {}",
             uri.as_str()
         ))),
     }
+}
+
+/// Convert an arena-allocated `OutlineNode` tree into an owned `OutlineTreeNode`.
+///
+/// When `source` is provided, each node's `text` field is filled with the section
+/// content between this heading and the next sibling/parent heading.
+fn outline_node_to_owned(
+    node: &OutlineNode<'_>,
+    source: Option<&str>,
+    all_headings: &[HeadingEntry<'_>],
+) -> OutlineTreeNode {
+    let (title, level, range) = match &node.heading {
+        Some(h) => (h.text.to_string(), h.level, h.range),
+        None => (String::new(), 0, Range::new(
+            markymark_core::Position::new(0, 0),
+            markymark_core::Position::new(0, 0),
+        )),
+    };
+
+    let text = match (source, &node.heading) {
+        (Some(src), Some(heading)) => extract_section_text(src, heading, all_headings),
+        _ => None,
+    };
+
+    let children = node
+        .children
+        .iter()
+        .map(|child| outline_node_to_owned(child, source, all_headings))
+        .collect();
+
+    OutlineTreeNode {
+        title,
+        level,
+        range,
+        text,
+        children,
+    }
+}
+
+/// Extract section text for a heading: from the line after the heading
+/// to the start of the next heading at any level (or EOF).
+///
+/// This returns the "direct" content of a node — content between this heading
+/// and its first child heading (or next sibling). The tree structure captures
+/// the hierarchy, so each node's text is just its own prose.
+fn extract_section_text(
+    source: &str,
+    heading: &HeadingEntry<'_>,
+    all_headings: &[HeadingEntry<'_>],
+) -> Option<String> {
+    let lines: Vec<&str> = source.lines().collect();
+    let heading_line = heading.range.start.line as usize;
+
+    // Content starts on the line after the heading
+    let content_start = heading_line + 1;
+    if content_start >= lines.len() {
+        return Some(String::new());
+    }
+
+    // Find the very next heading at any level — section text is the content
+    // between this heading and the next one (child or sibling).
+    let content_end = all_headings
+        .iter()
+        .filter(|h| h.range.start.line as usize > heading_line)
+        .map(|h| h.range.start.line as usize)
+        .next()
+        .unwrap_or(lines.len());
+
+    let section: String = lines[content_start..content_end].join("\n");
+    Some(section.trim_end().to_string())
 }

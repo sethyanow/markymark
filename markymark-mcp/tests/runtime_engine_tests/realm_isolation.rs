@@ -196,6 +196,8 @@ async fn query_operations_error_on_never_created_realm() {
             CoreOperation::GetOutline {
                 uri: dummy_uri.clone(),
                 realm: Some(bogus.to_string()),
+                format: "flat".to_string(),
+                include_text: false,
             },
         ),
         (
