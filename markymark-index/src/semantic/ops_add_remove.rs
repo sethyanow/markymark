@@ -165,10 +165,17 @@ impl SemanticIndex {
             ));
         }
 
+        let mut added_ids: Vec<String> = Vec::new();
         for (id, embedding) in staged_zig_adds {
-            self.index
-                .add(&id, &embedding)
-                .map_err(|e| EmbedError::InternalError(e.to_string()))?;
+            match self.index.add(&id, &embedding) {
+                Ok(()) => added_ids.push(id),
+                Err(e) => {
+                    for rollback_id in &added_ids {
+                        let _ = self.index.remove(rollback_id);
+                    }
+                    return Err(EmbedError::InternalError(e.to_string()));
+                }
+            }
         }
 
         for (id, entry) in pending_entries {

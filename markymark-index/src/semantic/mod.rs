@@ -16,9 +16,8 @@ pub use types::{DuplicateMatch, SearchResult, SemanticEntry};
 
 /// Semantic index backed by [`ZigEmbeddingIndex`].
 ///
-/// Stores entry metadata keyed by stable IDs and filters stale embedding IDs at
-/// query time. This supports document replacement/removal even though the
-/// current Zig embedding index API does not expose a delete operation.
+/// Stores entry metadata keyed by stable IDs. Zig index additions are rolled
+/// back on partial failure via [`EmbeddingIndex::remove`].
 pub struct SemanticIndex {
     provider: Arc<dyn EmbeddingProvider>,
     index: ZigEmbeddingIndex,

@@ -21,7 +21,7 @@ and AI agent tool (MCP).
 - **Regex patterns** — search file content with context lines and glob filters
 
 **Diagnostics**
-- **Broken link detection** — wiki links, markdown links, and heading anchors validated as you type
+- **Broken link detection** — wiki links, Markdown links, and heading anchors validated as you type
 - **Link graph analysis** — orphan documents, hub detection, and connected cluster mapping
 
 **Formats**
