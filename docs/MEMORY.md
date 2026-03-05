@@ -45,10 +45,23 @@ rust_agent_docs baseline on hub count (10 vs 5). Curation complete (marky-u2mb c
 ### Layered Retrieval Vision (Epic marky-b9o4, 2026-02-26)
 
 Five-layer architecture: L0 ambient docs_index (preserved, auto-generated), L1 smart retrieval
-(recommend-docs MCP tool), L2 write-back curation loop, L3 multi-project federation,
+(recommend-docs MCP tool), L2 curation diagnostics, L3 multi-project federation,
 L4 memory integration (MEMORY.md + beads in search surface). Key constraint: docs_index pattern
 stays because it ramrods symbols into agent instructions at zero latency — everything builds
 on top. Related: marky-mkr, marky-y4be, marky-c9wi.
+
+**Layer progress:** L0 ✅ (export-docs-index) → L1 ✅ (recommend-docs + tree intelligence) → L2 ✅ (curation-diagnostics) → L3 ○ → L4 ○
+
+### Layer 2: Curation Diagnostics (marky-stip, 2026-03-05)
+
+New `curation-diagnostics` MCP tool composing graph-analysis with per-document degree computation.
+Detects orphan docs (in-degree=0 AND out-degree=0), scores connectivity per document, identifies
+low-connectivity docs (below median AND below threshold of 2 links), and generates actionable
+cross-link suggestions (orphan → nearest hub by directory co-location). SRE edge cases: empty
+realm, single-doc realm (no self-link suggestions), max_suggestions/max_items_per_category caps.
+Key modules: `engine/curation.rs` (handler with `GraphData` struct for extracted state),
+`tools/curation.rs` (MCP tool), `engine/tests/curation.rs` (11 tests). Algorithm recomputes
+degree maps from RealmIndex since graph-analysis doesn't expose per-doc degree.
 
 ### Tree Intelligence Sub-Epic (marky-d21j, child of marky-b9o4, 2026-02-26)
 
