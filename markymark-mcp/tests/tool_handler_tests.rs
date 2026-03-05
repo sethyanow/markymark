@@ -241,6 +241,24 @@ impl CoreEngine for MockEngine {
                     results: vec![],
                 }
             }
+            (_, CoreOperation::CurationDiagnostics { realm, .. }) => {
+                CoreOperationResult::CurationReport {
+                    realm: realm.unwrap_or_else(|| "default".to_string()),
+                    report: markymark_core::engine::CurationReportData {
+                        orphan_docs: vec![],
+                        low_connectivity_docs: vec![],
+                        suggestions: vec![],
+                        stats: markymark_core::engine::CurationStats {
+                            total_docs: 5,
+                            orphan_count: 1,
+                            orphan_percentage: 20.0,
+                            avg_connectivity: 2.5,
+                            median_connectivity: 2.0,
+                            broken_link_count: 0,
+                        },
+                    },
+                }
+            }
         }
     }
 }
@@ -293,6 +311,7 @@ fn registers_expected_rmcp_tools() {
     assert!(names.contains(&"graph-analysis"));
     assert!(names.contains(&"export-docs-index"));
     assert!(names.contains(&"recommend-docs"));
+    assert!(names.contains(&"curation-diagnostics"));
 }
 
 #[tokio::test]
@@ -1122,4 +1141,49 @@ async fn recommend_docs_tool_rejects_empty_query() {
     assert_eq!(result.is_error, Some(true));
     let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
     assert_eq!(payload.error.code, "invalid_query");
+}
+
+// --- curation-diagnostics tool tests ---
+
+#[tokio::test]
+async fn curation_diagnostics_tool_returns_structured_report() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .curation_diagnostics_tool(Parameters(CurationDiagnosticsRequest {
+            realm: None,
+            include_suggestions: true,
+            max_suggestions: 20,
+            max_items_per_category: 50,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: CurationDiagnosticsResponse = result.into_typed().expect("typed response");
+    assert_eq!(payload.realm, "default");
+    assert_eq!(payload.stats.total_docs, 5);
+    assert_eq!(payload.stats.orphan_count, 1);
+    assert_eq!(payload.stats.orphan_percentage, 20.0);
+}
+
+#[tokio::test]
+async fn curation_diagnostics_tool_maps_core_error() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::CoreError,
+    }));
+    let result = mcp
+        .curation_diagnostics_tool(Parameters(CurationDiagnosticsRequest {
+            realm: None,
+            include_suggestions: false,
+            max_suggestions: 0,
+            max_items_per_category: 50,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "core_error");
 }

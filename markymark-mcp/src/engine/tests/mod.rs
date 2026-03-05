@@ -27,6 +27,7 @@ async fn make_engine_with_custom_realm(realm_name: &str, dir: &Path) -> RuntimeE
 #[cfg(feature = "semantic-search")]
 mod concurrency;
 
+mod curation;
 mod enrich;
 mod export_docs_index;
 mod recommend;

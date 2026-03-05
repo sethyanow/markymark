@@ -17,6 +17,7 @@ use markymark_core::{CoreError, DocumentUri};
 use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
 use markymark_parser::structured::parse_structured;
 
+mod curation;
 mod diagnostics;
 mod enrich;
 mod export;
@@ -806,6 +807,27 @@ impl CoreEngine for RuntimeEngine {
                     &query,
                     top_k,
                     include_sections,
+                )
+            }
+            CoreOperation::CurationDiagnostics {
+                realm,
+                include_suggestions,
+                max_suggestions,
+                max_items_per_category,
+            } => {
+                let realm_key = realm.as_deref().unwrap_or(DEFAULT_REALM);
+                let state = self.state.read().await;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                curation::handle_curation_diagnostics(
+                    realm_key,
+                    &realm_data.index,
+                    include_suggestions,
+                    max_suggestions,
+                    max_items_per_category,
                 )
             }
         }

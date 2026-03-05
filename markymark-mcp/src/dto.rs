@@ -838,3 +838,93 @@ pub struct RecommendDocsResponse {
     /// Ranked document recommendations.
     pub recommendations: Vec<DocRecommendationDto>,
 }
+
+// ── curation-diagnostics ──
+
+fn default_include_suggestions() -> bool {
+    true
+}
+fn default_max_suggestions() -> u32 {
+    20
+}
+fn default_max_items_per_category() -> u32 {
+    50
+}
+
+/// Request payload for `curation-diagnostics`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CurationDiagnosticsRequest {
+    /// Realm to diagnose. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+
+    /// Whether to generate cross-link suggestions.
+    #[serde(default = "default_include_suggestions")]
+    pub include_suggestions: bool,
+
+    /// Maximum number of suggestions to return.
+    #[serde(default = "default_max_suggestions")]
+    pub max_suggestions: u32,
+
+    /// Maximum items per diagnostic category (orphans, low-connectivity).
+    #[serde(default = "default_max_items_per_category")]
+    pub max_items_per_category: u32,
+}
+
+/// A curation suggestion for improving documentation quality.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CurationSuggestionDto {
+    /// Source document URI (the document that should add a link).
+    pub source_doc: String,
+    /// Target document URI (the document being linked to).
+    pub target_doc: String,
+    /// Human-readable reason for the suggestion.
+    pub reason: String,
+    /// Type of suggestion: `"cross_link"` or `"reduce_orphan"`.
+    pub suggestion_type: String,
+}
+
+/// A document with its connectivity score.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ConnectivityDocDto {
+    /// Document URI.
+    pub uri: String,
+    /// Total link count (in-degree + out-degree).
+    pub connectivity: u32,
+    /// Incoming link count.
+    pub in_degree: u32,
+    /// Outgoing link count.
+    pub out_degree: u32,
+}
+
+/// Aggregate curation statistics.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CurationStatsDto {
+    /// Total documents in realm.
+    pub total_docs: u32,
+    /// Number of orphan documents.
+    pub orphan_count: u32,
+    /// Percentage of orphan documents (0.0-100.0).
+    pub orphan_percentage: f32,
+    /// Average connectivity across all documents.
+    pub avg_connectivity: f32,
+    /// Median connectivity across all documents.
+    pub median_connectivity: f32,
+    /// Total broken links from diagnostics.
+    pub broken_link_count: u32,
+}
+
+/// Response payload for `curation-diagnostics`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CurationDiagnosticsResponse {
+    /// The realm that was analyzed.
+    pub realm: String,
+    /// Documents with no resolved links in or out.
+    pub orphan_docs: Vec<String>,
+    /// Documents with connectivity below the median and threshold.
+    pub low_connectivity_docs: Vec<ConnectivityDocDto>,
+    /// Actionable cross-link suggestions.
+    pub suggestions: Vec<CurationSuggestionDto>,
+    /// Aggregate statistics.
+    pub stats: CurationStatsDto,
+}

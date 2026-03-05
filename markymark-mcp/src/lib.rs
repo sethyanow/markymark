@@ -502,6 +502,18 @@ impl MarkymarkMcp {
     ) -> Result<CallToolResult, McpError> {
         tools::recommend::handle_recommend_docs(&*self.engine, params.0).await
     }
+
+    /// Run curation diagnostics on a realm to detect orphans, low-connectivity docs, and suggest cross-links.
+    #[tool(
+        name = "curation-diagnostics",
+        description = "Analyse documentation quality for a realm. Detects orphan documents (no links in or out), low-connectivity documents, and generates actionable cross-link suggestions. Returns structured curation report with aggregate statistics including orphan percentage and average connectivity. Use this tool to identify documentation quality gaps and get specific improvement recommendations."
+    )]
+    pub async fn curation_diagnostics_tool(
+        &self,
+        params: Parameters<CurationDiagnosticsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::curation::handle_curation_diagnostics(&*self.engine, params.0).await
+    }
 }
 
 /// Run markymark MCP over stdio using the provided shared core engine.
