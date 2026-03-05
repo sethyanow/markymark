@@ -17,30 +17,58 @@ pub struct HeadingEntry<'arena> {
     pub range: Range,
 }
 
-/// A block entry in the document index (Obsidian `^block-id`).
-#[derive(Debug, Clone)]
-pub struct BlockEntry<'arena> {
-    /// The block identifier.
-    pub id: &'arena str,
-    /// Source range of the block.
-    pub range: Range,
-    /// Byte offset of the `^` character.
-    pub start_byte: usize,
-    /// Byte offset one past the last character of the block ID.
-    pub end_byte: usize,
+/// The kind of content block extracted from the document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockKind {
+    /// A paragraph block.
+    Paragraph,
+    /// A list item block.
+    ListItem,
+    /// A fenced or indented code block.
+    CodeBlock,
+    /// A blockquote.
+    BlockQuote,
+    /// A thematic break (`---`, `***`, `___`).
+    ThematicBreak,
+    /// A table.
+    Table,
 }
 
-/// Owned block payload used by incremental merge paths before arena allocation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlockOwned {
-    /// The block identifier.
-    pub id: String,
+/// A content block entry in the document index.
+///
+/// Represents a first-class content block (paragraph, list item, code block, etc.).
+/// Optionally carries an Obsidian `^block-id` marker. Replaces the former `BlockEntry`.
+#[derive(Debug, Clone)]
+pub struct ContentBlock<'arena> {
+    /// The kind of content block.
+    pub kind: BlockKind,
     /// Source range of the block.
     pub range: Range,
-    /// Byte offset of the `^` character.
+    /// Byte offset of the block start.
     pub start_byte: usize,
-    /// Byte offset one past the last character of the block ID.
+    /// Byte offset one past the block end.
     pub end_byte: usize,
+    /// Index of the nearest preceding heading, or `None` if before any heading.
+    pub parent_heading: Option<usize>,
+    /// Optional Obsidian `^block-id` marker.
+    pub block_id: Option<&'arena str>,
+}
+
+/// Owned content block payload used by incremental merge paths before arena allocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContentBlockOwned {
+    /// The kind of content block.
+    pub kind: BlockKind,
+    /// Source range of the block.
+    pub range: Range,
+    /// Byte offset of the block start.
+    pub start_byte: usize,
+    /// Byte offset one past the block end.
+    pub end_byte: usize,
+    /// Index of the nearest preceding heading, or `None` if before any heading.
+    pub parent_heading: Option<usize>,
+    /// Optional Obsidian `^block-id` marker.
+    pub block_id: Option<String>,
 }
 
 /// A table-of-contents entry.

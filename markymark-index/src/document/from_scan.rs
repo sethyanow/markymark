@@ -12,10 +12,11 @@ use markymark_core::scanner::{ScanBackend, ScanLinkType};
 use std::collections::HashMap as StdHashMap;
 
 use super::{
-    helpers, BlockEntry, BlockRefEntry, CalloutEntry, CodeSpanEntry, DocumentDependent,
-    DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry,
-    FrontmatterOwnedEntry, HeadingEntry, LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry,
-    PropertyValueEntry, QueryBlockEntry, TagEntry, TaskEntry, WikiLinkEntry, XmlTagEntry,
+    helpers, BlockKind, BlockRefEntry, CalloutEntry, CodeSpanEntry, ContentBlock,
+    DocumentDependent, DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry,
+    FrontmatterEntry, FrontmatterOwnedEntry, HeadingEntry, LinkDefinitionEntry,
+    MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry, TagEntry, TaskEntry,
+    WikiLinkEntry, XmlTagEntry,
 };
 
 impl DocumentIndex {
@@ -100,6 +101,7 @@ impl DocumentIndex {
 
         let owner = DocumentOwner {
             arena: DocumentArena::new(),
+            source_text: text.to_string(),
         };
         let cell = DocumentIndexCell::new(owner, move |owner| {
             let arena_ref = owner.arena.bump();
@@ -207,8 +209,8 @@ impl DocumentIndex {
             }
             let tags = tags_builder.into_bump_slice();
 
-            // --- Block IDs ---
-            let mut blocks = HashMap::new();
+            // --- Block IDs (Obsidian ^block-id markers) ---
+            let mut block_id_map = HashMap::new();
             for b in scan_blocks {
                 let id = arena_alloc_str(arena_ref, &b.id);
                 let pos = helpers::byte_offset_to_position(&line_starts, b.offset);
@@ -218,16 +220,21 @@ impl DocumentIndex {
                 );
                 let start_byte = b.offset as usize;
                 let end_byte = (b.offset + 1 + b.id.len() as u32) as usize;
-                blocks.insert(
+                block_id_map.insert(
                     id,
-                    BlockEntry {
-                        id,
+                    ContentBlock {
+                        kind: BlockKind::Paragraph,
                         range: Range::new(pos, end_pos),
                         start_byte,
                         end_byte,
+                        parent_heading: None,
+                        block_id: Some(id),
                     },
                 );
             }
+
+            // Content blocks: empty until AST extraction is implemented.
+            let content_blocks: &[ContentBlock<'_>] = &[];
 
             // Build TOC and outline from headings
             let toc = helpers::build_toc(arena_ref, headings);
@@ -410,7 +417,8 @@ impl DocumentIndex {
             DocumentDependent {
                 headings,
                 slug_to_heading,
-                blocks,
+                content_blocks,
+                block_id_map,
                 toc,
                 outline,
                 wiki_links,
