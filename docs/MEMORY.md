@@ -35,13 +35,12 @@ GitHub Pages deployment researched — see archive for details.
 45 files, 6,443 lines. 14 decision trees. 18 mistakes tracked. All gaps closed.
 Known issue: XML tag false positives in code blocks (marky-8la).
 
-### Zig Agent Docs: Needs Curation (2026-02-26)
+### Zig Agent Docs: Grade A (2026-03-05)
 
-37 files, 100% orphan rate (zero cross-links). Quick Navigation uses backtick paths instead
-of markdown links — markymark graph sees no connections. 10 mistakes tracked (vs 18 in Rust).
-Two separate doc directories exist: `zig_agent_docs/` (concepts/patterns/checklists) and
-`modules/zig/` (stdlib APIs, installation, langref). Complementary with 5 overlap areas.
-Curation tracked in marky-u2mb (child of marky-b9o4).
+50 files, 238 internal links, 0 orphans, 0 broken links. 10 hubs (top: core/memory.md with
+19 incoming). 18 mistakes with severity emoji. 10 decision trees. stdlib/ category (11 files)
+merged from modules/zig/02-std/. docs_index in AGENTS.md and CLAUDE.md updated. Exceeds
+rust_agent_docs baseline on hub count (10 vs 5). Curation complete (marky-u2mb closed).
 
 ### Layered Retrieval Vision (Epic marky-b9o4, 2026-02-26)
 
