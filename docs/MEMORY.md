@@ -50,7 +50,16 @@ L4 memory integration (MEMORY.md + beads in search surface). Key constraint: doc
 stays because it ramrods symbols into agent instructions at zero latency — everything builds
 on top. Related: marky-mkr, marky-y4be, marky-c9wi.
 
-**Layer progress:** L0 ✅ (export-docs-index) → L1 ✅ (recommend-docs + tree intelligence) → L2 ✅ (curation-diagnostics) → L3 ○ → L4 ○
+**Layer progress:** L0 ✅ (export-docs-index) → L1 ✅ (recommend-docs + tree intelligence) → L2 ✅ (curation-diagnostics) → L3 ✅ (multi-root federation) → L4 ○
+
+### Layer 3: Multi-Root Federation (marky-eluj, 2026-03-05)
+
+Validated via 7 integration tests in `markymark-mcp/tests/multi_root_federation.rs`. Multi-root
+infrastructure (add-root/remove-root) already worked correctly — no bugs found. Key findings:
+wiki-link resolution is realm-wide (cross-root `[[target]]` resolves), relative markdown links are
+source-anchored, same-stem disambiguation uses insertion order (first-added root wins), root
+removal correctly causes cross-root links to become broken. All tools (search-workspace,
+graph-analysis, recommend-docs, curation-diagnostics, export-docs-index) work across roots.
 
 ### Layer 2: Curation Diagnostics (marky-stip, 2026-03-05)
 
