@@ -101,6 +101,15 @@ impl StructuredDocumentIndex {
             .collect()
     }
 
+    /// Check whether the raw source text contains the given query (case-insensitive).
+    ///
+    /// This is a full-text search across the entire document source, useful for
+    /// matching against key values without needing byte-offset extraction.
+    pub fn source_contains(&self, query: &str) -> bool {
+        let query_lc = query.to_lowercase();
+        self.ast.source.to_lowercase().contains(&query_lc)
+    }
+
     /// Generate a flat list of all key paths with their ranges,
     /// suitable for search-symbols and export-index.
     pub fn key_paths_with_ranges(&self) -> Vec<(&str, &str, ValueKind, Range)> {
@@ -128,6 +137,18 @@ mod tests {
     fn make_ast(kind: DocumentKind, keys: Vec<KeyEntry>) -> StructuredAst {
         StructuredAst {
             source: String::new(),
+            kind,
+            keys,
+        }
+    }
+
+    fn make_ast_with_source(
+        kind: DocumentKind,
+        source: &str,
+        keys: Vec<KeyEntry>,
+    ) -> StructuredAst {
+        StructuredAst {
+            source: source.to_string(),
             kind,
             keys,
         }
@@ -358,6 +379,38 @@ mod tests {
             idx.find_key_at_position(markymark_core::Position::new(2, 8))
                 .is_none(),
             "range end must be exclusive"
+        );
+    }
+
+    #[test]
+    fn test_source_contains_case_insensitive() {
+        let ast = make_ast_with_source(
+            DocumentKind::Json,
+            r#"{"host": "localhost", "port": 8080}"#,
+            vec![
+                key("host", "host", 0, ValueKind::String),
+                key("port", "port", 0, ValueKind::Number),
+            ],
+        );
+        let idx = StructuredDocumentIndex::from_ast(ast);
+
+        assert!(idx.source_contains("localhost"), "should find value in source");
+        assert!(idx.source_contains("LOCALHOST"), "should be case-insensitive");
+        assert!(idx.source_contains("8080"), "should find numeric values");
+        assert!(
+            !idx.source_contains("nonexistent"),
+            "should not match absent text"
+        );
+    }
+
+    #[test]
+    fn test_source_contains_empty_source() {
+        let ast = make_ast(DocumentKind::Yaml, vec![]);
+        let idx = StructuredDocumentIndex::from_ast(ast);
+
+        assert!(
+            !idx.source_contains("anything"),
+            "empty source should match nothing"
         );
     }
 }
