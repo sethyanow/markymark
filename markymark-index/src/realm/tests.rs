@@ -13,10 +13,7 @@ fn make_md_index(source: &str) -> DocumentIndex {
 ///
 /// Constructs a source string with backtick code spans so `from_ast`
 /// (which delegates to from_scan) extracts them naturally.
-fn make_md_index_with_code_spans(
-    _base_source: &str,
-    code_spans: Vec<CodeSpanOwned>,
-) -> DocumentIndex {
+fn make_md_index_with_code_spans(code_spans: Vec<CodeSpanOwned>) -> DocumentIndex {
     // Build source text: heading + one backtick code span per entry
     let mut source = String::from("# Intro\n\n");
     for cs in &code_spans {
@@ -440,7 +437,7 @@ fn code_span(text: &str) -> CodeSpanOwned {
 async fn test_add_document_populates_code_spans() {
     let mut realm = RealmIndex::new();
     let u = uri("test.md");
-    let index = make_md_index_with_code_spans("# Intro\n", vec![code_span("HashMap")]);
+    let index = make_md_index_with_code_spans(vec![code_span("HashMap")]);
     realm.add_document(u.clone(), index).await;
 
     let results = realm.lookup_code_span("HashMap");
@@ -453,7 +450,7 @@ async fn test_add_document_populates_code_spans() {
 async fn test_remove_document_cleans_code_spans() {
     let mut realm = RealmIndex::new();
     let u = uri("test.md");
-    let index = make_md_index_with_code_spans("# Intro\n", vec![code_span("Vec")]);
+    let index = make_md_index_with_code_spans(vec![code_span("Vec")]);
     realm.add_document(u.clone(), index).await;
     assert_eq!(realm.lookup_code_span("Vec").len(), 1);
 
@@ -469,9 +466,7 @@ async fn test_code_span_dedup_per_document() {
     // Same text 3x in one doc → only 1 entry per doc in cross-doc index.
     let mut realm = RealmIndex::new();
     let u = uri("test.md");
-    let index = make_md_index_with_code_spans(
-        "# Intro\n",
-        vec![
+    let index = make_md_index_with_code_spans(vec![
             code_span("Result"),
             code_span("Result"),
             code_span("Result"),
@@ -497,13 +492,13 @@ async fn test_code_span_cross_doc() {
     realm
         .add_document(
             u1.clone(),
-            make_md_index_with_code_spans("# A\n", vec![code_span("Option")]),
+            make_md_index_with_code_spans(vec![code_span("Option")]),
         )
         .await;
     realm
         .add_document(
             u2.clone(),
-            make_md_index_with_code_spans("# B\n", vec![code_span("Option")]),
+            make_md_index_with_code_spans(vec![code_span("Option")]),
         )
         .await;
 
@@ -859,7 +854,7 @@ async fn test_update_code_span_added() {
     realm
         .update_document(
             u.clone(),
-            make_md_index_with_code_spans("# H", vec![code_span("HashMap")]),
+            make_md_index_with_code_spans(vec![code_span("HashMap")]),
         )
         .await;
 
