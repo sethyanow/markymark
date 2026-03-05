@@ -35,9 +35,23 @@ quality assessments, and lessons learned.
   MEMORY.md as the sole persistent memory store. claude-mem search/timeline/get_observations
   are fine for reading cross-project history.
 
+## Development Philosophy
+
+**Everything gets built. The question is sequencing, not cutting.**
+
+AI agents are the builders. Human effort is NOT the bottleneck — context quality, planning discipline, and iteration cadence are. Do not "defer to future" as a coping mechanism. Instead:
+
+1. **Brainstorm** — Refine the design with Socratic Q&A, one section at a time
+2. **Plan** — Create one task, SRE-refine it, execute it
+3. **Execute** — Build it. One loop iteration, one commit, tests green.
+4. **Review** — Shakedown testing. Verify against requirements.
+5. **Next** — Create the next task based on what you learned. Repeat.
+
+If a piece needs design exploration before building, give it a brainstorm bead and come back to it in sequence. Never leave stubs, never say "later." Build it or don't ship it.
+
 ## Agent Dogma
 
-**NOTE:**  
+**NOTE:**
 **Agents have LSP tools available—use them!**  
 Always leverage the LSP (Language Server Protocol) tools for improved accuracy, context, and developer experience.
 
