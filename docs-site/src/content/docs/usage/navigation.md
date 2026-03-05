@@ -22,10 +22,10 @@ Right-click a heading and select **Find All References** to see every document t
 links to it — including wiki links, Markdown links, and heading anchors. Results
 appear in the references panel with file names and line numbers.
 
-**With MCP:**
+**With MCP:** Call `find-references` with a document position:
 
 ```json
-find-references: { "uri": "file:///path/to/doc.md", "line": 0, "character": 2 }
+{ "uri": "file:///path/to/doc.md", "line": 0, "character": 2 }
 ```
 
 Returns a list of locations across the workspace where the symbol at that position
@@ -37,10 +37,10 @@ Press Ctrl+Shift+O (Cmd+Shift+O on macOS) to open the document outline. This sho
 a hierarchical tree of headings in the current file. For structured data files (JSON,
 YAML, TOML), the outline shows key paths instead.
 
-**With MCP:**
+**With MCP:** Call `get-outline` with a document URI:
 
 ```json
-get-outline: { "uri": "file:///path/to/doc.md" }
+{ "uri": "file:///path/to/doc.md" }
 ```
 
 ## Workspace symbol search
@@ -49,10 +49,10 @@ Press Ctrl+T (Cmd+T on macOS) to search headings, tags, and code references acro
 all files in the workspace. Type a partial name and markymark fuzzy-matches against
 the full index.
 
-**With MCP:**
+**With MCP:** Call `search-symbols` with a query string:
 
 ```json
-search-symbols: { "query": "installation" }
+{ "query": "installation" }
 ```
 
 Returns matching symbols with their file locations and ranges.
