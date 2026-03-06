@@ -16,6 +16,8 @@ pub struct StructuredDocumentIndex {
     ast: StructuredAst,
     /// key path → index into `ast.keys` for O(1) lookup.
     path_to_idx: HashMap<String, usize>,
+    /// Cached lowercase source for O(1)-allocation `source_contains()`.
+    source_lowercase: String,
 }
 
 impl StructuredDocumentIndex {
@@ -27,7 +29,12 @@ impl StructuredDocumentIndex {
             .enumerate()
             .map(|(i, k)| (k.path.clone(), i))
             .collect();
-        Self { ast, path_to_idx }
+        let source_lowercase = ast.source.to_lowercase();
+        Self {
+            ast,
+            path_to_idx,
+            source_lowercase,
+        }
     }
 
     /// The document kind (Json, Yaml, Toml, etc.).
@@ -106,8 +113,7 @@ impl StructuredDocumentIndex {
     /// This is a full-text search across the entire document source, useful for
     /// matching against key values without needing byte-offset extraction.
     pub fn source_contains(&self, query: &str) -> bool {
-        let query_lc = query.to_lowercase();
-        self.ast.source.to_lowercase().contains(&query_lc)
+        self.source_lowercase.contains(&query.to_lowercase())
     }
 
     /// Generate a flat list of all key paths with their ranges,

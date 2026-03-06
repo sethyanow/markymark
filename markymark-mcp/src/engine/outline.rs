@@ -71,6 +71,18 @@ fn outline_node_to_owned(
     source: Option<&str>,
     all_headings: &[HeadingEntry<'_>],
 ) -> OutlineTreeNode {
+    // Split source lines once and pass the slice to the recursive inner function,
+    // avoiding O(headings * lines) repeated allocations.
+    let lines: Option<Vec<&str>> = source.map(|s| s.lines().collect());
+    outline_node_to_owned_inner(node, lines.as_deref(), all_headings)
+}
+
+/// Recursive inner function that receives pre-split source lines.
+fn outline_node_to_owned_inner(
+    node: &OutlineNode<'_>,
+    lines: Option<&[&str]>,
+    all_headings: &[HeadingEntry<'_>],
+) -> OutlineTreeNode {
     let (title, level, range) = match &node.heading {
         Some(h) => (h.text.to_string(), h.level, h.range),
         None => (
@@ -83,15 +95,15 @@ fn outline_node_to_owned(
         ),
     };
 
-    let text = match (source, &node.heading) {
-        (Some(src), Some(heading)) => extract_section_text(src, heading, all_headings),
+    let text = match (lines, &node.heading) {
+        (Some(l), Some(heading)) => extract_section_text(l, heading, all_headings),
         _ => None,
     };
 
     let children = node
         .children
         .iter()
-        .map(|child| outline_node_to_owned(child, source, all_headings))
+        .map(|child| outline_node_to_owned_inner(child, lines, all_headings))
         .collect();
 
     OutlineTreeNode {
@@ -111,11 +123,10 @@ fn outline_node_to_owned(
 /// and its first child heading (or next sibling). The tree structure captures
 /// the hierarchy, so each node's text is just its own prose.
 fn extract_section_text(
-    source: &str,
+    lines: &[&str],
     heading: &HeadingEntry<'_>,
     all_headings: &[HeadingEntry<'_>],
 ) -> Option<String> {
-    let lines: Vec<&str> = source.lines().collect();
     let heading_line = heading.range.start.line as usize;
 
     // Content starts on the line after the heading
