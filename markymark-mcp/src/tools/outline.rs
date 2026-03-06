@@ -33,6 +33,15 @@ pub(crate) async fn handle_get_outline(
     };
 
     let format = req.format.as_deref().unwrap_or("flat").to_string();
+    if format != "flat" && format != "tree" {
+        return Ok(tool_error(
+            "invalid_params",
+            format!(
+                "Unsupported outline format '{}'. Expected 'flat' or 'tree'.",
+                format
+            ),
+        ));
+    }
     let include_text = req.include_text;
 
     match engine

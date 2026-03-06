@@ -1187,3 +1187,44 @@ async fn curation_diagnostics_tool_maps_core_error() {
     let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
     assert_eq!(payload.error.code, "core_error");
 }
+
+#[tokio::test]
+async fn outline_tool_rejects_invalid_format() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .get_outline_tool(Parameters(OutlineRequest {
+            uri: "file:///vault/notes.md".to_string(),
+            realm: None,
+            format: Some("bogus".to_string()),
+            include_text: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "invalid_params");
+    assert!(payload.error.message.contains("bogus"));
+}
+
+#[tokio::test]
+async fn outline_tool_rejects_empty_format() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .get_outline_tool(Parameters(OutlineRequest {
+            uri: "file:///vault/notes.md".to_string(),
+            realm: None,
+            format: Some("".to_string()),
+            include_text: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "invalid_params");
+}
