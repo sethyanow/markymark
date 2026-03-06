@@ -415,7 +415,7 @@ impl MarkymarkMcp {
     /// Search workspace documents by text, frontmatter, properties, or tags.
     #[tool(
         name = "search-workspace",
-        description = "Search workspace documents by free text, frontmatter, Logseq properties, or tags. Returns ranked results with metadata preview."
+        description = "Search workspace documents by free text, frontmatter, Logseq properties, or tags. Returns ranked results with metadata preview. Free text queries match against titles, headings, frontmatter, properties, and body text (paragraph, list, code block content)."
     )]
     pub async fn search_workspace_tool(
         &self,

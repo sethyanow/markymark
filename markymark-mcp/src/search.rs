@@ -155,6 +155,18 @@ fn score_document(
             }
         }
 
+        // Body text (content block) matches: score 0.4
+        for block in doc.content_blocks() {
+            let text = doc.block_text(block);
+            if !text.is_empty() && text.to_lowercase().contains(q.as_str()) {
+                score = score.max(0.4);
+                if !matched_fields.contains(&"body".to_string()) {
+                    matched_fields.push("body".to_string());
+                }
+                break;
+            }
+        }
+
         // No match at all: skip this document.
         if score == 0.0 {
             return None;
