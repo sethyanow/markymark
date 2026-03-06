@@ -1,9 +1,9 @@
 //! Core realm tests: add/remove/replace documents, structured documents,
 //! journal detection, and relative path resolution.
 
-use super::helpers::{make_md_index, make_structured_index, test_key, uri};
 use super::super::helpers::{detect_journal_date, resolve_relative_path};
 use super::super::*;
+use super::helpers::{make_md_index, make_structured_index, test_key, uri};
 use markymark_core::structured::ValueKind;
 
 #[tokio::test]

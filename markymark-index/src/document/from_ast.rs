@@ -167,14 +167,12 @@ fn is_logseq_heading(node: tree_sitter::Node, source: &str) -> bool {
         None => return false,
     };
     let trimmed = first_line.trim_start();
-    let after_marker = if trimmed.starts_with("- ")
-        || trimmed.starts_with("* ")
-        || trimmed.starts_with("+ ")
-    {
-        &trimmed[2..]
-    } else {
-        return false;
-    };
+    let after_marker =
+        if trimmed.starts_with("- ") || trimmed.starts_with("* ") || trimmed.starts_with("+ ") {
+            &trimmed[2..]
+        } else {
+            return false;
+        };
     // Must start with 1-6 '#' followed by a space
     if !after_marker.starts_with('#') {
         return false;

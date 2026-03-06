@@ -30,9 +30,9 @@ use markymark_core::{Position, Range};
 use super::{
     helpers, BlockKind, BlockRefEntry, CalloutEntry, CodeSpanEntry, ContentBlock,
     DocumentDependent, DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry,
-    FrontmatterEntry, FrontmatterOwnedEntry, HeadingEntry, LinkDefinitionEntry,
-    MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry, TagEntry, TaskEntry,
-    WikiLinkEntry, XmlTagEntry,
+    FrontmatterEntry, FrontmatterOwnedEntry, HeadingEntry, LinkDefinitionEntry, MarkdownLinkEntry,
+    PropertyEntry, PropertyValueEntry, QueryBlockEntry, TagEntry, TaskEntry, WikiLinkEntry,
+    XmlTagEntry,
 };
 
 mod decode;

@@ -14,9 +14,9 @@ use std::collections::HashMap as StdHashMap;
 use super::{
     helpers, BlockKind, BlockRefEntry, CalloutEntry, CodeSpanEntry, ContentBlock,
     DocumentDependent, DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry,
-    FrontmatterEntry, FrontmatterOwnedEntry, HeadingEntry, LinkDefinitionEntry,
-    MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry, TagEntry, TaskEntry,
-    WikiLinkEntry, XmlTagEntry,
+    FrontmatterEntry, FrontmatterOwnedEntry, HeadingEntry, LinkDefinitionEntry, MarkdownLinkEntry,
+    PropertyEntry, PropertyValueEntry, QueryBlockEntry, TagEntry, TaskEntry, WikiLinkEntry,
+    XmlTagEntry,
 };
 
 use super::from_ast::RawBlock;
@@ -218,8 +218,7 @@ impl DocumentIndex {
             let mut cb_builder = BumpVec::new_in(arena_ref);
             for rb in &raw_blocks {
                 let pos = helpers::byte_offset_to_position(&line_starts, rb.start_byte as u32);
-                let end_pos =
-                    helpers::byte_offset_to_position(&line_starts, rb.end_byte as u32);
+                let end_pos = helpers::byte_offset_to_position(&line_starts, rb.end_byte as u32);
                 // Parent heading: find the nearest heading whose range starts
                 // before this block. Binary search on heading start positions.
                 let parent_heading = if headings.is_empty() {

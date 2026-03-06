@@ -32,7 +32,10 @@ fn extract_list_items() {
     let source = "# Heading\n\n- item one\n- item two\n- item three\n";
     let index = build_index(source);
     let blocks = index.content_blocks();
-    let list_items: Vec<_> = blocks.iter().filter(|b| b.kind == BlockKind::ListItem).collect();
+    let list_items: Vec<_> = blocks
+        .iter()
+        .filter(|b| b.kind == BlockKind::ListItem)
+        .collect();
     assert_eq!(
         list_items.len(),
         3,
@@ -98,11 +101,19 @@ fn parent_heading_assigned() {
 
     // First paragraph should reference heading index 0
     let first_para = &blocks[0];
-    assert_eq!(first_para.parent_heading, Some(0), "first para under heading 0");
+    assert_eq!(
+        first_para.parent_heading,
+        Some(0),
+        "first para under heading 0"
+    );
 
     // Second paragraph should reference heading index 1
     let second_para = &blocks[1];
-    assert_eq!(second_para.parent_heading, Some(1), "second para under heading 1");
+    assert_eq!(
+        second_para.parent_heading,
+        Some(1),
+        "second para under heading 1"
+    );
 }
 
 #[test]
@@ -255,7 +266,10 @@ fn logseq_heading_not_extracted_as_list_item() {
     let index = build_index(source);
     let blocks = index.content_blocks();
     // Should NOT have a ListItem for the logseq heading
-    let list_items: Vec<_> = blocks.iter().filter(|b| b.kind == BlockKind::ListItem).collect();
+    let list_items: Vec<_> = blocks
+        .iter()
+        .filter(|b| b.kind == BlockKind::ListItem)
+        .collect();
     assert!(
         list_items.is_empty(),
         "logseq-style heading should not produce ListItem content block"
@@ -267,7 +281,10 @@ fn ordered_list_items_extracted() {
     let source = "# List\n\n1. first\n2. second\n3. third\n";
     let index = build_index(source);
     let blocks = index.content_blocks();
-    let list_items: Vec<_> = blocks.iter().filter(|b| b.kind == BlockKind::ListItem).collect();
+    let list_items: Vec<_> = blocks
+        .iter()
+        .filter(|b| b.kind == BlockKind::ListItem)
+        .collect();
     assert_eq!(
         list_items.len(),
         3,
