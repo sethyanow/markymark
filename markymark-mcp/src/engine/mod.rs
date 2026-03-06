@@ -827,13 +827,11 @@ impl CoreEngine for RuntimeEngine {
                 let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
 
                 // Reject empty/whitespace queries — they'd match everything.
-                let query_trimmed = query.trim();
-                if query_trimmed.is_empty() {
+                if query.trim().is_empty() {
                     return CoreOperationResult::Error(markymark_core::CoreError::Message(
                         "query must not be empty or whitespace-only".to_string(),
                     ));
                 }
-                let query_lower = query_trimmed.to_lowercase();
 
                 let state = self.state.read().await;
                 let Some(realm_data) = state.get(realm_key) else {
@@ -842,60 +840,33 @@ impl CoreEngine for RuntimeEngine {
                     ));
                 };
 
-                let mut all_matches = Vec::new();
-                let mut total_found: usize = 0;
+                // Parse kind filter string to BlockKind enum
+                let block_kind_filter = kind_filter.as_deref().and_then(helpers::parse_block_kind);
 
-                for (uri, doc) in realm_data.index.iter_documents() {
-                    let headings = doc.headings();
-                    let content_blocks = doc.content_blocks();
+                let (realm_matches, truncated) = realm_data.index.search_block_text(
+                    query.trim(),
+                    block_kind_filter,
+                    limit,
+                    include_text,
+                );
 
-                    for block in content_blocks {
-                        // Apply kind filter
-                        if let Some(ref kind) = kind_filter {
-                            if helpers::block_kind_str(&block.kind) != kind.as_str() {
-                                continue;
-                            }
-                        }
-
-                        // Case-insensitive substring match against block text
-                        let text = doc.block_text(block);
-                        if text.is_empty() {
-                            continue;
-                        }
-                        if !text.to_lowercase().contains(&query_lower) {
-                            continue;
-                        }
-
-                        total_found += 1;
-
-                        if all_matches.len() < limit {
-                            let parent_slug = block.parent_heading.and_then(|idx| {
-                                headings.get(idx).map(|h| h.slug.to_string())
-                            });
-
-                            all_matches.push(
-                                markymark_core::engine::BlockTextMatchResult {
-                                    uri: uri.clone(),
-                                    kind: helpers::block_kind_str(&block.kind).to_string(),
-                                    range: block.range,
-                                    parent_heading_slug: parent_slug,
-                                    block_id: block.block_id.map(|s| s.to_string()),
-                                    text: if include_text {
-                                        Some(text.to_string())
-                                    } else {
-                                        None
-                                    },
-                                },
-                            );
-                        }
-                    }
-                }
+                let matches = realm_matches
+                    .into_iter()
+                    .map(|m| markymark_core::engine::BlockTextMatchResult {
+                        uri: m.uri,
+                        kind: helpers::block_kind_str(&m.kind).to_string(),
+                        range: m.range,
+                        parent_heading_slug: m.parent_heading_slug,
+                        block_id: m.block_id,
+                        text: m.text,
+                    })
+                    .collect();
 
                 CoreOperationResult::BlockTextMatches {
                     realm: realm_key.to_string(),
                     query,
-                    matches: all_matches,
-                    truncated: total_found > limit,
+                    matches,
+                    truncated,
                 }
             }
         }

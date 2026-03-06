@@ -86,6 +86,21 @@ pub(crate) fn block_kind_str(kind: &markymark_index::document::BlockKind) -> &'s
     }
 }
 
+/// Parse a wire-format block kind string into a `BlockKind` enum variant.
+/// Returns `None` for unrecognized kinds (silently filters them out).
+pub(crate) fn parse_block_kind(kind: &str) -> Option<markymark_index::document::BlockKind> {
+    use markymark_index::document::BlockKind;
+    match kind {
+        "paragraph" => Some(BlockKind::Paragraph),
+        "list_item" => Some(BlockKind::ListItem),
+        "code_block" => Some(BlockKind::CodeBlock),
+        "blockquote" => Some(BlockKind::BlockQuote),
+        "thematic_break" => Some(BlockKind::ThematicBreak),
+        "table" => Some(BlockKind::Table),
+        _ => None,
+    }
+}
+
 pub(crate) fn validate_workspace_root(root: &Path) -> anyhow::Result<()> {
     if !root.exists() {
         bail!("workspace root does not exist: {}", root.display());
