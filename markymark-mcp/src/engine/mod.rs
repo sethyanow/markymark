@@ -17,7 +17,6 @@ use markymark_core::{CoreError, DocumentUri};
 use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
 use markymark_parser::structured::parse_structured;
 
-mod content_blocks;
 mod diagnostics;
 mod export;
 mod helpers;
@@ -237,12 +236,13 @@ impl RuntimeEngine {
 
 /// Index all markdown files under a root into a realm.
 ///
-/// Markdown documents use the full AST path (`from_ast`) to get both Zig scan
-/// extraction (headings, links, tags, code spans, tasks, embeds, callouts, etc.)
-/// and tree-sitter content block extraction (paragraphs, list items, code blocks).
-/// Structured documents (JSON, YAML, TOML, etc.) use tree-sitter via
+/// Markdown documents use the Zig scan path (`from_scan_with_frontmatter`) for
+/// full extraction including code spans, tasks, embeds, callouts, etc.
+/// Frontmatter is parsed directly from source text (no tree-sitter needed).
+/// Structured documents (JSON, YAML, TOML, etc.) still use tree-sitter via
 /// `StructuredDocumentIndex::from_ast`.
 pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
+    let backend = Md4cScanBackend;
     let documents = helpers::collect_documents(root);
     let mut markdown_docs = Vec::new();
 
@@ -255,29 +255,21 @@ pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
         let uri = DocumentUri::from_file_path(&path);
 
         if kind == DocumentKind::Markdown {
-            // Use from_ast to get content blocks from tree-sitter AST.
-            // from_ast internally delegates to from_scan_inner (Zig scan backend)
-            // for headings, links, etc., so we get the full extraction.
-            let ast = match markymark_parser::parse(&source) {
-                Ok(ast) => ast,
-                Err(_) => {
-                    // Fall back to scan-only path if tree-sitter parse fails.
-                    let (fm_owned, aliases_owned) =
-                        markymark_index::parse_frontmatter_owned(&source);
-                    let scan_source = markymark_index::mask_frontmatter(&source);
-                    markdown_docs.push((
-                        uri,
-                        DocumentIndex::from_scan_with_frontmatter(
-                            &scan_source,
-                            &Md4cScanBackend,
-                            fm_owned,
-                            aliases_owned,
-                        ),
-                    ));
-                    continue;
-                }
-            };
-            markdown_docs.push((uri, DocumentIndex::from_ast(ast)));
+            let (fm_owned, aliases_owned) = markymark_index::parse_frontmatter_owned(&source);
+
+            // Mask frontmatter block so md4c doesn't misparse `---` as a
+            // setext heading underline. Replace non-newline bytes with spaces
+            // to preserve line counting and byte offsets.
+            let scan_source = markymark_index::mask_frontmatter(&source);
+            markdown_docs.push((
+                uri,
+                DocumentIndex::from_scan_with_frontmatter(
+                    &scan_source,
+                    &backend,
+                    fm_owned,
+                    aliases_owned,
+                ),
+            ));
         } else {
             let ast = match parse_structured(&source, kind) {
                 Ok(ast) => ast,
@@ -743,30 +735,6 @@ impl CoreEngine for RuntimeEngine {
                     }
                     None => diagnostics::handle_get_diagnostics_realm(realm_data, realm_key),
                 }
-            }
-            CoreOperation::GetContentBlocks {
-                uri,
-                realm: realm_name,
-                kind_filter,
-                heading_filter,
-                block_id,
-                include_text,
-            } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(CoreError::Message(format!(
-                        "realm does not exist: {realm_key}"
-                    )));
-                };
-                content_blocks::handle_get_content_blocks(
-                    &realm_data.index,
-                    &uri,
-                    kind_filter,
-                    heading_filter,
-                    block_id,
-                    include_text,
-                )
             }
         }
     }
