@@ -93,7 +93,11 @@ pub(crate) async fn handle_enrich_document(
     if sections_to_enrich.is_empty() {
         // No headings → write a minimal sidecar and return.
         let sidecar = DocumentSidecar::new(current_hash, provider.model_id().to_string());
-        write_sidecar(&sidecar_file, &sidecar);
+        if let Err(e) = write_sidecar(&sidecar_file, &sidecar) {
+            return CoreOperationResult::Error(CoreError::Message(
+                format!("enrichment succeeded but sidecar failed to persist: {e}"),
+            ));
+        }
         return CoreOperationResult::EnrichmentResult {
             uri: uri.clone(),
             sections_enriched: 0,
@@ -146,7 +150,11 @@ pub(crate) async fn handle_enrich_document(
     }
 
     let sections_count = sidecar.sections.len();
-    write_sidecar(&sidecar_file, &sidecar);
+    if let Err(e) = write_sidecar(&sidecar_file, &sidecar) {
+        return CoreOperationResult::Error(CoreError::Message(
+            format!("enrichment succeeded but sidecar failed to persist: {e}"),
+        ));
+    }
 
     CoreOperationResult::EnrichmentResult {
         uri: uri.clone(),
@@ -226,7 +234,14 @@ fn resolve_sidecar_location(
     roots: &[std::path::PathBuf],
 ) -> (std::path::PathBuf, std::path::PathBuf) {
     if let Some(override_dir) = sidecar_dir_override {
-        // Use override dir directly; relative path from the override dir parent.
+        // Try to preserve relative path from workspace root to avoid collisions
+        // when multiple files share the same name (e.g. a/README.md, b/README.md).
+        for root in roots {
+            if let Ok(relative) = file_path.strip_prefix(root) {
+                return (override_dir.to_path_buf(), relative.to_path_buf());
+            }
+        }
+        // Fallback: use file_name() if file is not under any root.
         let relative = file_path
             .file_name()
             .map(std::path::PathBuf::from)
@@ -265,13 +280,16 @@ fn resolve_sidecar_location(
 }
 
 /// Write sidecar JSON to disk, creating parent directories as needed.
-fn write_sidecar(path: &Path, sidecar: &DocumentSidecar) {
+fn write_sidecar(path: &Path, sidecar: &DocumentSidecar) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("failed to create sidecar directory {}: {e}", parent.display()))?;
     }
-    if let Ok(json) = serde_json::to_string_pretty(sidecar) {
-        let _ = std::fs::write(path, json);
-    }
+    let json = serde_json::to_string_pretty(sidecar)
+        .map_err(|e| format!("failed to serialize sidecar: {e}"))?;
+    std::fs::write(path, json)
+        .map_err(|e| format!("failed to write sidecar {}: {e}", path.display()))?;
+    Ok(())
 }
 
 /// Inject sidecar summaries into an OutlineTreeNode tree.
