@@ -304,3 +304,68 @@ async fn kebab_name_from_underscore_root() {
         "expected [name]|root: format, got: {entry}"
     );
 }
+
+#[tokio::test]
+async fn root_count_excludes_empty_roots() {
+    let dir_with_md = make_temp_realm_dir("export-count-md");
+    let dir_without_md = make_temp_realm_dir("export-count-nomd");
+    fs::write(dir_with_md.path().join("doc.md"), "# Doc\n").unwrap();
+    fs::write(dir_without_md.path().join("data.json"), "{}").unwrap();
+
+    let engine = RuntimeEngine::default();
+    engine
+        .execute(CoreOperation::AddRoot {
+            realm: "default".to_string(),
+            root: dir_with_md.path().to_path_buf(),
+        })
+        .await;
+    engine
+        .execute(CoreOperation::AddRoot {
+            realm: "default".to_string(),
+            root: dir_without_md.path().to_path_buf(),
+        })
+        .await;
+
+    let result = engine
+        .execute(CoreOperation::ExportDocsIndex {
+            realm: None,
+            name_override: None,
+        })
+        .await;
+
+    let (entries, doc_count, root_count, _) = extract_entries(result);
+    assert_eq!(entries.len(), 1, "only root with .md files produces entry");
+    assert_eq!(doc_count, 1);
+    assert_eq!(
+        root_count, 1,
+        "root_count should reflect roots that produced entries, not all configured roots"
+    );
+}
+
+#[tokio::test]
+async fn root_display_absolute_path() {
+    let dir = make_temp_realm_dir("export-abs-display");
+    fs::write(dir.path().join("doc.md"), "# Doc\n").unwrap();
+
+    let engine = make_engine_with_root(dir.path()).await;
+    let result = engine
+        .execute(CoreOperation::ExportDocsIndex {
+            realm: None,
+            name_override: None,
+        })
+        .await;
+
+    let (entries, _, _, _) = extract_entries(result);
+    let entry = &entries[0];
+
+    // Absolute path should NOT get './' prepended (would produce './/tmp/...')
+    assert!(
+        !entry.contains("|root: ./"),
+        "absolute path should not have './' prefix, got: {entry}"
+    );
+    // Should contain 'root: /' (absolute path directly)
+    assert!(
+        entry.contains("|root: /"),
+        "expected absolute path in root display, got: {entry}"
+    );
+}

@@ -96,7 +96,11 @@ pub(crate) fn handle_export_docs_index(
         };
 
         // Build the pipe-delimited entry.
-        let root_display = format!("./{}", root.display());
+        let root_display = if root.is_absolute() {
+            root.display().to_string()
+        } else {
+            format!("./{}", root.display())
+        };
         let mut parts = vec![format!("[{name}]"), format!("root: {root_display}")];
 
         for (category, files) in &category_files {
@@ -111,12 +115,13 @@ pub(crate) fn handle_export_docs_index(
     // Count skipped: documents not matching any root.
     let all_doc_count = realm_data.index.iter_documents().count();
     let total_skipped = all_doc_count.saturating_sub(total_doc_count);
+    let root_count = entries.len();
 
     CoreOperationResult::DocsIndexExport {
         realm: realm_name,
         entries,
         doc_count: total_doc_count,
-        root_count: sorted_roots.len(),
+        root_count,
         skipped_count: total_skipped,
     }
 }
