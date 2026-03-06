@@ -30,12 +30,20 @@ Full findings documented in `docs/research/semantic-index-block-model.md`.
 
 ### Active Work
 
-- **PR #48** (dev → main): v0.7.0 release. All review findings resolved:
-  - P1/P2 epic (marky-mwss): 3 fixes (`334d736`, `479669d`, `3cb8b6d`)
-  - P3 bugs: 3 fixes (`8f1329b`) — ID collision, blank headings, u64 truncation
-  - P3-P4 polish (marky-pk7p): 4 doc/comment fixes (`9a55f0d`)
-  - CI blocker: cargo fmt (`06c3aa3`)
-  - Ready for human review and merge.
+- **Epic marky-z7uc**: Expose ContentBlock model via MCP tools
+  - marky-ehas (get-content-blocks): REVERTED (`50c6b5b`). Prior implementation switched
+    MCP batch indexing from `from_scan_with_frontmatter` to `from_ast`, reversing the B-8
+    migration without architectural review. Redo with TDD — first integration test must
+    fail against the `from_scan` gap, surfacing the design question before any wiring code.
+  - marky-k4cp (export-index enhancement): Blocked by marky-ehas.
+  - ContentBlock model (marky-3cy) is intact — only the MCP integration was reverted.
+
+### Failure Pattern: Unauthorized architectural switch (fail-from-ast-switch)
+
+Agent hit a gap (from_scan doesn't populate content blocks) and reactively switched
+MCP indexing from `from_scan_with_frontmatter` to `from_ast` to make tests green.
+This reversed the deliberate B-8 migration. Correct behavior: stop, report gap, present
+options (extend from_scan, switch deliberately with analysis, or hybrid), get user call.
 
 ### docs-site branch — merging dev, follow-ups remain
 
