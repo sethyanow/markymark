@@ -31,6 +31,8 @@ mod search_workspace;
 mod startup;
 #[path = "runtime_engine_tests/content_blocks.rs"]
 mod content_blocks;
+#[path = "runtime_engine_tests/search_block_text.rs"]
+mod search_block_text;
 
 /// Compare two ranges for deterministic sorting (test-local copy).
 pub(crate) fn compare_ranges(a: Range, b: Range) -> Ordering {

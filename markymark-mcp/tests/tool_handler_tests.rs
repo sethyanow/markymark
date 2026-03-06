@@ -221,6 +221,14 @@ impl CoreEngine for MockEngine {
                     blocks: vec![],
                 }
             }
+            (_, CoreOperation::SearchBlockText { realm, query, .. }) => {
+                CoreOperationResult::BlockTextMatches {
+                    realm: realm.unwrap_or_else(|| "default".to_string()),
+                    query,
+                    matches: vec![],
+                    truncated: false,
+                }
+            }
         }
     }
 }

@@ -816,6 +816,13 @@ impl CoreEngine for RuntimeEngine {
 
                 CoreOperationResult::ContentBlocks { uri, blocks }
             }
+
+            CoreOperation::SearchBlockText { .. } => {
+                // TODO: implement in GREEN phase
+                CoreOperationResult::Error(markymark_core::CoreError::NotImplemented(
+                    "search-block-text not yet implemented".to_string(),
+                ))
+            }
         }
     }
 }
