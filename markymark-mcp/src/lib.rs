@@ -472,6 +472,18 @@ impl MarkymarkMcp {
     ) -> Result<CallToolResult, McpError> {
         tools::blocks::handle_get_content_blocks(&*self.engine, params.0).await
     }
+
+    /// Search block text across all documents in a realm (case-insensitive substring).
+    #[tool(
+        name = "search-block-text",
+        description = "Search block text across all documents in a realm. Performs case-insensitive substring matching against content block text (paragraphs, list items, code blocks, etc.). Returns block-level matches with document URI, block kind, range, and parent heading. Use `include_text` to include matched block text content. Use `kind` to restrict to a specific block type."
+    )]
+    pub async fn search_block_text_tool(
+        &self,
+        params: Parameters<SearchBlockTextRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::blocks::handle_search_block_text(&*self.engine, params.0).await
+    }
 }
 
 /// Run markymark MCP over stdio using the provided shared core engine.

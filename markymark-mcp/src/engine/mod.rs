@@ -817,11 +817,86 @@ impl CoreEngine for RuntimeEngine {
                 CoreOperationResult::ContentBlocks { uri, blocks }
             }
 
-            CoreOperation::SearchBlockText { .. } => {
-                // TODO: implement in GREEN phase
-                CoreOperationResult::Error(markymark_core::CoreError::NotImplemented(
-                    "search-block-text not yet implemented".to_string(),
-                ))
+            CoreOperation::SearchBlockText {
+                query,
+                realm: realm_name,
+                kind_filter,
+                limit,
+                include_text,
+            } => {
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
+
+                // Reject empty/whitespace queries — they'd match everything.
+                let query_trimmed = query.trim();
+                if query_trimmed.is_empty() {
+                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
+                        "query must not be empty or whitespace-only".to_string(),
+                    ));
+                }
+                let query_lower = query_trimmed.to_lowercase();
+
+                let state = self.state.read().await;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
+                        format!("realm does not exist: {realm_key}"),
+                    ));
+                };
+
+                let mut all_matches = Vec::new();
+                let mut total_found: usize = 0;
+
+                for (uri, doc) in realm_data.index.iter_documents() {
+                    let headings = doc.headings();
+                    let content_blocks = doc.content_blocks();
+
+                    for block in content_blocks {
+                        // Apply kind filter
+                        if let Some(ref kind) = kind_filter {
+                            if helpers::block_kind_str(&block.kind) != kind.as_str() {
+                                continue;
+                            }
+                        }
+
+                        // Case-insensitive substring match against block text
+                        let text = doc.block_text(block);
+                        if text.is_empty() {
+                            continue;
+                        }
+                        if !text.to_lowercase().contains(&query_lower) {
+                            continue;
+                        }
+
+                        total_found += 1;
+
+                        if all_matches.len() < limit {
+                            let parent_slug = block.parent_heading.and_then(|idx| {
+                                headings.get(idx).map(|h| h.slug.to_string())
+                            });
+
+                            all_matches.push(
+                                markymark_core::engine::BlockTextMatchResult {
+                                    uri: uri.clone(),
+                                    kind: helpers::block_kind_str(&block.kind).to_string(),
+                                    range: block.range,
+                                    parent_heading_slug: parent_slug,
+                                    block_id: block.block_id.map(|s| s.to_string()),
+                                    text: if include_text {
+                                        Some(text.to_string())
+                                    } else {
+                                        None
+                                    },
+                                },
+                            );
+                        }
+                    }
+                }
+
+                CoreOperationResult::BlockTextMatches {
+                    realm: realm_key.to_string(),
+                    query,
+                    matches: all_matches,
+                    truncated: total_found > limit,
+                }
             }
         }
     }

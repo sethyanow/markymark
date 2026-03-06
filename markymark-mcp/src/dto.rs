@@ -727,3 +727,64 @@ pub struct GetContentBlocksResponse {
     /// The content blocks matching the request filters.
     pub content_blocks: Vec<ContentBlockDto>,
 }
+
+// ---- Search Block Text ----
+
+/// Request payload for `search-block-text`.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct SearchBlockTextRequest {
+    /// The substring to search for (case-insensitive). Must not be empty or whitespace-only.
+    pub query: String,
+    /// Realm to search. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+    /// Filter by block kind (e.g. `"paragraph"`, `"list_item"`, `"code_block"`).
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// Maximum number of block-level matches to return (0–500, default 100).
+    /// Values above 500 are clamped silently.
+    #[serde(default = "default_block_text_limit")]
+    pub limit: u32,
+    /// Whether to include block text content in results. Defaults to `false`.
+    #[serde(default)]
+    pub include_text: bool,
+}
+
+fn default_block_text_limit() -> u32 {
+    100
+}
+
+/// A single block-level match from `search-block-text`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BlockTextMatchDto {
+    /// Document URI where the match was found.
+    pub uri: String,
+    /// Block kind (e.g. `"paragraph"`, `"list_item"`, `"code_block"`).
+    pub kind: String,
+    /// Source range of the block in the document.
+    pub range: RangeDto,
+    /// Slug of the parent heading, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_heading_slug: Option<String>,
+    /// Block reference ID, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_id: Option<String>,
+    /// The text content of the block (only present when `include_text` is `true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+/// Response payload for `search-block-text`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchBlockTextResponse {
+    /// Realm that was searched.
+    pub realm: String,
+    /// The original query string.
+    pub query: String,
+    /// Total number of matches found (before limit applied).
+    pub total_matches: u32,
+    /// Block-level matches (up to `limit`).
+    pub matches: Vec<BlockTextMatchDto>,
+    /// `true` when results were truncated at `limit`.
+    pub truncated: bool,
+}
