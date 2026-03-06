@@ -107,6 +107,23 @@ Key modules: `engine/recommend.rs` (handler), `tools/recommend.rs` (MCP tool), `
 (`try_load_sidecar` now `pub(crate)` for shared use). Algorithm: 0.7*search_score + 0.3*hub_score,
 top_k results with optional section summaries. Sub-epic marky-d21j complete.
 
+### PR #52 Copilot Review Triage (2026-03-05)
+
+Triaged 7 findings (6 inline + 1 suppressed). 2 dismissed, 5 valid → 5 beads created.
+
+**Dismissed false positives:**
+- `root_to_file_uri()` "produces `file:////`" — reviewer's math wrong, `"file://" + "/tmp/x" = "file:///tmp/x"`.
+  Same pattern in `DocumentUri::from_file_path()`.
+- `stem_to_uri.insert()` "disagrees with graph-analysis" — both `curation.rs` and `graph.rs` use
+  identical `.insert()` pattern. Consistently last-indexed wins.
+
+**Valid findings (beads):**
+- marky-se77 (P2): export_docs_index root_count contract violation + `./{absolute}` display
+- marky-qfut (P2): curation degree map uses path-based markdown link resolution while graph.rs uses stem-based
+- marky-niw2 (P2): enrich.rs silent I/O errors (`let _ =`) + sidecar path collisions with override
+- marky-d175 (P3): outline format not validated at MCP boundary
+- marky-f2oa (P4): repeated allocations in outline section extraction + structured doc search
+
 ---
 
 ## Key Failure Patterns
