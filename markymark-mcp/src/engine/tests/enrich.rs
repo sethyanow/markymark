@@ -313,6 +313,130 @@ async fn enrich_document_no_headings() {
 }
 
 // ---------------------------------------------------------------------------
+// Error propagation and path collision tests (marky-niw2)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn write_sidecar_error_propagated() {
+    let dir = make_temp_realm_dir("enrich-write-error");
+    fs::write(dir.path().join("doc.md"), "# Title\n\nContent.\n").unwrap();
+
+    // Create a read-only directory as sidecar override — writes will fail.
+    let readonly_dir = dir.path().join("readonly-sidecar");
+    fs::create_dir(&readonly_dir).unwrap();
+    // Create a file that blocks the sidecar path so create_dir_all fails.
+    // (sidecar_path appends ".json", so write to "doc.md.json" which is a file,
+    // then sidecar tries to create_dir_all on the parent which includes this file.)
+    // Simpler: make the entire directory read-only.
+    let mut perms = fs::metadata(&readonly_dir).unwrap().permissions();
+    perms.set_readonly(true);
+    fs::set_permissions(&readonly_dir, perms).unwrap();
+
+    let engine = make_engine_with_custom_realm("enrich-write-err", dir.path()).await;
+    let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
+
+    let provider = TestInferenceProvider;
+    let state = engine.state.read().await;
+    let realm_data = state.get("enrich-write-err").unwrap();
+
+    let result = enrich::handle_enrich_document(
+        &realm_data.index,
+        &realm_data.roots,
+        &uri,
+        Some(readonly_dir.as_path()),
+        false,
+        Some(&provider),
+    )
+    .await;
+
+    // Restore permissions for cleanup.
+    let mut perms = fs::metadata(&readonly_dir).unwrap().permissions();
+    #[allow(clippy::permissions_set_readonly_false)]
+    perms.set_readonly(false);
+    fs::set_permissions(&readonly_dir, perms).unwrap();
+
+    assert!(
+        matches!(result, CoreOperationResult::Error(_)),
+        "expected Error when sidecar write fails, got {result:?}"
+    );
+    if let CoreOperationResult::Error(err) = result {
+        let msg = err.to_string();
+        assert!(
+            msg.contains("sidecar"),
+            "error should mention sidecar, got: {msg}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn sidecar_override_no_collision() {
+    let dir = make_temp_realm_dir("enrich-no-collision");
+    let custom_sidecar = dir.path().join("shared-sidecars");
+
+    // Create two files with the same name in different subdirectories.
+    let sub_a = dir.path().join("a");
+    let sub_b = dir.path().join("b");
+    fs::create_dir_all(&sub_a).unwrap();
+    fs::create_dir_all(&sub_b).unwrap();
+    fs::write(sub_a.join("README.md"), "# Alpha\n\nAlpha content.\n").unwrap();
+    fs::write(sub_b.join("README.md"), "# Beta\n\nBeta content.\n").unwrap();
+
+    let engine = make_engine_with_custom_realm("enrich-collision", dir.path()).await;
+    let uri_a = DocumentUri::from_file_path(&sub_a.join("README.md"));
+    let uri_b = DocumentUri::from_file_path(&sub_b.join("README.md"));
+
+    let provider = TestInferenceProvider;
+    let state = engine.state.read().await;
+    let realm_data = state.get("enrich-collision").unwrap();
+
+    // Enrich both documents with the same sidecar override directory.
+    let _result_a = enrich::handle_enrich_document(
+        &realm_data.index,
+        &realm_data.roots,
+        &uri_a,
+        Some(custom_sidecar.as_path()),
+        false,
+        Some(&provider),
+    )
+    .await;
+
+    let _result_b = enrich::handle_enrich_document(
+        &realm_data.index,
+        &realm_data.roots,
+        &uri_b,
+        Some(custom_sidecar.as_path()),
+        false,
+        Some(&provider),
+    )
+    .await;
+
+    // Both should produce distinct sidecar files (not collide on the same path).
+    let sidecar_a = custom_sidecar.join("a").join("README.md.json");
+    let sidecar_b = custom_sidecar.join("b").join("README.md.json");
+    assert!(
+        sidecar_a.exists(),
+        "sidecar for a/README.md should be at {}, not just README.md.json",
+        sidecar_a.display()
+    );
+    assert!(
+        sidecar_b.exists(),
+        "sidecar for b/README.md should be at {}, not just README.md.json",
+        sidecar_b.display()
+    );
+
+    // Read both sidecars and verify they have different content hashes
+    // (proving the second didn't silently overwrite the first).
+    let json_a: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&sidecar_a).unwrap()).unwrap();
+    let json_b: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&sidecar_b).unwrap()).unwrap();
+    assert_ne!(
+        json_a["content_hash"], json_b["content_hash"],
+        "sidecars should have different content hashes (different source files)"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // inject_summaries tests
 // ---------------------------------------------------------------------------
 
