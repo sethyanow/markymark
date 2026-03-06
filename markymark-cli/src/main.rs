@@ -32,12 +32,19 @@ pub enum SemanticProvider {
 #[command(name = "markymark", version, about)]
 struct Cli {
     /// Run in LSP (Language Server Protocol) mode [default].
-    #[arg(long, conflicts_with = "mcp")]
+    #[arg(long, conflicts_with_all = ["mcp", "mcp_slim"])]
     lsp: bool,
 
     /// Run in MCP (Model Context Protocol) mode for AI assistants.
-    #[arg(long, conflicts_with = "lsp")]
+    #[arg(long, conflicts_with_all = ["lsp", "mcp_slim"])]
     mcp: bool,
+
+    /// Run in slim MCP mode: single `execute` tool replacing the full tool surface.
+    ///
+    /// Designed for Claude Code agents where skills provide workflow guidance.
+    /// Same operations, ~500 tokens vs ~10k.
+    #[arg(long, conflicts_with_all = ["lsp", "mcp"])]
+    mcp_slim: bool,
 
     /// Enable semantic search with the given provider.
     ///
@@ -66,6 +73,8 @@ async fn main() -> Result<()> {
 
     if cli.mcp {
         run_mcp(roots, cli.semantic_search).await
+    } else if cli.mcp_slim {
+        run_mcp_slim(roots, cli.semantic_search).await
     } else {
         // Default to LSP mode (when neither flag or --lsp is specified).
         if cli.semantic_search.is_some() {
@@ -86,6 +95,14 @@ async fn run_mcp(roots: Vec<PathBuf>, semantic: Option<SemanticProvider>) -> Res
         None => markymark_mcp::RuntimeEngine::from_workspace_roots(roots).await?,
     };
     markymark_mcp::run_stdio(Arc::new(engine)).await
+}
+
+async fn run_mcp_slim(roots: Vec<PathBuf>, semantic: Option<SemanticProvider>) -> Result<()> {
+    let engine = match semantic {
+        Some(provider) => build_engine_with_provider(roots, provider).await?,
+        None => markymark_mcp::RuntimeEngine::from_workspace_roots(roots).await?,
+    };
+    markymark_mcp::run_slim_stdio(Arc::new(engine)).await
 }
 
 #[cfg(feature = "semantic-search")]
@@ -188,6 +205,26 @@ mod tests {
     fn cli_invalid_provider_rejected() {
         let result =
             Cli::try_parse_from(["markymark", "--mcp", "--semantic-search", "openai", "."]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn cli_parses_mcp_slim_flag() {
+        let cli = Cli::try_parse_from(["markymark", "--mcp-slim", "."]).unwrap();
+        assert!(cli.mcp_slim);
+        assert!(!cli.mcp);
+        assert!(!cli.lsp);
+    }
+
+    #[test]
+    fn cli_mcp_slim_conflicts_with_mcp() {
+        let result = Cli::try_parse_from(["markymark", "--mcp-slim", "--mcp", "."]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn cli_mcp_slim_conflicts_with_lsp() {
+        let result = Cli::try_parse_from(["markymark", "--mcp-slim", "--lsp", "."]);
         assert!(result.is_err());
     }
 

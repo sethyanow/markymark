@@ -30,6 +30,7 @@ mod prompts;
 mod rename_ops;
 mod resources;
 pub(crate) mod search;
+mod slim;
 mod subscriptions;
 mod tools;
 
@@ -37,6 +38,7 @@ pub use dto::*;
 #[cfg(feature = "semantic-search")]
 pub use engine::HashEmbeddingProvider;
 pub use engine::RuntimeEngine;
+pub use slim::{ExecuteRequest, SlimMarkymarkMcp, run_slim_stdio};
 
 pub(crate) const SEMANTIC_SEARCH_MAX_TOP_K: u32 = 100;
 
