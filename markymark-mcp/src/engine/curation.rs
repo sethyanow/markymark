@@ -202,21 +202,18 @@ fn compute_degree_maps(realm: &RealmIndex) -> (HashMap<String, u32>, HashMap<Str
             }
         }
 
-        // Markdown links (local only).
+        // Markdown links (local only, path-based resolution via shared helper).
         for ml in doc.markdown_links() {
             let url = ml.url;
             if url.starts_with("http://") || url.starts_with("https://") || url.starts_with('#') {
                 continue;
             }
-            if let Some(path) = uri.to_file_path() {
-                if let Some(parent) = path.parent() {
-                    let target_path = parent.join(url.split('#').next().unwrap_or(url));
-                    let target_uri = format!("file://{}", target_path.display());
-                    if doc_uri_set.contains(&target_uri) && seen_targets.insert(target_uri.clone())
-                    {
-                        *in_degree.entry(target_uri).or_insert(0) += 1;
-                        *out_degree.entry(source.clone()).or_insert(0) += 1;
-                    }
+            if let Some(resolved) =
+                super::helpers::resolve_markdown_link(uri, url, &doc_uri_set)
+            {
+                if seen_targets.insert(resolved.clone()) {
+                    *in_degree.entry(resolved).or_insert(0) += 1;
+                    *out_degree.entry(source.clone()).or_insert(0) += 1;
                 }
             }
         }

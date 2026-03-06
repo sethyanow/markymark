@@ -91,7 +91,7 @@ pub fn execute_graph_analysis(
             }
         }
 
-        // --- Markdown links (internal only) ---
+        // --- Markdown links (internal only, path-based resolution) ---
         for ml in doc.markdown_links() {
             let url = ml.url;
             // Skip external and anchor-only links.
@@ -102,19 +102,8 @@ pub fn execute_graph_analysis(
             {
                 continue;
             }
-            // Extract the file stem from the URL path (before any #anchor).
-            let url_path = url.split('#').next().unwrap_or(url);
-            let stem = std::path::Path::new(url_path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("")
-                .trim();
-            if stem.is_empty() {
-                continue;
-            }
-            match stem_to_uri.get(&stem.to_lowercase()) {
-                Some(resolved) => {
-                    let resolved_str = resolved.as_str().to_string();
+            match crate::engine::helpers::resolve_markdown_link(uri, url, &doc_uri_set) {
+                Some(resolved_str) => {
                     if seen_targets.insert(resolved_str.clone()) {
                         *in_degree.entry(resolved_str.clone()).or_insert(0) += 1;
                         *out_degree.entry(source.clone()).or_insert(0) += 1;
@@ -513,6 +502,102 @@ mod tests {
         match super::execute_graph_analysis("default", &realm, 10, false) {
             CoreOperationResult::GraphAnalysis { broken_links, .. } => {
                 assert!(broken_links.is_empty(), "broken: {broken_links:?}");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    /// Helper to create a realm with docs at specific paths (not flat /vault/).
+    async fn make_realm_with_paths(docs: &[(&str, &str)]) -> RealmIndex {
+        let mut realm = RealmIndex::new();
+        for (path, source) in docs {
+            let doc_uri = DocumentUri::from_file_path(&PathBuf::from(path));
+            realm.add_document(doc_uri, make_index(source)).await;
+        }
+        realm
+    }
+
+    #[tokio::test]
+    async fn path_based_markdown_link_resolution() {
+        // docs/a/index.md links to ../b/page.md
+        // docs/b/page.md exists
+        // docs/c/page.md also exists (same stem!)
+        // The link should resolve to docs/b/page.md, NOT docs/c/page.md.
+        let realm = make_realm_with_paths(&[
+            ("/docs/a/index.md", "[link](../b/page.md)"),
+            ("/docs/b/page.md", "# Page B"),
+            ("/docs/c/page.md", "# Page C"),
+        ])
+        .await;
+        match super::execute_graph_analysis("default", &realm, 10, false) {
+            CoreOperationResult::GraphAnalysis {
+                broken_links,
+                total_internal_links,
+                hubs,
+                ..
+            } => {
+                assert!(broken_links.is_empty(), "broken: {broken_links:?}");
+                assert_eq!(
+                    total_internal_links, 1,
+                    "should resolve exactly one internal link"
+                );
+                // docs/b/page.md should have in-degree 1 (linked from a/index.md)
+                let b_uri = DocumentUri::from_file_path(&PathBuf::from("/docs/b/page.md"));
+                let b_hub = hubs.iter().find(|(u, _)| u == &b_uri);
+                assert!(
+                    b_hub.is_some(),
+                    "docs/b/page.md should be in hubs list"
+                );
+                assert_eq!(b_hub.unwrap().1, 1, "docs/b/page.md should have in-degree 1");
+
+                // docs/c/page.md should NOT have in-degree (link was NOT to it)
+                let c_uri = DocumentUri::from_file_path(&PathBuf::from("/docs/c/page.md"));
+                let c_hub = hubs.iter().find(|(u, _)| u == &c_uri);
+                if let Some((_, count)) = c_hub {
+                    assert_eq!(*count, 0, "docs/c/page.md should have in-degree 0");
+                }
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn same_stem_different_dirs_not_confused() {
+        // root/index.md links to sub/README.md
+        // root/sub/README.md exists
+        // root/other/README.md also exists (same stem)
+        // Only root/sub/README.md should get in-degree.
+        let realm = make_realm_with_paths(&[
+            ("/root/index.md", "[link](sub/README.md)"),
+            ("/root/sub/README.md", "# Sub README"),
+            ("/root/other/README.md", "# Other README"),
+        ])
+        .await;
+        match super::execute_graph_analysis("default", &realm, 10, false) {
+            CoreOperationResult::GraphAnalysis {
+                broken_links,
+                total_internal_links,
+                hubs,
+                ..
+            } => {
+                assert!(broken_links.is_empty(), "broken: {broken_links:?}");
+                assert_eq!(total_internal_links, 1);
+
+                let sub_uri =
+                    DocumentUri::from_file_path(&PathBuf::from("/root/sub/README.md"));
+                let sub_hub = hubs.iter().find(|(u, _)| u == &sub_uri);
+                assert!(sub_hub.is_some(), "sub/README.md should be in hubs");
+                assert_eq!(sub_hub.unwrap().1, 1, "sub/README.md in-degree should be 1");
+
+                let other_uri =
+                    DocumentUri::from_file_path(&PathBuf::from("/root/other/README.md"));
+                let other_hub = hubs.iter().find(|(u, _)| u == &other_uri);
+                if let Some((_, count)) = other_hub {
+                    assert_eq!(
+                        *count, 0,
+                        "other/README.md should have in-degree 0, got {count}"
+                    );
+                }
             }
             other => panic!("unexpected: {other:?}"),
         }

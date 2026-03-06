@@ -22,7 +22,7 @@ mod diagnostics;
 mod enrich;
 mod export;
 mod export_docs_index;
-mod helpers;
+pub(crate) mod helpers;
 mod outline;
 mod realm_ops;
 mod recommend;

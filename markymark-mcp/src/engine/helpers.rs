@@ -5,8 +5,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::bail;
 use markymark_core::structured::DocumentKind;
+use markymark_core::DocumentUri;
 #[cfg(feature = "semantic-search")]
-use markymark_core::{DocumentUri, Range};
+use markymark_core::Range;
 use markymark_index::RealmIndex;
 use markymark_kernels::tokens;
 
@@ -203,6 +204,50 @@ fn escape_dot_label(s: &str) -> String {
         }
     }
     out
+}
+
+/// Resolve a local markdown link URL to a URI string.
+///
+/// Takes the source document's URI and the raw link URL (e.g. `../other/file.md`),
+/// resolves the path relative to the source's parent directory, normalizes it,
+/// and returns the target URI string if it exists in `known_uris`.
+///
+/// Wiki links should NOT use this function — they use stem-based resolution by design.
+pub(crate) fn resolve_markdown_link(
+    source_uri: &DocumentUri,
+    link_url: &str,
+    known_uris: &std::collections::HashSet<String>,
+) -> Option<String> {
+    let url_path = link_url.split('#').next().unwrap_or(link_url);
+    if url_path.is_empty() {
+        return None;
+    }
+    let source_path = source_uri.to_file_path()?;
+    let parent = source_path.parent()?;
+    let target_path = parent.join(url_path);
+    let normalized = normalize_path(&target_path);
+    let target_uri = DocumentUri::from_file_path(&normalized);
+    let target_str = target_uri.as_str().to_string();
+    if known_uris.contains(&target_str) {
+        Some(target_str)
+    } else {
+        None
+    }
+}
+
+/// Normalize a path by resolving `.` and `..` components without touching the filesystem.
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut components = Vec::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                components.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => components.push(other),
+        }
+    }
+    components.iter().collect()
 }
 
 #[cfg(test)]

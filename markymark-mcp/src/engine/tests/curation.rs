@@ -352,3 +352,69 @@ async fn include_suggestions_false_returns_no_suggestions() {
         "orphans should still be detected even without suggestions"
     );
 }
+
+#[tokio::test]
+async fn cross_directory_link_counted_in_degrees() {
+    // Setup: sub/a.md links to ../b.md via relative path
+    // b.md should have in-degree from this cross-directory link.
+    // c.md has same stem as b.md in different location — should NOT get in-degree.
+    let dir = tempfile::tempdir().unwrap();
+    let sub = dir.path().join("sub");
+    fs::create_dir_all(&sub).unwrap();
+    // sub/a.md links to ../b.md (relative path crossing directories)
+    fs::write(sub.join("a.md"), "# Doc A\n\n[see B](../b.md)\n").unwrap();
+    // b.md at root
+    fs::write(dir.path().join("b.md"), "# Doc B\n\nTarget.\n").unwrap();
+    // other/b.md — same stem, different directory (should NOT be linked)
+    let other = dir.path().join("other");
+    fs::create_dir_all(&other).unwrap();
+    fs::write(other.join("b.md"), "# Other B\n\nDifferent file.\n").unwrap();
+
+    let engine = make_engine_with_root(dir.path()).await;
+    let result = engine
+        .execute(CoreOperation::CurationDiagnostics {
+            realm: None,
+            include_suggestions: false,
+            max_suggestions: 0,
+            max_items_per_category: 50,
+        })
+        .await;
+
+    let (_, report) = extract_curation_report(result);
+    assert_eq!(report.stats.total_docs, 3);
+
+    // sub/a.md links to ../b.md, so:
+    // - b.md should have in-degree >= 1 (linked)
+    // - other/b.md should have in-degree 0 (not the target)
+    // - sub/a.md should have out-degree >= 1
+
+    // With correct path-based resolution, b.md is NOT an orphan
+    // (it has in-degree from sub/a.md). other/b.md IS an orphan.
+    let b_uri_str = markymark_core::DocumentUri::from_file_path(&dir.path().join("b.md"))
+        .as_str()
+        .to_string();
+    let other_b_uri_str =
+        markymark_core::DocumentUri::from_file_path(&other.join("b.md"))
+            .as_str()
+            .to_string();
+
+    // b.md should NOT be in orphans (it's linked to)
+    let b_is_orphan = report
+        .orphan_docs
+        .iter()
+        .any(|o| o.as_str() == b_uri_str);
+    assert!(
+        !b_is_orphan,
+        "b.md should not be orphan — sub/a.md links to it via ../b.md"
+    );
+
+    // other/b.md SHOULD be orphan (nothing links to it)
+    let other_b_is_orphan = report
+        .orphan_docs
+        .iter()
+        .any(|o| o.as_str() == other_b_uri_str);
+    assert!(
+        other_b_is_orphan,
+        "other/b.md should be orphan — nothing links to it"
+    );
+}
