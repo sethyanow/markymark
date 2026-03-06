@@ -460,6 +460,18 @@ impl MarkymarkMcp {
     ) -> Result<CallToolResult, McpError> {
         tools::diagnostics::handle_get_diagnostics(&*self.engine, params.0).await
     }
+
+    /// Get content blocks for a document URI with optional filtering.
+    #[tool(
+        name = "get-content-blocks",
+        description = "Get content blocks (paragraphs, list items, code blocks, etc.) for a document URI. Supports filtering by block kind, parent heading slug, and block reference ID. Use `include_text` to include block text content."
+    )]
+    pub async fn get_content_blocks_tool(
+        &self,
+        params: Parameters<GetContentBlocksRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::blocks::handle_get_content_blocks(&*self.engine, params.0).await
+    }
 }
 
 /// Run markymark MCP over stdio using the provided shared core engine.

@@ -667,3 +667,55 @@ pub struct GraphAnalysisResponse {
     /// Weakly-connected clusters. `null` when `include_clusters` was `false`.
     pub clusters: Option<Vec<ClusterDto>>,
 }
+
+// ---- Content Blocks ----
+
+/// Request payload for `get-content-blocks`.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct GetContentBlocksRequest {
+    /// Document URI (`file://...`) to get content blocks from.
+    pub uri: String,
+    /// Realm to query. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+    /// Filter by block kind (e.g. `"paragraph"`, `"list_item"`, `"code_block"`,
+    /// `"blockquote"`, `"thematic_break"`, `"table"`).
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// Filter by parent heading slug (only blocks under this heading).
+    #[serde(default)]
+    pub heading: Option<String>,
+    /// Look up a specific block by its block reference ID (e.g. `"my-ref"`).
+    #[serde(default)]
+    pub block_id: Option<String>,
+    /// Whether to include block text content in the response. Defaults to `false`.
+    #[serde(default)]
+    pub include_text: bool,
+}
+
+/// A single content block in a `get-content-blocks` response.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ContentBlockDto {
+    /// Block kind (e.g. `"paragraph"`, `"list_item"`, `"code_block"`).
+    pub kind: String,
+    /// Source range of the block in the document.
+    pub range: RangeDto,
+    /// Slug of the parent heading, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_heading_slug: Option<String>,
+    /// Block reference ID (e.g. `"my-ref"`), if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_id: Option<String>,
+    /// The text content of the block (only present when `include_text` is `true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+/// Response payload for `get-content-blocks`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetContentBlocksResponse {
+    /// The document URI that was queried.
+    pub uri: String,
+    /// The content blocks matching the request filters.
+    pub content_blocks: Vec<ContentBlockDto>,
+}
