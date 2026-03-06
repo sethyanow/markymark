@@ -15,6 +15,17 @@ Detailed patterns live in topic files. Historical context lives in the archive.
 
 ## Current State (2026-03-05)
 
+### Epic marky-z7uc: ContentBlock MCP Tools (In Progress)
+
+**Task 1 complete (marky-ehas):** `get-content-blocks` MCP tool shipped with 16 integration tests.
+
+**Key decision:** Switched RuntimeEngine indexing from `from_scan_with_frontmatter` to `from_ast`.
+The scan path doesn't extract content blocks (passes empty `raw_blocks`). `from_ast` runs tree-sitter
+to extract blocks, then delegates to `from_scan_inner` for everything else. Fallback to scan-only
+if tree-sitter parse fails.
+
+**Architecture pattern:** New tools follow `CoreOperation → RuntimeEngine.execute() → engine/content_blocks.rs → RealmIndex → DocumentIndex.content_blocks()`.
+
 ### Investigation Complete: Semantic Index and Block Model
 
 Comprehensive investigation of semantic indexing, search, and document index completed (2026-03-05).
