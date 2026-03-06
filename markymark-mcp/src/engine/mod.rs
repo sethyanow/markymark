@@ -257,17 +257,25 @@ pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
         if kind == DocumentKind::Markdown {
             let (fm_owned, aliases_owned) = markymark_index::parse_frontmatter_owned(&source);
 
+            // Extract content blocks via tree-sitter block-tree parse.
+            // This runs only the block grammar (no inline parsing), so it's
+            // lightweight. The blocks feed into from_scan_inner alongside
+            // md4c-extracted headings, links, and inline elements.
+            let raw_blocks =
+                markymark_index::document::extract_raw_content_blocks(&source);
+
             // Mask frontmatter block so md4c doesn't misparse `---` as a
             // setext heading underline. Replace non-newline bytes with spaces
             // to preserve line counting and byte offsets.
             let scan_source = markymark_index::mask_frontmatter(&source);
             markdown_docs.push((
                 uri,
-                DocumentIndex::from_scan_with_frontmatter(
+                DocumentIndex::from_scan_with_blocks(
                     &scan_source,
                     &backend,
                     fm_owned,
                     aliases_owned,
+                    raw_blocks,
                 ),
             ));
         } else {
@@ -780,17 +788,17 @@ impl CoreEngine for RuntimeEngine {
                             }
                         }
                         if let Some(ref heading_slug) = heading_filter {
-                            let matches = b.parent_heading.map_or(false, |idx| {
+                            let matches = b.parent_heading.is_some_and(|idx| {
                                 headings
                                     .get(idx)
-                                    .map_or(false, |h| h.slug == heading_slug.as_str())
+                                    .is_some_and(|h| h.slug == heading_slug.as_str())
                             });
                             if !matches {
                                 return false;
                             }
                         }
                         if let Some(ref bid) = block_id {
-                            if b.block_id.map_or(true, |id| id != bid.as_str()) {
+                            if b.block_id != Some(bid.as_str()) {
                                 return false;
                             }
                         }
@@ -807,7 +815,7 @@ impl CoreEngine for RuntimeEngine {
                         };
                         markymark_core::engine::ContentBlockResult {
                             kind: block_kind_str(&b.kind).to_string(),
-                            range: b.range.clone(),
+                            range: b.range,
                             parent_heading_index: b.parent_heading,
                             parent_heading_slug: parent_slug,
                             block_id: b.block_id.map(|s| s.to_string()),

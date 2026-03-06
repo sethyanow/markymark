@@ -14,9 +14,12 @@ use super::{helpers, DocumentIndex};
 ///
 /// Carries the block kind and byte range from the AST walk to `from_scan_inner`
 /// where it gets arena-allocated as a [`ContentBlock`].
-pub(super) struct RawBlock {
+pub struct RawBlock {
+    /// The kind of content block.
     pub kind: BlockKind,
+    /// Byte offset of the block start.
     pub start_byte: usize,
+    /// Byte offset one past the block end.
     pub end_byte: usize,
 }
 
@@ -36,6 +39,30 @@ impl DocumentIndex {
         let masked = helpers::mask_frontmatter(&source_text);
         Self::from_scan_inner(&masked, &Md4cScanBackend, fm, aliases, raw_blocks)
     }
+}
+
+/// Extract content blocks from source text using tree-sitter block-tree parsing.
+///
+/// This is the public entry point for callers that need content block extraction
+/// without a full `from_ast` build. Parses only the block tree (skipping inline
+/// grammar) and walks it to collect content blocks.
+///
+/// Blocks whose `start_byte` falls within the frontmatter region are excluded.
+pub fn extract_raw_content_blocks(source: &str) -> Vec<RawBlock> {
+    let mut parser = match markymark_parser::Parser::new() {
+        Ok(p) => p,
+        Err(_) => return Vec::new(),
+    };
+    let block_tree = match parser.parse_block_tree_only(source, None) {
+        Some(t) => t,
+        None => return Vec::new(),
+    };
+    let fm_end = helpers::frontmatter_byte_end(source);
+    let root = block_tree.root_node();
+    let mut blocks = Vec::new();
+    collect_content_blocks(root, source, fm_end, &mut blocks);
+    blocks.sort_by_key(|b| b.start_byte);
+    blocks
 }
 
 /// Extract content blocks from the tree-sitter AST before it's dropped.

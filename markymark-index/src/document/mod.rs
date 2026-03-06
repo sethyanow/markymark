@@ -13,6 +13,7 @@ mod tests;
 pub use helpers::{mask_frontmatter, parse_frontmatter_owned, slugify};
 pub use types::*;
 
+pub use from_ast::{extract_raw_content_blocks, RawBlock};
 pub use from_blob::BlobError;
 
 use hashbrown::HashMap;

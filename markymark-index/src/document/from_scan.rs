@@ -46,6 +46,21 @@ impl DocumentIndex {
         Self::from_scan_inner(text, backend, frontmatter, aliases, Vec::new())
     }
 
+    /// Same as [`from_scan_with_frontmatter`] but with pre-extracted content blocks.
+    ///
+    /// Use [`extract_raw_content_blocks`](super::from_ast::extract_raw_content_blocks)
+    /// to obtain blocks from tree-sitter, then pass them here for arena allocation
+    /// alongside md4c-scanned headings, links, and inline elements.
+    pub fn from_scan_with_blocks(
+        text: &str,
+        backend: &dyn ScanBackend,
+        frontmatter: Vec<FrontmatterOwnedEntry>,
+        aliases: Vec<String>,
+        blocks: Vec<super::from_ast::RawBlock>,
+    ) -> Self {
+        Self::from_scan_inner(text, backend, frontmatter, aliases, blocks)
+    }
+
     /// Build a document index with pre-parsed frontmatter and content blocks
     /// extracted from the tree-sitter AST.
     pub(super) fn from_scan_inner(
