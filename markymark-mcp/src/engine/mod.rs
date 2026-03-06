@@ -261,8 +261,7 @@ pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
             // This runs only the block grammar (no inline parsing), so it's
             // lightweight. The blocks feed into from_scan_inner alongside
             // md4c-extracted headings, links, and inline elements.
-            let raw_blocks =
-                markymark_index::document::extract_raw_content_blocks(&source);
+            let raw_blocks = markymark_index::document::extract_raw_content_blocks(&source);
 
             // Mask frontmatter block so md4c doesn't misparse `---` as a
             // setext heading underline. Replace non-newline bytes with spaces
@@ -762,7 +761,10 @@ impl CoreEngine for RuntimeEngine {
                 };
                 let Some(doc) = realm_data.index.get_document(&uri) else {
                     return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        format!("document not found in realm \"{realm_key}\": {}", uri.as_str()),
+                        format!(
+                            "document not found in realm \"{realm_key}\": {}",
+                            uri.as_str()
+                        ),
                     ));
                 };
 
@@ -795,9 +797,9 @@ impl CoreEngine for RuntimeEngine {
                         true
                     })
                     .map(|b| {
-                        let parent_slug = b.parent_heading.and_then(|idx| {
-                            headings.get(idx).map(|h| h.slug.to_string())
-                        });
+                        let parent_slug = b
+                            .parent_heading
+                            .and_then(|idx| headings.get(idx).map(|h| h.slug.to_string()));
                         let text = if include_text {
                             Some(doc.block_text(b).to_string())
                         } else {

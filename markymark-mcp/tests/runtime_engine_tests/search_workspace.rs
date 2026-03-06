@@ -349,7 +349,11 @@ async fn search_workspace_body_text_match_adds_body_field() {
     )
     .await;
     let results = search_workspace(&engine, Some("quantum"), None, None, None, 20).await;
-    assert_eq!(results.len(), 1, "body text match should return the document");
+    assert_eq!(
+        results.len(),
+        1,
+        "body text match should return the document"
+    );
     assert!(
         results[0].matched_fields.contains(&"body".to_string()),
         "matched_fields should contain 'body', got: {:?}",
@@ -366,14 +370,15 @@ async fn search_workspace_body_text_match_adds_body_field() {
 async fn search_workspace_body_text_match_is_case_insensitive() {
     let (_ws, engine) = engine_with_workspace_files(
         "sw-body-case",
-        &[(
-            "doc.md",
-            "# Title\n\nThe Quantum Realm is vast.\n",
-        )],
+        &[("doc.md", "# Title\n\nThe Quantum Realm is vast.\n")],
     )
     .await;
     let results = search_workspace(&engine, Some("quantum realm"), None, None, None, 20).await;
-    assert_eq!(results.len(), 1, "case-insensitive body match should find document");
+    assert_eq!(
+        results.len(),
+        1,
+        "case-insensitive body match should find document"
+    );
     assert!(
         results[0].matched_fields.contains(&"body".to_string()),
         "matched_fields should contain 'body' for case-insensitive match"

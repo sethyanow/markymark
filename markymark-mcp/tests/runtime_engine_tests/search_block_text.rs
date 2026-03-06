@@ -40,9 +40,7 @@ async fn search_block_text_finds_matching_paragraph() {
         .await;
 
     match result {
-        CoreOperationResult::BlockTextMatches {
-            matches, query, ..
-        } => {
+        CoreOperationResult::BlockTextMatches { matches, query, .. } => {
             assert_eq!(query, "Rust programming");
             assert!(
                 !matches.is_empty(),
@@ -225,8 +223,7 @@ async fn search_block_text_omits_text_when_disabled() {
 #[tokio::test]
 async fn search_block_text_empty_query_returns_error() {
     let ws = TempWorkspace::new("search-block-text-empty");
-    fs::write(ws.root().join("test.md"), "# Title\n\nContent.\n")
-        .expect("write test doc");
+    fs::write(ws.root().join("test.md"), "# Title\n\nContent.\n").expect("write test doc");
 
     let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
         .await
@@ -276,9 +273,7 @@ async fn search_block_text_no_matches_returns_empty() {
 
     match result {
         CoreOperationResult::BlockTextMatches {
-            matches,
-            truncated,
-            ..
+            matches, truncated, ..
         } => {
             assert!(matches.is_empty(), "no matches expected for nonsense query");
             assert!(!truncated, "should not be truncated when empty");
@@ -291,8 +286,7 @@ async fn search_block_text_no_matches_returns_empty() {
 #[tokio::test]
 async fn search_block_text_nonexistent_realm_returns_error() {
     let ws = TempWorkspace::new("search-block-text-badrealm");
-    fs::write(ws.root().join("test.md"), "# Title\n\nContent.\n")
-        .expect("write test doc");
+    fs::write(ws.root().join("test.md"), "# Title\n\nContent.\n").expect("write test doc");
 
     let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
         .await

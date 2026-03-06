@@ -6,7 +6,7 @@ use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use rmcp::{model::CallToolResult, ErrorData as McpError};
 use serde_json::json;
 
-use super::{tool_error, parse_file_uri, tool_error_from_core, unexpected_result_error};
+use super::{parse_file_uri, tool_error, tool_error_from_core, unexpected_result_error};
 use crate::dto::*;
 
 /// Handle a `get-content-blocks` tool call.
@@ -45,12 +45,12 @@ pub(crate) async fn handle_get_content_blocks(
                 })
                 .collect();
 
-            Ok(CallToolResult::structured(
-                json!(GetContentBlocksResponse {
+            Ok(CallToolResult::structured(json!(
+                GetContentBlocksResponse {
                     uri: req.uri,
                     content_blocks: block_dtos,
-                }),
-            ))
+                }
+            )))
         }
         CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
         other => Ok(unexpected_result_error("get-content-blocks", &other)),
@@ -108,15 +108,13 @@ pub(crate) async fn handle_search_block_text(
                 })
                 .collect();
 
-            Ok(CallToolResult::structured(
-                json!(SearchBlockTextResponse {
-                    realm,
-                    query,
-                    total_matches: total,
-                    matches: match_dtos,
-                    truncated,
-                }),
-            ))
+            Ok(CallToolResult::structured(json!(SearchBlockTextResponse {
+                realm,
+                query,
+                total_matches: total,
+                matches: match_dtos,
+                truncated,
+            })))
         }
         CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
         other => Ok(unexpected_result_error("search-block-text", &other)),

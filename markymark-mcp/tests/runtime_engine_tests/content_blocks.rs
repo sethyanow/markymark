@@ -44,7 +44,10 @@ async fn get_content_blocks_returns_blocks_for_markdown_document() {
         .await;
 
     match result {
-        CoreOperationResult::ContentBlocks { uri: result_uri, blocks } => {
+        CoreOperationResult::ContentBlocks {
+            uri: result_uri,
+            blocks,
+        } => {
             assert_eq!(result_uri.as_str(), uri.as_str());
             assert!(
                 !blocks.is_empty(),
@@ -63,8 +66,7 @@ async fn get_content_blocks_returns_blocks_for_markdown_document() {
 async fn get_content_blocks_with_include_text_returns_text() {
     let ws = TempWorkspace::new("content-blocks-text");
     let doc = ws.root().join("test.md");
-    fs::write(&doc, "# Heading\n\nHello world paragraph.\n")
-        .expect("write test document");
+    fs::write(&doc, "# Heading\n\nHello world paragraph.\n").expect("write test document");
 
     let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
         .await
@@ -103,8 +105,7 @@ async fn get_content_blocks_with_include_text_returns_text() {
 async fn get_content_blocks_without_include_text_omits_text() {
     let ws = TempWorkspace::new("content-blocks-no-text");
     let doc = ws.root().join("test.md");
-    fs::write(&doc, "# Heading\n\nParagraph content.\n")
-        .expect("write test document");
+    fs::write(&doc, "# Heading\n\nParagraph content.\n").expect("write test document");
 
     let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
         .await
@@ -235,7 +236,10 @@ async fn get_content_blocks_filters_by_heading() {
 
     match result {
         CoreOperationResult::ContentBlocks { blocks, .. } => {
-            assert!(!blocks.is_empty(), "should have blocks under 'details' heading");
+            assert!(
+                !blocks.is_empty(),
+                "should have blocks under 'details' heading"
+            );
             for b in &blocks {
                 assert_eq!(
                     b.parent_heading_slug.as_deref(),

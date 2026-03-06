@@ -6,7 +6,9 @@
 
 mod helpers;
 mod types;
-pub use types::{AnyDocumentIndex, BlockTextMatch, ResolvedBlock, ResolvedCodeSpan, ResolvedHeading};
+pub use types::{
+    AnyDocumentIndex, BlockTextMatch, ResolvedBlock, ResolvedCodeSpan, ResolvedHeading,
+};
 
 use helpers::{detect_journal_date, resolve_relative_path};
 
@@ -958,9 +960,9 @@ impl RealmIndex {
                 total_found += 1;
 
                 if matches.len() < limit {
-                    let parent_slug = block.parent_heading.and_then(|idx| {
-                        headings.get(idx).map(|h| h.slug.to_string())
-                    });
+                    let parent_slug = block
+                        .parent_heading
+                        .and_then(|idx| headings.get(idx).map(|h| h.slug.to_string()));
 
                     matches.push(BlockTextMatch {
                         uri: uri.clone(),

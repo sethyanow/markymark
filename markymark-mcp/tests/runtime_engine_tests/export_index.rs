@@ -276,9 +276,7 @@ async fn export_index_without_include_blocks_omits_content_blocks() {
         .await;
 
     match result {
-        CoreOperationResult::DocumentExport {
-            content_blocks, ..
-        } => {
+        CoreOperationResult::DocumentExport { content_blocks, .. } => {
             assert!(
                 content_blocks.is_none(),
                 "include_blocks=false should produce None, got: {content_blocks:?}"
@@ -308,9 +306,7 @@ async fn export_index_structured_doc_with_include_blocks_returns_none() {
         .await;
 
     match result {
-        CoreOperationResult::DocumentExport {
-            content_blocks, ..
-        } => {
+        CoreOperationResult::DocumentExport { content_blocks, .. } => {
             assert!(
                 content_blocks.is_none(),
                 "structured documents should return None for content_blocks, got: {content_blocks:?}"
