@@ -337,3 +337,67 @@ async fn search_workspace_sort_descending_score_ties_by_uri_ascending() {
         "results with equal score should be sorted by URI ascending"
     );
 }
+
+#[tokio::test]
+async fn search_workspace_body_text_match_adds_body_field() {
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-body-match",
+        &[(
+            "doc.md",
+            "# Unrelated Title\n\nThis paragraph mentions quantum computing in detail.\n",
+        )],
+    )
+    .await;
+    let results = search_workspace(&engine, Some("quantum"), None, None, None, 20).await;
+    assert_eq!(results.len(), 1, "body text match should return the document");
+    assert!(
+        results[0].matched_fields.contains(&"body".to_string()),
+        "matched_fields should contain 'body', got: {:?}",
+        results[0].matched_fields
+    );
+    assert!(
+        (results[0].score - 0.4).abs() < f32::EPSILON,
+        "body-only match should score 0.4, got: {}",
+        results[0].score
+    );
+}
+
+#[tokio::test]
+async fn search_workspace_body_text_match_is_case_insensitive() {
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-body-case",
+        &[(
+            "doc.md",
+            "# Title\n\nThe Quantum Realm is vast.\n",
+        )],
+    )
+    .await;
+    let results = search_workspace(&engine, Some("quantum realm"), None, None, None, 20).await;
+    assert_eq!(results.len(), 1, "case-insensitive body match should find document");
+    assert!(
+        results[0].matched_fields.contains(&"body".to_string()),
+        "matched_fields should contain 'body' for case-insensitive match"
+    );
+}
+
+#[tokio::test]
+async fn search_workspace_no_body_match_excludes_body_field() {
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-no-body",
+        &[(
+            "doc.md",
+            "# Relevant Title\n\nCompletely unrelated paragraph content.\n",
+        )],
+    )
+    .await;
+    let results = search_workspace(&engine, Some("relevant"), None, None, None, 20).await;
+    assert_eq!(results.len(), 1, "title match should return the document");
+    assert!(
+        !results[0].matched_fields.contains(&"body".to_string()),
+        "matched_fields should NOT contain 'body' when body text doesn't match"
+    );
+    assert!(
+        results[0].matched_fields.contains(&"title".to_string()),
+        "should match on title"
+    );
+}
