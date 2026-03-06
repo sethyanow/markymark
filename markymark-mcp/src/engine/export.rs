@@ -1,6 +1,6 @@
 //! ExportIndex operation handler.
 
-use markymark_core::engine::CoreOperationResult;
+use markymark_core::engine::{ContentBlockResult, CoreOperationResult};
 use markymark_core::structured::DocumentKind;
 use markymark_core::{CoreError, DocumentUri};
 use markymark_index::document::{FrontmatterValueEntry, PropertyValueEntry};
@@ -25,7 +25,7 @@ fn fm_entry_to_strings(value: &FrontmatterValueEntry<'_>) -> Vec<String> {
 }
 use markymark_index::RealmIndex;
 
-pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri, _include_blocks: bool) -> CoreOperationResult {
+pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri, include_blocks: bool) -> CoreOperationResult {
     match realm.get_any_document(uri) {
         Some(markymark_index::AnyDocumentIndex::Markdown(index)) => {
             let headings = index
@@ -82,6 +82,31 @@ pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri, _includ
                 })
                 .collect();
 
+            let content_blocks = if include_blocks {
+                let heading_list = index.headings();
+                Some(
+                    index
+                        .content_blocks()
+                        .iter()
+                        .map(|b| {
+                            let parent_slug = b.parent_heading.and_then(|idx| {
+                                heading_list.get(idx).map(|h| h.slug.to_string())
+                            });
+                            ContentBlockResult {
+                                kind: super::helpers::block_kind_str(&b.kind).to_string(),
+                                range: b.range,
+                                parent_heading_index: b.parent_heading,
+                                parent_heading_slug: parent_slug,
+                                block_id: b.block_id.map(|s| s.to_string()),
+                                text: Some(index.block_text(b).to_string()),
+                            }
+                        })
+                        .collect(),
+                )
+            } else {
+                None
+            };
+
             CoreOperationResult::DocumentExport {
                 uri: uri.clone(),
                 document_kind: Some(DocumentKind::Markdown),
@@ -91,7 +116,7 @@ pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri, _includ
                 markdown_links,
                 frontmatter,
                 properties,
-                content_blocks: None,
+                content_blocks,
             }
         }
         Some(markymark_index::AnyDocumentIndex::Structured(index)) => {

@@ -403,7 +403,7 @@ impl MarkymarkMcp {
     /// Export the full document index for a single document.
     #[tool(
         name = "export-index",
-        description = "Export headings, XML tags, wiki links, and markdown links for a document."
+        description = "Export headings, XML tags, wiki links, and markdown links for a document. Supports optional content block export via include_blocks parameter."
     )]
     pub async fn export_index_tool(
         &self,

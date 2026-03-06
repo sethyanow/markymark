@@ -894,6 +894,10 @@ async fn export_index_tool_returns_structured_document_export() {
     assert_eq!(payload.markdown_links.len(), 1);
     assert_eq!(payload.markdown_links[0].text, "Click here");
     assert_eq!(payload.markdown_links[0].url, "https://example.com");
+    assert!(
+        payload.content_blocks.is_none(),
+        "include_blocks=false should omit content_blocks from response"
+    );
 }
 
 #[tokio::test]

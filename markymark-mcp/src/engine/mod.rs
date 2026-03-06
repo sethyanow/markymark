@@ -769,22 +769,11 @@ impl CoreEngine for RuntimeEngine {
                 let headings = doc.headings();
                 let content_blocks = doc.content_blocks();
 
-                let block_kind_str = |kind: &markymark_index::document::BlockKind| -> &str {
-                    match kind {
-                        markymark_index::document::BlockKind::Paragraph => "paragraph",
-                        markymark_index::document::BlockKind::ListItem => "list_item",
-                        markymark_index::document::BlockKind::CodeBlock => "code_block",
-                        markymark_index::document::BlockKind::BlockQuote => "blockquote",
-                        markymark_index::document::BlockKind::ThematicBreak => "thematic_break",
-                        markymark_index::document::BlockKind::Table => "table",
-                    }
-                };
-
                 let blocks: Vec<markymark_core::engine::ContentBlockResult> = content_blocks
                     .iter()
                     .filter(|b| {
                         if let Some(ref kind) = kind_filter {
-                            if block_kind_str(&b.kind) != kind.as_str() {
+                            if helpers::block_kind_str(&b.kind) != kind.as_str() {
                                 return false;
                             }
                         }
@@ -815,7 +804,7 @@ impl CoreEngine for RuntimeEngine {
                             None
                         };
                         markymark_core::engine::ContentBlockResult {
-                            kind: block_kind_str(&b.kind).to_string(),
+                            kind: helpers::block_kind_str(&b.kind).to_string(),
                             range: b.range,
                             parent_heading_index: b.parent_heading,
                             parent_heading_slug: parent_slug,
