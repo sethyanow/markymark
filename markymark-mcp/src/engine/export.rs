@@ -25,7 +25,7 @@ fn fm_entry_to_strings(value: &FrontmatterValueEntry<'_>) -> Vec<String> {
 }
 use markymark_index::RealmIndex;
 
-pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri) -> CoreOperationResult {
+pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri, _include_blocks: bool) -> CoreOperationResult {
     match realm.get_any_document(uri) {
         Some(markymark_index::AnyDocumentIndex::Markdown(index)) => {
             let headings = index
@@ -91,6 +91,7 @@ pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri) -> Core
                 markdown_links,
                 frontmatter,
                 properties,
+                content_blocks: None,
             }
         }
         Some(markymark_index::AnyDocumentIndex::Structured(index)) => {
@@ -117,6 +118,7 @@ pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri) -> Core
                 markdown_links: Vec::new(),
                 frontmatter: Vec::new(),
                 properties: Vec::new(),
+                content_blocks: None,
             }
         }
         None => CoreOperationResult::Error(CoreError::Message(format!(

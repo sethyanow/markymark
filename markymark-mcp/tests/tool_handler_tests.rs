@@ -183,6 +183,7 @@ impl CoreEngine for MockEngine {
                 )],
                 frontmatter: vec![],
                 properties: vec![],
+                content_blocks: None,
             },
             (_, CoreOperation::SearchWorkspace { realm, query, .. }) => {
                 CoreOperationResult::WorkspaceSearchResults {
@@ -874,6 +875,7 @@ async fn export_index_tool_returns_structured_document_export() {
         .export_index_tool(Parameters(ExportIndexRequest {
             uri: "file:///vault/notes.md".to_string(),
             realm: None,
+            include_blocks: false,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -903,6 +905,7 @@ async fn export_index_tool_rejects_non_file_uri() {
         .export_index_tool(Parameters(ExportIndexRequest {
             uri: "https://example.com/notes.md".to_string(),
             realm: None,
+            include_blocks: false,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -921,6 +924,7 @@ async fn export_index_tool_maps_core_error() {
         .export_index_tool(Parameters(ExportIndexRequest {
             uri: "file:///vault/notes.md".to_string(),
             realm: None,
+            include_blocks: false,
         }))
         .await
         .expect("tool call should not return protocol error");

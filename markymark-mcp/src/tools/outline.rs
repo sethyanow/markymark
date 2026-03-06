@@ -47,6 +47,7 @@ pub(crate) async fn handle_export_index(
         .execute(CoreOperation::ExportIndex {
             uri,
             realm: req.realm.clone(),
+            include_blocks: req.include_blocks,
         })
         .await
     {
@@ -58,6 +59,7 @@ pub(crate) async fn handle_export_index(
             markdown_links,
             frontmatter,
             properties,
+            content_blocks,
             ..
         } => {
             let headings: Vec<ExportedHeadingDto> = headings
@@ -105,6 +107,19 @@ pub(crate) async fn handle_export_index(
                 .map(|(key, value)| ExportedPropertyEntryDto { key, value })
                 .collect();
 
+            let content_blocks_dto: Option<Vec<ContentBlockDto>> = content_blocks.map(|blocks| {
+                blocks
+                    .into_iter()
+                    .map(|b| ContentBlockDto {
+                        kind: b.kind,
+                        range: range_to_dto(b.range),
+                        parent_heading_slug: b.parent_heading_slug,
+                        block_id: b.block_id,
+                        text: b.text,
+                    })
+                    .collect()
+            });
+
             Ok(CallToolResult::structured(json!(ExportIndexResponse {
                 uri: uri.as_str().to_string(),
                 headings,
@@ -113,6 +128,7 @@ pub(crate) async fn handle_export_index(
                 markdown_links,
                 frontmatter,
                 properties,
+                content_blocks: content_blocks_dto,
             })))
         }
         CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),

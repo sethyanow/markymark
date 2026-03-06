@@ -647,6 +647,7 @@ impl CoreEngine for RuntimeEngine {
             CoreOperation::ExportIndex {
                 uri,
                 realm: realm_name,
+                include_blocks,
             } => {
                 let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
                 let state = self.state.read().await;
@@ -655,7 +656,7 @@ impl CoreEngine for RuntimeEngine {
                         "realm does not exist: {realm_key}"
                     )));
                 };
-                export::handle_export_index(&realm_data.index, &uri)
+                export::handle_export_index(&realm_data.index, &uri, include_blocks)
             }
             CoreOperation::SearchWorkspace {
                 query,

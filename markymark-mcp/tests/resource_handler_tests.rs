@@ -52,6 +52,7 @@ impl CoreEngine for MockEngine {
                 markdown_links: vec![],
                 frontmatter: vec![],
                 properties: vec![],
+                content_blocks: None,
             },
             CoreOperation::DependencyGraph { realm, format } => {
                 let content = if format == "dot" {

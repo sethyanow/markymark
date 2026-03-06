@@ -152,6 +152,8 @@ pub enum CoreOperation {
         uri: DocumentUri,
         /// Realm to query. Defaults to "default" when `None`.
         realm: Option<String>,
+        /// When true, include content blocks in the response.
+        include_blocks: bool,
     },
     /// Get a dependency graph showing inter-document links.
     DependencyGraph {
@@ -343,6 +345,9 @@ pub enum CoreOperationResult {
         frontmatter: Vec<(String, Vec<String>)>,
         /// Logseq inline properties. String values are wrapped as single-element vecs.
         properties: Vec<(String, Vec<String>)>,
+        /// Content blocks (paragraphs, list items, code blocks, etc.).
+        /// Present only when `include_blocks` was true in the request.
+        content_blocks: Option<Vec<ContentBlockResult>>,
     },
     /// A dependency graph in the requested format (json or dot).
     DependencyGraph {

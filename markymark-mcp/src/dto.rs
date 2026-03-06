@@ -284,6 +284,10 @@ pub struct ExportIndexRequest {
     /// Realm to query. Defaults to `"default"` when omitted.
     #[serde(default)]
     pub realm: Option<String>,
+    /// When true, include content blocks (paragraphs, list items, code blocks, etc.)
+    /// in the response. Defaults to false.
+    #[serde(default)]
+    pub include_blocks: bool,
 }
 
 /// A heading entry in an exported document index.
@@ -363,6 +367,10 @@ pub struct ExportIndexResponse {
     pub frontmatter: Vec<ExportedFrontmatterEntryDto>,
     /// Logseq inline property entries.
     pub properties: Vec<ExportedPropertyEntryDto>,
+    /// Content blocks (paragraphs, list items, code blocks, etc.).
+    /// Present only when `include_blocks` was true in the request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_blocks: Option<Vec<ContentBlockDto>>,
 }
 
 /// Tool error envelope for consistent structured failures.
@@ -694,7 +702,7 @@ pub struct GetContentBlocksRequest {
 }
 
 /// A single content block in a `get-content-blocks` response.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct ContentBlockDto {
     /// Block kind (e.g. `"paragraph"`, `"list_item"`, `"code_block"`).
     pub kind: String,
