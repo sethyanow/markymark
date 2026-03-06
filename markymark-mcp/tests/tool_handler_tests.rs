@@ -214,6 +214,19 @@ impl CoreEngine for MockEngine {
                 realm: realm.unwrap_or_else(|| "default".to_string()),
                 items: vec![],
             },
+            (_, CoreOperation::GetContentBlocks { uri, .. }) => {
+                CoreOperationResult::ContentBlocks {
+                    uri,
+                    blocks: vec![markymark_core::engine::ContentBlockResult {
+                        kind: "paragraph".to_string(),
+                        range: Range::new(Position::new(2, 0), Position::new(2, 20)),
+                        parent_heading_index: Some(0),
+                        parent_heading_slug: Some("introduction".to_string()),
+                        block_id: None,
+                        text: None,
+                    }],
+                }
+            }
         }
     }
 }

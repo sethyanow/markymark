@@ -201,6 +201,10 @@ impl CoreEngine for MockEngine {
             CoreOperation::GetOutline { .. } => {
                 CoreOperationResult::Outline(vec!["Heading".to_string()])
             }
+            CoreOperation::GetContentBlocks { uri, .. } => CoreOperationResult::ContentBlocks {
+                uri,
+                blocks: vec![],
+            },
             _ => CoreOperationResult::Ok,
         }
     }

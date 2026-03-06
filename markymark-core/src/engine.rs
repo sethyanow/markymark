@@ -213,6 +213,21 @@ pub enum CoreOperation {
         /// Realm to query. Defaults to `"default"` when `None`.
         realm: Option<String>,
     },
+    /// Get content blocks for a document, with optional filtering.
+    GetContentBlocks {
+        /// Target document URI.
+        uri: DocumentUri,
+        /// Realm to query. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+        /// Optional filter by block kind (e.g. "paragraph", "code_block").
+        kind_filter: Option<String>,
+        /// Optional filter by parent heading slug.
+        heading_filter: Option<String>,
+        /// Optional lookup by Obsidian `^block-id`.
+        block_id: Option<String>,
+        /// Whether to include the block text in the response.
+        include_text: bool,
+    },
 }
 
 /// A single match result from a regex pattern search.
@@ -371,8 +386,32 @@ pub enum CoreOperationResult {
         /// Only files that have at least one diagnostic are included.
         items: Vec<(crate::DocumentUri, Vec<CoreDiagnostic>)>,
     },
+    /// Content blocks for a single document.
+    ContentBlocks {
+        /// Document URI.
+        uri: DocumentUri,
+        /// Matched content blocks.
+        blocks: Vec<ContentBlockResult>,
+    },
     /// Success with no payload.
     Ok,
     /// An error occurred.
     Error(CoreError),
+}
+
+/// A single content block in the result of a `GetContentBlocks` operation.
+#[derive(Debug, Clone)]
+pub struct ContentBlockResult {
+    /// Block kind as a lowercase string (e.g. "paragraph", "list_item").
+    pub kind: String,
+    /// Source range of the block.
+    pub range: Range,
+    /// Index of the parent heading, if any.
+    pub parent_heading_index: Option<usize>,
+    /// Slug of the parent heading, if any.
+    pub parent_heading_slug: Option<String>,
+    /// Optional Obsidian `^block-id`.
+    pub block_id: Option<String>,
+    /// Block text (only populated when `include_text` is true).
+    pub text: Option<String>,
 }

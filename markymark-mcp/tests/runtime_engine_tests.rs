@@ -11,6 +11,8 @@ use markymark_core::Range;
 
 pub(crate) use common::TempWorkspace;
 
+#[path = "runtime_engine_tests/content_blocks.rs"]
+mod content_blocks;
 #[path = "runtime_engine_tests/export_index.rs"]
 mod export_index;
 #[path = "runtime_engine_tests/find_references.rs"]

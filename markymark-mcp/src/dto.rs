@@ -651,6 +651,60 @@ pub struct GetDiagnosticsResponse {
     pub diagnostics: Vec<FileDiagnosticsDto>,
 }
 
+// ---------------------------------------------------------------------------
+// get-content-blocks
+// ---------------------------------------------------------------------------
+
+/// Request payload for the `get-content-blocks` tool.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct GetContentBlocksRequest {
+    /// Document URI (`file://...`) to get content blocks for.
+    pub uri: String,
+    /// Realm to query. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+    /// Optional filter by block kind. Valid values: `paragraph`, `list_item`,
+    /// `code_block`, `blockquote`, `thematic_break`, `table`.
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// Optional filter by parent heading slug.
+    #[serde(default)]
+    pub heading: Option<String>,
+    /// Optional lookup by Obsidian `^block-id`.
+    #[serde(default)]
+    pub block_id: Option<String>,
+    /// Whether to include the block text in the response. Defaults to `false`.
+    #[serde(default)]
+    pub include_text: bool,
+}
+
+/// A single content block in the response.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ContentBlockDto {
+    /// Block kind (e.g. "paragraph", "list_item", "code_block").
+    pub kind: String,
+    /// Source range of the block.
+    pub range: RangeDto,
+    /// Slug of the parent heading, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_heading_slug: Option<String>,
+    /// Obsidian `^block-id`, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_id: Option<String>,
+    /// Block text (only present when `include_text` is `true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+/// Response from the `get-content-blocks` tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetContentBlocksResponse {
+    /// Document URI.
+    pub uri: String,
+    /// Content blocks matching the filters.
+    pub blocks: Vec<ContentBlockDto>,
+}
+
 /// Response from the graph-analysis tool.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct GraphAnalysisResponse {
