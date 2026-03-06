@@ -1,9 +1,9 @@
 //! Code span cross-doc index tests and stem index tests (Layer 2).
 
+use super::super::*;
 use super::helpers::{
     code_span, make_md_index, make_md_index_with_code_spans, make_structured_index, test_key, uri,
 };
-use super::super::*;
 use markymark_core::structured::ValueKind;
 use std::path::PathBuf;
 

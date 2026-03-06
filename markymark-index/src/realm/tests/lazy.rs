@@ -5,8 +5,8 @@
 
 use std::collections::HashMap;
 
-use super::helpers::{make_md_index, uri};
 use super::super::*;
+use super::helpers::{make_md_index, uri};
 
 #[tokio::test]
 async fn test_lazy_tags_multiple_updates_before_query() {

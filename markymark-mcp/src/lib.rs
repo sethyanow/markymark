@@ -408,7 +408,7 @@ impl MarkymarkMcp {
     /// Export the full document index for a single document.
     #[tool(
         name = "export-index",
-        description = "Export headings, XML tags, wiki links, and markdown links for a document."
+        description = "Export headings, XML tags, wiki links, and markdown links for a document. Supports optional content block export via include_blocks parameter."
     )]
     pub async fn export_index_tool(
         &self,
@@ -420,7 +420,7 @@ impl MarkymarkMcp {
     /// Search workspace documents by text, frontmatter, properties, or tags.
     #[tool(
         name = "search-workspace",
-        description = "Search workspace documents by free text, frontmatter, Logseq properties, or tags. Returns ranked results with metadata preview."
+        description = "Search workspace documents by free text, frontmatter, Logseq properties, or tags. Returns ranked results with metadata preview. Free text queries match against titles, headings, frontmatter, properties, and body text (paragraph, list, code block content)."
     )]
     pub async fn search_workspace_tool(
         &self,
@@ -513,6 +513,30 @@ impl MarkymarkMcp {
         params: Parameters<CurationDiagnosticsRequest>,
     ) -> Result<CallToolResult, McpError> {
         tools::curation::handle_curation_diagnostics(&*self.engine, params.0).await
+    }
+
+    /// Get content blocks for a document URI with optional filtering.
+    #[tool(
+        name = "get-content-blocks",
+        description = "Get content blocks (paragraphs, list items, code blocks, etc.) for a document URI. Supports filtering by block kind, parent heading slug, and block reference ID. Use `include_text` to include block text content."
+    )]
+    pub async fn get_content_blocks_tool(
+        &self,
+        params: Parameters<GetContentBlocksRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::blocks::handle_get_content_blocks(&*self.engine, params.0).await
+    }
+
+    /// Search block text across all documents in a realm (case-insensitive substring).
+    #[tool(
+        name = "search-block-text",
+        description = "Search block text across all documents in a realm. Performs case-insensitive substring matching against content block text (paragraphs, list items, code blocks, etc.). Returns block-level matches with document URI, block kind, range, and parent heading. Use `include_text` to include matched block text content. Use `kind` to restrict to a specific block type."
+    )]
+    pub async fn search_block_text_tool(
+        &self,
+        params: Parameters<SearchBlockTextRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::blocks::handle_search_block_text(&*self.engine, params.0).await
     }
 }
 

@@ -5,8 +5,8 @@
 
 use std::collections::HashMap;
 
-use super::helpers::{code_span, make_md_index, make_md_index_with_code_spans, uri};
 use super::super::*;
+use super::helpers::{code_span, make_md_index, make_md_index_with_code_spans, uri};
 
 #[tokio::test]
 async fn test_contribution_built_on_add() {

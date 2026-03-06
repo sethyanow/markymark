@@ -266,17 +266,24 @@ pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
         if kind == DocumentKind::Markdown {
             let (fm_owned, aliases_owned) = markymark_index::parse_frontmatter_owned(&source);
 
+            // Extract content blocks via tree-sitter block-tree parse.
+            // This runs only the block grammar (no inline parsing), so it's
+            // lightweight. The blocks feed into from_scan_inner alongside
+            // md4c-extracted headings, links, and inline elements.
+            let raw_blocks = markymark_index::document::extract_raw_content_blocks(&source);
+
             // Mask frontmatter block so md4c doesn't misparse `---` as a
             // setext heading underline. Replace non-newline bytes with spaces
             // to preserve line counting and byte offsets.
             let scan_source = markymark_index::mask_frontmatter(&source);
             markdown_docs.push((
                 uri,
-                DocumentIndex::from_scan_with_frontmatter(
+                DocumentIndex::from_scan_with_blocks(
                     &scan_source,
                     &backend,
                     fm_owned,
                     aliases_owned,
+                    raw_blocks,
                 ),
             ));
         } else {
@@ -656,6 +663,7 @@ impl CoreEngine for RuntimeEngine {
             CoreOperation::ExportIndex {
                 uri,
                 realm: realm_name,
+                include_blocks,
             } => {
                 let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
                 let state = self.state.read().await;
@@ -664,7 +672,7 @@ impl CoreEngine for RuntimeEngine {
                         "realm does not exist: {realm_key}"
                     )));
                 };
-                export::handle_export_index(&realm_data.index, &uri)
+                export::handle_export_index(&realm_data.index, &uri, include_blocks)
             }
             CoreOperation::SearchWorkspace {
                 query,
@@ -835,6 +843,133 @@ impl CoreEngine for RuntimeEngine {
                     max_suggestions,
                     max_items_per_category,
                 )
+            }
+            CoreOperation::GetContentBlocks {
+                uri,
+                realm: realm_name,
+                kind_filter,
+                heading_filter,
+                block_id,
+                include_text,
+            } => {
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
+                let state = self.state.read().await;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
+                        format!("realm does not exist: {realm_key}"),
+                    ));
+                };
+                let Some(doc) = realm_data.index.get_document(&uri) else {
+                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
+                        format!(
+                            "document not found in realm \"{realm_key}\": {}",
+                            uri.as_str()
+                        ),
+                    ));
+                };
+
+                let headings = doc.headings();
+                let content_blocks = doc.content_blocks();
+
+                let blocks: Vec<markymark_core::engine::ContentBlockResult> = content_blocks
+                    .iter()
+                    .filter(|b| {
+                        if let Some(ref kind) = kind_filter {
+                            if helpers::block_kind_str(&b.kind) != kind.as_str() {
+                                return false;
+                            }
+                        }
+                        if let Some(ref heading_slug) = heading_filter {
+                            let matches = b.parent_heading.is_some_and(|idx| {
+                                headings
+                                    .get(idx)
+                                    .is_some_and(|h| h.slug == heading_slug.as_str())
+                            });
+                            if !matches {
+                                return false;
+                            }
+                        }
+                        if let Some(ref bid) = block_id {
+                            if b.block_id != Some(bid.as_str()) {
+                                return false;
+                            }
+                        }
+                        true
+                    })
+                    .map(|b| {
+                        let parent_slug = b
+                            .parent_heading
+                            .and_then(|idx| headings.get(idx).map(|h| h.slug.to_string()));
+                        let text = if include_text {
+                            Some(doc.block_text(b).to_string())
+                        } else {
+                            None
+                        };
+                        markymark_core::engine::ContentBlockResult {
+                            kind: helpers::block_kind_str(&b.kind).to_string(),
+                            range: b.range,
+                            parent_heading_index: b.parent_heading,
+                            parent_heading_slug: parent_slug,
+                            block_id: b.block_id.map(|s| s.to_string()),
+                            text,
+                        }
+                    })
+                    .collect();
+
+                CoreOperationResult::ContentBlocks { uri, blocks }
+            }
+
+            CoreOperation::SearchBlockText {
+                query,
+                realm: realm_name,
+                kind_filter,
+                limit,
+                include_text,
+            } => {
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
+
+                // Reject empty/whitespace queries — they'd match everything.
+                if query.trim().is_empty() {
+                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
+                        "query must not be empty or whitespace-only".to_string(),
+                    ));
+                }
+
+                let state = self.state.read().await;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
+                        format!("realm does not exist: {realm_key}"),
+                    ));
+                };
+
+                // Parse kind filter string to BlockKind enum
+                let block_kind_filter = kind_filter.as_deref().and_then(helpers::parse_block_kind);
+
+                let (realm_matches, truncated) = realm_data.index.search_block_text(
+                    query.trim(),
+                    block_kind_filter,
+                    limit,
+                    include_text,
+                );
+
+                let matches = realm_matches
+                    .into_iter()
+                    .map(|m| markymark_core::engine::BlockTextMatchResult {
+                        uri: m.uri,
+                        kind: helpers::block_kind_str(&m.kind).to_string(),
+                        range: m.range,
+                        parent_heading_slug: m.parent_heading_slug,
+                        block_id: m.block_id,
+                        text: m.text,
+                    })
+                    .collect();
+
+                CoreOperationResult::BlockTextMatches {
+                    realm: realm_key.to_string(),
+                    query,
+                    matches,
+                    truncated,
+                }
             }
         }
     }

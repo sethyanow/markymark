@@ -375,6 +375,7 @@ async fn export_index_uses_named_realm() {
         .execute(CoreOperation::ExportIndex {
             uri: uri.clone(),
             realm: Some("export-realm".to_string()),
+            include_blocks: false,
         })
         .await;
     assert!(
@@ -383,7 +384,11 @@ async fn export_index_uses_named_realm() {
     );
 
     let result_default = engine
-        .execute(CoreOperation::ExportIndex { uri, realm: None })
+        .execute(CoreOperation::ExportIndex {
+            uri,
+            realm: None,
+            include_blocks: false,
+        })
         .await;
     assert!(
         matches!(result_default, CoreOperationResult::Error(_)),

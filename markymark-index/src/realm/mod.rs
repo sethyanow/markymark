@@ -6,7 +6,9 @@
 
 mod helpers;
 mod types;
-pub use types::{AnyDocumentIndex, ResolvedBlock, ResolvedCodeSpan, ResolvedHeading};
+pub use types::{
+    AnyDocumentIndex, BlockTextMatch, ResolvedBlock, ResolvedCodeSpan, ResolvedHeading,
+};
 
 use helpers::{detect_journal_date, resolve_relative_path};
 
@@ -916,6 +918,69 @@ impl RealmIndex {
             }
         }
         results
+    }
+
+    /// Search block text across all markdown documents (case-insensitive substring).
+    ///
+    /// Returns up to `limit` matches. The second element of the tuple is `true` when
+    /// the total number of matches exceeded `limit` (i.e. results were truncated).
+    ///
+    /// `kind_filter` restricts matches to a specific `BlockKind`.
+    /// `include_text` controls whether the block text is included in results.
+    pub fn search_block_text(
+        &self,
+        query: &str,
+        kind_filter: Option<crate::document::BlockKind>,
+        limit: usize,
+        include_text: bool,
+    ) -> (Vec<BlockTextMatch>, bool) {
+        let query_lower = query.to_lowercase();
+        let mut matches = Vec::new();
+        let mut total_found: usize = 0;
+
+        for (uri, doc) in self.iter_documents() {
+            let headings = doc.headings();
+            let content_blocks = doc.content_blocks();
+
+            for block in content_blocks {
+                if let Some(ref kind) = kind_filter {
+                    if &block.kind != kind {
+                        continue;
+                    }
+                }
+
+                let text = doc.block_text(block);
+                if text.is_empty() {
+                    continue;
+                }
+                if !text.to_lowercase().contains(&query_lower) {
+                    continue;
+                }
+
+                total_found += 1;
+
+                if matches.len() < limit {
+                    let parent_slug = block
+                        .parent_heading
+                        .and_then(|idx| headings.get(idx).map(|h| h.slug.to_string()));
+
+                    matches.push(BlockTextMatch {
+                        uri: uri.clone(),
+                        kind: block.kind,
+                        range: block.range,
+                        parent_heading_slug: parent_slug,
+                        block_id: block.block_id.map(|s| s.to_string()),
+                        text: if include_text {
+                            Some(text.to_string())
+                        } else {
+                            None
+                        },
+                    });
+                }
+            }
+        }
+
+        (matches, total_found > limit)
     }
 
     /// Returns all journal documents for a given year and month, sorted by day ascending.

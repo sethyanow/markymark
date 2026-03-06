@@ -222,6 +222,7 @@ async fn query_operations_error_on_never_created_realm() {
             CoreOperation::ExportIndex {
                 uri: dummy_uri.clone(),
                 realm: Some(bogus.to_string()),
+                include_blocks: false,
             },
         ),
         (

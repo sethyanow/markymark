@@ -318,6 +318,10 @@ pub struct ExportIndexRequest {
     /// Realm to query. Defaults to `"default"` when omitted.
     #[serde(default)]
     pub realm: Option<String>,
+    /// When true, include content blocks (paragraphs, list items, code blocks, etc.)
+    /// in the response. Defaults to false.
+    #[serde(default)]
+    pub include_blocks: bool,
 }
 
 /// A heading entry in an exported document index.
@@ -397,6 +401,10 @@ pub struct ExportIndexResponse {
     pub frontmatter: Vec<ExportedFrontmatterEntryDto>,
     /// Logseq inline property entries.
     pub properties: Vec<ExportedPropertyEntryDto>,
+    /// Content blocks (paragraphs, list items, code blocks, etc.).
+    /// Present only when `include_blocks` was true in the request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_blocks: Option<Vec<ContentBlockDto>>,
 }
 
 /// Tool error envelope for consistent structured failures.
@@ -927,4 +935,117 @@ pub struct CurationDiagnosticsResponse {
     pub suggestions: Vec<CurationSuggestionDto>,
     /// Aggregate statistics.
     pub stats: CurationStatsDto,
+}
+
+// ---- Content Blocks ----
+
+/// Request payload for `get-content-blocks`.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct GetContentBlocksRequest {
+    /// Document URI (`file://...`) to get content blocks from.
+    pub uri: String,
+    /// Realm to query. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+    /// Filter by block kind (e.g. `"paragraph"`, `"list_item"`, `"code_block"`,
+    /// `"blockquote"`, `"thematic_break"`, `"table"`).
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// Filter by parent heading slug (only blocks under this heading).
+    #[serde(default)]
+    pub heading: Option<String>,
+    /// Look up a specific block by its block reference ID (e.g. `"my-ref"`).
+    #[serde(default)]
+    pub block_id: Option<String>,
+    /// Whether to include block text content in the response. Defaults to `false`.
+    #[serde(default)]
+    pub include_text: bool,
+}
+
+/// A single content block in a `get-content-blocks` response.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ContentBlockDto {
+    /// Block kind (e.g. `"paragraph"`, `"list_item"`, `"code_block"`).
+    pub kind: String,
+    /// Source range of the block in the document.
+    pub range: RangeDto,
+    /// Slug of the parent heading, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_heading_slug: Option<String>,
+    /// Block reference ID (e.g. `"my-ref"`), if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_id: Option<String>,
+    /// The text content of the block (only present when `include_text` is `true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+/// Response payload for `get-content-blocks`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetContentBlocksResponse {
+    /// The document URI that was queried.
+    pub uri: String,
+    /// The content blocks matching the request filters.
+    pub content_blocks: Vec<ContentBlockDto>,
+}
+
+// ---- Search Block Text ----
+
+/// Request payload for `search-block-text`.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct SearchBlockTextRequest {
+    /// The substring to search for (case-insensitive). Must not be empty or whitespace-only.
+    pub query: String,
+    /// Realm to search. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+    /// Filter by block kind (e.g. `"paragraph"`, `"list_item"`, `"code_block"`).
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// Maximum number of block-level matches to return (0–500, default 100).
+    /// Values above 500 are clamped silently.
+    #[serde(default = "default_block_text_limit")]
+    pub limit: u32,
+    /// Whether to include block text content in results. Defaults to `false`.
+    #[serde(default)]
+    pub include_text: bool,
+}
+
+fn default_block_text_limit() -> u32 {
+    100
+}
+
+/// A single block-level match from `search-block-text`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BlockTextMatchDto {
+    /// Document URI where the match was found.
+    pub uri: String,
+    /// Block kind (e.g. `"paragraph"`, `"list_item"`, `"code_block"`).
+    pub kind: String,
+    /// Source range of the block in the document.
+    pub range: RangeDto,
+    /// Slug of the parent heading, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_heading_slug: Option<String>,
+    /// Block reference ID, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_id: Option<String>,
+    /// The text content of the block (only present when `include_text` is `true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+/// Response payload for `search-block-text`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchBlockTextResponse {
+    /// Realm that was searched.
+    pub realm: String,
+    /// The original query string.
+    pub query: String,
+    /// Total number of matches found (before limit applied).
+    pub total_matches: u32,
+    /// Block-level matches (up to `limit`).
+    pub matches: Vec<BlockTextMatchDto>,
+    /// `true` when results were truncated at `limit`.
+    pub truncated: bool,
 }

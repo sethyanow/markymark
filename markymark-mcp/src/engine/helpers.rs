@@ -74,6 +74,34 @@ pub(crate) fn truncate_preview(text: &str) -> String {
     text[..end].split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Convert a `BlockKind` enum variant to its wire-format string.
+pub(crate) fn block_kind_str(kind: &markymark_index::document::BlockKind) -> &'static str {
+    use markymark_index::document::BlockKind;
+    match kind {
+        BlockKind::Paragraph => "paragraph",
+        BlockKind::ListItem => "list_item",
+        BlockKind::CodeBlock => "code_block",
+        BlockKind::BlockQuote => "blockquote",
+        BlockKind::ThematicBreak => "thematic_break",
+        BlockKind::Table => "table",
+    }
+}
+
+/// Parse a wire-format block kind string into a `BlockKind` enum variant.
+/// Returns `None` for unrecognized kinds (silently filters them out).
+pub(crate) fn parse_block_kind(kind: &str) -> Option<markymark_index::document::BlockKind> {
+    use markymark_index::document::BlockKind;
+    match kind {
+        "paragraph" => Some(BlockKind::Paragraph),
+        "list_item" => Some(BlockKind::ListItem),
+        "code_block" => Some(BlockKind::CodeBlock),
+        "blockquote" => Some(BlockKind::BlockQuote),
+        "thematic_break" => Some(BlockKind::ThematicBreak),
+        "table" => Some(BlockKind::Table),
+        _ => None,
+    }
+}
+
 pub(crate) fn validate_workspace_root(root: &Path) -> anyhow::Result<()> {
     if !root.exists() {
         bail!("workspace root does not exist: {}", root.display());

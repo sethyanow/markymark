@@ -52,10 +52,8 @@ fn build_document_plan(uri: &DocumentUri, index: &DocumentIndex) -> DocumentPlan
             }
 
             let id = format!("{}#{}#{i}", uri.as_str(), heading.slug);
-            let embedding_input = build_embedding_input(
-                &text,
-                section_texts.get(&Some(i)).map(String::as_str),
-            );
+            let embedding_input =
+                build_embedding_input(&text, section_texts.get(&Some(i)).map(String::as_str));
             token_set.extend(token_hashes(&embedding_input));
 
             entries.push(EntryPlan {

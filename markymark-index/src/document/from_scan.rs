@@ -14,9 +14,9 @@ use std::collections::HashMap as StdHashMap;
 use super::{
     helpers, BlockKind, BlockRefEntry, CalloutEntry, CodeSpanEntry, ContentBlock,
     DocumentDependent, DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry,
-    FrontmatterEntry, FrontmatterOwnedEntry, HeadingEntry, LinkDefinitionEntry,
-    MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry, TagEntry, TaskEntry,
-    WikiLinkEntry, XmlTagEntry,
+    FrontmatterEntry, FrontmatterOwnedEntry, HeadingEntry, LinkDefinitionEntry, MarkdownLinkEntry,
+    PropertyEntry, PropertyValueEntry, QueryBlockEntry, TagEntry, TaskEntry, WikiLinkEntry,
+    XmlTagEntry,
 };
 
 use super::from_ast::RawBlock;
@@ -44,6 +44,21 @@ impl DocumentIndex {
         aliases: Vec<String>,
     ) -> Self {
         Self::from_scan_inner(text, backend, frontmatter, aliases, Vec::new())
+    }
+
+    /// Same as [`from_scan_with_frontmatter`] but with pre-extracted content blocks.
+    ///
+    /// Use [`extract_raw_content_blocks`](super::from_ast::extract_raw_content_blocks)
+    /// to obtain blocks from tree-sitter, then pass them here for arena allocation
+    /// alongside md4c-scanned headings, links, and inline elements.
+    pub fn from_scan_with_blocks(
+        text: &str,
+        backend: &dyn ScanBackend,
+        frontmatter: Vec<FrontmatterOwnedEntry>,
+        aliases: Vec<String>,
+        blocks: Vec<super::from_ast::RawBlock>,
+    ) -> Self {
+        Self::from_scan_inner(text, backend, frontmatter, aliases, blocks)
     }
 
     /// Build a document index with pre-parsed frontmatter and content blocks
@@ -218,8 +233,7 @@ impl DocumentIndex {
             let mut cb_builder = BumpVec::new_in(arena_ref);
             for rb in &raw_blocks {
                 let pos = helpers::byte_offset_to_position(&line_starts, rb.start_byte as u32);
-                let end_pos =
-                    helpers::byte_offset_to_position(&line_starts, rb.end_byte as u32);
+                let end_pos = helpers::byte_offset_to_position(&line_starts, rb.end_byte as u32);
                 // Parent heading: find the nearest heading whose range starts
                 // before this block. Binary search on heading start positions.
                 let parent_heading = if headings.is_empty() {

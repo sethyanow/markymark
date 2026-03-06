@@ -25,6 +25,7 @@ async fn export_index_returns_full_document_data() {
         .execute(CoreOperation::ExportIndex {
             uri: uri.clone(),
             realm: None,
+            include_blocks: false,
         })
         .await;
 
@@ -69,6 +70,7 @@ async fn export_index_errors_for_unindexed_document() {
         .execute(CoreOperation::ExportIndex {
             uri: DocumentUri::from_file_path(&ws.root().join("nonexistent.md")),
             realm: None,
+            include_blocks: false,
         })
         .await;
 
@@ -130,6 +132,7 @@ async fn export_index_returns_empty_lists_for_minimal_document() {
         .execute(CoreOperation::ExportIndex {
             uri: uri.clone(),
             realm: None,
+            include_blocks: false,
         })
         .await;
 
@@ -169,6 +172,7 @@ async fn export_index_includes_frontmatter() {
         .execute(CoreOperation::ExportIndex {
             uri: uri.clone(),
             realm: None,
+            include_blocks: false,
         })
         .await;
 
@@ -201,6 +205,112 @@ async fn export_index_includes_frontmatter() {
                 .find(|(k, _)| k == "tags")
                 .expect("frontmatter should contain 'tags' key");
             assert_eq!(tags_entry.1, vec!["rust", "mcp"]);
+        }
+        other => panic!("expected DocumentExport result, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn export_index_with_include_blocks_returns_content_blocks() {
+    let ws = TempWorkspace::new("export-index-include-blocks");
+    let doc = ws.root().join("blocks.md");
+    fs::write(
+        &doc,
+        "# Heading\n\nA paragraph under the heading.\n\n- List item one\n- List item two\n",
+    )
+    .expect("doc should be created");
+
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
+
+    let uri = DocumentUri::from_file_path(&doc);
+    let result = engine
+        .execute(CoreOperation::ExportIndex {
+            uri: uri.clone(),
+            realm: None,
+            include_blocks: true,
+        })
+        .await;
+
+    match result {
+        CoreOperationResult::DocumentExport {
+            content_blocks,
+            headings,
+            ..
+        } => {
+            assert_eq!(headings.len(), 1, "should have one heading");
+            let blocks = content_blocks.expect("include_blocks=true should produce Some(blocks)");
+            assert!(
+                !blocks.is_empty(),
+                "document with paragraphs and lists should have content blocks"
+            );
+            // Verify block kinds are present
+            let kinds: Vec<&str> = blocks.iter().map(|b| b.kind.as_str()).collect();
+            assert!(
+                kinds.contains(&"paragraph"),
+                "should contain a paragraph block, got: {kinds:?}"
+            );
+        }
+        other => panic!("expected DocumentExport result, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn export_index_without_include_blocks_omits_content_blocks() {
+    let ws = TempWorkspace::new("export-index-no-blocks");
+    let doc = ws.root().join("blocks.md");
+    fs::write(&doc, "# Heading\n\nA paragraph.\n").expect("doc should be created");
+
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
+
+    let uri = DocumentUri::from_file_path(&doc);
+    let result = engine
+        .execute(CoreOperation::ExportIndex {
+            uri: uri.clone(),
+            realm: None,
+            include_blocks: false,
+        })
+        .await;
+
+    match result {
+        CoreOperationResult::DocumentExport { content_blocks, .. } => {
+            assert!(
+                content_blocks.is_none(),
+                "include_blocks=false should produce None, got: {content_blocks:?}"
+            );
+        }
+        other => panic!("expected DocumentExport result, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn export_index_structured_doc_with_include_blocks_returns_none() {
+    let ws = TempWorkspace::new("export-index-structured-blocks");
+    let doc = ws.root().join("config.json");
+    fs::write(&doc, r#"{"key": "value", "nested": {"a": 1}}"#).expect("doc should be created");
+
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
+
+    let uri = DocumentUri::from_file_path(&doc);
+    let result = engine
+        .execute(CoreOperation::ExportIndex {
+            uri: uri.clone(),
+            realm: None,
+            include_blocks: true,
+        })
+        .await;
+
+    match result {
+        CoreOperationResult::DocumentExport { content_blocks, .. } => {
+            assert!(
+                content_blocks.is_none(),
+                "structured documents should return None for content_blocks, got: {content_blocks:?}"
+            );
         }
         other => panic!("expected DocumentExport result, got: {other:?}"),
     }

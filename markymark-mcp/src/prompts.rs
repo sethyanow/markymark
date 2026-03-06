@@ -145,6 +145,7 @@ impl MarkymarkMcp {
             .execute(CoreOperation::ExportIndex {
                 uri: uri.clone(),
                 realm: realm.clone(),
+                include_blocks: false,
             })
             .await
         {
@@ -290,6 +291,7 @@ impl MarkymarkMcp {
             .execute(CoreOperation::ExportIndex {
                 uri: uri.clone(),
                 realm,
+                include_blocks: false,
             })
             .await
         {

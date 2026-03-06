@@ -156,6 +156,8 @@ pub enum CoreOperation {
         uri: DocumentUri,
         /// Realm to query. Defaults to "default" when `None`.
         realm: Option<String>,
+        /// When true, include content blocks in the response.
+        include_blocks: bool,
     },
     /// Get a dependency graph showing inter-document links.
     DependencyGraph {
@@ -258,6 +260,35 @@ pub enum CoreOperation {
         max_suggestions: u32,
         /// Maximum items per diagnostic category (default 50).
         max_items_per_category: u32,
+    },
+
+    /// Get content blocks for a document URI with optional filtering.
+    GetContentBlocks {
+        /// Target document.
+        uri: DocumentUri,
+        /// Realm to query. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+        /// Filter by block kind (e.g. "paragraph", "list_item", "code_block").
+        kind_filter: Option<String>,
+        /// Filter by parent heading slug.
+        heading_filter: Option<String>,
+        /// Look up a specific block by ID.
+        block_id: Option<String>,
+        /// Whether to include block text content in the response.
+        include_text: bool,
+    },
+    /// Search block text across all documents in a realm (case-insensitive substring).
+    SearchBlockText {
+        /// The substring to search for (must be non-empty).
+        query: String,
+        /// Realm to search. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+        /// Optional block kind filter (e.g. "paragraph", "code_block").
+        kind_filter: Option<String>,
+        /// Maximum number of block-level matches to return.
+        limit: usize,
+        /// Whether to include block text content in results.
+        include_text: bool,
     },
 }
 
@@ -381,6 +412,40 @@ pub struct CurationReportData {
     pub stats: CurationStats,
 }
 
+/// A content block result returned from the engine.
+#[derive(Debug, Clone)]
+pub struct ContentBlockResult {
+    /// Block kind as a string (e.g. "paragraph", "list_item", "code_block").
+    pub kind: String,
+    /// The range of the block in the source document.
+    pub range: Range,
+    /// Index of the parent heading in the document's heading list, if any.
+    pub parent_heading_index: Option<usize>,
+    /// Slug of the parent heading, if any.
+    pub parent_heading_slug: Option<String>,
+    /// Block reference ID (e.g. `^my-block`), if any.
+    pub block_id: Option<String>,
+    /// The text content of the block (only populated when `include_text` is true).
+    pub text: Option<String>,
+}
+
+/// A single block-level match from a cross-document block text search.
+#[derive(Debug, Clone)]
+pub struct BlockTextMatchResult {
+    /// Document URI where the match was found.
+    pub uri: DocumentUri,
+    /// Block kind as a string (e.g. "paragraph", "list_item", "code_block").
+    pub kind: String,
+    /// Source range of the block in the document.
+    pub range: Range,
+    /// Slug of the parent heading, if any.
+    pub parent_heading_slug: Option<String>,
+    /// Block reference ID, if any.
+    pub block_id: Option<String>,
+    /// The text content of the block (only present when `include_text` is true).
+    pub text: Option<String>,
+}
+
 /// Transport-agnostic interface for executing core operations.
 ///
 /// Both LSP and MCP transports call into this trait so indexing and
@@ -475,6 +540,9 @@ pub enum CoreOperationResult {
         frontmatter: Vec<(String, Vec<String>)>,
         /// Logseq inline properties. String values are wrapped as single-element vecs.
         properties: Vec<(String, Vec<String>)>,
+        /// Content blocks (paragraphs, list items, code blocks, etc.).
+        /// Present only when `include_blocks` was true in the request.
+        content_blocks: Option<Vec<ContentBlockResult>>,
     },
     /// A dependency graph in the requested format (json or dot).
     DependencyGraph {
@@ -575,6 +643,24 @@ pub enum CoreOperationResult {
         realm: String,
         /// Full curation report.
         report: CurationReportData,
+    },
+    /// Content blocks for a document.
+    ContentBlocks {
+        /// Document URI.
+        uri: DocumentUri,
+        /// The content blocks (filtered as requested).
+        blocks: Vec<ContentBlockResult>,
+    },
+    /// Block-level text search matches across documents.
+    BlockTextMatches {
+        /// Realm that was searched.
+        realm: String,
+        /// The original query string.
+        query: String,
+        /// Block-level matches.
+        matches: Vec<BlockTextMatchResult>,
+        /// `true` when total matches exceeded the limit.
+        truncated: bool,
     },
     /// Success with no payload.
     Ok,
