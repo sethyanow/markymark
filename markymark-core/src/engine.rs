@@ -213,6 +213,21 @@ pub enum CoreOperation {
         /// Realm to query. Defaults to `"default"` when `None`.
         realm: Option<String>,
     },
+    /// Get content blocks for a document URI with optional filtering.
+    GetContentBlocks {
+        /// Target document.
+        uri: DocumentUri,
+        /// Realm to query. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+        /// Filter by block kind (e.g. "paragraph", "list_item", "code_block").
+        kind_filter: Option<String>,
+        /// Filter by parent heading slug.
+        heading_filter: Option<String>,
+        /// Look up a specific block by ID.
+        block_id: Option<String>,
+        /// Whether to include block text content in the response.
+        include_text: bool,
+    },
 }
 
 /// A single match result from a regex pattern search.
@@ -234,6 +249,23 @@ pub struct PatternMatch {
     pub context_after: Vec<String>,
     /// 0-based line number of `context_before[0]`.
     pub context_start_line: u32,
+}
+
+/// A content block result returned from the engine.
+#[derive(Debug, Clone)]
+pub struct ContentBlockResult {
+    /// Block kind as a string (e.g. "paragraph", "list_item", "code_block").
+    pub kind: String,
+    /// The range of the block in the source document.
+    pub range: Range,
+    /// Index of the parent heading in the document's heading list, if any.
+    pub parent_heading_index: Option<usize>,
+    /// Slug of the parent heading, if any.
+    pub parent_heading_slug: Option<String>,
+    /// Block reference ID (e.g. `^my-block`), if any.
+    pub block_id: Option<String>,
+    /// The text content of the block (only populated when `include_text` is true).
+    pub text: Option<String>,
 }
 
 /// Transport-agnostic interface for executing core operations.
@@ -370,6 +402,13 @@ pub enum CoreOperationResult {
         /// Per-file diagnostics: `(document_uri, diagnostics)`.
         /// Only files that have at least one diagnostic are included.
         items: Vec<(crate::DocumentUri, Vec<CoreDiagnostic>)>,
+    },
+    /// Content blocks for a document.
+    ContentBlocks {
+        /// Document URI.
+        uri: DocumentUri,
+        /// The content blocks (filtered as requested).
+        blocks: Vec<ContentBlockResult>,
     },
     /// Success with no payload.
     Ok,

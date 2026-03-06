@@ -214,6 +214,12 @@ impl CoreEngine for MockEngine {
                 realm: realm.unwrap_or_else(|| "default".to_string()),
                 items: vec![],
             },
+            (_, CoreOperation::GetContentBlocks { uri, .. }) => {
+                CoreOperationResult::ContentBlocks {
+                    uri,
+                    blocks: vec![],
+                }
+            }
         }
     }
 }

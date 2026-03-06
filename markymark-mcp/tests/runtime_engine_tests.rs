@@ -29,6 +29,8 @@ mod search_symbols;
 mod search_workspace;
 #[path = "runtime_engine_tests/startup.rs"]
 mod startup;
+#[path = "runtime_engine_tests/content_blocks.rs"]
+mod content_blocks;
 
 /// Compare two ranges for deterministic sorting (test-local copy).
 pub(crate) fn compare_ranges(a: Range, b: Range) -> Ordering {

@@ -736,6 +736,88 @@ impl CoreEngine for RuntimeEngine {
                     None => diagnostics::handle_get_diagnostics_realm(realm_data, realm_key),
                 }
             }
+            CoreOperation::GetContentBlocks {
+                uri,
+                realm: realm_name,
+                kind_filter,
+                heading_filter,
+                block_id,
+                include_text,
+            } => {
+                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
+                let state = self.state.read().await;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
+                        format!("realm does not exist: {realm_key}"),
+                    ));
+                };
+                let Some(doc) = realm_data.index.get_document(&uri) else {
+                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
+                        format!("document not found in realm \"{realm_key}\": {}", uri.as_str()),
+                    ));
+                };
+
+                let headings = doc.headings();
+                let content_blocks = doc.content_blocks();
+
+                let block_kind_str = |kind: &markymark_index::document::BlockKind| -> &str {
+                    match kind {
+                        markymark_index::document::BlockKind::Paragraph => "paragraph",
+                        markymark_index::document::BlockKind::ListItem => "list_item",
+                        markymark_index::document::BlockKind::CodeBlock => "code_block",
+                        markymark_index::document::BlockKind::BlockQuote => "blockquote",
+                        markymark_index::document::BlockKind::ThematicBreak => "thematic_break",
+                        markymark_index::document::BlockKind::Table => "table",
+                    }
+                };
+
+                let blocks: Vec<markymark_core::engine::ContentBlockResult> = content_blocks
+                    .iter()
+                    .filter(|b| {
+                        if let Some(ref kind) = kind_filter {
+                            if block_kind_str(&b.kind) != kind.as_str() {
+                                return false;
+                            }
+                        }
+                        if let Some(ref heading_slug) = heading_filter {
+                            let matches = b.parent_heading.map_or(false, |idx| {
+                                headings
+                                    .get(idx)
+                                    .map_or(false, |h| h.slug == heading_slug.as_str())
+                            });
+                            if !matches {
+                                return false;
+                            }
+                        }
+                        if let Some(ref bid) = block_id {
+                            if b.block_id.map_or(true, |id| id != bid.as_str()) {
+                                return false;
+                            }
+                        }
+                        true
+                    })
+                    .map(|b| {
+                        let parent_slug = b.parent_heading.and_then(|idx| {
+                            headings.get(idx).map(|h| h.slug.to_string())
+                        });
+                        let text = if include_text {
+                            Some(doc.block_text(b).to_string())
+                        } else {
+                            None
+                        };
+                        markymark_core::engine::ContentBlockResult {
+                            kind: block_kind_str(&b.kind).to_string(),
+                            range: b.range.clone(),
+                            parent_heading_index: b.parent_heading,
+                            parent_heading_slug: parent_slug,
+                            block_id: b.block_id.map(|s| s.to_string()),
+                            text,
+                        }
+                    })
+                    .collect();
+
+                CoreOperationResult::ContentBlocks { uri, blocks }
+            }
         }
     }
 }
