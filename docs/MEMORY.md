@@ -31,12 +31,11 @@ Full findings documented in `docs/research/semantic-index-block-model.md`.
 ### Active Work
 
 - **Epic marky-z7uc**: Expose ContentBlock model via MCP tools
-  - marky-ehas (get-content-blocks): REVERTED (`50c6b5b`). Prior implementation switched
-    MCP batch indexing from `from_scan_with_frontmatter` to `from_ast`, reversing the B-8
-    migration without architectural review. Redo with TDD — first integration test must
-    fail against the `from_scan` gap, surfacing the design question before any wiring code.
-  - marky-k4cp (export-index enhancement): Blocked by marky-ehas.
-  - ContentBlock model (marky-3cy) is intact — only the MCP integration was reverted.
+  - marky-ehas (get-content-blocks): CLOSED. Full end-to-end implementation with hybrid
+    from_scan + tree-sitter block extraction. 8 integration tests, 3 tool handler tests.
+  - marky-k4cp (export-index enhancement): CLOSED. Added `include_blocks` parameter to
+    export-index. 3 new integration tests. Shared `block_kind_str` helper extracted.
+  - Next: search-workspace enhancement (body text matching) or search-block-text tool.
 
 ### Failure Pattern: Unauthorized architectural switch (fail-from-ast-switch)
 
@@ -202,6 +201,19 @@ system, not local files. The `Skill` tool invocation IS the loading mechanism. N
 ### CLAUDE.md crate table stale after adding crate (fail-stale-crate-table)
 
 When adding a crate to workspace, update CLAUDE.md crate table in the same PR.
+
+### Brainstorm agent rejected existing infra without verifying (fail-brainstorm-rejected-existing-infra)
+
+marky-3cy brainstorm rejected md4c block extraction as "unnecessary Zig FFI complexity"
+without checking that `enterBlock`/`leaveBlock` callbacks already existed in
+`ExtractionRenderer`. Tree-sitter was chosen unilaterally — the extraction source was
+never presented as a question to the user. Six other design questions were asked via
+AskUserQuestion; this one was silently decided by the agent. Result: two implementation
+sessions built on tree-sitter, both caught and corrected, wasted work across three sessions.
+
+**Rule:** Every rejected alternative in an epic must trace to a user decision. Before
+claiming an approach requires "new FFI" or "unnecessary complexity," verify the claim
+against the actual codebase. See marky-c2g4 for the fix.
 
 ### docs/modules and docs/zig_agent_docs are symlinks (info-docs-symlinks)
 
