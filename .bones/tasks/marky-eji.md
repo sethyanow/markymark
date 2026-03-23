@@ -11,6 +11,7 @@ parent: marky-nxc
 
 
 
+
 ## Context
 
 `markymark-index/src/realm/mod.rs` is 1011 lines — breaching the 1000-line HARD STOP.
@@ -208,3 +209,4 @@ standalone function — not a trait. The executing agent decides the exact gener
 
 - [2026-03-23T03:12:58Z] [Seth] Task scoped from marky-nxc Phase 1 during executing-plans flow. Full codebase verification via LSP: method assignments confirmed, detect_journal_date already in helpers.rs (not mod.rs as epic assumed), resolve_relative_path used only by find_uri_by_relative_path. Import patterns verified via types.rs (explicit use, not super::*). Expected ~420 lines remaining in mod.rs after all extractions.
 - [2026-03-23T03:21:50Z] [Seth] SRE refinement (fresh session). 13 categories reviewed. APPROVE with 3 corrections: (1) retain_or_remove count is 12 not 7 — patch methods have 5 more identical instances. Updated design + success criterion. (2) Step 5 import cleanup was wrong: HashSet STAYS (DocContribution fields), resolve_relative_path goes, ValueKind goes. detect_journal_date stays (DocContribution::build L119). (3) Category 6 adversarial-planning deferred — pure structural refactoring with no new logic. All claims verified via LSP: line count 1011, 13 fields, all method locations confirmed, helpers.rs contents confirmed, import pattern confirmed.
+- [2026-03-23T03:52:22Z] [Seth] Debrief: prelude::* needed #[allow(unused_imports)] for test compilation (tests use super::super::*). retain_or_remove as two functions (hash+btree), cross-doc methods changed to pub(super) for cross-file visibility. Reflections: prelude::* removal breaking tests was the one surprise — not caught by SRE (test infra dependency). Skeleton accuracy good — SRE caught the HashSet/import errors pre-execution. No user corrections. Memory: no new memories needed — all findings are in-code or one-time refactoring patterns.
