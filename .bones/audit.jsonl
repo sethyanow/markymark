@@ -15,3 +15,7 @@
 {"timestamp":"2026-03-23T09:53:31.045672+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-nxc","details":{"kind":"blocks","to":"marky-3yo"}}
 {"timestamp":"2026-03-23T10:02:56.817223+00:00","actor":"Seth","event_type":"updated","task_id":"marky-3yo","details":{"status":"active"}}
 {"timestamp":"2026-03-23T10:13:55.631683+00:00","actor":"Seth","event_type":"closed","task_id":"marky-3yo","details":{"notes":null}}
+{"timestamp":"2026-03-23T10:15:58.818941+00:00","actor":"Seth","event_type":"created","task_id":"marky-fba","details":{}}
+{"timestamp":"2026-03-23T10:16:03.554520+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-nxc","details":{"kind":"parent-child","to":"marky-fba"}}
+{"timestamp":"2026-03-23T10:16:03.555269+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-nxc","details":{"kind":"blocks","to":"marky-fba"}}
+{"timestamp":"2026-03-23T10:16:41.734939+00:00","actor":"Seth","event_type":"logged","task_id":"marky-3yo","details":{"message":"Debrief: Pure mechanical refactor, all 12 arms converted. RwLockMappedReadGuard doesn't exist in tokio — try_map returns RwLockReadGuard<U> instead. Caller match-Ok-Err pattern needed because execute() returns CoreOperationResult not Result. Reflections: No surprises beyond the type name mismatch. Skeleton was accurate except for return type. Remaining Phase 2: AddRoot extraction (marky-fba scoped), GetContentBlocks extraction (future task)."}}

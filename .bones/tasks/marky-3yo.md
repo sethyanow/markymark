@@ -9,6 +9,7 @@ parent: marky-nxc
 
 
 
+
 ## Context
 
 `markymark-mcp/src/engine/mod.rs` execute() has 12 read-lock arms that repeat the same
@@ -103,3 +104,7 @@ empty-query check before calling `read_realm`.
 - **Adversarial planning found no significant failure modes.** This is a pure mechanical refactor
   with no new input surfaces, no new concurrency patterns, no external dependencies. The existing
   test suite is the complete verification.
+
+## Log
+
+- [2026-03-23T10:16:41Z] [Seth] Debrief: Pure mechanical refactor, all 12 arms converted. RwLockMappedReadGuard doesn't exist in tokio — try_map returns RwLockReadGuard<U> instead. Caller match-Ok-Err pattern needed because execute() returns CoreOperationResult not Result. Reflections: No surprises beyond the type name mismatch. Skeleton was accurate except for return type. Remaining Phase 2: AddRoot extraction (marky-fba scoped), GetContentBlocks extraction (future task).
