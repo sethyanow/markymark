@@ -794,3 +794,4 @@
 {"timestamp":"2026-03-23T16:42:01.956642+00:00","actor":"Seth","event_type":"created","task_id":"marky-llj","details":{}}
 {"timestamp":"2026-03-23T16:42:07.912896+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-0xtn","details":{"kind":"parent-child","to":"marky-llj"}}
 {"timestamp":"2026-03-23T16:42:07.913558+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-0xtn","details":{"kind":"blocks","to":"marky-llj"}}
+{"timestamp":"2026-03-23T16:44:36.011042+00:00","actor":"Seth","event_type":"logged","task_id":"marky-0xtn","details":{"message":"Phase 3 (marky-xfgb) closed. Next: marky-llj (Phase 4.1) — add from_text() convenience, migrate 18 from_ast callers to from_text. This unblocks from_ast deletion and then from_scan/from_blob deletion sweep."}}

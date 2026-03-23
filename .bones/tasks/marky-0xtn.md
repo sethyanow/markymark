@@ -12,6 +12,7 @@ labels: [architecture, blob-removal, ffi]
 
 
 
+
 ## Context
 
 The Zig DocumentEngine currently serializes all parse state into a flat binary blob (serialize.zig + blob.zig), transfers it across the FFI boundary as raw bytes, and Rust deserializes it back (from_blob/*.rs). This was introduced to avoid hundreds of per-field FFI getter functions.
@@ -196,3 +197,7 @@ Single CEngineResult FFI type replaces both blob and CMd4cResult. All consumers 
 | LSP fallback | Stale index cache | Cache last-good DocumentIndex per URI |
 | Test migration | from_text() replaces all 3 constructors | ~80 callers, mechanical rename |
 | Nullable encoding | length=0 means None | Empty string and no value equivalent for markdown |
+
+## Log
+
+- [2026-03-23T16:44:36Z] [Seth] Phase 3 (marky-xfgb) closed. Next: marky-llj (Phase 4.1) — add from_text() convenience, migrate 18 from_ast callers to from_text. This unblocks from_ast deletion and then from_scan/from_blob deletion sweep.
