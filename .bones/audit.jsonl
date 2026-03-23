@@ -891,3 +891,7 @@
 {"timestamp":"2026-03-23T15:05:08.198073+00:00","actor":"Seth","event_type":"created","task_id":"marky-1ic","details":{}}
 {"timestamp":"2026-03-23T15:05:13.637102+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-lpb","details":{"kind":"parent-child","to":"marky-1ic"}}
 {"timestamp":"2026-03-23T15:05:13.637545+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-lpb","details":{"kind":"blocks","to":"marky-1ic"}}
+{"timestamp":"2026-03-23T23:38:02.041366+00:00","actor":"Seth","event_type":"created","task_id":"marky-h0x","details":{}}
+{"timestamp":"2026-03-23T23:38:23.607992+00:00","actor":"Seth","event_type":"claimed","task_id":"marky-h0x","details":{"actor":"Seth"}}
+{"timestamp":"2026-03-23T23:53:42.610196+00:00","actor":"Seth","event_type":"logged","task_id":"marky-h0x","details":{"message":"Bazel build integration complete. MODULE.bazel + .bazelrc + BUILD.bazel per crate + zig/BUILD.bazel. Uses toolchains_llvm_bootstrapped (LLVM 21.1.8), rules_rust 0.68.1, rules_zig 0.12.3. Both debug and release (ThinLTO) builds pass. Cargo test suite fully green. Note: -Clinker-plugin-lto doesn't work on macOS (ld64.lld plugin-opt unsupported), using -Clto=thin with -Cembed-bitcode=yes instead."}}
+{"timestamp":"2026-03-23T23:53:46.117753+00:00","actor":"Seth","event_type":"closed","task_id":"marky-h0x","details":{"notes":null}}

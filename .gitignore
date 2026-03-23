@@ -32,6 +32,10 @@ Thumbs.db
 zig/.zig-global-cache/
 zig-out/
 
+# Bazel
+/bazel-*
+MODULE.bazel.lock
+
 # Local scratch / exports
 temp_coderabbit_notes.md
 TEST_BIG_FILE.md

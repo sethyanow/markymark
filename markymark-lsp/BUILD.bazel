@@ -1,0 +1,30 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+rust_library(
+    name = "markymark-lsp",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "markymark_lsp",
+    deps = [
+        "//markymark-core",
+        "//markymark-index",
+        "//markymark-kernels",
+        "//markymark-parser",
+        "@crates//:tower-lsp-server",
+        "@crates//:lsp-types",
+        "@crates//:tokio",
+        "@crates//:serde",
+        "@crates//:serde_json",
+        "@crates//:thiserror",
+        "@crates//:anyhow",
+        "@crates//:log",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+rust_test(
+    name = "markymark-lsp_test",
+    crate = ":markymark-lsp",
+    deps = [
+        "@crates//:insta",
+    ],
+)

@@ -1,0 +1,21 @@
+load("@rules_zig//zig:defs.bzl", "zig_static_library")
+
+# Build the Zig SIMD kernel static library.
+#
+# c_adapter.zig is the root module that re-exports all FFI symbols.
+# Produces libmarky_kernels.a with CcInfo, linkable from Rust via rules_rust.
+zig_static_library(
+    name = "marky_kernels",
+    main = "src/c_adapter.zig",
+    srcs = glob(
+        ["src/**/*.zig"],
+        exclude = ["src/c_adapter.zig"],
+    ),
+    strip_debug_symbols = True,
+    zigopts = [
+        "-fPIC",
+        "-fno-stack-check",
+        "-fno-unwind-tables",
+    ],
+    visibility = ["//markymark-kernels:__pkg__"],
+)

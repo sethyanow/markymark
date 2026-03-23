@@ -1,0 +1,37 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+rust_library(
+    name = "markymark-index",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "markymark_index",
+    deps = [
+        "//markymark-core",
+        "//markymark-kernels",
+        "//markymark-parser",
+        "@crates//:petgraph",
+        "@crates//:bumpalo",
+        "@crates//:hashbrown",
+        "@crates//:serde",
+        "@crates//:serde_json",
+        "@crates//:thiserror",
+        "@crates//:tree-sitter",
+        "@crates//:self_cell",
+        "@crates//:log",
+        "@crates//:lasso",
+    ],
+    proc_macro_deps = [
+        "@crates//:async-trait",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+rust_test(
+    name = "markymark-index_test",
+    crate = ":markymark-index",
+    deps = [
+        "@crates//:insta",
+        "@crates//:proptest",
+        "@crates//:criterion",
+        "@crates//:tokio",
+    ],
+)
