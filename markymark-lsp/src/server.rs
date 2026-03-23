@@ -9,9 +9,10 @@ use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::*;
 use tower_lsp_server::{Client, LanguageServer, LspService};
 
-use crate::state::{ServerState, SymbolAtPosition};
+use crate::state::{ServerState, StructuredKeyInfo, SymbolAtPosition};
 use markymark_core::DocumentUri;
 use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link, ResolvedTarget};
+use markymark_index::{CodeSpanEntry, HeadingEntry, MarkdownLinkEntry, WikiLinkEntry, XmlTagEntry};
 
 use crate::helpers::{
     iter_realm_documents, resolved_target_to_location, structured_key_hover_markdown,
@@ -572,103 +573,12 @@ impl LanguageServer for Backend {
         };
 
         let markdown = match &symbol {
-            SymbolAtPosition::Heading(h) => {
-                let prefix = "#".repeat(h.level as usize);
-                format!("{} {}\n\nHeading (level {})", prefix, h.text, h.level)
-            }
-            SymbolAtPosition::WikiLink(wl) => {
-                let resolved = resolve_wiki_link(state.realm(), &doc_uri, wl.target, wl.heading);
-                match resolved {
-                    Some(ResolvedTarget::Document(uri)) => {
-                        format!("Wiki link to **{}**", uri.as_str())
-                    }
-                    Some(ResolvedTarget::Heading { uri, text, .. }) => {
-                        format!("Wiki link to heading **{}** in {}", text, uri.as_str())
-                    }
-                    Some(ResolvedTarget::Block { uri, id }) => {
-                        format!("Wiki link to block `{}` in {}", id, uri.as_str())
-                    }
-                    Some(ResolvedTarget::KeyPath {
-                        uri,
-                        path,
-                        value_kind,
-                        ..
-                    }) => {
-                        format!(
-                            "Wiki link to key `{}` ({:?}) in {}",
-                            path,
-                            value_kind,
-                            uri.as_str()
-                        )
-                    }
-                    None => {
-                        format!("Wiki link to **{}** (unresolved)", wl.target)
-                    }
-                }
-            }
-            SymbolAtPosition::MarkdownLink(ml) => {
-                format!("Markdown link: [{}]({})", ml.text, ml.url)
-            }
-            SymbolAtPosition::XmlTag(xt) => {
-                let mut lines = vec![format!("**`<{}>`** XML tag", xt.tag_name)];
-                let stats = xml_hover_stats(&state, xt.tag_name);
-                if !xt.attributes.is_empty() {
-                    let mut attrs: Vec<_> = xt.attributes.iter().collect();
-                    attrs.sort_by_key(|(k, _)| *k);
-                    let attr_list: Vec<String> = attrs
-                        .iter()
-                        .map(|(k, v)| format!("- `{}` = `{}`", k, v))
-                        .collect();
-                    lines.push(String::new());
-                    lines.push("**Attributes:**".to_string());
-                    lines.extend(attr_list);
-                }
-                lines.push(String::new());
-                lines.push("**Workspace usage:**".to_string());
-                lines.push(format!(
-                    "- Occurrences in workspace: **{}**",
-                    stats.occurrences
-                ));
-                lines.push(format!(
-                    "- Documents with this tag: **{}**",
-                    stats.document_count
-                ));
-                if !stats.attribute_counts.is_empty() {
-                    lines.push(String::new());
-                    lines.push("**Common attributes:**".to_string());
-                    lines.extend(
-                        stats
-                            .attribute_counts
-                            .iter()
-                            .map(|(name, count)| format!("- `{}` ({})", name, count)),
-                    );
-                }
-                if xt.is_self_closing {
-                    lines.push(String::new());
-                    lines.push("*Self-closing tag*".to_string());
-                }
-                if xt.is_unclosed {
-                    lines.push(String::new());
-                    lines.push("**Warning: unclosed tag**".to_string());
-                }
-                lines.join("\n")
-            }
-            SymbolAtPosition::CodeSpan(cs) => {
-                let mut lines = vec![format!("**`{}`** — inline code span", cs.text)];
-                let refs = state.realm().lookup_code_span(cs.text);
-                if refs.len() > 1 {
-                    lines.push(String::new());
-                    lines.push(format!("**Referenced in {} documents:**", refs.len()));
-                    for (ref_uri, _) in refs.iter().take(10) {
-                        lines.push(format!("- {}", ref_uri.as_str()));
-                    }
-                    if refs.len() > 10 {
-                        lines.push(format!("- ... and {} more", refs.len() - 10));
-                    }
-                }
-                lines.join("\n")
-            }
-            SymbolAtPosition::StructuredKey(ref info) => structured_key_hover_markdown(info),
+            SymbolAtPosition::Heading(h) => hover_heading(h),
+            SymbolAtPosition::WikiLink(wl) => hover_wiki_link(&state, &doc_uri, wl),
+            SymbolAtPosition::MarkdownLink(ml) => hover_markdown_link(ml),
+            SymbolAtPosition::XmlTag(xt) => hover_xml_tag(&state, xt),
+            SymbolAtPosition::CodeSpan(cs) => hover_code_span(&state, cs),
+            SymbolAtPosition::StructuredKey(ref info) => hover_structured_key(info),
         };
 
         Ok(Some(Hover {
@@ -975,4 +885,109 @@ impl Backend {
         let deb = self.debounce.lock().unwrap();
         deb.document_generations.len()
     }
+}
+
+fn hover_heading(h: &HeadingEntry<'_>) -> String {
+    let prefix = "#".repeat(h.level as usize);
+    format!("{} {}\n\nHeading (level {})", prefix, h.text, h.level)
+}
+
+fn hover_wiki_link(state: &ServerState, doc_uri: &DocumentUri, wl: &WikiLinkEntry<'_>) -> String {
+    let resolved = resolve_wiki_link(state.realm(), doc_uri, wl.target, wl.heading);
+    match resolved {
+        Some(ResolvedTarget::Document(uri)) => {
+            format!("Wiki link to **{}**", uri.as_str())
+        }
+        Some(ResolvedTarget::Heading { uri, text, .. }) => {
+            format!("Wiki link to heading **{}** in {}", text, uri.as_str())
+        }
+        Some(ResolvedTarget::Block { uri, id }) => {
+            format!("Wiki link to block `{}` in {}", id, uri.as_str())
+        }
+        Some(ResolvedTarget::KeyPath {
+            uri,
+            path,
+            value_kind,
+            ..
+        }) => {
+            format!(
+                "Wiki link to key `{}` ({:?}) in {}",
+                path,
+                value_kind,
+                uri.as_str()
+            )
+        }
+        None => {
+            format!("Wiki link to **{}** (unresolved)", wl.target)
+        }
+    }
+}
+
+fn hover_markdown_link(ml: &MarkdownLinkEntry<'_>) -> String {
+    format!("Markdown link: [{}]({})", ml.text, ml.url)
+}
+
+fn hover_xml_tag(state: &ServerState, xt: &XmlTagEntry<'_>) -> String {
+    let mut lines = vec![format!("**`<{}>`** XML tag", xt.tag_name)];
+    let stats = xml_hover_stats(state, xt.tag_name);
+    if !xt.attributes.is_empty() {
+        let mut attrs: Vec<_> = xt.attributes.iter().collect();
+        attrs.sort_by_key(|(k, _)| *k);
+        let attr_list: Vec<String> = attrs
+            .iter()
+            .map(|(k, v)| format!("- `{}` = `{}`", k, v))
+            .collect();
+        lines.push(String::new());
+        lines.push("**Attributes:**".to_string());
+        lines.extend(attr_list);
+    }
+    lines.push(String::new());
+    lines.push("**Workspace usage:**".to_string());
+    lines.push(format!(
+        "- Occurrences in workspace: **{}**",
+        stats.occurrences
+    ));
+    lines.push(format!(
+        "- Documents with this tag: **{}**",
+        stats.document_count
+    ));
+    if !stats.attribute_counts.is_empty() {
+        lines.push(String::new());
+        lines.push("**Common attributes:**".to_string());
+        lines.extend(
+            stats
+                .attribute_counts
+                .iter()
+                .map(|(name, count)| format!("- `{}` ({})", name, count)),
+        );
+    }
+    if xt.is_self_closing {
+        lines.push(String::new());
+        lines.push("*Self-closing tag*".to_string());
+    }
+    if xt.is_unclosed {
+        lines.push(String::new());
+        lines.push("**Warning: unclosed tag**".to_string());
+    }
+    lines.join("\n")
+}
+
+fn hover_code_span(state: &ServerState, cs: &CodeSpanEntry<'_>) -> String {
+    let mut lines = vec![format!("**`{}`** — inline code span", cs.text)];
+    let refs = state.realm().lookup_code_span(cs.text);
+    if refs.len() > 1 {
+        lines.push(String::new());
+        lines.push(format!("**Referenced in {} documents:**", refs.len()));
+        for (ref_uri, _) in refs.iter().take(10) {
+            lines.push(format!("- {}", ref_uri.as_str()));
+        }
+        if refs.len() > 10 {
+            lines.push(format!("- ... and {} more", refs.len() - 10));
+        }
+    }
+    lines.join("\n")
+}
+
+fn hover_structured_key(info: &StructuredKeyInfo) -> String {
+    structured_key_hover_markdown(info)
 }

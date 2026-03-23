@@ -1,11 +1,12 @@
 ---
 id: marky-3gi
 title: Extract hover() per-symbol-type builder methods in server.rs
-status: open
+status: active
 type: task
 priority: 2
 parent: marky-nxc
 ---
+
 
 
 
@@ -46,9 +47,14 @@ and each match arm becomes a delegation call.
 ### Function placement
 
 All 6 functions are standalone private functions placed AFTER the second `impl Backend` block
-(after L973). They are NOT methods on `Backend` because none of them use `self` — they only
-need `&ServerState`, `&DocumentUri`, and variant data. Making them standalone avoids false
+(after L978, the closing `}` of the `#[cfg(any(test, feature = "test-helpers"))]` block).
+They are NOT methods on `Backend` because none of them use `self` — they only need
+`&ServerState`, `&DocumentUri`, and variant data. Making them standalone avoids false
 coupling to Backend.
+
+**IMPORTANT:** The second `impl Backend` block (L931-978) is gated by
+`#[cfg(any(test, feature = "test-helpers"))]`. Functions placed INSIDE it would be invisible
+to production builds. Place new functions AFTER L978, outside all impl blocks.
 
 ### Dependencies used by the arms
 
@@ -100,8 +106,10 @@ async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
 
 ### Step 1: Baseline — run markymark-lsp tests via cargo MCP, confirm GREEN
 ### Step 2: Write the 6 standalone functions after the second `impl Backend` block
-- Place after L973 (after `document_generations_count` method)
+- Place after L978 (after the closing `}` of the `#[cfg(test)]` impl block — NOT inside it)
 - Each function takes only what it needs: `&ServerState`, `&DocumentUri`, variant entry type
+- Entry types require lifetime annotations: `&HeadingEntry<'_>`, `&WikiLinkEntry<'_>`,
+  `&MarkdownLinkEntry<'_>`, `&XmlTagEntry<'_>`, `&CodeSpanEntry<'_>`, `&StructuredKeyInfo` (no lifetime)
 - Move each arm's body intact into the corresponding function
 - Functions return `String`
 - Cargo check after each function (or batch-write all 6, then cargo check)
@@ -129,10 +137,11 @@ async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
 - Do NOT change the `resolve_wiki_link`, `xml_hover_stats`, or `structured_key_hover_markdown` functions.
 - Do NOT add new abstractions, traits, or generics.
 - Do NOT refactor the preamble or postamble — only the match arm bodies move.
+- Do NOT place functions inside the `#[cfg(any(test, feature = "test-helpers"))]` impl Backend block (L931-978) — they must be available in all builds, not just test builds.
 
 ## Key Considerations
 
-- **Lifetime on extracted functions**: `WikiLinkEntry<'a>`, `HeadingEntry<'a>`, etc. borrow from the `DocumentIndex` inside the read guard. The extracted functions receive references to these entries — the lifetime is bound to the state read guard scope in hover(). This is fine since the functions are called within that scope and return owned `String`.
+- **Lifetime on extracted functions**: `WikiLinkEntry<'a>`, `HeadingEntry<'a>`, etc. borrow from the `DocumentIndex` inside the read guard. Function signatures must include `<'_>` on these types (e.g., `h: &HeadingEntry<'_>`). Exception: `StructuredKeyInfo` has no lifetime parameter. The functions are called within the read guard scope and return owned `String`, so no lifetime flows to the output.
 - **`resolve_wiki_link` import**: Currently used inline at L580. After extraction, `hover_wiki_link` uses it — the import already exists at file scope.
-- **Line count risk**: server.rs is at 978 lines. Extracting methods adds ~6 function signatures + doc comments but the match arm bodies are already counted. Net change should be approximately +30 lines (signatures, blank lines). If this pushes past 1000, the executing agent must STOP and escalate.
+- **Line count risk**: server.rs is at 978 lines (verified 2026-03-23). The match body (L574-672, 99 lines) shrinks to ~8 lines (-91). Six new functions add ~105 lines (body + signatures + blanks). Net: approximately +14 lines → ~992 total. Should stay under 1000, but verify with `wc -l` after extraction. If over 1000, STOP and escalate.
 - **Test coverage**: hover behavior is tested via LSP integration tests in `markymark-cli/tests/lsp_methods.rs` and `markymark-lsp/tests/`. No unit tests exist for hover directly — the refactoring is validated by the integration test suite.
