@@ -277,7 +277,7 @@ impl ServerState {
         if has_stale_index {
             None
         } else {
-            // Secondary fallback: from_scan with Md4cScanBackend. Never panics.
+            // Secondary fallback: ephemeral engine via from_text. Never panics.
             Some(Self::fallback_scan_with_frontmatter(text))
         }
     }

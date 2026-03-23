@@ -2,11 +2,8 @@
 
 use bumpalo::collections::Vec as BumpVec;
 use bumpalo::Bump;
-use std::collections::HashMap as StdHashMap;
 
 use super::types::*;
-
-use markymark_core::prelude::Position;
 
 /// Convert heading text to a URL-safe slug.
 pub fn slugify(text: &str) -> String {
@@ -39,18 +36,6 @@ pub fn slugify(text: &str) -> String {
 
     // Trim dashes from start/end
     result.trim_matches('-').to_string()
-}
-
-/// Deduplicate a slug given a set of already-used slugs.
-pub(super) fn dedup_slug(base: &str, used: &mut StdHashMap<String, usize>) -> String {
-    let count = used.entry(base.to_string()).or_insert(0);
-    let slug = if *count == 0 {
-        base.to_string()
-    } else {
-        format!("{}-{}", base, count)
-    };
-    *count += 1;
-    slug
 }
 
 /// Build flat TOC entries with depth calculation.
@@ -157,32 +142,6 @@ pub(crate) fn build_outline<'arena>(
     }
 
     freeze_outline(arena, root)
-}
-
-// ---------------------------------------------------------------------------
-// Byte-offset to Position helpers (for scan-based construction)
-// ---------------------------------------------------------------------------
-
-/// Build a sorted list of byte offsets where each line starts.
-/// Line 0 starts at offset 0. Line N starts after the N-th newline.
-pub(super) fn byte_offset_line_starts(text: &str) -> Vec<u32> {
-    let mut starts = vec![0u32];
-    for (i, b) in text.bytes().enumerate() {
-        if b == b'\n' {
-            starts.push((i + 1) as u32);
-        }
-    }
-    starts
-}
-
-/// Convert a byte offset to a Position (0-based line, 0-based character).
-pub(super) fn byte_offset_to_position(line_starts: &[u32], offset: u32) -> Position {
-    let line = match line_starts.binary_search(&offset) {
-        Ok(exact) => exact,
-        Err(insert) => insert - 1,
-    };
-    let col = offset - line_starts[line];
-    Position::new(line as u32, col)
 }
 
 /// Find the earliest frontmatter close delimiter (`\n---\n` or `\n---\r\n`).

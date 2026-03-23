@@ -90,35 +90,6 @@ fn test_from_blob_code_span_positions() {
     assert_eq!(cs[0].range.start.character, 0);
 }
 
-#[test]
-fn test_from_blob_code_span_parity_with_from_scan() {
-    use markymark_core::scanner::Md4cScanBackend;
-
-    let text = "# Heading\n\nSome `code` and `more code` here.\n\n[link](url)";
-    let blob = blob_for(text);
-    let blob_index = DocumentIndex::from_blob(&blob).expect("from_blob failed");
-
-    let backend = Md4cScanBackend;
-    let scan_index = DocumentIndex::from_scan(text, &backend);
-
-    let blob_cs = blob_index.code_spans();
-    let scan_cs = scan_index.code_spans();
-    assert_eq!(blob_cs.len(), scan_cs.len(), "code span count mismatch");
-    for (b, s) in blob_cs.iter().zip(scan_cs.iter()) {
-        assert_eq!(b.text, s.text, "code span text mismatch");
-        assert_eq!(b.start_byte, s.start_byte, "start_byte mismatch");
-        assert_eq!(b.end_byte, s.end_byte, "end_byte mismatch");
-        assert_eq!(
-            b.range.start.line, s.range.start.line,
-            "start line mismatch"
-        );
-        assert_eq!(
-            b.range.start.character, s.range.start.character,
-            "start col mismatch"
-        );
-    }
-}
-
 // ── Task/Embed from_blob tests (marky-bmu9) ──────────────────────────
 
 #[test]
@@ -245,47 +216,6 @@ fn test_from_blob_v2_empty_no_callouts_or_block_refs() {
     assert!(index.block_refs().is_empty());
 }
 
-#[test]
-fn test_from_blob_callout_parity_with_from_scan() {
-    use markymark_core::scanner::Md4cScanBackend;
-
-    let text = "> [!note]\n> Content A\n\n> [!tip] My Title\n> Content B\n";
-
-    let blob = blob_for(text);
-    let blob_idx = DocumentIndex::from_blob(&blob).expect("from_blob failed");
-    let scan_idx = DocumentIndex::from_scan(text, &Md4cScanBackend);
-
-    let blob_callouts = blob_idx.callouts();
-    let scan_callouts = scan_idx.callouts();
-    assert_eq!(
-        blob_callouts.len(),
-        scan_callouts.len(),
-        "callout count mismatch"
-    );
-    for (b, s) in blob_callouts.iter().zip(scan_callouts.iter()) {
-        assert_eq!(b.callout_type, s.callout_type, "callout type mismatch");
-        assert_eq!(b.title, s.title, "callout title mismatch");
-    }
-}
-
-#[test]
-fn test_from_blob_block_ref_parity_with_from_scan() {
-    use markymark_core::scanner::Md4cScanBackend;
-
-    let text = "See ((a1b2c3d4-e5f6-7890-abcd-ef1234567890)) and ((11111111-2222-3333-4444-555555555555))\n";
-
-    let blob = blob_for(text);
-    let blob_idx = DocumentIndex::from_blob(&blob).expect("from_blob failed");
-    let scan_idx = DocumentIndex::from_scan(text, &Md4cScanBackend);
-
-    let blob_refs = blob_idx.block_refs();
-    let scan_refs = scan_idx.block_refs();
-    assert_eq!(blob_refs.len(), scan_refs.len(), "block ref count mismatch");
-    for (b, s) in blob_refs.iter().zip(scan_refs.iter()) {
-        assert_eq!(b.uuid, s.uuid, "block ref uuid mismatch");
-    }
-}
-
 // ── Property tests (B-6) ──────────────────────────────────────────────
 
 #[test]
@@ -346,21 +276,3 @@ fn test_from_blob_no_properties() {
     assert!(idx.properties().is_empty());
 }
 
-#[test]
-fn test_from_blob_properties_match_from_scan() {
-    use markymark_core::scanner::Md4cScanBackend;
-    let text = "tags:: project\nstatus:: active\nauthor:: [[Jane]]\n\n# Content\n";
-    let blob = blob_for(text);
-    let blob_idx = DocumentIndex::from_blob(&blob).expect("from_blob failed");
-    let scan_idx = DocumentIndex::from_scan(text, &Md4cScanBackend);
-    let blob_props = blob_idx.properties();
-    let scan_props = scan_idx.properties();
-    assert_eq!(
-        blob_props.len(),
-        scan_props.len(),
-        "property count mismatch"
-    );
-    for (b, s) in blob_props.iter().zip(scan_props.iter()) {
-        assert_eq!(b.key, s.key, "property key mismatch");
-    }
-}

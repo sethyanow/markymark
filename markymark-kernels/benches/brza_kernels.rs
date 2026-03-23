@@ -1,7 +1,7 @@
 //! BRZA benchmark suite for SIMD kernels vs baseline implementations.
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use markymark_core::scanner::{Md4cScanBackend, ScanBackend, ZigScanBackend};
+use markymark_core::scanner::{Md4cScanBackend, ScanBackend};
 use markymark_index::DocumentIndex;
 use markymark_kernels::{embed::EmbeddingIndex, scan, tokens};
 use markymark_parser::Parser;
@@ -385,18 +385,6 @@ fn bench_bulk_reindex(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(6));
     group.throughput(Throughput::Elements(docs.len() as u64));
 
-    let backend = ZigScanBackend;
-    group.bench_function("zig_scan_backend_600_docs", |b| {
-        b.iter(|| {
-            let mut heading_total = 0usize;
-            for doc in &docs {
-                let idx = DocumentIndex::from_scan(black_box(doc), &backend);
-                heading_total += idx.headings().len();
-            }
-            black_box(heading_total)
-        });
-    });
-
     group.bench_function("engine_from_text_600_docs", |b| {
         b.iter(|| {
             let mut heading_total = 0usize;
@@ -455,14 +443,6 @@ fn bench_md4c_vs_tree_sitter(c: &mut Criterion) {
             sample_size(20)
         });
         group.throughput(Throughput::Bytes(doc.len() as u64));
-
-        // md4c scan backend → from_scan (full index build via FFI)
-        group.bench_with_input(BenchmarkId::new("md4c_from_scan", label), &doc, |b, doc| {
-            b.iter(|| {
-                let idx = DocumentIndex::from_scan(black_box(doc), &md4c_backend);
-                black_box(idx.headings().len())
-            });
-        });
 
         // engine → from_text (full index build via ephemeral engine)
         group.bench_with_input(

@@ -5,7 +5,6 @@ mod types;
 
 mod from_blob;
 mod from_engine;
-mod from_scan;
 
 #[cfg(test)]
 mod tests;

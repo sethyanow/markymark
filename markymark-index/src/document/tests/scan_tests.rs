@@ -1,11 +1,9 @@
-//! Scan-based (ZigScanBackend) construction tests.
+//! DocumentIndex construction tests (via `from_text` engine path).
 
 use super::*;
-use markymark_core::scanner::ZigScanBackend;
 
 fn build_index_from_scan(source: &str) -> DocumentIndex {
-    let backend = ZigScanBackend;
-    DocumentIndex::from_scan(source, &backend)
+    DocumentIndex::from_text(source)
 }
 
 fn build_index_from_engine(source: &str) -> DocumentIndex {
@@ -90,9 +88,11 @@ fn test_from_scan_block_ids() {
 }
 
 #[test]
-fn test_from_scan_xml_tags_empty() {
+fn test_xml_tags_extracted() {
     let index = build_index_from_scan("<goal>Ship</goal>\n");
-    assert!(index.xml_tags().is_empty());
+    // Engine path extracts XML tags (scan backend did not)
+    assert!(!index.xml_tags().is_empty());
+    assert_eq!(index.xml_tags()[0].tag_name, "goal");
 }
 
 #[test]
@@ -101,20 +101,6 @@ fn test_from_engine_unchanged() {
     assert_eq!(index.headings()[0].text, "Heading");
     assert!(!index.wiki_links().is_empty());
     assert!(index.tags().iter().any(|t| t.name == "tag"));
-}
-
-#[test]
-fn test_parity_headings() {
-    let text = "# First\n\n## Second\n\n### Third\n";
-    let ast_idx = build_index_from_engine(text);
-    let scan_idx = build_index_from_scan(text);
-
-    assert_eq!(ast_idx.headings().len(), scan_idx.headings().len());
-    for (a, s) in ast_idx.headings().iter().zip(scan_idx.headings().iter()) {
-        assert_eq!(a.text, s.text);
-        assert_eq!(a.level, s.level);
-        assert_eq!(a.slug, s.slug);
-    }
 }
 
 // --- Bug fix tests: wiki link range calculation (marky-x3x #1) ---

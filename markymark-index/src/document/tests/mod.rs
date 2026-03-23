@@ -456,11 +456,10 @@ fn from_ast_extracts_code_spans_via_scan() {
 }
 
 // ---------------------------------------------------------------------------
-// md4c scan-based construction tests (feature-gated)
+// incremental / fallback tests
 // ---------------------------------------------------------------------------
 
 mod incremental_tests;
-mod md4c_scan_tests;
 
 // ---------------------------------------------------------------------------
 // CRLF frontmatter handling (marky-e7i3)
