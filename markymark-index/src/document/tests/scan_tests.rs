@@ -8,10 +8,8 @@ fn build_index_from_scan(source: &str) -> DocumentIndex {
     DocumentIndex::from_scan(source, &backend)
 }
 
-fn build_index_from_ast(source: &str) -> DocumentIndex {
-    let mut parser = Parser::new().unwrap();
-    let ast = parser.parse(source).unwrap();
-    DocumentIndex::from_ast(ast)
+fn build_index_from_engine(source: &str) -> DocumentIndex {
+    DocumentIndex::from_text(source)
 }
 
 #[test]
@@ -98,8 +96,8 @@ fn test_from_scan_xml_tags_empty() {
 }
 
 #[test]
-fn test_from_ast_unchanged() {
-    let index = build_index_from_ast("# Heading\n\n[[Page]]\n#tag\n");
+fn test_from_engine_unchanged() {
+    let index = build_index_from_engine("# Heading\n\n[[Page]]\n#tag\n");
     assert_eq!(index.headings()[0].text, "Heading");
     assert!(!index.wiki_links().is_empty());
     assert!(index.tags().iter().any(|t| t.name == "tag"));
@@ -108,7 +106,7 @@ fn test_from_ast_unchanged() {
 #[test]
 fn test_parity_headings() {
     let text = "# First\n\n## Second\n\n### Third\n";
-    let ast_idx = build_index_from_ast(text);
+    let ast_idx = build_index_from_engine(text);
     let scan_idx = build_index_from_scan(text);
 
     assert_eq!(ast_idx.headings().len(), scan_idx.headings().len());

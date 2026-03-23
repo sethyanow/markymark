@@ -4,12 +4,9 @@ use super::*;
 use bumpalo::Bump;
 use hashbrown::HashMap;
 use markymark_core::prelude::*;
-use markymark_parser::Parser;
 
 fn build_index(source: &str) -> DocumentIndex {
-    let mut parser = Parser::new().unwrap();
-    let ast = parser.parse(source).unwrap();
-    DocumentIndex::from_ast(ast)
+    DocumentIndex::from_text(source)
 }
 
 /// Compile-time assertion: DocumentIndex must be Send + Sync for tower-lsp
@@ -199,10 +196,8 @@ fn outline_node_children_arena_slice() {
 }
 
 #[test]
-fn from_ast_propagates_arena_lifetime() {
-    let mut parser = Parser::new().unwrap();
-    let ast = parser.parse("# Arena\n").unwrap();
-    let index = DocumentIndex::from_ast(ast);
+fn from_text_propagates_arena_lifetime() {
+    let index = DocumentIndex::from_text("# Arena\n");
 
     let heading: &HeadingEntry<'_> = &index.headings()[0];
     assert_eq!(heading.text, "Arena");
@@ -535,4 +530,56 @@ fn mask_frontmatter_mixed_endings_picks_earliest_close() {
         masked.contains("bogus"),
         "body content after LF close must be preserved, not masked"
     );
+}
+
+// ---------- from_text tests ----------
+
+#[test]
+fn from_text_mixed_markdown() {
+    let source = "---\ntitle: Test Doc\ntags: [a, b]\n---\n\n# Hello\n\nSome text with a [[wiki link]] and #tag.\n\n## Sub heading\n\n[md link](https://example.com)\n";
+    let idx = DocumentIndex::from_text(source);
+
+    // Headings
+    assert_eq!(idx.headings().len(), 2);
+    assert_eq!(idx.headings()[0].text, "Hello");
+    assert_eq!(idx.headings()[0].level, 1);
+    assert_eq!(idx.headings()[1].text, "Sub heading");
+    assert_eq!(idx.headings()[1].level, 2);
+
+    // Wiki links
+    assert_eq!(idx.wiki_links().len(), 1);
+    assert_eq!(idx.wiki_links()[0].target, "wiki link");
+
+    // Tags
+    assert_eq!(idx.tags().len(), 1);
+    assert_eq!(idx.tags()[0].name, "tag");
+
+    // Markdown links
+    assert_eq!(idx.markdown_links().len(), 1);
+    assert_eq!(idx.markdown_links()[0].url, "https://example.com");
+
+    // Frontmatter preserved
+    assert!(!idx.frontmatter().is_empty(), "frontmatter should be populated");
+    let titles: Vec<_> = idx.frontmatter().iter().filter(|f| f.key == "title").collect();
+    assert_eq!(titles.len(), 1);
+}
+
+#[test]
+fn from_text_frontmatter_only() {
+    let source = "---\ntitle: Just FM\nauthor: Test\n---\n";
+    let idx = DocumentIndex::from_text(source);
+
+    assert!(!idx.frontmatter().is_empty(), "frontmatter should be populated");
+    assert!(idx.headings().is_empty(), "no headings in frontmatter-only doc");
+    assert!(idx.wiki_links().is_empty());
+    assert!(idx.tags().is_empty());
+}
+
+#[test]
+fn from_text_empty_input() {
+    let idx = DocumentIndex::from_text("");
+    assert!(idx.headings().is_empty());
+    assert!(idx.wiki_links().is_empty());
+    assert!(idx.tags().is_empty());
+    assert!(idx.frontmatter().is_empty());
 }

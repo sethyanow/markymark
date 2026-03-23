@@ -160,7 +160,7 @@ Stale cache + MCP engines: LSP state + MCP engine = ~80
 - [ ] ffi_types.zig CMd4c* types, exports.zig extract/free — ALL deleted
 - [ ] from_scan.rs, from_ast.rs, ScanBackend trait — ALL deleted
 - [ ] markymark-kernels/src/md4c/ module — ALL deleted
-- [ ] DocumentIndex::from_text() works for all test cases
+- [x] DocumentIndex::from_text() works for all test cases — marky-llj
 - [ ] All tests passing (Zig + Rust)
 - [ ] Pre-commit hooks passing
 - [ ] generation field present in CEngineResult (u64, monotonic)

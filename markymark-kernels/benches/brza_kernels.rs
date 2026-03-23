@@ -397,15 +397,12 @@ fn bench_bulk_reindex(c: &mut Criterion) {
         });
     });
 
-    let mut parser = Parser::new().expect("parser initialization should succeed");
-    group.bench_function("tree_sitter_from_ast_600_docs", |b| {
+    group.bench_function("engine_from_text_600_docs", |b| {
         b.iter(|| {
             let mut heading_total = 0usize;
             for doc in &docs {
-                if let Ok(ast) = parser.parse(black_box(doc)) {
-                    let idx = DocumentIndex::from_ast(ast);
-                    heading_total += idx.headings().len();
-                }
+                let idx = DocumentIndex::from_text(black_box(doc));
+                heading_total += idx.headings().len();
             }
             black_box(heading_total)
         });
@@ -467,14 +464,13 @@ fn bench_md4c_vs_tree_sitter(c: &mut Criterion) {
             });
         });
 
-        // tree-sitter → from_ast (full index build via parse + extract)
+        // engine → from_text (full index build via ephemeral engine)
         group.bench_with_input(
-            BenchmarkId::new("tree_sitter_from_ast", label),
+            BenchmarkId::new("engine_from_text", label),
             &doc,
             |b, doc| {
                 b.iter(|| {
-                    let ast = parser.parse(black_box(doc)).expect("parse");
-                    let idx = DocumentIndex::from_ast(ast);
+                    let idx = DocumentIndex::from_text(black_box(doc));
                     black_box(idx.headings().len())
                 });
             },

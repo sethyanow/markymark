@@ -5,14 +5,13 @@ use markymark_core::structured::{DocumentKind, KeyEntry, StructuredAst};
 use std::path::PathBuf;
 
 fn make_md_index(source: &str) -> DocumentIndex {
-    let ast = markymark_parser::parse(source).unwrap();
-    DocumentIndex::from_ast(ast)
+    DocumentIndex::from_text(source)
 }
 
 /// Build a markdown index whose code_spans contain the given identifiers.
 ///
-/// Constructs a source string with backtick code spans so `from_ast`
-/// (which delegates to from_scan) extracts them naturally.
+/// Constructs a source string with backtick code spans so `from_text`
+/// extracts them naturally via the engine path.
 fn make_md_index_with_code_spans(
     _base_source: &str,
     code_spans: Vec<CodeSpanOwned>,
@@ -25,8 +24,7 @@ fn make_md_index_with_code_spans(
         source.push_str("` ");
     }
     source.push('\n');
-    let ast = markymark_parser::parse(&source).unwrap();
-    DocumentIndex::from_ast(ast)
+    DocumentIndex::from_text(&source)
 }
 
 fn uri(name: &str) -> DocumentUri {

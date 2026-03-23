@@ -4,7 +4,7 @@ use bumpalo::collections::Vec as BumpVec;
 use hashbrown::HashMap;
 use markymark_core::arena::{arena_alloc_str, DocumentArena};
 use markymark_core::{Position, Range};
-use markymark_kernels::engine::EngineExtraction;
+use markymark_kernels::engine::{DocumentEngine, EngineExtraction};
 
 use super::{
     helpers, BlockEntry, BlockRefEntry, CalloutEntry, CodeSpanEntry, DocumentDependent,
@@ -15,6 +15,25 @@ use super::{
 };
 
 impl DocumentIndex {
+    /// Build a document index from raw markdown text via an ephemeral engine.
+    ///
+    /// This is a **test convenience** — it creates a temporary [`DocumentEngine`],
+    /// extracts results, and drops the engine. Production code should use
+    /// [`from_engine_result_with_frontmatter`] with a persistent engine.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the engine fails to create, get results, or convert extraction.
+    /// This is intentional — test code should surface failures immediately.
+    pub fn from_text(text: &str) -> Self {
+        let (fm, aliases) = helpers::parse_frontmatter_owned(text);
+        let masked = helpers::mask_frontmatter(text);
+        let engine = DocumentEngine::new(&masked).expect("from_text: engine create failed");
+        let result = engine.get_result().expect("from_text: get_result failed");
+        let extraction = result.to_extraction().expect("from_text: to_extraction failed");
+        Self::from_engine_result_with_frontmatter(&extraction, fm, aliases)
+    }
+
     /// Build a document index from an owned engine extraction.
     pub fn from_engine_result(data: &EngineExtraction) -> Self {
         Self::from_engine_result_inner(data, Vec::new(), Vec::new())

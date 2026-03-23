@@ -1,11 +1,12 @@
 ---
 id: marky-llj
 title: 'Phase 4.1: Add DocumentIndex::from_text() and migrate from_ast callers'
-status: open
+status: active
 type: task
 priority: 2
 parent: marky-0xtn
 ---
+
 
 ## Context
 
@@ -65,19 +66,21 @@ parent: marky-0xtn
 ## Key Considerations
 
 - `from_text()` uses `expect()` internally — acceptable for test convenience, NOT for production. Document this in the function's doc comment.
-- `DocumentEngine::new("")` works (verified by `test_engine_empty_input` in engine.rs:285). Empty input should produce empty index, not panic.
-- Bench files use `from_ast` — these need `markymark-index` to depend on `markymark-kernels` for DocumentEngine. Check if this dependency already exists.
+- `DocumentEngine::new("")` works (re-verified: `test_engine_empty_input` passes, 2026-03-23). Empty input should produce empty index, not panic.
+- markymark-index already depends on markymark-kernels (Cargo.toml line 19) — no new dependency needed for DocumentEngine access in benches or tests.
 - The `markymark-parser` import (`parse()`) can be removed from migrated test files since `from_text()` handles parsing internally.
 - After this task, `from_ast` should have ZERO callers, making the `from_ast.rs` module deletable in a follow-up task.
+- **SRE: Line numbers in step 4 are approximate** — from the prior session before Phase 3 commits. Use LSP findReferences on `from_ast` to get current positions.
+- **SRE: Frontmatter-only edge case** — test should cover input that is entirely frontmatter (e.g., `---\ntitle: x\n---\n`) with no markdown body. Expect: frontmatter entries populated, headings/links/tags empty.
 
 ## Success Criteria
 
-- [ ] `DocumentIndex::from_text(text: &str) -> Self` exists and works for empty, frontmatter-only, and mixed markdown
-- [ ] All 18 from_ast call sites migrated to from_text (verified: zero from_ast callers in tests/benches)
-- [ ] from_text is re-exported from markymark-index crate root
-- [ ] Test for from_text verifies headings, frontmatter, and empty input
-- [ ] cargo test --workspace passes
-- [ ] cargo clippy --workspace -- -D warnings passes
+- [x] `DocumentIndex::from_text(text: &str) -> Self` exists and works for empty, frontmatter-only, and mixed markdown
+- [x] All 18 from_ast call sites migrated to from_text (verified: zero from_ast callers in tests/benches)
+- [x] from_text is re-exported from markymark-index crate root
+- [x] Test for from_text verifies headings, frontmatter, and empty input
+- [x] cargo test --workspace passes
+- [x] cargo clippy --workspace -- -D warnings passes
 
 ## Anti-Patterns
 

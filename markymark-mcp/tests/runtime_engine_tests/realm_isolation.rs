@@ -183,7 +183,7 @@ async fn query_operations_error_on_never_created_realm() {
         },
     };
 
-    let mut operations: Vec<(&str, CoreOperation)> = vec![
+    let operations: Vec<(&str, CoreOperation)> = vec![
         (
             "SearchSymbols",
             CoreOperation::SearchSymbols {

@@ -10,7 +10,6 @@ use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion
 
 use markymark_core::DocumentUri;
 use markymark_index::{DocumentIndex, RealmIndex};
-use markymark_parser::Parser;
 use std::path::PathBuf;
 
 /// Generate a markdown document with `n_headings` headings and `n_tags` tags.
@@ -101,23 +100,18 @@ fn generate_vault_doc(doc_id: usize) -> String {
 }
 
 fn parse_doc(source: &str) -> DocumentIndex {
-    let mut parser = Parser::new().expect("parser init");
-    let ast = parser.parse(source).expect("parse should succeed");
-    DocumentIndex::from_ast(ast)
+    DocumentIndex::from_text(source)
 }
 
 /// Pre-populate a realm with `n_docs` vault documents.
-/// Returns the realm and the parser (for reuse).
 fn build_vault(n_docs: usize) -> RealmIndex {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let mut realm = RealmIndex::new();
-    let mut parser = Parser::new().expect("parser init");
 
     for i in 0..n_docs {
         let uri = DocumentUri::from_file_path(&PathBuf::from(format!("/vault/doc_{i}.md")));
         let text = generate_vault_doc(i);
-        let ast = parser.parse(&text).expect("parse should succeed");
-        let index = DocumentIndex::from_ast(ast);
+        let index = DocumentIndex::from_text(&text);
         rt.block_on(realm.add_document(uri, index));
     }
     realm
