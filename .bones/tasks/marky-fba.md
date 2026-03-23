@@ -1,12 +1,13 @@
 ---
 id: marky-fba
 title: Extract AddRoot arm from execute() into engine/add_root.rs
-status: active
+status: closed
 type: task
 priority: 2
 owner: Seth
 parent: marky-nxc
 ---
+
 
 
 
@@ -84,12 +85,12 @@ CoreOperation::AddRoot { realm, root } => {
 
 ## Success Criteria
 
-- [ ] `handle_add_root` method exists in `engine/add_root.rs` as `impl RuntimeEngine`
-- [ ] AddRoot arm in execute() is a single delegation call (~1-2 lines)
-- [ ] All 4 phases preserved in the extracted method (including cfg-gated semantic search)
-- [ ] All tests pass (default features)
-- [ ] All tests pass (all features)
-- [ ] Clippy clean
+- [x] `handle_add_root` method exists in `engine/add_root.rs` as `impl RuntimeEngine`
+- [x] AddRoot arm in execute() is a single delegation call (~1-2 lines)
+- [x] All 4 phases preserved in the extracted method (including cfg-gated semantic search)
+- [x] All tests pass (default features)
+- [x] All tests pass (all features)
+- [x] Clippy clean
 
 ## Anti-Patterns
 
