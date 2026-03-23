@@ -1,11 +1,13 @@
 ---
 id: marky-xfgb
 title: 'Phase 3: Switch MCP markdown indexing to CEngineResult persistent engines'
-status: active
+status: closed
 type: feature
 priority: 2
 parent: marky-0xtn
 ---
+
+
 
 
 
@@ -102,14 +104,14 @@ Replace MCP markdown indexing path from scan-based extraction to persistent Docu
 
 ## Success Criteria
 
-- [ ] MCP markdown path has zero production scan-based calls in migrated flow (verify: no `from_scan_with_frontmatter` in `index_root_into_realm` happy path)
-- [ ] Persistent engine state exists for MCP markdown lifecycle (`RealmData.engines: HashMap<String, Mutex<DocumentEngine>>`)
-- [ ] Fallback ordering is stale-first and scan-second when stale is unavailable (verify: test for both fallback paths)
-- [ ] Engine cleanup on root removal (`unindex_root_from_realm` removes engines for affected files)
-- [ ] Tests cover: success path, update failure → stale fallback, create failure → scan fallback, conversion failure → stale fallback, root removal cleanup, frontmatter preservation
-- [ ] cargo test --package markymark-mcp passes
-- [ ] cargo check passes workspace-wide
-- [ ] cargo clippy --package markymark-mcp -- -D warnings passes
+- [x] MCP markdown path has zero production scan-based calls in migrated flow (verify: no `from_scan_with_frontmatter` in `index_root_into_realm` happy path)
+- [x] Persistent engine state exists for MCP markdown lifecycle (`RealmData.engines: HashMap<String, Mutex<DocumentEngine>>`)
+- [x] Fallback ordering is stale-first and scan-second when stale is unavailable (verify: test for both fallback paths)
+- [x] Engine cleanup on root removal (`unindex_root_from_realm` removes engines for affected files)
+- [x] Tests cover: success path, update failure → stale fallback, create failure → scan fallback, conversion failure → stale fallback, root removal cleanup, frontmatter preservation
+- [x] cargo test --package markymark-mcp passes
+- [x] cargo check passes workspace-wide
+- [x] cargo clippy --package markymark-mcp -- -D warnings passes
 
 ## Anti-Patterns
 
@@ -122,3 +124,7 @@ Replace MCP markdown indexing path from scan-based extraction to persistent Docu
 - FORBIDDEN: implementing only happy path and skipping fallback chain. Both stale-first and scan-second fallbacks are required.
 - FORBIDDEN: testing only happy path. Each failure mode (create, update, conversion) must have a dedicated test.
 - FORBIDDEN: keeping `Md4cScanBackend` as the primary path and adding engine as "optional" — engine IS the primary path, scan is fallback only.
+
+## Log
+
+- [2026-03-23T16:37:52Z] [Seth] Phase 3 complete. Replaced scan-based MCP markdown indexing with persistent DocumentEngine + CEngineResult path. RealmData now holds HashMap<String, Mutex<DocumentEngine>>. Fallback chain: stale engine snapshot → scan (no stale). Engine cleanup wired into unindex_root_from_realm. 5 new tests, 209 total MCP tests pass. Clippy clean. Committed 3116d80.

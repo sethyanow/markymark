@@ -151,8 +151,8 @@ Stale cache + MCP engines: LSP state + MCP engine = ~80
 - [ ] CEngineResult struct matches DocumentEngine state exactly (13 types + 3 metadata)
 - [ ] Parity tests prove from_engine_result == from_blob for diverse inputs
 - [x] LSP hot path uses get_result/from_engine_result (no get_blob) — marky-2nxj
-- [ ] MCP batch uses persistent engines + from_engine_result (no from_scan)
-- [ ] Stale index cache returns last-good DocumentIndex on engine failure
+- [x] MCP batch uses persistent engines + from_engine_result (no from_scan) — marky-xfgb
+- [x] Stale index cache returns last-good DocumentIndex on engine failure — marky-xfgb
 - [ ] serialize.zig, blob.zig, from_blob/ — ALL deleted
 - [ ] ffi_types.zig CMd4c* types, exports.zig extract/free — ALL deleted
 - [ ] from_scan.rs, from_ast.rs, ScanBackend trait — ALL deleted
