@@ -791,3 +791,6 @@
 {"timestamp":"2026-03-23T16:25:23.196232+00:00","actor":"Seth","event_type":"updated","task_id":"marky-xfgb","details":{"status":"active"}}
 {"timestamp":"2026-03-23T16:37:45.009631+00:00","actor":"Seth","event_type":"closed","task_id":"marky-xfgb","details":{"notes":null}}
 {"timestamp":"2026-03-23T16:37:52.382146+00:00","actor":"Seth","event_type":"logged","task_id":"marky-xfgb","details":{"message":"Phase 3 complete. Replaced scan-based MCP markdown indexing with persistent DocumentEngine + CEngineResult path. RealmData now holds HashMap<String, Mutex<DocumentEngine>>. Fallback chain: stale engine snapshot → scan (no stale). Engine cleanup wired into unindex_root_from_realm. 5 new tests, 209 total MCP tests pass. Clippy clean. Committed 3116d80."}}
+{"timestamp":"2026-03-23T16:42:01.956642+00:00","actor":"Seth","event_type":"created","task_id":"marky-llj","details":{}}
+{"timestamp":"2026-03-23T16:42:07.912896+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-0xtn","details":{"kind":"parent-child","to":"marky-llj"}}
+{"timestamp":"2026-03-23T16:42:07.913558+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-0xtn","details":{"kind":"blocks","to":"marky-llj"}}

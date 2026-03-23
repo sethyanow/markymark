@@ -8,7 +8,14 @@ Completed work details live in git history, not here.
 
 ---
 
-## Current State (2026-02-26)
+## Current State (2026-03-23)
+
+### marky-0xtn Phases 1-3 complete — Phase 4 (deletion) remains
+
+Phases 1-3 of the blob-removal epic are done. All consumers (LSP, MCP) now use
+persistent DocumentEngine + CEngineResult. Phase 4 is the deletion sweep: remove
+blob serialization, CMd4c types, from_scan, from_ast, ScanBackend, and add
+`from_text()` convenience. 4/14 epic criteria checked; remaining 10 are Phase 4.
 
 ### marky-0xtn Phase 1 complete (marky-e0kp, commit `2cd1310`)
 
