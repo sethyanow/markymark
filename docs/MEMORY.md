@@ -10,26 +10,16 @@ Completed work details live in git history, not here.
 
 ## Current State (2026-03-23)
 
-### marky-0xtn Phases 1-3 + 4.1-4.6 complete — nearing epic closure
+### marky-0xtn COMPLETE — blob serialization eliminated (PR #55)
 
-Phases 1-3 done (LSP, MCP on CEngineResult). Phase 4 deletion sweep nearly complete:
-4.1-4.3 migrated callers/deleted from_ast/from_scan. 4.4 deleted scanner module.
-4.5 (marky-qu1, `49770d0`) deleted blob path (-4,094 lines).
-4.6 (marky-ibt, `ab8c531`) deleted CMd4c FFI layer (-2,527 lines): Rust md4c module,
-Zig ffi_types/exports/exports_tests, benchmark arm renamed to bench_engine_from_text.
+Epic closed. All 14/14 criteria verified. PR #55 targeting dev.
+CEngineResult is now the sole FFI path for all consumers (LSP, MCP, tests).
+~6,600 lines of dead code deleted across Phases 4.1-4.6.
 
-**8/14 epic criteria now checked.** Remaining 6 unchecked:
-- Criteria 1-2: CEngineResult struct matches / parity tests — likely already satisfied from Phase 1
-- Criterion 11: All tests passing — 983/983 pass as of Phase 4.6
-- Criterion 12: Pre-commit hooks passing — needs verification
-- Criteria 13-14: generation field / _reserved bytes — built in Phase 1, need re-verification
-
-Next session should audit remaining criteria — several may be closeable with verification only.
-
-**Note:** The `zig-kernels` feature in markymark-core is now completely hollow — all
-`cfg(feature = "zig-kernels")` references were in the deleted scanner module. The feature
-still activates the `markymark-kernels` optional dep but no code in markymark-core uses it.
-Cleanup deferred — not blocking.
+**Hollow feature note:** The `zig-kernels` feature in markymark-core is now completely
+hollow — all `cfg(feature = "zig-kernels")` references were in the deleted scanner module.
+The feature still activates the `markymark-kernels` optional dep but no code in
+markymark-core uses it. Cleanup deferred — not blocking.
 
 ### marky-0xtn Phase 1 complete (marky-e0kp, commit `2cd1310`)
 
