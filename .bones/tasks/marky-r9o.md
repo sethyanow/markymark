@@ -1,12 +1,13 @@
 ---
 id: marky-r9o
 title: Extract SearchBlockText arm from execute() into engine/search_block_text.rs
-status: active
+status: closed
 type: task
 priority: 2
 owner: Seth
 parent: marky-nxc
 ---
+
 
 
 
