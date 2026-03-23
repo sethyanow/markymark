@@ -12,6 +12,7 @@ parent: marky-nxc
 
 
 
+
 ## Context
 
 `markymark-mcp/src/engine/mod.rs` execute() AddRoot arm (L483-603, ~120 lines) contains
@@ -112,3 +113,4 @@ CoreOperation::AddRoot { realm, root } => {
 ## Log
 
 - [2026-03-23T10:23:56Z] [Seth] SRE refinement complete (13-category review). Key changes: (1) Added pub(super) visibility to handle_add_root signature — without it, method would be private to add_root.rs and uncallable from mod.rs. (2) Documented fully-qualified calls (markymark_index::parse_frontmatter_owned, mask_frontmatter, log::warn!) not in original import list. (3) Corrected Step 4 — all listed imports are shared with index_root_into_realm, so none become unused after extraction (likely no-op). (4) Added Key Considerations: visibility pattern, AddRoot vs index_root_into_realm parsing divergence, self field access, race condition preservation. (5) Added anti-pattern for visibility omission. All architecture claims verified accurate (line numbers, 4-phase structure, cfg-gated code). Assessment: APPROVE with changes applied.
+- [2026-03-23T10:30:16Z] [Seth] Debrief: Clean mechanical extraction, no surprises. SRE predictions all accurate (visibility gap, no-op Step 4, import sharing). Reflections: Skeleton matched reality exactly after SRE corrections. pub(super) async fn pattern now established for engine module splits. No user corrections needed.

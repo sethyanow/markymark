@@ -23,3 +23,7 @@
 {"timestamp":"2026-03-23T10:24:04.855614+00:00","actor":"Seth","event_type":"updated","task_id":"marky-fba","details":{"status":"active"}}
 {"timestamp":"2026-03-23T10:24:05.238709+00:00","actor":"Seth","event_type":"claimed","task_id":"marky-fba","details":{"actor":"Seth"}}
 {"timestamp":"2026-03-23T10:29:40.216958+00:00","actor":"Seth","event_type":"closed","task_id":"marky-fba","details":{"notes":null}}
+{"timestamp":"2026-03-23T10:30:16.497397+00:00","actor":"Seth","event_type":"logged","task_id":"marky-fba","details":{"message":"Debrief: Clean mechanical extraction, no surprises. SRE predictions all accurate (visibility gap, no-op Step 4, import sharing). Reflections: Skeleton matched reality exactly after SRE corrections. pub(super) async fn pattern now established for engine module splits. No user corrections needed."}}
+{"timestamp":"2026-03-23T10:33:07.303770+00:00","actor":"Seth","event_type":"created","task_id":"marky-6lc","details":{}}
+{"timestamp":"2026-03-23T10:33:48.893308+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-nxc","details":{"kind":"parent-child","to":"marky-6lc"}}
+{"timestamp":"2026-03-23T10:33:48.893847+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-nxc","details":{"kind":"blocks","to":"marky-6lc"}}
