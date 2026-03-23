@@ -1,12 +1,13 @@
 ---
 id: marky-8d08
 title: 'Cross-environment benchmark validation: md4c vs tree-sitter performance'
-status: open
+status: closed
 type: task
 priority: 2
 owner: sethyanow@users.noreply.github.com
 parent: marky-0mr
 ---
+
 
 
 <context>
