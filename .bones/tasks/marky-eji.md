@@ -1,11 +1,12 @@
 ---
 id: marky-eji
 title: 'Phase 1: Decompose realm/mod.rs into cohesion-based submodules'
-status: active
+status: closed
 type: task
 priority: 2
 parent: marky-nxc
 ---
+
 
 
 
@@ -162,18 +163,18 @@ standalone function — not a trait. The executing agent decides the exact gener
 
 ## Success Criteria
 
-- [ ] `realm/mod.rs` contains only struct definition, `DocContribution`, `intern_stem`,
+- [x] `realm/mod.rs` contains only struct definition, `DocContribution`, `intern_stem`,
       constructors, lifecycle methods, counts/getters, iterators, `semantic_*`, and `Default`
-- [ ] `realm/cross_doc.rs` contains `ensure_tags_clean`, `remove_from_cross_doc_indexes`,
+- [x] `realm/cross_doc.rs` contains `ensure_tags_clean`, `remove_from_cross_doc_indexes`,
       `populate_cross_doc_indexes`, and all 5 `patch_*` methods
-- [ ] `retain_or_remove` helper in cross_doc.rs deduplicates all 12 inline instances (7 in remove_from_cross_doc_indexes + 5 in patch methods)
-- [ ] `realm/search.rs` contains all 8 search/lookup methods
-- [ ] `realm/journal.rs` contains `lookup_journal_by_month` and `journal_date`
-- [ ] `realm/mod.rs` below 1000-line HARD STOP
-- [ ] All `#[cfg(feature = "embeddings")]` code remains in mod.rs
-- [ ] `cargo nextest -p markymark-index` passes (same test count as baseline)
-- [ ] `cargo nextest -p markymark-index --all-features` passes
-- [ ] `cargo clippy -p markymark-index --all-targets` clean
+- [x] `retain_or_remove` helper in cross_doc.rs deduplicates all 12 inline instances (7 in remove_from_cross_doc_indexes + 5 in patch methods)
+- [x] `realm/search.rs` contains all 8 search/lookup methods
+- [x] `realm/journal.rs` contains `lookup_journal_by_month` and `journal_date`
+- [x] `realm/mod.rs` below 1000-line HARD STOP
+- [x] All `#[cfg(feature = "embeddings")]` code remains in mod.rs
+- [x] `cargo nextest -p markymark-index` passes (same test count as baseline)
+- [x] `cargo nextest -p markymark-index --all-features` passes
+- [x] `cargo clippy -p markymark-index --all-targets` clean
 
 ## Anti-Patterns
 

@@ -156,11 +156,11 @@ block on the same struct, re-exported from mod.rs).
 ## Success Criteria
 
 ### Phase 1: realm/mod.rs decomposition
-- [ ] `realm/mod.rs` contains only: struct definition, constructors (`new`, `new_with_embeddings`), lifecycle methods (`add_document*`, `update_document`, `remove_document`), count/getter methods, iterators, `semantic_*` methods, and `Default` — no search, cross-doc, or journal methods remain
-- [ ] Cross-doc index methods (`remove_from_cross_doc_indexes`, `populate_cross_doc_indexes`, `patch_*`, `ensure_tags_clean`) extracted to `realm/cross_doc.rs` with a `retain_or_remove` helper deduplicating the 7 inline instances
-- [ ] Search/lookup methods (`search_block_text`, `search_key_paths`, `lookup_heading`, `lookup_block`, `lookup_code_span`, `tag_counts`, `find_uri_by_stem`, `find_uri_by_relative_path`) extracted to `realm/search.rs`
-- [ ] Journal methods (`lookup_journal_by_month`, `journal_date`) and `detect_journal_date` helper extracted to `realm/journal.rs`
-- [ ] `realm/mod.rs` below 1000-line HARD STOP (the only hard numeric constraint)
+- [x] `realm/mod.rs` contains only: struct definition, constructors (`new`, `new_with_embeddings`), lifecycle methods (`add_document*`, `update_document`, `remove_document`), count/getter methods, iterators, `semantic_*` methods, and `Default` — no search, cross-doc, or journal methods remain
+- [x] Cross-doc index methods (`remove_from_cross_doc_indexes`, `populate_cross_doc_indexes`, `patch_*`, `ensure_tags_clean`) extracted to `realm/cross_doc.rs` with a `retain_or_remove` helper deduplicating the 7 inline instances
+- [x] Search/lookup methods (`search_block_text`, `search_key_paths`, `lookup_heading`, `lookup_block`, `lookup_code_span`, `tag_counts`, `find_uri_by_stem`, `find_uri_by_relative_path`) extracted to `realm/search.rs`
+- [x] Journal methods (`lookup_journal_by_month`, `journal_date`) extracted to `realm/journal.rs` (`detect_journal_date` already in helpers.rs)
+- [x] `realm/mod.rs` below 1000-line HARD STOP (the only hard numeric constraint)
 
 ### Phase 2: engine/mod.rs execute() extraction
 - [ ] Read-lock realm-lookup boilerplate eliminated via a `resolve_realm` helper — each read-lock arm reduced from 6 lines of boilerplate to a single helper call
