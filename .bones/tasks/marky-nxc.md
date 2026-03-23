@@ -4,7 +4,10 @@ title: 'Code quality review: decompose god files and methods'
 status: open
 type: epic
 priority: 2
+depends_on: [marky-eji]
 ---
+
+
 
 
 ## Context
