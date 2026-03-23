@@ -158,16 +158,12 @@ fn from_hex(b: u8) -> Option<u8> {
 pub mod arena;
 pub mod embeddings;
 pub mod engine;
-pub mod scanner;
 pub mod structured;
 
 pub mod prelude {
     //! Prelude module with common imports
 
     pub use crate::embeddings::{EmbedError, EmbeddingProvider};
-    #[cfg(feature = "zig-kernels")]
-    pub use crate::scanner::ZigScanBackend;
-    pub use crate::scanner::{ScanAllResult, ScanBackend, ScanError};
     pub use crate::structured::{DocumentKind, KeyEntry, StructuredAst, ValueKind};
     pub use crate::{CoreError, CoreResult, DocumentUri, Position, Range};
 }

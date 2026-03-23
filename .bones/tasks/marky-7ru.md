@@ -1,11 +1,13 @@
 ---
 id: marky-7ru
 title: 'Phase 4.4: Delete markymark-core scanner module (ScanBackend + impls)'
-status: open
+status: closed
 type: task
 priority: 2
 parent: marky-0xtn
 ---
+
+
 
 ## Context
 
@@ -24,7 +26,7 @@ parent: marky-0xtn
 
 ## Implementation
 
-1. **Update brza_kernels.rs benchmark** — Delete the correctness assertion block (lines ~420-443) that uses `Md4cScanBackend.scan_headings()` to compare heading counts against tree-sitter. The `md4c_extract_only` benchmark already validates md4c extraction works. Remove `Md4cScanBackend` and `ScanBackend` imports from the file. Keep `md4c_backend` variable deletion clean (it's only used by the assertion and the deleted md4c_from_scan benchmark).
+1. **Update brza_kernels.rs benchmark** — Remove `Md4cScanBackend` and `ScanBackend` imports (line 4). Delete the `md4c_backend` variable (line 408) and the entire correctness assertion block (lines 408-431) that uses `Md4cScanBackend.scan_headings()` to compare heading counts against tree-sitter. The `md4c_extract_only` benchmark (line 459-470) already validates md4c extraction works and calls `markymark_kernels::md4c::extract_md4c()` directly — unaffected by scanner deletion.
 
 2. **Delete scanner test file** — Remove `markymark-core/src/scanner/tests.rs` (~32 Md4cScanBackend test references).
 
@@ -46,18 +48,18 @@ parent: marky-0xtn
 - Scanner types (HeadingResult etc.) are re-exported via `pub use types::*` in scanner/mod.rs. Any external consumers would break. Verified: zero external consumers remain after from_scan.rs deletion.
 - The brza_kernels.rs benchmark will still have `md4c_extract_only` which calls `markymark_kernels::md4c::extract_md4c()` directly — this does NOT go through ScanBackend and is unaffected.
 - After this task, the `markymark-kernels/src/md4c/` module remains (used by md4c_extract_only benchmark). That's a separate deletion task.
-- The `zig-kernels` feature flag in markymark-core may become partially hollow after scanner deletion — it might only gate other scanner-unrelated items. Check what else is behind this feature flag.
+- **SRE-verified (2026-03-23):** The `zig-kernels` feature flag in markymark-core becomes COMPLETELY hollow after scanner deletion — all 10 `cfg(feature = "zig-kernels")` references are in the scanner module. The feature still activates the `markymark-kernels` optional dep (used by markymark-index and markymark-kernels Cargo.toml), but no code in markymark-core consumes it. Cleanup deferred to a future task — not a blocker for this deletion.
 
 ## Success Criteria
 
-- [ ] ScanBackend trait deleted (markymark-core/src/scanner/mod.rs)
-- [ ] Md4cScanBackend and ZigScanBackend deleted (markymark-core/src/scanner/md4c.rs)
-- [ ] Scanner types deleted (markymark-core/src/scanner/types.rs)
-- [ ] Scanner tests deleted (markymark-core/src/scanner/tests.rs)
-- [ ] Scanner re-exports removed from markymark-core prelude
-- [ ] No ScanBackend/Md4cScanBackend/ZigScanBackend references remain in workspace
-- [ ] cargo test --workspace passes
-- [ ] cargo clippy --all-targets passes
+- [x] ScanBackend trait deleted (markymark-core/src/scanner/mod.rs)
+- [x] Md4cScanBackend and ZigScanBackend deleted (markymark-core/src/scanner/md4c.rs)
+- [x] Scanner types deleted (markymark-core/src/scanner/types.rs)
+- [x] Scanner tests deleted (markymark-core/src/scanner/tests.rs)
+- [x] Scanner re-exports removed from markymark-core prelude
+- [x] No ScanBackend/Md4cScanBackend/ZigScanBackend references remain in workspace
+- [x] cargo test --workspace passes (1085 passed, 0 failed)
+- [x] cargo clippy --all-targets passes (zero warnings with -D warnings)
 
 ## Anti-Patterns
 
