@@ -11,6 +11,7 @@ parent: marky-0xtn
 
 
 
+
 ## Context
 
 - Phase 4.2 (marky-ut8) migrated all production callers of `from_scan_with_frontmatter` to `from_text` and deleted `from_ast.rs`. `from_scan_with_frontmatter` now has zero callers (only the definition in from_scan.rs remains).
@@ -84,3 +85,7 @@ parent: marky-0xtn
 - No changing from_text semantics — it's a proven, tested convenience function
 - No keeping parity tests that compare two paths that both resolve to from_text after migration — they become tautological (scan-vs-engine → from_text-vs-from_text). Delete them.
 - No leaving dead modules (e.g., `scan_all_fallback_tests` in incremental_tests.rs) — if from_scan is deleted, the module's custom ScanBackend impl and all tests inside are dead code
+
+## Log
+
+- [2026-03-23T20:11:27Z] [Seth] Debrief: Migrated 13 from_scan callers to from_text across 6 files, deleted from_scan.rs + md4c_scan_tests.rs + scan_all_fallback_tests module + 6 blob-vs-scan parity tests + 2 scan benchmarks. Cleaned 3 dead helpers from helpers.rs. One surprise: test_from_scan_xml_tags_empty asserted scan-specific behavior (no XML extraction) that didn't hold for engine path — updated assertion. Skeleton triage was accurate. Next task marky-7ru: delete scanner module from markymark-core.
