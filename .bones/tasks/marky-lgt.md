@@ -1,11 +1,13 @@
 ---
 id: marky-lgt
 title: Phase 4 cleanup + cross-cutting verification
-status: active
+status: closed
 type: task
 priority: 2
 parent: marky-nxc
 ---
+
+
 
 
 
@@ -100,3 +102,7 @@ Replace with `.expect("stack non-empty after while-let guard")`.
 - Do NOT change any logic — this is purely replacing `.unwrap()` with `.expect()`.
 - Do NOT touch `did_change()` implementation — only verify it's unchanged.
 - Do NOT skip the `--all-features` test run — the embeddings feature flag changes behavior.
+
+## Log
+
+- [2026-03-23T12:24:31Z] [Seth] Debrief: Pure mechanical replacement, no surprises. SRE caught Step 5 scope narrowing (fixed pre-execution). All 9+1 unwrap locations verified at exact claimed lines. Epic count corrected 8→9. Reflections: Skeleton accuracy excellent — only SRE-caught gap was verification scope. No user corrections. No cross-pollination. docs/MEMORY.md Active Work section stale (2026-03-05). All marky-nxc criteria now satisfied — Step 4 review-implementation needed to close epic.
