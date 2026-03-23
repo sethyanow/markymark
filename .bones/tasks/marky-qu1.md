@@ -1,11 +1,13 @@
 ---
 id: marky-qu1
 title: 'Phase 4.5: Delete blob serialization path (Rust from_blob + Zig serialize/blob)'
-status: open
+status: active
 type: task
 priority: 2
+owner: Seth
 parent: marky-0xtn
 ---
+
 
 
 ## Context
@@ -26,7 +28,7 @@ parent: marky-0xtn
 
 ## Implementation
 
-1. **Delete Rust from_blob directory and golden test data** — Remove entire `markymark-index/src/document/from_blob/` directory (decode.rs 459L, header.rs 306L, mod.rs 441L, owned.rs 170L, tests/ 5 files 1179L). Delete `markymark-index/src/document/testdata/golden_v1.blob`. Delete `markymark-index/src/bin/gen_golden_blob.rs` (37L).
+1. **Delete Rust from_blob directory and golden test data** — Remove entire `markymark-index/src/document/from_blob/` directory (decode.rs, header.rs, mod.rs, owned.rs, tests/ with 6 files). Delete `markymark-index/src/document/testdata/golden_v1.blob`. Delete `markymark-index/src/bin/gen_golden_blob.rs`. Remove the `[[bin]] name = "gen_golden_blob"` entry from `markymark-index/Cargo.toml` (lines 44-45).
 
 2. **Update document/mod.rs** — Remove `mod from_blob;` declaration (line 6). Remove `BlobError` re-export (line 15: `pub use from_blob::BlobError;`). Check for any other from_blob references.
 
@@ -38,13 +40,13 @@ parent: marky-0xtn
 
 6. **Remove blob support from Zig document.zig** — Remove `serialize_mod` import (line 20). Remove `cached_blob: ?[]u8 = null` field (line 65). Remove blob caching logic: line 145 (invalidate), lines 150-153 (lazy compute + cache), lines 225-227 (cleanup/free). Remove `serializeState` alias (line 639). Remove the `getBlob` method from DocumentEngine.
 
-7. **Delete blob-related tests from Zig document_test.zig** — Delete all tests that use `getBlob`, `blob.readHeader`, `blob.validateBlob`, `cached_blob`, or `serializeState`: test_blob_header, test_blob_text_pool, test_blob_empty_document, test_blob_validate_rejects_bad_magic, test_blob_validates_after_serialize, test_update_invalidates_blob, blob_line_starts_roundtrip, engine_code_span_blob_roundtrip, engine_code_span_blob_roundtrip_empty, engine_xml_tags_blob_serialization_roundtrip, and any others referencing blob. Remove `blob` import (line 27) and blob test import (line 31). Keep non-blob engine tests.
+7. **Delete blob-related tests from Zig document_test.zig** — Delete all 12 tests that use `getBlob`, `blob.readHeader`, `blob.validateBlob`, `cached_blob`, or `serializeState`: test_blob_header (135), test_blob_text_pool (149), test_blob_empty_document (173), test_blob_validate_rejects_bad_magic (189), test_blob_validates_after_serialize (195), test_update_invalidates_blob (217), "getBlob caches result" (330), "blob line_starts roundtrip" (340), "H2: serializeState returns OutOfMemory" (426), "engine code span blob roundtrip" (594), "engine code span blob roundtrip empty" (609), "engine xml_tags blob serialization roundtrip" (646). Remove `blob` import (line 27) and blob test import (line 31). Keep non-blob engine tests.
 
 8. **Delete Zig serialize.zig and blob.zig** — Remove `zig/src/engine/serialize.zig` (409L) and `zig/src/engine/blob.zig` (595L).
 
 9. **Check for cascading dead code** — Run `cargo check --workspace --all-targets`. Run Zig build. Address any dead code warnings, unused imports, or orphaned types on both sides.
 
-10. **Verify** — `cargo test --workspace`, `cargo clippy --all-targets`, `zig build test` (if applicable), verify zero from_blob/get_blob/ScanBlob/serialize.zig/blob.zig references remain via rg.
+10. **Verify** — `cargo test --workspace`, `cargo clippy --all-targets --workspace`, `zig build test` (mandatory — Zig tests were modified), verify zero from_blob/get_blob/ScanBlob/serialize.zig/blob.zig references remain via rg.
 
 ## Key Considerations
 
@@ -59,17 +61,19 @@ parent: marky-0xtn
 
 ## Success Criteria
 
-- [ ] from_blob/ directory deleted (decode.rs, header.rs, mod.rs, owned.rs, tests/)
-- [ ] gen_golden_blob.rs and golden_v1.blob deleted
-- [ ] ScanBlob struct, get_blob() method, marky_engine_get_blob FFI removed from engine.rs
-- [ ] Blob-related tests deleted from engine.rs (6 tests: lifecycle, empty_input, update_changes_blob, multiple_updates, blob_header_valid, blob_caching)
-- [ ] marky_engine_get_blob export removed from Zig exports.zig
-- [ ] cached_blob field, serializeState, getBlob removed from Zig document.zig
-- [ ] Blob-related tests deleted from Zig document_test.zig
-- [ ] serialize.zig and blob.zig deleted
-- [ ] No from_blob/get_blob/ScanBlob/serialize.zig/blob.zig references remain in workspace
-- [ ] cargo test --workspace passes
-- [ ] cargo clippy --all-targets passes
+- [x] from_blob/ directory deleted (decode.rs, header.rs, mod.rs, owned.rs, tests/)
+- [x] gen_golden_blob.rs and golden_v1.blob deleted
+- [x] ScanBlob struct, get_blob() method, marky_engine_get_blob FFI removed from engine.rs
+- [x] Blob-related tests deleted from engine.rs (6 tests: lifecycle, empty_input, update_changes_blob, multiple_updates, blob_header_valid, blob_caching)
+- [x] marky_engine_get_blob export removed from Zig exports.zig
+- [x] cached_blob field, serializeState, getBlob removed from Zig document.zig
+- [x] Blob-related tests deleted from Zig document_test.zig
+- [x] serialize.zig and blob.zig deleted
+- [x] No from_blob/get_blob/ScanBlob/serialize.zig/blob.zig references remain in workspace
+- [x] cargo test --workspace passes (1024/1024)
+- [x] `[[bin]] gen_golden_blob` entry removed from markymark-index/Cargo.toml
+- [x] cargo clippy --all-targets passes
+- [x] zig build test passes (Zig blob tests deleted, non-blob tests still pass)
 
 ## Anti-Patterns
 
@@ -79,3 +83,5 @@ parent: marky-0xtn
 - FORBIDDEN: deleting non-blob tests from document_test.zig — only delete tests whose assertions depend on blob data
 - No keeping ScanBlob "for compatibility" — zero production consumers since Phase 2
 - No keeping cached_blob as a "performance optimization" — CEngineResult eliminates the need for blob caching
+- FORBIDDEN: deleting gen_golden_blob.rs without removing its `[[bin]]` entry from Cargo.toml — build will break
+- FORBIDDEN: deleting Zig blob tests by line-range guess — verify each test by name before deleting

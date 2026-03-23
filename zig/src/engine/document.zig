@@ -2,12 +2,11 @@
 //
 // Combines md4c extraction (headings, links), SIMD scans (tags, block_ids),
 // and derived data (slugs, line_starts, positions) into a single engine.
-// Serializes state to a flat binary blob for zero-copy FFI transfer.
+// Results are accessed via the structured C-ABI CEngineResult.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const blob = @import("blob.zig");
 const extraction_renderer = @import("../md4c/extraction_renderer.zig");
 const root = @import("../md4c/root.zig");
 const slug_kernel = @import("../kernels/slug.zig");
@@ -17,7 +16,6 @@ const fence_map_mod = @import("../kernels/fence_map.zig");
 const token_estimate_mod = @import("../kernels/token_estimate.zig");
 const content_hash_mod = @import("../kernels/content_hash.zig");
 const helpers = @import("../md4c/helpers.zig");
-const serialize_mod = @import("serialize.zig");
 
 // ── Stored types (re-exported from stored_types.zig) ────────────────
 
@@ -61,8 +59,6 @@ pub const DocumentEngine = struct {
     token_estimate: u32 = 0,
     content_hash: u64 = 0,
     generation: u64 = 0,
-
-    cached_blob: ?[]u8 = null,
 
     pub const Error = error{
         OutOfMemory,
@@ -142,16 +138,6 @@ pub const DocumentEngine = struct {
         self.token_estimate = new_token_estimate;
         self.content_hash = new_content_hash;
         self.generation += 1;
-        self.cached_blob = null; // Invalidate cached blob
-    }
-
-    /// Get the serialized blob. Lazy: built on first call, cached until update.
-    pub fn getBlob(self: *DocumentEngine) Error![]const u8 {
-        if (self.cached_blob) |b| return b;
-
-        const b = serializeState(self) catch return error.OutOfMemory;
-        self.cached_blob = b;
-        return b;
     }
 
     /// Monotonic parse generation. Starts at 1 after successful create().
@@ -221,10 +207,6 @@ pub const DocumentEngine = struct {
         if (self.line_starts.len > 0) {
             self.allocator.free(self.line_starts);
             self.line_starts = &.{};
-        }
-        if (self.cached_blob) |b| {
-            self.allocator.free(b);
-            self.cached_blob = null;
         }
     }
 };
@@ -635,8 +617,6 @@ pub const slugifyText = helpers_mod.slugifyText;
 pub const computeLineStarts = helpers_mod.computeLineStarts;
 pub const byteOffsetToPosition = helpers_mod.byteOffsetToPosition;
 const inFenceRange = helpers_mod.inFenceRange;
-
-const serializeState = serialize_mod.serializeState;
 
 // ── Free helpers (re-exported from document_free.zig) ───────────────
 

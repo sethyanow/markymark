@@ -507,8 +507,8 @@ async fn test_incremental_no_change_for_unknown_uri() {
 }
 
 // ── Engine parity tests (marky-n78f) ─────────────────────────────────────────
-// These tests verify that open_document produces correct index data. They pass
-// now (via from_scan) and must continue to pass after migration (via from_blob).
+// These tests verify that open_document produces correct index data via
+// the CEngineResult pipeline (from_engine_result).
 
 #[tokio::test]
 async fn test_engine_parity_headings() {

@@ -41,9 +41,6 @@ libc = "0.2.182"
 name = "bench_roi_report"
 required-features = ["bench-internals"]
 
-[[bin]]
-name = "gen_golden_blob"
-
 [[bench]]
 name = "memory"
 harness = false

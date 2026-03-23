@@ -1,7 +1,7 @@
 // Stored types: engine-internal data structures for serialized document state.
 //
-// Pure data types with no dependencies. Used by document.zig, serialize.zig,
-// exports.zig, and document_test.zig.
+// Pure data types with no dependencies. Used by document.zig, exports.zig,
+// get_result.zig, ffi_types.zig, and document_test.zig.
 
 /// Maximum number of fenced code block ranges tracked on the stack.
 /// Limits stack allocation to ~2 KB (256 × 8 bytes). Documents with more

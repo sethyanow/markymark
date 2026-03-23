@@ -3,7 +3,6 @@
 mod helpers;
 mod types;
 
-mod from_blob;
 mod from_engine;
 
 #[cfg(test)]
@@ -11,8 +10,6 @@ mod tests;
 
 pub use helpers::{mask_frontmatter, parse_frontmatter_owned, slugify};
 pub use types::*;
-
-pub use from_blob::BlobError;
 
 use hashbrown::HashMap;
 use markymark_core::arena::DocumentArena;

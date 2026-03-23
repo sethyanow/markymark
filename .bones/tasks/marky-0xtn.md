@@ -164,7 +164,7 @@ Stale cache + MCP engines: LSP state + MCP engine = ~80
 - [x] LSP hot path uses get_result/from_engine_result (no get_blob) — marky-2nxj
 - [x] MCP batch uses persistent engines + from_engine_result (no from_scan) — marky-xfgb
 - [x] Stale index cache returns last-good DocumentIndex on engine failure — marky-xfgb
-- [ ] serialize.zig, blob.zig, from_blob/ — ALL deleted
+- [x] serialize.zig, blob.zig, from_blob/ — ALL deleted — marky-qu1
 - [ ] ffi_types.zig CMd4c* types, exports.zig extract/free — ALL deleted
 - [x] from_scan.rs, from_ast.rs, ScanBackend trait — ALL deleted — marky-ut8, marky-zcj, marky-7ru
 - [ ] markymark-kernels/src/md4c/ module — ALL deleted
