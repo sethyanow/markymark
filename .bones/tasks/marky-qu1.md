@@ -1,12 +1,13 @@
 ---
 id: marky-qu1
 title: 'Phase 4.5: Delete blob serialization path (Rust from_blob + Zig serialize/blob)'
-status: active
+status: closed
 type: task
 priority: 2
 owner: Seth
 parent: marky-0xtn
 ---
+
 
 
 
