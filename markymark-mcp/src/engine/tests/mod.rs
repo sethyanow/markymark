@@ -507,16 +507,8 @@ async fn collect_documents_markdown_unchanged() {
 #[tokio::test]
 async fn engine_index_creates_persistent_engines() {
     let dir = make_temp_realm_dir("engine-creates");
-    fs::write(
-        dir.path().join("one.md"),
-        "# Heading One\n\nSome text.\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.path().join("two.md"),
-        "# Heading Two\n\nMore text.\n",
-    )
-    .unwrap();
+    fs::write(dir.path().join("one.md"), "# Heading One\n\nSome text.\n").unwrap();
+    fs::write(dir.path().join("two.md"), "# Heading Two\n\nMore text.\n").unwrap();
 
     let mut realm = RealmData::new();
     index_root_into_realm(dir.path(), &mut realm).await;
@@ -536,9 +528,7 @@ async fn engine_index_creates_persistent_engines() {
 async fn engine_fallback_stale_on_update_failure() {
     let dir = make_temp_realm_dir("update-fail");
     // Magic filename triggers forced update failure on second index.
-    let path = dir
-        .path()
-        .join("__marky_test_force_update_fail__.md");
+    let path = dir.path().join("__marky_test_force_update_fail__.md");
     fs::write(&path, "# Original\n\nFirst version.\n").unwrap();
 
     let mut realm = RealmData::new();
@@ -578,9 +568,7 @@ async fn engine_fallback_stale_on_update_failure() {
 async fn engine_fallback_scan_when_no_stale_state() {
     let dir = make_temp_realm_dir("create-fail");
     // Magic filename triggers forced create failure — no engine created.
-    let path = dir
-        .path()
-        .join("__marky_test_force_create_fail__.md");
+    let path = dir.path().join("__marky_test_force_create_fail__.md");
     fs::write(&path, "# Scan Fallback\n\nShould use scan path.\n").unwrap();
 
     let mut realm = RealmData::new();
@@ -606,7 +594,10 @@ async fn engine_fallback_scan_when_no_stale_state() {
     // Verify content — scan path should extract headings.
     let uri = DocumentUri::from_file_path(&path);
     let doc = realm.index.get_document(&uri);
-    assert!(doc.is_some(), "document should be retrievable via scan fallback");
+    assert!(
+        doc.is_some(),
+        "document should be retrievable via scan fallback"
+    );
     assert!(
         !doc.unwrap().headings().is_empty(),
         "scan fallback document should have headings"
@@ -656,7 +647,10 @@ async fn engine_frontmatter_preserved() {
 
     // Frontmatter should be accessible via search filter.
     let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
-    let doc = realm.index.get_document(&uri).expect("document should exist");
+    let doc = realm
+        .index
+        .get_document(&uri)
+        .expect("document should exist");
 
     // Verify frontmatter entries are present.
     let fm = doc.frontmatter();

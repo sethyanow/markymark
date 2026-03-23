@@ -558,8 +558,15 @@ fn from_text_mixed_markdown() {
     assert_eq!(idx.markdown_links()[0].url, "https://example.com");
 
     // Frontmatter preserved
-    assert!(!idx.frontmatter().is_empty(), "frontmatter should be populated");
-    let titles: Vec<_> = idx.frontmatter().iter().filter(|f| f.key == "title").collect();
+    assert!(
+        !idx.frontmatter().is_empty(),
+        "frontmatter should be populated"
+    );
+    let titles: Vec<_> = idx
+        .frontmatter()
+        .iter()
+        .filter(|f| f.key == "title")
+        .collect();
     assert_eq!(titles.len(), 1);
 }
 
@@ -568,8 +575,14 @@ fn from_text_frontmatter_only() {
     let source = "---\ntitle: Just FM\nauthor: Test\n---\n";
     let idx = DocumentIndex::from_text(source);
 
-    assert!(!idx.frontmatter().is_empty(), "frontmatter should be populated");
-    assert!(idx.headings().is_empty(), "no headings in frontmatter-only doc");
+    assert!(
+        !idx.frontmatter().is_empty(),
+        "frontmatter should be populated"
+    );
+    assert!(
+        idx.headings().is_empty(),
+        "no headings in frontmatter-only doc"
+    );
     assert!(idx.wiki_links().is_empty());
     assert!(idx.tags().is_empty());
 }

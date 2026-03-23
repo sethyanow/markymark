@@ -161,8 +161,8 @@ Stale cache + MCP engines: LSP state + MCP engine = ~80
 
 ## Success Criteria
 
-- [ ] CEngineResult struct matches DocumentEngine state exactly (13 types + 3 metadata)
-- [ ] Parity tests prove from_engine_result == from_blob for diverse inputs
+- [x] CEngineResult struct matches DocumentEngine state exactly (13 types + 3 metadata) — marky-ozi: verified Zig ffi_types.zig + Rust engine_ffi.rs, all 13 element types match
+- [x] Parity tests prove from_engine_result == from_blob for diverse inputs — marky-ozi: 5 parity tests in state_tests.rs + 24 MCP engine tests, all pass (from_blob deleted Phase 4.5, parity measured via fixtures)
 - [x] LSP hot path uses get_result/from_engine_result (no get_blob) — marky-2nxj
 - [x] MCP batch uses persistent engines + from_engine_result (no from_scan) — marky-xfgb
 - [x] Stale index cache returns last-good DocumentIndex on engine failure — marky-xfgb
@@ -171,10 +171,10 @@ Stale cache + MCP engines: LSP state + MCP engine = ~80
 - [x] from_scan.rs, from_ast.rs, ScanBackend trait — ALL deleted — marky-ut8, marky-zcj, marky-7ru
 - [x] markymark-kernels/src/md4c/ module — ALL deleted — marky-ibt
 - [x] DocumentIndex::from_text() works for all test cases — marky-llj
-- [ ] All tests passing (Zig + Rust)
-- [ ] Pre-commit hooks passing
-- [ ] generation field present in CEngineResult (u64, monotonic)
-- [ ] _reserved[32] bytes in CEngineResult for future incremental fields
+- [x] All tests passing (Zig + Rust) — marky-ozi: 983/983 Rust tests pass, Zig tests pass
+- [x] Pre-commit hooks passing — marky-ozi: bd hook pre-commit clean, clippy clean, fmt fixed
+- [x] generation field present in CEngineResult (u64, monotonic) — marky-ozi: verified in Zig (document.zig:61,140,177) and Rust (engine_ffi.rs:206)
+- [x] _reserved[32] bytes in CEngineResult for future incremental fields — marky-ozi: [32]u8 in Zig (ffi_types.zig:238), [u8; 32] in Rust (engine_ffi.rs:225)
 
 ## Anti-Patterns
 

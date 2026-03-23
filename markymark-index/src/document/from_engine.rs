@@ -30,7 +30,9 @@ impl DocumentIndex {
         let masked = helpers::mask_frontmatter(text);
         let engine = DocumentEngine::new(&masked).expect("from_text: engine create failed");
         let result = engine.get_result().expect("from_text: get_result failed");
-        let extraction = result.to_extraction().expect("from_text: to_extraction failed");
+        let extraction = result
+            .to_extraction()
+            .expect("from_text: to_extraction failed");
         Self::from_engine_result_with_frontmatter(&extraction, fm, aliases)
     }
 
