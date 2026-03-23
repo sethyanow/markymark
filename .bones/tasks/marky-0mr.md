@@ -1,12 +1,14 @@
 ---
 id: marky-0mr
 title: 'G: Zig md4c streaming parser as fast-path replacement for tree-sitter'
-status: open
+status: closed
 type: feature
 priority: 2
 owner: sethyanow@users.noreply.github.com
 depends_on: [marky-77i]
 ---
+
+
 
 
 
@@ -110,3 +112,7 @@ vs tree-sitter incremental: 1.3x ceiling. md4c full reparse is faster than tree-
 ## Supersedes
 
 This effectively replaces Options D and E if successful. F (debounce) remains complementary.
+
+## Log
+
+- [2026-03-23T13:53:48Z] [Seth] Review-implementation APPROVED. All 24/25 children closed. Implementation verified: md4c Zig port, FFI bridge, Md4cScanBackend, tree-sitter retained, XML tag extraction, benchmarks. 1416 Rust tests pass, Zig tests pass, clippy clean. Only marky-8d08 (cross-env benchmarks) remains open — requires manual hardware testing, not an implementation gap. Epic closed per user authorization.
