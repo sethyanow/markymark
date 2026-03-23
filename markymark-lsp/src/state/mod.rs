@@ -6,7 +6,6 @@ pub mod rename;
 
 use std::collections::HashMap;
 
-use markymark_core::scanner::Md4cScanBackend;
 use markymark_core::structured::DocumentKind;
 use markymark_core::DocumentUri;
 use markymark_index::{
@@ -158,13 +157,13 @@ impl ServerState {
         }
     }
 
-    /// Build a [`DocumentIndex`] from raw text via the scan fallback path,
-    /// parsing and masking frontmatter so md4c doesn't misparse `---`
-    /// delimiters as setext headings.
+    /// Build a [`DocumentIndex`] from raw text via an ephemeral engine.
+    ///
+    /// This is the last-resort fallback when the persistent engine fails and
+    /// no stale index is cached. Panics on failure — acceptable because it's
+    /// the end of the fallback chain.
     fn fallback_scan_with_frontmatter(text: &str) -> DocumentIndex {
-        let (fm, aliases) = parse_frontmatter_owned(text);
-        let masked = mask_frontmatter(text);
-        DocumentIndex::from_scan_with_frontmatter(&masked, &Md4cScanBackend, fm, aliases)
+        DocumentIndex::from_text(text)
     }
 
     /// Build a markdown document index via the stateful Zig DocumentEngine.

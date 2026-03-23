@@ -3,7 +3,6 @@
 mod helpers;
 mod types;
 
-mod from_ast;
 mod from_blob;
 mod from_engine;
 mod from_scan;
@@ -130,12 +129,9 @@ impl DocumentIndex {
     ///
     /// ```compile_fail
     /// use markymark_index::DocumentIndex;
-    /// use markymark_parser::Parser;
     ///
     /// fn leak_index_text() -> &'static str {
-    ///     let mut parser = Parser::new().unwrap();
-    ///     let ast = parser.parse("# Title").unwrap();
-    ///     let index = DocumentIndex::from_ast(ast);
+    ///     let index = DocumentIndex::from_text("# Title");
     ///     index.headings()[0].text
     /// }
     /// ```

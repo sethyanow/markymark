@@ -731,20 +731,16 @@ async fn test_frontmatter_preserved_in_index() {
     assert_eq!(index.headings()[0].text, "Real Heading");
 }
 
-/// Regression test for marky-mh1p: the scan-based fallback path (used when the
-/// Zig engine fails) must also preserve frontmatter and mask `---` delimiters.
-/// This directly exercises `fallback_scan_with_frontmatter`'s logic.
+/// Regression test for marky-mh1p: the fallback path (used when the Zig engine
+/// fails) must preserve frontmatter and mask `---` delimiters.
+/// This exercises the from_text convenience constructor used by the fallback.
 #[tokio::test]
 async fn test_frontmatter_preserved_via_scan_fallback_path() {
-    use markymark_core::scanner::Md4cScanBackend;
-    use markymark_index::{mask_frontmatter, parse_frontmatter_owned, DocumentIndex};
+    use markymark_index::DocumentIndex;
 
     let text = "---\ntitle: Fallback Test\naliases: [fb1, fb2]\ntags: [scan, fallback]\n---\n\n# Only Heading\n\nSome body text.\n";
 
-    // Reproduce the exact fallback_scan_with_frontmatter logic:
-    let (fm, aliases) = parse_frontmatter_owned(text);
-    let masked = mask_frontmatter(text);
-    let index = DocumentIndex::from_scan_with_frontmatter(&masked, &Md4cScanBackend, fm, aliases);
+    let index = DocumentIndex::from_text(text);
 
     // Frontmatter must be present with correct key/value.
     assert!(

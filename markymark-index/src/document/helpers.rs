@@ -185,48 +185,6 @@ pub(super) fn byte_offset_to_position(line_starts: &[u32], offset: u32) -> Posit
     Position::new(line as u32, col)
 }
 
-/// Extract frontmatter from a parsed AST as owned data.
-///
-/// Returns `(frontmatter_entries, aliases)` where aliases are extracted from the
-/// `aliases` frontmatter key. Used by both `from_ast` and `from_scan_with_frontmatter`.
-pub(super) fn extract_frontmatter_from_ast(
-    ast: &markymark_parser::Ast,
-) -> (Vec<FrontmatterOwnedEntry>, Vec<String>) {
-    let mut frontmatter_owned = Vec::new();
-    let mut aliases_owned = Vec::new();
-
-    if let Some(fm) = ast.frontmatter() {
-        use markymark_parser::FrontmatterValue;
-        for (key, value) in fm.iter() {
-            let key_str = (*key).to_string();
-            let value_owned = match value {
-                FrontmatterValue::String(s) => FrontmatterValueOwned::String((*s).to_string()),
-                FrontmatterValue::List(items) => {
-                    FrontmatterValueOwned::List(items.iter().map(|s| s.to_string()).collect())
-                }
-            };
-            if key_str == "aliases" {
-                match &value_owned {
-                    FrontmatterValueOwned::String(s) => {
-                        if !s.is_empty() {
-                            aliases_owned.push(s.clone());
-                        }
-                    }
-                    FrontmatterValueOwned::List(items) => {
-                        aliases_owned.extend(items.iter().cloned());
-                    }
-                }
-            }
-            frontmatter_owned.push(FrontmatterOwnedEntry {
-                key: key_str,
-                value: value_owned,
-            });
-        }
-    }
-
-    (frontmatter_owned, aliases_owned)
-}
-
 /// Find the earliest frontmatter close delimiter (`\n---\n` or `\n---\r\n`).
 ///
 /// Returns `(byte_position, delimiter_len)` or `None`. Using `min()` instead

@@ -11,7 +11,6 @@ use async_trait::async_trait;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 #[cfg(feature = "semantic-search")]
 use markymark_core::prelude::{EmbedError, EmbeddingProvider};
-use markymark_core::scanner::Md4cScanBackend;
 use markymark_core::structured::DocumentKind;
 use markymark_core::{CoreError, DocumentUri};
 use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
@@ -256,13 +255,13 @@ fn should_force_engine_result_conversion_fail_for_tests(uri_str: &str) -> bool {
     cfg!(debug_assertions) && uri_str.contains("__marky_test_force_conversion_fail__")
 }
 
-/// Build a [`DocumentIndex`] from raw text via the scan fallback path,
-/// parsing and masking frontmatter so md4c doesn't misparse `---`
-/// delimiters as setext headings.
+/// Build a [`DocumentIndex`] from raw text via an ephemeral engine.
+///
+/// This is the last-resort fallback when the persistent engine fails and
+/// no stale index is cached. Panics on failure — acceptable because it's
+/// the end of the fallback chain.
 fn fallback_scan_with_frontmatter(text: &str) -> DocumentIndex {
-    let (fm, aliases) = markymark_index::parse_frontmatter_owned(text);
-    let masked = markymark_index::mask_frontmatter(text);
-    DocumentIndex::from_scan_with_frontmatter(&masked, &Md4cScanBackend, fm, aliases)
+    DocumentIndex::from_text(text)
 }
 
 /// Build a [`DocumentIndex`] from a persistent engine for a single markdown file.
@@ -596,98 +595,20 @@ impl CoreEngine for RuntimeEngine {
                     }
                 } // write lock released
 
-                // Phase 2: collect + parse documents (no lock, I/O-bound).
-                let backend = Md4cScanBackend;
-                let doc_paths = helpers::collect_documents(&root);
-                let mut parsed_md: Vec<(DocumentUri, DocumentIndex)> = Vec::new();
-                let mut parsed_struct: Vec<(DocumentUri, StructuredDocumentIndex)> = Vec::new();
-
-                for (path, kind) in doc_paths {
-                    let source = match fs::read_to_string(&path) {
-                        Ok(s) => s,
-                        Err(_) => continue,
-                    };
-                    let uri = DocumentUri::from_file_path(&path);
-
-                    if kind == DocumentKind::Markdown {
-                        let (fm_owned, aliases_owned) =
-                            markymark_index::parse_frontmatter_owned(&source);
-                        let scan_source = markymark_index::mask_frontmatter(&source);
-                        parsed_md.push((
-                            uri,
-                            DocumentIndex::from_scan_with_frontmatter(
-                                &scan_source,
-                                &backend,
-                                fm_owned,
-                                aliases_owned,
-                            ),
-                        ));
-                    } else {
-                        let ast = match parse_structured(&source, kind) {
-                            Ok(ast) => ast,
-                            Err(_) => continue,
-                        };
-                        parsed_struct.push((uri, StructuredDocumentIndex::from_ast(ast)));
-                    }
-                }
-
-                // Phase 3: semantic embedding (no outer lock, slow network I/O).
-                #[cfg(feature = "semantic-search")]
-                {
-                    let semantic_arc = {
-                        let state = self.state.read().await;
-                        state
-                            .get(&realm)
-                            .and_then(|rd| rd.index.semantic_index_arc())
-                    };
-                    if let Some(sem) = semantic_arc {
-                        for (uri, doc) in &parsed_md {
-                            let mut guard = sem.lock().await;
-                            if let Err(err) = guard.add_document(uri.clone(), doc).await {
-                                eprintln!(
-                                    "warning: semantic indexing failed for {}: {err}",
-                                    uri.as_str()
-                                );
-                            }
-                        }
-                    }
-                }
-
-                // Phase 4: structural index update (write lock, fast in-memory ops).
+                // Index all documents under the root using persistent engines.
+                // This holds the write lock during file I/O — acceptable because
+                // AddRoot is rare (user-initiated) and startup uses the same pattern.
                 let mut state = self.state.write().await;
                 let realm_data = match state.get_mut(&realm) {
                     Some(data) => data,
                     None => {
                         return CoreOperationResult::Error(CoreError::Message(format!(
-                            "realm was destroyed during indexing: {realm}"
+                            "realm not found after registration: {realm}"
                         )));
                     }
                 };
 
-                // Root may have been removed while Phase 2/3 ran without the write lock.
-                let root_canonical = root.canonicalize().unwrap_or_else(|_| root.clone());
-                let root_still_present = realm_data.roots.iter().any(|existing| {
-                    existing.canonicalize().unwrap_or_else(|_| existing.clone()) == root_canonical
-                });
-                if !root_still_present {
-                    log::warn!(
-                        "root removed during indexing; realm={realm}, root={}, discarding {} parsed documents",
-                        root.display(),
-                        parsed_md.len() + parsed_struct.len()
-                    );
-                    return CoreOperationResult::RealmInfo {
-                        name: realm.clone(),
-                        root_count: realm_data.roots.len(),
-                        document_count: realm_data.index.document_count(),
-                    };
-                }
-
-                for (uri, doc) in parsed_md {
-                    realm_data.index.add_document_structural(uri, doc);
-                }
-                for (uri, doc) in parsed_struct {
-                    realm_data.index.add_structured_document(uri, doc);
-                }
+                index_root_into_realm(&root, realm_data).await;
 
                 CoreOperationResult::RealmInfo {
                     name: realm.clone(),

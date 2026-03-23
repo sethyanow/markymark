@@ -803,3 +803,5 @@
 {"timestamp":"2026-03-23T17:50:04.540621+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-0xtn","details":{"kind":"parent-child","to":"marky-ut8"}}
 {"timestamp":"2026-03-23T17:50:04.541387+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-0xtn","details":{"kind":"blocks","to":"marky-ut8"}}
 {"timestamp":"2026-03-23T17:51:01.304202+00:00","actor":"Seth","event_type":"logged","task_id":"marky-llj","details":{"message":"Debrief: from_text() implemented in 6 lines, 18 callers migrated mechanically. Slug difference discovered (engine @ → -, Rust strips @) — test expectation updated. Pre-existing clippy warning fixed. Reflections: skeleton accuracy excellent — only inaccuracy was the Cargo.toml dependency concern (already existed). Next task scoped: marky-ut8 (Phase 4.2 — from_scan_with_frontmatter production callers + from_ast deletion)."}}
+{"timestamp":"2026-03-23T19:21:54.483611+00:00","actor":"Seth","event_type":"updated","task_id":"marky-ut8","details":{"status":"active"}}
+{"timestamp":"2026-03-23T19:21:54.859328+00:00","actor":"Seth","event_type":"claimed","task_id":"marky-ut8","details":{"actor":"Seth"}}
