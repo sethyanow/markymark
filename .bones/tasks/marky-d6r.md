@@ -1,10 +1,12 @@
 ---
 id: marky-d6r
 title: Audit EmbeddingIndex unsafe impl Sync soundness
-status: open
+status: active
 type: task
 priority: 3
+owner: Seth
 ---
+
 
 ## Context
 
