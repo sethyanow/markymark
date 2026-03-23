@@ -11,6 +11,7 @@ parent: marky-nxc
 
 
 
+
 ## Context
 
 `markymark-lsp/src/server.rs` `references()` method (L404-557, 154 lines) is a dispatch-on-type
@@ -161,3 +162,7 @@ use markymark_index::{CodeSpanEntry, HeadingEntry, MarkdownLinkEntry, WikiLinkEn
 - **`StructuredKeyInfo` already imported in helpers.rs**: Line 8 — `use crate::state::{ServerState, StructuredKeyInfo};`.
 - **Relocation makes hover functions `pub(crate)`**: They were private (`fn`) in server.rs. In helpers.rs they need `pub(crate)` visibility for server.rs to call them.
 - **Entry type imports may move**: After Step 2, server.rs might still need entry types if they're used in pattern destructuring (e.g., `SymbolAtPosition::Heading(h)` doesn't require HeadingEntry import). Verify after Step 3 — if server.rs no longer uses them, remove the import line.
+
+## Log
+
+- [2026-03-23T12:13:28Z] [Seth] Debrief: No workarounds, no surprises, no corrections. Import cleanup simpler than expected — entry type imports were unused after Step 2 (Rust pattern matching doesn't require inner type imports). Skeleton accuracy: very high, SRE import ordering fix was the only correction needed. server.rs 993→775, helpers.rs 110→363. Next task marky-lgt scoped: Phase 4 cleanup (unwrap→expect) + cross-cutting verification.
