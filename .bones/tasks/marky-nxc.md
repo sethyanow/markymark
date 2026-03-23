@@ -186,7 +186,7 @@ block on the same struct, re-exported from mod.rs).
 
 ### Phase 3: server.rs method extraction
 - [x] `hover()` delegates to per-symbol-type builder methods (6 builders)
-- [ ] `references()` delegates to per-symbol-type helper methods (4+ helpers)
+- [x] `references()` delegates to per-symbol-type helper methods (4+ helpers)
 - [ ] `did_change()` intentionally unchanged (complexity is state, not dispatch)
 
 ### Phase 4: Low-severity cleanup

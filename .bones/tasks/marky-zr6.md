@@ -1,11 +1,13 @@
 ---
 id: marky-zr6
 title: Extract references() per-symbol-type helpers; relocate standalone functions to helpers.rs
-status: open
+status: closed
 type: task
 priority: 2
 parent: marky-nxc
 ---
+
+
 
 
 
@@ -17,7 +19,7 @@ The file is at 993 lines after hover extraction (marky-3gi).
 
 Extracting references() arms in-place would add ~22 lines net → 1015 lines, breaching the
 1000-line HARD STOP. The 6 standalone hover functions added in marky-3gi also live at the bottom
-of server.rs (L981-993) and don't depend on Backend — they should relocate too.
+of server.rs (L890-993, 104 lines) and don't depend on Backend — they should relocate too.
 
 **Solution:** Extract 4 references arms into standalone functions AND relocate all 10 standalone
 functions (6 hover + 4 references) to `helpers.rs`. This file already exists for exactly this
@@ -105,24 +107,25 @@ use markymark_index::{CodeSpanEntry, HeadingEntry, MarkdownLinkEntry, WikiLinkEn
 
 ### Step 1: Baseline — run markymark-lsp tests via cargo MCP, confirm GREEN
 ### Step 2: Move 6 hover functions from server.rs to helpers.rs
-- Cut hover_heading, hover_wiki_link, hover_markdown_link, hover_xml_tag, hover_code_span, hover_structured_key from server.rs (after L979)
+- Cut hover_heading, hover_wiki_link, hover_markdown_link, hover_xml_tag, hover_code_span, hover_structured_key from server.rs (L890-993)
 - Add to helpers.rs as `pub(crate)` functions (they were private in server.rs)
 - Add entry type imports to helpers.rs: `HeadingEntry`, `WikiLinkEntry`, `MarkdownLinkEntry`, `XmlTagEntry`, `CodeSpanEntry` from `markymark_index`
+- Add `resolve_wiki_link` import to helpers.rs (hover_wiki_link calls it — must be in Step 2, not deferred to Step 3)
 - Update server.rs: add `use crate::helpers::{hover_heading, hover_wiki_link, hover_markdown_link, hover_xml_tag, hover_code_span, hover_structured_key};` to imports
-- Remove unused entry type imports from server.rs (they're now used in helpers.rs, unless references functions in Step 3 still need them — check after Step 3)
+- Do NOT remove entry type imports from server.rs yet — references() arms still use them until Step 4
 - Cargo check
 ### Step 3: Write 4 references functions in helpers.rs
 - `pub(crate) fn references_for_heading(state: &ServerState, heading: &HeadingEntry<'_>) -> Vec<Location>`
 - `pub(crate) fn references_for_xml_tag(state: &ServerState, doc_uri: &DocumentUri, xt: &XmlTagEntry<'_>, include_declaration: bool) -> Vec<Location>`
 - `pub(crate) fn references_for_structured_key(state: &ServerState, doc_uri: &DocumentUri, info: &StructuredKeyInfo, include_declaration: bool) -> Vec<Location>`
 - `pub(crate) fn references_for_wiki_link(state: &ServerState, doc_uri: &DocumentUri, wl: &WikiLinkEntry<'_>, include_declaration: bool) -> Option<Vec<Location>>`
-- Add `resolve_wiki_link` import to helpers.rs
 - Move each arm's body intact into the corresponding function, adjusting: `&state` → `state`, `&doc_uri` → `doc_uri` (already references)
 - Cargo check
 ### Step 4: Replace references() match body with delegation calls
 - Remove `let mut locations = Vec::new();` line
 - Replace match arms with delegation calls (see Design section above)
 - Update server.rs imports: add references function imports from helpers
+- Clean up server.rs imports: remove entry type imports (`HeadingEntry`, `WikiLinkEntry`, `XmlTagEntry`, `CodeSpanEntry`, `MarkdownLinkEntry`) and `ResolvedTarget` — no longer used directly after delegation. Keep `resolve_wiki_link` and `resolve_markdown_link` (goto_definition still uses them).
 - Cargo check
 ### Step 5: Verify line counts
 - `wc -l` on server.rs — must be under 1000
@@ -131,13 +134,13 @@ use markymark_index::{CodeSpanEntry, HeadingEntry, MarkdownLinkEntry, WikiLinkEn
 
 ## Success Criteria
 
-- [ ] 4 standalone references helper functions exist in helpers.rs: `references_for_heading`, `references_for_xml_tag`, `references_for_structured_key`, `references_for_wiki_link`
-- [ ] references() match body is delegation calls (no inline business logic longer than ~5 lines)
-- [ ] 6 hover functions relocated from server.rs to helpers.rs
-- [ ] server.rs remains under 1000 lines
-- [ ] helpers.rs remains under 500 lines
-- [ ] All markymark-lsp tests pass
-- [ ] Clippy clean
+- [x] 4 standalone references helper functions exist in helpers.rs: `references_for_heading`, `references_for_xml_tag`, `references_for_structured_key`, `references_for_wiki_link`
+- [x] references() match body is delegation calls (no inline business logic longer than ~5 lines)
+- [x] 6 hover functions relocated from server.rs to helpers.rs
+- [x] server.rs remains under 1000 lines (775 lines)
+- [x] helpers.rs remains under 500 lines (363 lines)
+- [x] All markymark-lsp tests pass (197/197)
+- [x] Clippy clean
 
 ## Anti-Patterns
 
