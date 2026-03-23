@@ -1,11 +1,13 @@
 ---
 id: marky-eji
 title: 'Phase 1: Decompose realm/mod.rs into cohesion-based submodules'
-status: open
+status: active
 type: task
 priority: 2
 parent: marky-nxc
 ---
+
+
 
 
 ## Context
@@ -78,11 +80,14 @@ submodule uses its own `use` statements (not `use super::*`).
 
 ### retain_or_remove helper
 
-The 7 instances share: `map.get_mut(key) → vec.retain(predicate) → remove-if-empty`.
-They differ in map type (HashMap×6, BTreeMap×1) and value type (Vec<(DocumentUri, T)>×3,
-Vec<DocumentUri>×4). Design a private standalone function — not a trait. One function
-for HashMap, a second for the single BTreeMap case, or a generic approach. The
-executing agent decides the exact design.
+There are 12 total instances of the `get_mut → retain → remove-if-empty` pattern across
+all cross-doc methods: 7 in `remove_from_cross_doc_indexes` + 5 in patch methods
+(patch_headings L542, patch_blocks L587, patch_code_spans L618, patch_stem L652,
+patch_journal_date L681). All 12 should use the helper.
+
+They differ in map type (HashMap×6, BTreeMap×1 in remove; HashMap×4, BTreeMap×1 in
+patches) and value type (Vec<(DocumentUri, T)> vs Vec<DocumentUri>). Design a private
+standalone function — not a trait. The executing agent decides the exact generic design.
 
 ### Key codebase facts
 
@@ -138,9 +143,13 @@ executing agent decides the exact design.
 - Run: `cargo check -p markymark-index` — expect clean
 
 ### Step 5: Clean up mod.rs imports
-- Remove now-unused imports from mod.rs: `HashSet`, and adjust the
-  `use helpers::{...}` line (may remove `detect_journal_date` and/or
-  `resolve_relative_path` depending on whether mod.rs still uses them)
+- `use helpers::{detect_journal_date, resolve_relative_path}` → remove `resolve_relative_path`
+  (only caller was `find_uri_by_relative_path`, now in search.rs). Keep `detect_journal_date`
+  (used in `DocContribution::build` L119).
+- Remove `use markymark_core::structured::ValueKind;` (only used in `search_key_paths`, now
+  in search.rs).
+- `HashSet` STAYS — used by `DocContribution` struct fields (L88-91).
+- `BTreeMap` STAYS — used by `date_to_docs` field (L62).
 - Run: `cargo check -p markymark-index` — clean, no warnings
 
 ### Step 6: Full verification
@@ -157,7 +166,7 @@ executing agent decides the exact design.
       constructors, lifecycle methods, counts/getters, iterators, `semantic_*`, and `Default`
 - [ ] `realm/cross_doc.rs` contains `ensure_tags_clean`, `remove_from_cross_doc_indexes`,
       `populate_cross_doc_indexes`, and all 5 `patch_*` methods
-- [ ] `retain_or_remove` helper in cross_doc.rs deduplicates the 7 inline instances
+- [ ] `retain_or_remove` helper in cross_doc.rs deduplicates all 12 inline instances (7 in remove_from_cross_doc_indexes + 5 in patch methods)
 - [ ] `realm/search.rs` contains all 8 search/lookup methods
 - [ ] `realm/journal.rs` contains `lookup_journal_by_month` and `journal_date`
 - [ ] `realm/mod.rs` below 1000-line HARD STOP
@@ -197,3 +206,4 @@ executing agent decides the exact design.
 ## Log
 
 - [2026-03-23T03:12:58Z] [Seth] Task scoped from marky-nxc Phase 1 during executing-plans flow. Full codebase verification via LSP: method assignments confirmed, detect_journal_date already in helpers.rs (not mod.rs as epic assumed), resolve_relative_path used only by find_uri_by_relative_path. Import patterns verified via types.rs (explicit use, not super::*). Expected ~420 lines remaining in mod.rs after all extractions.
+- [2026-03-23T03:21:50Z] [Seth] SRE refinement (fresh session). 13 categories reviewed. APPROVE with 3 corrections: (1) retain_or_remove count is 12 not 7 — patch methods have 5 more identical instances. Updated design + success criterion. (2) Step 5 import cleanup was wrong: HashSet STAYS (DocContribution fields), resolve_relative_path goes, ValueKind goes. detect_journal_date stays (DocContribution::build L119). (3) Category 6 adversarial-planning deferred — pure structural refactoring with no new logic. All claims verified via LSP: line count 1011, 13 fields, all method locations confirmed, helpers.rs contents confirmed, import pattern confirmed.
