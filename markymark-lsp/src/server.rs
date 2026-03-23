@@ -169,7 +169,7 @@ impl LanguageServer for Backend {
             // batch (marky-aemm). Globally unique values make it safe to remove
             // entries on close without collision risk on reopen (marky-jwsk).
             {
-                let mut deb = self.debounce.lock().unwrap();
+                let mut deb = self.debounce.lock().expect("debounce lock poisoned");
                 let gen = deb.next_generation;
                 deb.next_generation += 1;
                 deb.document_generations.insert(doc_uri.clone(), gen);
@@ -205,7 +205,7 @@ impl LanguageServer for Backend {
 
         // Atomically buffer this change batch and cancel any existing debounce (T1-1).
         {
-            let mut deb = self.debounce.lock().unwrap();
+            let mut deb = self.debounce.lock().expect("debounce lock poisoned");
             deb.pending_changes
                 .entry(doc_uri.clone())
                 .or_default()
@@ -230,7 +230,7 @@ impl LanguageServer for Backend {
             // If pending is absent the document was closed while we were sleeping;
             // abort fires at the next await — return early to avoid stale work (T2-8).
             let (batches, captured_gen) = {
-                let mut deb = debounce.lock().unwrap();
+                let mut deb = debounce.lock().expect("debounce lock poisoned");
                 deb.debounce_handles.remove(&doc_uri_clone);
                 match deb.pending_changes.remove(&doc_uri_clone) {
                     Some(batches) => {
@@ -263,7 +263,7 @@ impl LanguageServer for Backend {
                 // and now, the generation will have changed and we discard the stale
                 // batches (marky-aemm).
                 {
-                    let deb = debounce.lock().unwrap();
+                    let deb = debounce.lock().expect("debounce lock poisoned");
                     let current_gen = deb
                         .document_generations
                         .get(&doc_uri_clone)
@@ -291,7 +291,7 @@ impl LanguageServer for Backend {
 
         // Store abort handle.
         {
-            let mut deb = self.debounce.lock().unwrap();
+            let mut deb = self.debounce.lock().expect("debounce lock poisoned");
             deb.debounce_handles
                 .insert(doc_uri, join_handle.abort_handle());
         }
@@ -303,7 +303,7 @@ impl LanguageServer for Backend {
             // Cancel any pending debounce, clear buffered changes, and bump generation
             // before closing (T2-8, marky-aemm).
             {
-                let mut deb = self.debounce.lock().unwrap();
+                let mut deb = self.debounce.lock().expect("debounce lock poisoned");
                 if let Some(handle) = deb.debounce_handles.remove(&doc_uri) {
                     handle.abort();
                 }
@@ -734,7 +734,7 @@ impl Backend {
         &self,
         uri: &DocumentUri,
     ) -> Option<(Vec<Vec<crate::state::DocumentChange>>, u64)> {
-        let mut deb = self.debounce.lock().unwrap();
+        let mut deb = self.debounce.lock().expect("debounce lock poisoned");
         deb.debounce_handles.remove(uri);
         deb.pending_changes.remove(uri).map(|batches| {
             let gen = deb.document_generations.get(uri).copied().unwrap_or(0);
@@ -754,7 +754,7 @@ impl Backend {
     ) -> bool {
         let mut state_w = self.state.write().await;
         {
-            let deb = self.debounce.lock().unwrap();
+            let deb = self.debounce.lock().expect("debounce lock poisoned");
             let current_gen = deb.document_generations.get(uri).copied().unwrap_or(0);
             if current_gen != captured_gen {
                 return false;
@@ -768,7 +768,7 @@ impl Backend {
 
     /// Return the number of entries in the document_generations map (for testing).
     pub fn document_generations_count(&self) -> usize {
-        let deb = self.debounce.lock().unwrap();
+        let deb = self.debounce.lock().expect("debounce lock poisoned");
         deb.document_generations.len()
     }
 }

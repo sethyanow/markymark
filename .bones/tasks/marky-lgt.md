@@ -1,11 +1,12 @@
 ---
 id: marky-lgt
 title: Phase 4 cleanup + cross-cutting verification
-status: open
+status: active
 type: task
 priority: 2
 parent: marky-nxc
 ---
+
 
 
 
@@ -79,20 +80,20 @@ Replace with `.expect("stack non-empty after while-let guard")`.
 - Replace `.pop().unwrap()` at symbols.rs:203 with `.pop().expect("stack non-empty after while-let guard")`
 - Cargo check
 ### Step 5: Full verification — all feature sets + clippy
-- `cargo nextest -p markymark-lsp` (default features)
-- `cargo nextest -p markymark-lsp --all-features` (all features)
+- `cargo nextest` (workspace-wide, default features — matches epic criterion)
+- `cargo nextest --all-features` (workspace-wide, all features — matches epic criterion)
 - `cargo clippy --workspace --all-targets`
 - Check off Cross-cutting criteria in epic skeleton
 
 ## Success Criteria
 
-- [ ] `did_change()` verified intentionally unchanged — Phase 3 criterion checked in epic
-- [ ] 9x `.lock().unwrap()` in server.rs replaced with `.expect("debounce lock poisoned")`
-- [ ] 1x `.pop().unwrap()` in symbols.rs replaced with `.expect("stack non-empty after while-let guard")`
-- [ ] All tests pass under default features
-- [ ] All tests pass under all features
-- [ ] Clippy clean across workspace
-- [ ] All Phase 4 and Cross-cutting criteria checked in epic skeleton
+- [x] `did_change()` verified intentionally unchanged — Phase 3 criterion checked in epic
+- [x] 9x `.lock().unwrap()` in server.rs replaced with `.expect("debounce lock poisoned")`
+- [x] 1x `.pop().unwrap()` in symbols.rs replaced with `.expect("stack non-empty after while-let guard")`
+- [x] All tests pass under default features
+- [x] All tests pass under all features
+- [x] Clippy clean across workspace
+- [x] All Phase 4 and Cross-cutting criteria checked in epic skeleton
 
 ## Anti-Patterns
 

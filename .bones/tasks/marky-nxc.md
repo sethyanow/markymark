@@ -189,16 +189,16 @@ block on the same struct, re-exported from mod.rs).
 ### Phase 3: server.rs method extraction
 - [x] `hover()` delegates to per-symbol-type builder methods (6 builders)
 - [x] `references()` delegates to per-symbol-type helper methods (4+ helpers)
-- [ ] `did_change()` intentionally unchanged (complexity is state, not dispatch)
+- [x] `did_change()` intentionally unchanged (complexity is state, not dispatch)
 
 ### Phase 4: Low-severity cleanup
-- [ ] 8x `Mutex::lock().unwrap()` in server.rs replaced with `.expect("descriptive message")`
-- [ ] `stack.pop().unwrap()` in symbols.rs:203 replaced with `.expect("stack non-empty after last() check")`
+- [x] 9x `Mutex::lock().unwrap()` in server.rs replaced with `.expect("debounce lock poisoned")` (epic originally said 8; actual count is 9)
+- [x] `stack.pop().unwrap()` in symbols.rs:203 replaced with `.expect("stack non-empty after while-let guard")`
 
 ### Cross-cutting
-- [ ] All existing tests pass under default features (`cargo nextest`)
-- [ ] All existing tests pass under all features (`cargo nextest --all-features`)
-- [ ] Clippy clean across workspace (`cargo clippy --workspace --all-targets`)
+- [x] All existing tests pass under default features (`cargo nextest`) — 1280/1280
+- [x] All existing tests pass under all features (`cargo nextest --all-features`) — 1405/1405
+- [x] Clippy clean across workspace (`cargo clippy --workspace --all-targets`)
 
 ## Anti-Patterns
 
