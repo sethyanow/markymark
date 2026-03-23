@@ -167,7 +167,7 @@ block on the same struct, re-exported from mod.rs).
 - [x] `realm/mod.rs` below 1000-line HARD STOP (the only hard numeric constraint)
 
 ### Phase 2: engine/mod.rs execute() extraction
-- [ ] Read-lock realm-lookup boilerplate eliminated via a `resolve_realm` helper — each read-lock arm reduced from 6 lines of boilerplate to a single helper call
+- [x] Read-lock realm-lookup boilerplate eliminated via a `read_realm` helper — each read-lock arm reduced from 6 lines of boilerplate to a `read_realm` call + match
 - [ ] `AddRoot` arm extracted to a standalone async function
 - [ ] `GetContentBlocks` arm extracted to a standalone function
 - [ ] `execute()` contains only match arms that delegate — no inline business logic longer than ~10 lines

@@ -1,11 +1,12 @@
 ---
 id: marky-3yo
 title: Eliminate realm-lookup boilerplate in execute() via read_realm helper
-status: open
+status: active
 type: task
 priority: 2
 parent: marky-nxc
 ---
+
 
 ## Context
 
@@ -44,11 +45,23 @@ Returns resolved realm key string + the mapped guard. Takes `Option<&str>` for t
 realm name (callers with `Option<String>` pass `.as_deref()`, callers with `String`
 pass `Some(name.as_str())`).
 
-### Arms to refactor
+**Caller error-handling pattern:** `execute()` returns `CoreOperationResult`, not
+`Result<T, E>`, so the `?` operator won't work. Callers must use an explicit match:
+```rust
+let (realm_key, guard) = match self.read_realm(realm_name.as_deref()).await {
+    Ok(v) => v,
+    Err(e) => return e,
+};
+```
 
-GetOutline, SearchSymbols, FindReferences, Rename, RealmStats, DependencyGraph,
-ExportIndex, SearchWorkspace, SearchForPattern, GraphAnalysis, GetDiagnostics,
-SearchBlockText.
+### Two sub-patterns among the 12 arms
+
+**Pattern A (10 arms):** Realm field is `Option<String>` — defaults to `DEFAULT_REALM`:
+GetOutline, SearchSymbols, FindReferences, Rename, ExportIndex, SearchWorkspace,
+SearchForPattern, GraphAnalysis, GetDiagnostics, SearchBlockText.
+
+**Pattern B (2 arms):** Realm field is `String` — no default needed:
+RealmStats, DependencyGraph. Callers pass `Some(realm.as_str())` to the helper.
 
 Note: SearchBlockText has input validation before the boilerplate — keep the
 empty-query check before calling `read_realm`.
@@ -63,11 +76,11 @@ empty-query check before calling `read_realm`.
 
 ## Success Criteria
 
-- [ ] `read_realm` helper eliminates boilerplate in 12 read-lock arms
-- [ ] SemanticSearch, GetContentBlocks, AddRoot unchanged
-- [ ] All tests pass (default features)
-- [ ] All tests pass (all features)
-- [ ] Clippy clean
+- [x] `read_realm` helper eliminates boilerplate in 12 read-lock arms
+- [x] SemanticSearch, GetContentBlocks, AddRoot unchanged
+- [x] All tests pass (default features)
+- [x] All tests pass (all features)
+- [x] Clippy clean
 
 ## Anti-Patterns
 
@@ -75,3 +88,17 @@ empty-query check before calling `read_realm`.
 - Do NOT change public API signatures or the `CoreEngine` trait.
 - Do NOT add traits or new public types.
 - Do NOT use shell for cargo operations — use cargo MCP tools only.
+- Do NOT clone `RealmData` to avoid lifetime issues — the entire point of `try_map` is to hold
+  the read lock via the mapped guard. Cloning data defeats the purpose and wastes memory.
+- Do NOT refactor only the 10 `Option<String>` arms and skip the 2 `String` arms (RealmStats,
+  DependencyGraph) — all 12 must use the helper.
+
+## Key Considerations
+
+- **Rust type safety provides structural guarantees:** `RwLockMappedReadGuard` holds the lock
+  via ownership. The borrow checker prevents early drops. No runtime failure modes from the
+  guard pattern — if it compiles, the lock lifetime is correct.
+- **tokio 1.42+ with "full" features** — `RwLockReadGuard::try_map` confirmed available.
+- **Adversarial planning found no significant failure modes.** This is a pure mechanical refactor
+  with no new input surfaces, no new concurrency patterns, no external dependencies. The existing
+  test suite is the complete verification.

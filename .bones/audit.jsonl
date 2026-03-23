@@ -13,3 +13,4 @@
 {"timestamp":"2026-03-23T09:53:23.276800+00:00","actor":"Seth","event_type":"created","task_id":"marky-3yo","details":{}}
 {"timestamp":"2026-03-23T09:53:31.045199+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-nxc","details":{"kind":"parent-child","to":"marky-3yo"}}
 {"timestamp":"2026-03-23T09:53:31.045672+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-nxc","details":{"kind":"blocks","to":"marky-3yo"}}
+{"timestamp":"2026-03-23T10:02:56.817223+00:00","actor":"Seth","event_type":"updated","task_id":"marky-3yo","details":{"status":"active"}}

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 #[cfg(feature = "semantic-search")]
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, RwLockReadGuard};
 
 use anyhow::bail;
 use async_trait::async_trait;
@@ -232,6 +232,25 @@ impl RuntimeEngine {
             provider,
         })
     }
+
+    /// Resolve a realm name and acquire a mapped read lock on its data.
+    ///
+    /// Returns the resolved realm key and a read guard mapped directly to the
+    /// `RealmData`. The guard holds the read lock for its lifetime.
+    async fn read_realm(
+        &self,
+        realm_name: Option<&str>,
+    ) -> Result<(String, RwLockReadGuard<'_, RealmData>), CoreOperationResult> {
+        let realm_key = realm_name.unwrap_or(DEFAULT_REALM);
+        let state = self.state.read().await;
+        RwLockReadGuard::try_map(state, |s| s.get(realm_key))
+            .map(|guard| (realm_key.to_string(), guard))
+            .map_err(|_| {
+                CoreOperationResult::Error(CoreError::Message(format!(
+                    "realm does not exist: {realm_key}"
+                )))
+            })
+    }
 }
 
 /// Index all markdown files under a root into a realm.
@@ -320,12 +339,9 @@ impl CoreEngine for RuntimeEngine {
                 uri,
                 realm: realm_name,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(CoreError::Message(format!(
-                        "realm does not exist: {realm_key}"
-                    )));
+                let (_realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 outline::handle_get_outline(&realm_data.index, &uri)
             }
@@ -333,12 +349,9 @@ impl CoreEngine for RuntimeEngine {
                 query,
                 realm: realm_name,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(CoreError::Message(format!(
-                        "realm does not exist: {realm_key}"
-                    )));
+                let (_realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 search::handle_search_symbols(&realm_data.index, query)
             }
@@ -432,12 +445,9 @@ impl CoreEngine for RuntimeEngine {
                 position,
                 realm: realm_name,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(CoreError::Message(format!(
-                        "realm does not exist: {realm_key}"
-                    )));
+                let (_realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 references::handle_find_references(&realm_data.index, &uri, position)
             }
@@ -447,12 +457,9 @@ impl CoreEngine for RuntimeEngine {
                 new_name,
                 realm: realm_name,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(CoreError::Message(format!(
-                        "realm does not exist: {realm_key}"
-                    )));
+                let (_realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 references::handle_rename(&realm_data.index, &uri, position, &new_name)
             }
@@ -605,32 +612,22 @@ impl CoreEngine for RuntimeEngine {
                 check_duplicates,
                 include_token_counts,
             } => {
-                let state = self.state.read().await;
-                let realm_data = match state.get(&realm) {
-                    Some(data) => data,
-                    None => {
-                        return CoreOperationResult::Error(CoreError::Message(format!(
-                            "realm does not exist: {realm}"
-                        )));
-                    }
+                let (realm_key, realm_data) = match self.read_realm(Some(realm.as_str())).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 realm_ops::handle_realm_stats(
-                    realm_data,
-                    realm,
+                    &realm_data,
+                    realm_key,
                     check_duplicates,
                     include_token_counts,
                 )
                 .await
             }
             CoreOperation::DependencyGraph { realm, format } => {
-                let state = self.state.read().await;
-                let realm_data = match state.get(&realm) {
-                    Some(data) => data,
-                    None => {
-                        return CoreOperationResult::Error(CoreError::Message(format!(
-                            "realm does not exist: {realm}"
-                        )));
-                    }
+                let (_realm_key, realm_data) = match self.read_realm(Some(realm.as_str())).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
 
                 let content = helpers::build_dependency_graph(&realm_data.index, &format);
@@ -648,12 +645,9 @@ impl CoreEngine for RuntimeEngine {
                 realm: realm_name,
                 include_blocks,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(CoreError::Message(format!(
-                        "realm does not exist: {realm_key}"
-                    )));
+                let (_realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 export::handle_export_index(&realm_data.index, &uri, include_blocks)
             }
@@ -665,15 +659,12 @@ impl CoreEngine for RuntimeEngine {
                 realm: realm_name,
                 limit,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        format!("realm does not exist: {realm_key}"),
-                    ));
+                let (realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 crate::search::execute_search_workspace(
-                    realm_key,
+                    &realm_key,
                     &realm_data.index,
                     query,
                     frontmatter_filter,
@@ -690,15 +681,12 @@ impl CoreEngine for RuntimeEngine {
                 case_insensitive,
                 realm: realm_name,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        format!("realm does not exist: {realm_key}"),
-                    ));
+                let (realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 crate::pattern::execute_search_for_pattern(
-                    realm_key,
+                    &realm_key,
                     &realm_data.index,
                     &pattern,
                     include_glob.as_deref(),
@@ -712,15 +700,12 @@ impl CoreEngine for RuntimeEngine {
                 top_n_hubs,
                 include_clusters,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        format!("realm does not exist: {realm_key}"),
-                    ));
+                let (realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 crate::graph::execute_graph_analysis(
-                    realm_key,
+                    &realm_key,
                     &realm_data.index,
                     top_n_hubs,
                     include_clusters,
@@ -730,18 +715,15 @@ impl CoreEngine for RuntimeEngine {
                 uri,
                 realm: realm_name,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        format!("realm does not exist: {realm_key}"),
-                    ));
+                let (realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 match uri {
                     Some(uri) => {
-                        diagnostics::handle_get_diagnostics_file(realm_data, realm_key, &uri)
+                        diagnostics::handle_get_diagnostics_file(&realm_data, &realm_key, &uri)
                     }
-                    None => diagnostics::handle_get_diagnostics_realm(realm_data, realm_key),
+                    None => diagnostics::handle_get_diagnostics_realm(&realm_data, &realm_key),
                 }
             }
             CoreOperation::GetContentBlocks {
@@ -826,8 +808,6 @@ impl CoreEngine for RuntimeEngine {
                 limit,
                 include_text,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-
                 // Reject empty/whitespace queries — they'd match everything.
                 if query.trim().is_empty() {
                     return CoreOperationResult::Error(markymark_core::CoreError::Message(
@@ -835,11 +815,9 @@ impl CoreEngine for RuntimeEngine {
                     ));
                 }
 
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        format!("realm does not exist: {realm_key}"),
-                    ));
+                let (realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
 
                 // Parse kind filter string to BlockKind enum
@@ -865,7 +843,7 @@ impl CoreEngine for RuntimeEngine {
                     .collect();
 
                 CoreOperationResult::BlockTextMatches {
-                    realm: realm_key.to_string(),
+                    realm: realm_key,
                     query,
                     matches,
                     truncated,
