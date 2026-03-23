@@ -4,8 +4,10 @@ title: 'Code quality review: decompose god files and methods'
 status: open
 type: epic
 priority: 2
-depends_on: [marky-eji, marky-aef, marky-3yo, marky-fba, marky-6lc]
+depends_on: [marky-eji, marky-aef, marky-3yo, marky-fba, marky-6lc, marky-r9o]
 ---
+
+
 
 
 

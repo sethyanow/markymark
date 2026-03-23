@@ -1,12 +1,13 @@
 ---
 id: marky-6lc
 title: Extract GetContentBlocks arm from execute() into engine/content_blocks.rs
-status: active
+status: closed
 type: task
 priority: 2
 owner: Seth
 parent: marky-nxc
 ---
+
 
 
 
