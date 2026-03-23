@@ -11,6 +11,7 @@ parent: marky-nxc
 
 
 
+
 ## Context
 
 `markymark-mcp/src/engine/mod.rs` execute() SemanticSearch arm (L361-445, 85 lines) is the
@@ -134,3 +135,7 @@ CoreOperation::SemanticSearch {
 - **Visibility pattern**: `pub(super)` on the method, following all prior precedents.
 - **cfg-gated imports in the new file**: Some types (e.g., `Arc`, `EmbeddingProvider`, `EmbedError`) are only available under `semantic-search` feature. Import them with `#[cfg(feature = "semantic-search")]` in the new file. The executing agent should determine the exact set by iterating: write code, cargo check, add missing cfg-gated imports.
 - **Mod.rs import cleanup**: After extraction, check if `std::sync::Arc` (L5) and `EmbedError, EmbeddingProvider` (L13) are still used in mod.rs. `Arc` is likely still used in the `RuntimeEngine` struct (`provider: Option<Arc<dyn EmbeddingProvider>>`). `EmbedError` and `EmbeddingProvider` may or may not remain used in mod.rs — verify before removing.
+
+## Log
+
+- [2026-03-23T11:28:54Z] [Seth] Debrief: Clean extraction, exact skeleton match except for method signature types (top_k was u32 not usize, min_score was f32 not Option<f32> — skeleton spec error caught by cargo check). Module ordering Key Considerations error fixed during SRE. mod.rs 650→575 lines, semantic_search.rs 101 lines. All 1409 tests pass (all features), clippy clean. Phase 2 now fully complete (4/4 criteria). Reflections: No surprises beyond the type mismatch. Skeleton accuracy was good — SRE ordering fix was the only correction needed. impl RuntimeEngine split pattern now used 5 times consistently.
