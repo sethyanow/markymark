@@ -1,11 +1,13 @@
 ---
 id: marky-iqg
 title: Extract SemanticSearch arm from execute() into engine/semantic_search.rs
-status: open
+status: closed
 type: task
 priority: 2
 parent: marky-nxc
 ---
+
+
 
 
 
@@ -104,15 +106,15 @@ CoreOperation::SemanticSearch {
 
 ## Success Criteria
 
-- [ ] `handle_semantic_search` method exists in `engine/semantic_search.rs` as `impl RuntimeEngine`
-- [ ] SemanticSearch arm in execute() is a single delegation call
-- [ ] Non-cfg realm existence validation (L371-378 pattern) preserved in extracted method
-- [ ] `#[cfg(not(feature = "semantic-search"))]` NotImplemented block preserved
-- [ ] `#[cfg(feature = "semantic-search")]` three-phase lock protocol preserved
-- [ ] Three-phase protocol does NOT use `read_realm` (intentional design — explicit lock/drop)
-- [ ] All tests pass (default features)
-- [ ] All tests pass (all features)
-- [ ] Clippy clean
+- [x] `handle_semantic_search` method exists in `engine/semantic_search.rs` as `impl RuntimeEngine`
+- [x] SemanticSearch arm in execute() is a single delegation call
+- [x] Non-cfg realm existence validation (L371-378 pattern) preserved in extracted method
+- [x] `#[cfg(not(feature = "semantic-search"))]` NotImplemented block preserved
+- [x] `#[cfg(feature = "semantic-search")]` three-phase lock protocol preserved
+- [x] Three-phase protocol does NOT use `read_realm` (intentional design — explicit lock/drop)
+- [x] All tests pass (default features)
+- [x] All tests pass (all features)
+- [x] Clippy clean
 
 ## Anti-Patterns
 
@@ -128,7 +130,7 @@ CoreOperation::SemanticSearch {
 ## Key Considerations
 
 - **DEFAULT_REALM access**: The constant is defined in mod.rs at L30. Access from the new file via `super::DEFAULT_REALM`. It's a `&str` constant, not cfg-gated.
-- **Module ordering**: `semantic_search` goes after `search_block_text` in the module declarations (alphabetical). The current order is: add_root, content_blocks, diagnostics, export, helpers, outline, realm_ops, references, search, search_block_text. Add `semantic_search` between `search` and `search_block_text`.
+- **Module ordering**: `semantic_search` goes after `search_block_text` in the module declarations (alphabetical: `search` < `search_block_text` < `semantic_search`). The current order is: add_root, content_blocks, diagnostics, export, helpers, outline, realm_ops, references, search, search_block_text. Add `mod semantic_search;` after `search_block_text`.
 - **Visibility pattern**: `pub(super)` on the method, following all prior precedents.
 - **cfg-gated imports in the new file**: Some types (e.g., `Arc`, `EmbeddingProvider`, `EmbedError`) are only available under `semantic-search` feature. Import them with `#[cfg(feature = "semantic-search")]` in the new file. The executing agent should determine the exact set by iterating: write code, cargo check, add missing cfg-gated imports.
 - **Mod.rs import cleanup**: After extraction, check if `std::sync::Arc` (L5) and `EmbedError, EmbeddingProvider` (L13) are still used in mod.rs. `Arc` is likely still used in the `RuntimeEngine` struct (`provider: Option<Arc<dyn EmbeddingProvider>>`). `EmbedError` and `EmbeddingProvider` may or may not remain used in mod.rs — verify before removing.
