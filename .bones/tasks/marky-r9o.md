@@ -12,6 +12,7 @@ parent: marky-nxc
 
 
 
+
 ## Context
 
 `markymark-mcp/src/engine/mod.rs` execute() SearchBlockText arm (L632-679, ~48 lines) contains
@@ -112,3 +113,7 @@ CoreOperation::SearchBlockText {
 - **BlockTextMatchResult import is fully-qualified:** Used as `markymark_core::engine::BlockTextMatchResult` at L663 — not in mod.rs's import list. Step 4 is a verified no-op.
 - **Visibility pattern:** `pub(super)` on the method, following add_root.rs, content_blocks.rs precedent.
 - **Module ordering:** `search_block_text` goes after `search` and before `tests` in the module declarations (alphabetical).
+
+## Log
+
+- [2026-03-23T11:12:32Z] [Seth] Debrief: Clean extraction, zero deviation from skeleton. Line numbers, imports, module ordering all matched exactly. 58-line new file, mod.rs reduced from 688 to 650 lines. Reflections: No surprises — 4th extraction in established pattern. Skeleton accuracy: exact match. Next task marky-iqg scoped: SemanticSearch extraction (85 lines, dual cfg, three-phase lock, no read_realm). After marky-iqg, Phase 2 criterion fully satisfied.
