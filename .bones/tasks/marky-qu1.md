@@ -11,6 +11,7 @@ parent: marky-0xtn
 
 
 
+
 ## Context
 
 - Phase 4.4 (marky-7ru) deleted the scanner module. The blob path (get_blob → from_blob) is the next deletion target.
@@ -86,3 +87,7 @@ parent: marky-0xtn
 - No keeping cached_blob as a "performance optimization" — CEngineResult eliminates the need for blob caching
 - FORBIDDEN: deleting gen_golden_blob.rs without removing its `[[bin]]` entry from Cargo.toml — build will break
 - FORBIDDEN: deleting Zig blob tests by line-range guess — verify each test by name before deleting
+
+## Log
+
+- [2026-03-23T21:03:44Z] [Seth] Debrief: Blob path fully deleted — 4,094 lines removed. lifecycle test in exports.zig converted from blob to get_result (headings_count not heading_count). SRE caught missing Cargo.toml [[bin]] entry before it could break build. Reflections: FFI deletion order (Rust first) pattern confirmed again. Skeleton accuracy was high — line numbers matched, test names correct.

@@ -398,8 +398,8 @@ fn bench_bulk_reindex(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_md4c_vs_tree_sitter(c: &mut Criterion) {
-    let mut group = c.benchmark_group("md4c_vs_tree_sitter");
+fn bench_engine_from_text(c: &mut Criterion) {
+    let mut group = c.benchmark_group("engine_from_text");
     group.warm_up_time(Duration::from_secs(1));
     group.measurement_time(Duration::from_secs(4));
 
@@ -428,19 +428,6 @@ fn bench_md4c_vs_tree_sitter(c: &mut Criterion) {
                 });
             },
         );
-
-        // md4c raw FFI extraction only (no index build, just parse + extract)
-        group.bench_with_input(
-            BenchmarkId::new("md4c_extract_only", label),
-            &doc,
-            |b, doc| {
-                b.iter(|| {
-                    let extraction =
-                        markymark_kernels::md4c::extract_md4c(black_box(doc)).expect("md4c");
-                    black_box(extraction.headings.len() + extraction.links.len())
-                });
-            },
-        );
     }
 
     group.finish();
@@ -454,6 +441,6 @@ criterion_group!(
     bench_content_hash_vs_md5,
     bench_fuzzy_match_batch,
     bench_bulk_reindex,
-    bench_md4c_vs_tree_sitter
+    bench_engine_from_text
 );
 criterion_main!(benches);

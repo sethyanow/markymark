@@ -166,9 +166,9 @@ Stale cache + MCP engines: LSP state + MCP engine = ~80
 - [x] MCP batch uses persistent engines + from_engine_result (no from_scan) — marky-xfgb
 - [x] Stale index cache returns last-good DocumentIndex on engine failure — marky-xfgb
 - [x] serialize.zig, blob.zig, from_blob/ — ALL deleted — marky-qu1
-- [ ] ffi_types.zig CMd4c* types, exports.zig extract/free — ALL deleted
+- [x] ffi_types.zig CMd4c* types, exports.zig extract/free — ALL deleted — marky-ibt
 - [x] from_scan.rs, from_ast.rs, ScanBackend trait — ALL deleted — marky-ut8, marky-zcj, marky-7ru
-- [ ] markymark-kernels/src/md4c/ module — ALL deleted
+- [x] markymark-kernels/src/md4c/ module — ALL deleted — marky-ibt
 - [x] DocumentIndex::from_text() works for all test cases — marky-llj
 - [ ] All tests passing (Zig + Rust)
 - [ ] Pre-commit hooks passing
