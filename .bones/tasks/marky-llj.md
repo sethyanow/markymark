@@ -10,6 +10,7 @@ parent: marky-0xtn
 
 
 
+
 ## Context
 
 - Phases 1-3 of marky-0xtn are complete. All consumers (LSP, MCP) use persistent DocumentEngine + CEngineResult.
@@ -94,3 +95,4 @@ parent: marky-0xtn
 ## Log
 
 - [2026-03-23T17:46:38Z] [Seth] Completed: from_text() added to from_engine.rs (6 lines, ephemeral DocumentEngine). All 18 from_ast callers migrated across 11 files. Zero from_ast callers remain. Slug difference discovered: engine slugifies @ as - vs Rust strips it — updated test expectation. Pre-existing unused_mut warning fixed in realm_isolation.rs. All tests pass (workspace), clippy clean.
+- [2026-03-23T17:51:01Z] [Seth] Debrief: from_text() implemented in 6 lines, 18 callers migrated mechanically. Slug difference discovered (engine @ → -, Rust strips @) — test expectation updated. Pre-existing clippy warning fixed. Reflections: skeleton accuracy excellent — only inaccuracy was the Cargo.toml dependency concern (already existed). Next task scoped: marky-ut8 (Phase 4.2 — from_scan_with_frontmatter production callers + from_ast deletion).
