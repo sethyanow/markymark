@@ -10,14 +10,17 @@ Completed work details live in git history, not here.
 
 ## Current State (2026-03-23)
 
-### marky-0xtn Phases 1-3 + 4.1 complete — Phase 4 deletion sweep continues
+### marky-0xtn Phases 1-3 + 4.1-4.2 complete — Phase 4 deletion sweep continues
 
 Phases 1-3 of the blob-removal epic are done. All consumers (LSP, MCP) now use
 persistent DocumentEngine + CEngineResult. Phase 4.1 (marky-llj) added
-`DocumentIndex::from_text()` and migrated all 18 from_ast callers. `from_ast` has
-zero callers and is dead. Next: migrate from_scan_with_frontmatter callers (14 refs),
-then delete from_ast.rs, from_scan.rs, from_blob/, and remaining dead code.
-6/14 epic criteria checked; remaining 8 are Phase 4 deletion targets.
+`from_text()` and migrated all from_ast callers. Phase 4.2 (marky-ut8) migrated
+all `from_scan_with_frontmatter` production callers to `from_text`, replaced MCP
+AddRoot's inline scan loop with `index_root_into_realm`, and deleted `from_ast.rs`.
+`from_scan_with_frontmatter` now has zero callers. `from_scan` (no frontmatter)
+still has callers in test/bench code — separate task scope.
+Next: delete from_scan.rs + ScanBackend, from_blob/, blob.zig, CMd4c* types, md4c module.
+4/14 epic criteria checked; remaining 10 are Phase 4 deletion targets.
 
 ### marky-0xtn Phase 1 complete (marky-e0kp, commit `2cd1310`)
 

@@ -11,6 +11,7 @@ parent: marky-0xtn
 
 
 
+
 ## Context
 
 - Phase 4.1 (marky-llj) added `from_text()` and migrated all 18 from_ast callers. from_ast now has zero callers.
@@ -130,3 +131,7 @@ parent: marky-0xtn
 - No removing the stale index cache fallback — that stays (it precedes the scan fallback in the fallback chain)
 - FORBIDDEN: skipping `cargo test --workspace --features semantic-search` verification for AddRoot changes — the semantic embedding path in AddRoot is behind a feature flag and must be tested
 - FORBIDDEN: leaving Phases 2-4 of AddRoot handler partially replaced — the entire inline scan loop (lines 599-696) must be replaced, not patched piecemeal
+
+## Log
+
+- [2026-03-23T19:36:08Z] [Seth] Debrief: All 5 from_scan_with_frontmatter production callers migrated to from_text. MCP AddRoot handler replaced with index_root_into_realm (concurrency trade-off accepted — rare operation). from_ast.rs + dead extract_frontmatter_from_ast helper deleted. compile_fail doctest updated (E0515 lifetime error verified). Reflections: No surprises. SRE caught AddRoot handler span underestimate (589-650 → 589-697) and concurrency trade-off. Skeleton accuracy was good after SRE refinement. LSP state imports needed partial retention (parse_frontmatter_owned/mask_frontmatter used by build_markdown_index_via_engine).
