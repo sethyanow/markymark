@@ -885,3 +885,5 @@
 {"timestamp":"2026-03-23T14:45:32.769918+00:00","actor":"Seth","event_type":"created","task_id":"marky-a02","details":{}}
 {"timestamp":"2026-03-23T14:45:42.261253+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-lpb","details":{"kind":"parent-child","to":"marky-a02"}}
 {"timestamp":"2026-03-23T14:45:42.261675+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-lpb","details":{"kind":"blocks","to":"marky-a02"}}
+{"timestamp":"2026-03-23T14:51:38.247355+00:00","actor":"Seth","event_type":"updated","task_id":"marky-a02","details":{"status":"active"}}
+{"timestamp":"2026-03-23T15:02:16.159322+00:00","actor":"Seth","event_type":"closed","task_id":"marky-a02","details":{"notes":null}}

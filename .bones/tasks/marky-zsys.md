@@ -26,7 +26,7 @@ depends_on: [marky-n7wx, marky-lpb, marky-686, marky-8d8]
 
 ## Success Criteria
 
-- [ ] `marky_engine_get_content_hash` returns u64 via FFI; Rust wrapper exposes it on `DocumentEngine`
+- [x] `marky_engine_get_content_hash` returns u64 via FFI; Rust wrapper exposes it on `DocumentEngine`
 - [ ] `build_markdown_index_via_engine` returns `None` (no index) when content hash unchanged; callers skip `realm.update_document()`
 - [ ] Benchmark: unchanged-content update skips blob serialization + deserialization (measurable via criterion)
 - [ ] `marky_engine_update` accepts edit range info; Zig side receives byte offset + old_len + new_len

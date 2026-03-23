@@ -22,6 +22,7 @@ extern "C" {
         blob_len: *mut u32,
     ) -> i32;
     fn marky_engine_destroy(handle: *mut std::ffi::c_void);
+    fn marky_engine_get_content_hash(handle: *mut std::ffi::c_void) -> u64;
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +180,19 @@ impl DocumentEngine {
             other => Err(KernelError::InternalError(other)),
         }
     }
+
+    /// Get the content hash for the current engine state.
+    ///
+    /// The hash is computed by the Zig engine during [`update`](Self::update)
+    /// (or initial creation) over the post-frontmatter-masked text. Same text
+    /// produces the same hash; different structural content produces a different hash.
+    pub fn content_hash(&self) -> u64 {
+        // SAFETY: handle is valid (created by marky_engine_create, not yet
+        // destroyed). content_hash is a pure field read — no mutation, no
+        // allocation.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        unsafe { marky_engine_get_content_hash(self.handle) }
+    }
 }
 
 impl Drop for DocumentEngine {
@@ -309,5 +323,130 @@ mod tests {
         let debug = format!("{engine:?}");
         assert!(debug.contains("DocumentEngine"));
         assert!(debug.contains("handle_null: false"));
+    }
+
+    #[test]
+    fn test_engine_content_hash_stable() {
+        let text = "# Hello\n";
+        let mut engine = DocumentEngine::new(text).unwrap();
+        let hash1 = engine.content_hash();
+        engine.update(text).unwrap();
+        let hash2 = engine.content_hash();
+        assert_eq!(hash1, hash2, "hash must be stable for same content");
+    }
+
+    #[test]
+    fn test_engine_content_hash_changes() {
+        let mut engine = DocumentEngine::new("# Hello\n").unwrap();
+        let hash1 = engine.content_hash();
+        engine.update("# Hello\n## World\n").unwrap();
+        let hash2 = engine.content_hash();
+        assert_ne!(hash1, hash2, "hash must change when structure changes");
+    }
+
+    #[test]
+    fn test_engine_content_hash_after_create() {
+        let engine = DocumentEngine::new("# Heading\n").unwrap();
+        let hash = engine.content_hash();
+        assert_ne!(hash, 0, "non-empty content must produce non-zero hash");
+    }
+
+    #[test]
+    fn test_engine_content_hash_empty() {
+        let engine = DocumentEngine::new("").unwrap();
+        let hash = engine.content_hash();
+        assert_eq!(hash, 0, "empty content must produce zero hash");
+    }
+
+    // -- Adversarial stress tests for content_hash --
+
+    #[test]
+    fn test_engine_content_hash_singular_char() {
+        // Singular: minimal viable input — single byte
+        let engine = DocumentEngine::new("x").unwrap();
+        let hash = engine.content_hash();
+        assert_ne!(hash, 0, "single-char input must produce non-zero hash");
+    }
+
+    #[test]
+    fn test_engine_content_hash_whitespace_only() {
+        // Semantically hostile: valid text, no markdown structure
+        let engine = DocumentEngine::new("   \n\n\t\t\n   ").unwrap();
+        let hash = engine.content_hash();
+        assert_ne!(hash, 0, "whitespace-only input is non-empty, hash must be non-zero");
+    }
+
+    #[test]
+    fn test_engine_content_hash_multibyte_utf8() {
+        // Encoding boundaries: multi-byte UTF-8 characters
+        let mut engine = DocumentEngine::new("# Héllo Wörld 日本語\n").unwrap();
+        let hash1 = engine.content_hash();
+        assert_ne!(hash1, 0);
+        engine.update("# Héllo Wörld 日本語\n").unwrap();
+        let hash2 = engine.content_hash();
+        assert_eq!(hash1, hash2, "multi-byte UTF-8 hash must be stable");
+    }
+
+    #[test]
+    fn test_engine_content_hash_repeated_updates_deterministic() {
+        // The "second run": multiple updates cycle, hash must be deterministic
+        let mut engine = DocumentEngine::new("# A\n").unwrap();
+        let hash_a = engine.content_hash();
+        engine.update("# B\n").unwrap();
+        let hash_b = engine.content_hash();
+        engine.update("# A\n").unwrap();
+        let hash_a2 = engine.content_hash();
+        assert_eq!(hash_a, hash_a2, "returning to same content must produce same hash");
+        assert_ne!(hash_a, hash_b, "different content must produce different hash");
+    }
+
+    #[test]
+    fn test_engine_content_hash_redundant_headings() {
+        // Redundant: duplicate structure — hash should be unique to text, not structure count
+        let mut engine = DocumentEngine::new("# Same\n# Same\n").unwrap();
+        let hash_dup = engine.content_hash();
+        engine.update("# Same\n").unwrap();
+        let hash_single = engine.content_hash();
+        assert_ne!(
+            hash_dup, hash_single,
+            "duplicate headings in text produce different text, different hash"
+        );
+    }
+
+    #[test]
+    fn test_engine_content_hash_large_document() {
+        // Dense: stress test with large input
+        let large = "# Heading\n".repeat(1000) + &"[link](url) #tag\n".repeat(500);
+        let engine = DocumentEngine::new(&large).unwrap();
+        let hash = engine.content_hash();
+        assert_ne!(hash, 0, "large document must produce non-zero hash");
+    }
+
+    #[test]
+    fn test_engine_content_hash_after_failed_update() {
+        // State transitions: hash must survive failed update
+        // engine.update() preserves old state on failure. We can't easily
+        // trigger a parse failure with valid UTF-8 (md4c is lenient), so
+        // we verify that repeated valid updates maintain hash consistency.
+        let mut engine = DocumentEngine::new("# Initial\n").unwrap();
+        let hash1 = engine.content_hash();
+        // Update to different content
+        engine.update("# Changed\n").unwrap();
+        let hash2 = engine.content_hash();
+        assert_ne!(hash1, hash2);
+        // Update back — hash must match original
+        engine.update("# Initial\n").unwrap();
+        let hash3 = engine.content_hash();
+        assert_eq!(hash1, hash3, "hash must be consistent after round-trip updates");
+    }
+
+    #[test]
+    fn test_engine_content_hash_frontmatter_only() {
+        // Semantically hostile: frontmatter with no markdown body
+        let engine = DocumentEngine::new("---\ntitle: test\n---\n").unwrap();
+        let hash = engine.content_hash();
+        // The hash is computed on the text passed to the engine (which includes
+        // frontmatter bytes). As long as text is non-empty, hash should be non-zero.
+        assert_ne!(hash, 0, "frontmatter-only doc is non-empty text");
     }
 }
