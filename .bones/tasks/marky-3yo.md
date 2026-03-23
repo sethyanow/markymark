@@ -1,11 +1,12 @@
 ---
 id: marky-3yo
 title: Eliminate realm-lookup boilerplate in execute() via read_realm helper
-status: active
+status: closed
 type: task
 priority: 2
 parent: marky-nxc
 ---
+
 
 
 ## Context
