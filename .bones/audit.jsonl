@@ -37,3 +37,6 @@
 {"timestamp":"2026-03-23T10:50:40.775250+00:00","actor":"Seth","event_type":"logged","task_id":"marky-6lc","details":{"message":"Debrief: Clean extraction, skeleton matched reality exactly. No workarounds, no surprises, no corrections. read_realm error equivalence confirmed during SRE, zero test regressions. Next task inherits: impl RuntimeEngine split pattern now has 3 precedents (add_root, content_blocks, search_block_text next). Remaining Phase 2 work: SearchBlockText (marky-r9o, scoped) and SemanticSearch (~84 lines, cfg-gated, not yet scoped)."}}
 {"timestamp":"2026-03-23T11:04:25.262781+00:00","actor":"Seth","event_type":"claimed","task_id":"marky-r9o","details":{"actor":"Seth"}}
 {"timestamp":"2026-03-23T11:08:11.478228+00:00","actor":"Seth","event_type":"closed","task_id":"marky-r9o","details":{"notes":null}}
+{"timestamp":"2026-03-23T11:10:53.719100+00:00","actor":"Seth","event_type":"created","task_id":"marky-iqg","details":{}}
+{"timestamp":"2026-03-23T11:10:57.316243+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-nxc","details":{"kind":"parent-child","to":"marky-iqg"}}
+{"timestamp":"2026-03-23T11:10:57.316760+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-nxc","details":{"kind":"blocks","to":"marky-iqg"}}
