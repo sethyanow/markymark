@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, RwLockReadGuard};
 
 use anyhow::bail;
 use async_trait::async_trait;
@@ -17,6 +17,8 @@ use markymark_core::{CoreError, DocumentUri};
 use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
 use markymark_parser::structured::parse_structured;
 
+mod add_root;
+mod content_blocks;
 mod curation;
 mod diagnostics;
 mod enrich;
@@ -28,6 +30,8 @@ mod realm_ops;
 mod recommend;
 mod references;
 mod search;
+mod search_block_text;
+mod semantic_search;
 
 /// The name of the default realm created at startup.
 pub(crate) const DEFAULT_REALM: &str = "default";
@@ -241,6 +245,25 @@ impl RuntimeEngine {
             inference_provider: None,
         })
     }
+
+    /// Resolve a realm name and acquire a mapped read lock on its data.
+    ///
+    /// Returns the resolved realm key and a read guard mapped directly to the
+    /// `RealmData`. The guard holds the read lock for its lifetime.
+    async fn read_realm(
+        &self,
+        realm_name: Option<&str>,
+    ) -> Result<(String, RwLockReadGuard<'_, RealmData>), CoreOperationResult> {
+        let realm_key = realm_name.unwrap_or(DEFAULT_REALM);
+        let state = self.state.read().await;
+        RwLockReadGuard::try_map(state, |s| s.get(realm_key))
+            .map(|guard| (realm_key.to_string(), guard))
+            .map_err(|_| {
+                CoreOperationResult::Error(CoreError::Message(format!(
+                    "realm does not exist: {realm_key}"
+                )))
+            })
+    }
 }
 
 /// Index all markdown files under a root into a realm.
@@ -331,12 +354,9 @@ impl CoreEngine for RuntimeEngine {
                 format,
                 include_text,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(CoreError::Message(format!(
-                        "realm does not exist: {realm_key}"
-                    )));
+                let (_realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 outline::handle_get_outline(
                     &realm_data.index,
@@ -350,12 +370,9 @@ impl CoreEngine for RuntimeEngine {
                 query,
                 realm: realm_name,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(CoreError::Message(format!(
-                        "realm does not exist: {realm_key}"
-                    )));
+                let (_realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 search::handle_search_symbols(&realm_data.index, query)
             }
@@ -365,96 +382,17 @@ impl CoreEngine for RuntimeEngine {
                 top_k,
                 min_score,
             } => {
-                let realm_name = realm.unwrap_or_else(|| DEFAULT_REALM.to_string());
-
-                // Validate realm existence regardless of semantic-search feature flag,
-                // so that non-existent realm errors are consistent across feature configs.
-                {
-                    let state = self.state.read().await;
-                    if !state.contains_key(&realm_name) {
-                        return CoreOperationResult::Error(CoreError::Message(format!(
-                            "realm does not exist: {realm_name}"
-                        )));
-                    }
-                }
-
-                #[cfg(not(feature = "semantic-search"))]
-                {
-                    let _ = (realm_name, query, top_k, min_score);
-                    CoreOperationResult::Error(CoreError::NotImplemented(
-                        "semantic-search feature is not enabled for markymark-mcp".to_string(),
-                    ))
-                }
-
-                #[cfg(feature = "semantic-search")]
-                {
-                    // Early validation: reject empty query before touching the lock.
-                    if query.trim().is_empty() {
-                        return CoreOperationResult::Error(CoreError::Message(
-                            "semantic query cannot be empty".to_string(),
-                        ));
-                    }
-
-                    // Phase 1: Clone the semantic Arc and embedding provider while
-                    // holding the read lock, then drop the lock.
-                    let (semantic_arc, provider) = {
-                        let state = self.state.read().await;
-                        // Realm was validated above; a missing entry here means a concurrent
-                        // remove raced with this operation.
-                        let realm_data = match state.get(&realm_name) {
-                            Some(data) => data,
-                            None => {
-                                return CoreOperationResult::Error(CoreError::Message(format!(
-                                    "realm does not exist: {realm_name}"
-                                )));
-                            }
-                        };
-                        let arc = match realm_data.index.semantic_index_arc() {
-                            Some(arc) => arc,
-                            None => {
-                                return CoreOperationResult::SemanticMatches(Vec::new());
-                            }
-                        };
-                        let provider = {
-                            let guard = arc.lock().await;
-                            guard.provider()
-                        };
-                        (arc, provider)
-                        // state (read guard) dropped here
-                    };
-
-                    // Phase 2: Embed the query outside any lock (slow: network / ONNX).
-                    let query_embedding = match provider.embed(&query).await {
-                        Ok(emb) => emb,
-                        Err(err) => {
-                            return CoreOperationResult::Error(CoreError::Message(format!(
-                                "semantic search failed: {err}"
-                            )));
-                        }
-                    };
-
-                    // Phase 3: In-memory index search inside the mutex (fast).
-                    search::handle_semantic_search_with_embedding(
-                        semantic_arc,
-                        query,
-                        &query_embedding,
-                        top_k,
-                        min_score,
-                    )
+                self.handle_semantic_search(query, realm, top_k, min_score)
                     .await
-                }
             }
             CoreOperation::FindReferences {
                 uri,
                 position,
                 realm: realm_name,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(CoreError::Message(format!(
-                        "realm does not exist: {realm_key}"
-                    )));
+                let (_realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 references::handle_find_references(&realm_data.index, &uri, position)
             }
@@ -464,12 +402,9 @@ impl CoreEngine for RuntimeEngine {
                 new_name,
                 realm: realm_name,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(CoreError::Message(format!(
-                        "realm does not exist: {realm_key}"
-                    )));
+                let (_realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 references::handle_rename(&realm_data.index, &uri, position, &new_name)
             }
@@ -491,125 +426,7 @@ impl CoreEngine for RuntimeEngine {
                 realm_ops::handle_destroy_realm(&mut state, name)
             }
             CoreOperation::AddRoot { realm, root } => {
-                // Phase 1: validate and register root (write lock, fast sync).
-                {
-                    let mut state = self.state.write().await;
-                    if let Err(e) = realm_ops::validate_and_register_root(&mut state, &realm, &root)
-                    {
-                        return CoreOperationResult::Error(e);
-                    }
-                } // write lock released
-
-                // Phase 2: collect + parse documents (no lock, I/O-bound).
-                let backend = Md4cScanBackend;
-                let doc_paths = helpers::collect_documents(&root);
-                let mut parsed_md: Vec<(DocumentUri, DocumentIndex)> = Vec::new();
-                let mut parsed_struct: Vec<(DocumentUri, StructuredDocumentIndex)> = Vec::new();
-
-                for (path, kind) in doc_paths {
-                    let source = match fs::read_to_string(&path) {
-                        Ok(s) => s,
-                        Err(_) => continue,
-                    };
-                    let uri = DocumentUri::from_file_path(&path);
-
-                    if kind == DocumentKind::Markdown {
-                        let (fm_owned, aliases_owned) =
-                            markymark_index::parse_frontmatter_owned(&source);
-                        let scan_source = markymark_index::mask_frontmatter(&source);
-                        parsed_md.push((
-                            uri,
-                            DocumentIndex::from_scan_with_frontmatter(
-                                &scan_source,
-                                &backend,
-                                fm_owned,
-                                aliases_owned,
-                            ),
-                        ));
-                    } else {
-                        let ast = match parse_structured(&source, kind) {
-                            Ok(ast) => ast,
-                            Err(_) => continue,
-                        };
-                        parsed_struct.push((uri, StructuredDocumentIndex::from_ast(ast)));
-                    }
-                }
-
-                // Phase 3: semantic embedding (no outer lock, slow network I/O).
-                // Uses batch API to reduce mutex contention and enable batched
-                // embedding calls (single HTTP request for Voyage, batched ONNX
-                // inference for local).
-                #[cfg(feature = "semantic-search")]
-                let semantic_arc = {
-                    let state = self.state.read().await;
-                    state
-                        .get(&realm)
-                        .and_then(|rd| rd.index.semantic_index_arc())
-                };
-                #[cfg(feature = "semantic-search")]
-                if let Some(ref sem) = semantic_arc {
-                    let docs_refs: Vec<_> = parsed_md
-                        .iter()
-                        .map(|(uri, doc)| (uri.clone(), doc as &DocumentIndex))
-                        .collect();
-                    let mut guard = sem.lock().await;
-                    if let Err(err) = guard.add_documents(docs_refs).await {
-                        eprintln!("warning: batch semantic indexing failed: {err}",);
-                    }
-                }
-
-                // Phase 4: structural index update (write lock, fast in-memory ops).
-                let mut state = self.state.write().await;
-                let realm_data = match state.get_mut(&realm) {
-                    Some(data) => data,
-                    None => {
-                        return CoreOperationResult::Error(CoreError::Message(format!(
-                            "realm was destroyed during indexing: {realm}"
-                        )));
-                    }
-                };
-
-                // Root may have been removed while Phase 2/3 ran without the write lock.
-                let root_canonical = root.canonicalize().unwrap_or_else(|_| root.clone());
-                let root_still_present = realm_data.roots.iter().any(|existing| {
-                    existing.canonicalize().unwrap_or_else(|_| existing.clone()) == root_canonical
-                });
-                if !root_still_present {
-                    // Clean up semantic entries that Phase 3 may have added
-                    // for this root's documents. Without this, stale semantic
-                    // entries remain searchable after root removal.
-                    #[cfg(feature = "semantic-search")]
-                    if let Some(ref sem) = semantic_arc {
-                        let mut guard = sem.lock().await;
-                        for (uri, _) in &parsed_md {
-                            guard.remove_document(uri);
-                        }
-                    }
-
-                    log::warn!(
-                        "root removed during indexing; realm={realm}, root={}, discarding {} parsed documents",
-                        root.display(),
-                        parsed_md.len() + parsed_struct.len()
-                    );
-                    return CoreOperationResult::RealmInfo {
-                        name: realm.clone(),
-                        root_count: realm_data.roots.len(),
-                        document_count: realm_data.index.document_count(),
-                    };
-                }
-
-                for (uri, doc) in parsed_md {
-                    realm_data.index.add_document_structural(uri, doc);
-                }
-                for (uri, doc) in parsed_struct {
-                    realm_data.index.add_structured_document(uri, doc);
-                }
-
-                CoreOperationResult::RealmInfo {
-                    name: realm.clone(),
-                    root_count: realm_data.roots.len(),
-                    document_count: realm_data.index.document_count(),
-                }
+                self.handle_add_root(realm, root).await
             }
             CoreOperation::RemoveRoot { realm, root } => {
                 let mut state = self.state.write().await;
@@ -622,32 +439,22 @@ impl CoreEngine for RuntimeEngine {
                 check_duplicates,
                 include_token_counts,
             } => {
-                let state = self.state.read().await;
-                let realm_data = match state.get(&realm) {
-                    Some(data) => data,
-                    None => {
-                        return CoreOperationResult::Error(CoreError::Message(format!(
-                            "realm does not exist: {realm}"
-                        )));
-                    }
+                let (realm_key, realm_data) = match self.read_realm(Some(realm.as_str())).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 realm_ops::handle_realm_stats(
-                    realm_data,
-                    realm,
+                    &realm_data,
+                    realm_key,
                     check_duplicates,
                     include_token_counts,
                 )
                 .await
             }
             CoreOperation::DependencyGraph { realm, format } => {
-                let state = self.state.read().await;
-                let realm_data = match state.get(&realm) {
-                    Some(data) => data,
-                    None => {
-                        return CoreOperationResult::Error(CoreError::Message(format!(
-                            "realm does not exist: {realm}"
-                        )));
-                    }
+                let (_realm_key, realm_data) = match self.read_realm(Some(realm.as_str())).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
 
                 let content = helpers::build_dependency_graph(&realm_data.index, &format);
@@ -665,12 +472,9 @@ impl CoreEngine for RuntimeEngine {
                 realm: realm_name,
                 include_blocks,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(CoreError::Message(format!(
-                        "realm does not exist: {realm_key}"
-                    )));
+                let (_realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 export::handle_export_index(&realm_data.index, &uri, include_blocks)
             }
@@ -682,15 +486,12 @@ impl CoreEngine for RuntimeEngine {
                 realm: realm_name,
                 limit,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        format!("realm does not exist: {realm_key}"),
-                    ));
+                let (realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 crate::search::execute_search_workspace(
-                    realm_key,
+                    &realm_key,
                     &realm_data.index,
                     query,
                     frontmatter_filter,
@@ -707,15 +508,12 @@ impl CoreEngine for RuntimeEngine {
                 case_insensitive,
                 realm: realm_name,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        format!("realm does not exist: {realm_key}"),
-                    ));
+                let (realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 crate::pattern::execute_search_for_pattern(
-                    realm_key,
+                    &realm_key,
                     &realm_data.index,
                     &pattern,
                     include_glob.as_deref(),
@@ -729,15 +527,12 @@ impl CoreEngine for RuntimeEngine {
                 top_n_hubs,
                 include_clusters,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        format!("realm does not exist: {realm_key}"),
-                    ));
+                let (realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 crate::graph::execute_graph_analysis(
-                    realm_key,
+                    &realm_key,
                     &realm_data.index,
                     top_n_hubs,
                     include_clusters,
@@ -747,18 +542,15 @@ impl CoreEngine for RuntimeEngine {
                 uri,
                 realm: realm_name,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        format!("realm does not exist: {realm_key}"),
-                    ));
+                let (realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
+                    Ok(v) => v,
+                    Err(e) => return e,
                 };
                 match uri {
                     Some(uri) => {
-                        diagnostics::handle_get_diagnostics_file(realm_data, realm_key, &uri)
+                        diagnostics::handle_get_diagnostics_file(&realm_data, &realm_key, &uri)
                     }
-                    None => diagnostics::handle_get_diagnostics_realm(realm_data, realm_key),
+                    None => diagnostics::handle_get_diagnostics_realm(&realm_data, &realm_key),
                 }
             }
             CoreOperation::ExportDocsIndex {
@@ -852,71 +644,15 @@ impl CoreEngine for RuntimeEngine {
                 block_id,
                 include_text,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        format!("realm does not exist: {realm_key}"),
-                    ));
-                };
-                let Some(doc) = realm_data.index.get_document(&uri) else {
-                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        format!(
-                            "document not found in realm \"{realm_key}\": {}",
-                            uri.as_str()
-                        ),
-                    ));
-                };
-
-                let headings = doc.headings();
-                let content_blocks = doc.content_blocks();
-
-                let blocks: Vec<markymark_core::engine::ContentBlockResult> = content_blocks
-                    .iter()
-                    .filter(|b| {
-                        if let Some(ref kind) = kind_filter {
-                            if helpers::block_kind_str(&b.kind) != kind.as_str() {
-                                return false;
-                            }
-                        }
-                        if let Some(ref heading_slug) = heading_filter {
-                            let matches = b.parent_heading.is_some_and(|idx| {
-                                headings
-                                    .get(idx)
-                                    .is_some_and(|h| h.slug == heading_slug.as_str())
-                            });
-                            if !matches {
-                                return false;
-                            }
-                        }
-                        if let Some(ref bid) = block_id {
-                            if b.block_id != Some(bid.as_str()) {
-                                return false;
-                            }
-                        }
-                        true
-                    })
-                    .map(|b| {
-                        let parent_slug = b
-                            .parent_heading
-                            .and_then(|idx| headings.get(idx).map(|h| h.slug.to_string()));
-                        let text = if include_text {
-                            Some(doc.block_text(b).to_string())
-                        } else {
-                            None
-                        };
-                        markymark_core::engine::ContentBlockResult {
-                            kind: helpers::block_kind_str(&b.kind).to_string(),
-                            range: b.range,
-                            parent_heading_index: b.parent_heading,
-                            parent_heading_slug: parent_slug,
-                            block_id: b.block_id.map(|s| s.to_string()),
-                            text,
-                        }
-                    })
-                    .collect();
-
-                CoreOperationResult::ContentBlocks { uri, blocks }
+                self.handle_get_content_blocks(
+                    uri,
+                    realm_name,
+                    kind_filter,
+                    heading_filter,
+                    block_id,
+                    include_text,
+                )
+                .await
             }
 
             CoreOperation::SearchBlockText {
@@ -926,50 +662,8 @@ impl CoreEngine for RuntimeEngine {
                 limit,
                 include_text,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-
-                // Reject empty/whitespace queries — they'd match everything.
-                if query.trim().is_empty() {
-                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        "query must not be empty or whitespace-only".to_string(),
-                    ));
-                }
-
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        format!("realm does not exist: {realm_key}"),
-                    ));
-                };
-
-                // Parse kind filter string to BlockKind enum
-                let block_kind_filter = kind_filter.as_deref().and_then(helpers::parse_block_kind);
-
-                let (realm_matches, truncated) = realm_data.index.search_block_text(
-                    query.trim(),
-                    block_kind_filter,
-                    limit,
-                    include_text,
-                );
-
-                let matches = realm_matches
-                    .into_iter()
-                    .map(|m| markymark_core::engine::BlockTextMatchResult {
-                        uri: m.uri,
-                        kind: helpers::block_kind_str(&m.kind).to_string(),
-                        range: m.range,
-                        parent_heading_slug: m.parent_heading_slug,
-                        block_id: m.block_id,
-                        text: m.text,
-                    })
-                    .collect();
-
-                CoreOperationResult::BlockTextMatches {
-                    realm: realm_key.to_string(),
-                    query,
-                    matches,
-                    truncated,
-                }
+                self.handle_search_block_text(query, realm_name, kind_filter, limit, include_text)
+                    .await
             }
         }
     }

@@ -200,7 +200,7 @@ pub(crate) fn key_entries_to_symbols(index: &StructuredDocumentIndex) -> Vec<Doc
         // folding their children into the parent.
         while let Some((d, _)) = stack.last() {
             if *d >= depth {
-                let (_, children) = stack.pop().unwrap();
+                let (_, children) = stack.pop().expect("stack non-empty after while-let guard");
                 if let Some((_, parent_children)) = stack.last_mut() {
                     if let Some(parent) = parent_children.last_mut() {
                         parent.children = children;
