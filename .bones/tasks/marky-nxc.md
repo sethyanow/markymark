@@ -173,7 +173,7 @@ block on the same struct, re-exported from mod.rs).
 ### Phase 2: engine/mod.rs execute() extraction
 - [x] Read-lock realm-lookup boilerplate eliminated via a `read_realm` helper — each read-lock arm reduced from 6 lines of boilerplate to a `read_realm` call + match
 - [x] `AddRoot` arm extracted to a standalone async function
-- [ ] `GetContentBlocks` arm extracted to a standalone function
+- [x] `GetContentBlocks` arm extracted to a standalone function
 - [ ] `execute()` contains only match arms that delegate — no inline business logic longer than ~10 lines
 
 ### Phase 3: server.rs method extraction

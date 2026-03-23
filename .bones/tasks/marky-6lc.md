@@ -1,11 +1,15 @@
 ---
 id: marky-6lc
 title: Extract GetContentBlocks arm from execute() into engine/content_blocks.rs
-status: open
+status: active
 type: task
 priority: 2
+owner: Seth
 parent: marky-nxc
 ---
+
+
+
 
 
 
@@ -74,20 +78,20 @@ CoreOperation::GetContentBlocks {
 - Cargo check
 ### Step 3: Replace GetContentBlocks arm body in execute() with delegation call
 - Cargo check
-### Step 4: Verify imports in mod.rs — likely a no-op
-- `markymark_core::engine::ContentBlockResult` may become unused in mod.rs if only GetContentBlocks used it — verify with LSP findReferences before removing
-- Cargo check
+### Step 4: Verify imports in mod.rs — confirmed no-op
+- `ContentBlockResult` is used via fully-qualified path (`markymark_core::engine::ContentBlockResult`) in the GetContentBlocks arm only — NOT via a `use` import at the top of mod.rs. After extraction, no references remain in mod.rs. Nothing to remove from the import list.
+- Cargo check (sanity confirmation)
 ### Step 5: Full verification — cargo test (default + all-features), cargo clippy
 
 ## Success Criteria
 
-- [ ] `handle_get_content_blocks` method exists in `engine/content_blocks.rs` as `impl RuntimeEngine`
-- [ ] GetContentBlocks arm in execute() is a single delegation call
-- [ ] Uses `read_realm` helper (old inline realm-lookup pattern eliminated)
-- [ ] Filter/map logic preserved (kind, heading, block_id filters + text inclusion)
-- [ ] All tests pass (default features)
-- [ ] All tests pass (all features)
-- [ ] Clippy clean
+- [x] `handle_get_content_blocks` method exists in `engine/content_blocks.rs` as `impl RuntimeEngine`
+- [x] GetContentBlocks arm in execute() is a single delegation call
+- [x] Uses `read_realm` helper (old inline realm-lookup pattern eliminated)
+- [x] Filter/map logic preserved (kind, heading, block_id filters + text inclusion)
+- [x] All tests pass (default features)
+- [x] All tests pass (all features)
+- [x] Clippy clean
 
 ## Anti-Patterns
 
@@ -97,6 +101,7 @@ CoreOperation::GetContentBlocks {
 - Do NOT use shell for cargo operations — use cargo MCP tools only.
 - Do NOT omit the `pub(super)` visibility — method must be callable from mod.rs.
 - Do NOT change `CoreEngine` trait or public API signatures.
+- Do NOT copy the inline realm-lookup pattern into content_blocks.rs — the read_realm conversion IS a deliverable of this task, not an optional cleanup. "Preserving behavioral equivalence" is not a reason to skip; read_realm produces identical error messages (verified by SRE).
 
 ## Key Considerations
 
@@ -104,3 +109,7 @@ CoreOperation::GetContentBlocks {
 - **Document lookup is separate from realm lookup:** After `read_realm` provides `realm_data`, the document lookup (`realm_data.index.get_document(&uri)`) is a distinct step with its own error path. This two-step pattern (realm → document) stays in the extracted method.
 - **ContentBlockResult import may move:** `ContentBlockResult` is currently imported in mod.rs via `markymark_core::engine`. If only GetContentBlocks uses it, the import may need to move to content_blocks.rs. Step 4 checks this.
 - **Visibility pattern:** `pub(super)` on the method, following the add_root.rs and realm/cross_doc.rs precedent.
+
+## Log
+
+- [2026-03-23T10:42:42Z] [Seth] SRE review (fresh session, 13-category). APPROVE with 2 corrections applied: (1) Added anti-pattern blocking inline realm-lookup copy — read_realm conversion is a deliverable. (2) Clarified Step 4 as confirmed no-op — ContentBlockResult used via fully-qualified path, not imported. All architecture claims verified against current code: line numbers, read_realm error message equivalence, module ordering, add_root.rs precedent pattern.

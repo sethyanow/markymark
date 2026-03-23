@@ -18,6 +18,7 @@ use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
 use markymark_parser::structured::parse_structured;
 
 mod add_root;
+mod content_blocks;
 mod diagnostics;
 mod export;
 mod helpers;
@@ -617,71 +618,15 @@ impl CoreEngine for RuntimeEngine {
                 block_id,
                 include_text,
             } => {
-                let realm_key = realm_name.as_deref().unwrap_or(DEFAULT_REALM);
-                let state = self.state.read().await;
-                let Some(realm_data) = state.get(realm_key) else {
-                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        format!("realm does not exist: {realm_key}"),
-                    ));
-                };
-                let Some(doc) = realm_data.index.get_document(&uri) else {
-                    return CoreOperationResult::Error(markymark_core::CoreError::Message(
-                        format!(
-                            "document not found in realm \"{realm_key}\": {}",
-                            uri.as_str()
-                        ),
-                    ));
-                };
-
-                let headings = doc.headings();
-                let content_blocks = doc.content_blocks();
-
-                let blocks: Vec<markymark_core::engine::ContentBlockResult> = content_blocks
-                    .iter()
-                    .filter(|b| {
-                        if let Some(ref kind) = kind_filter {
-                            if helpers::block_kind_str(&b.kind) != kind.as_str() {
-                                return false;
-                            }
-                        }
-                        if let Some(ref heading_slug) = heading_filter {
-                            let matches = b.parent_heading.is_some_and(|idx| {
-                                headings
-                                    .get(idx)
-                                    .is_some_and(|h| h.slug == heading_slug.as_str())
-                            });
-                            if !matches {
-                                return false;
-                            }
-                        }
-                        if let Some(ref bid) = block_id {
-                            if b.block_id != Some(bid.as_str()) {
-                                return false;
-                            }
-                        }
-                        true
-                    })
-                    .map(|b| {
-                        let parent_slug = b
-                            .parent_heading
-                            .and_then(|idx| headings.get(idx).map(|h| h.slug.to_string()));
-                        let text = if include_text {
-                            Some(doc.block_text(b).to_string())
-                        } else {
-                            None
-                        };
-                        markymark_core::engine::ContentBlockResult {
-                            kind: helpers::block_kind_str(&b.kind).to_string(),
-                            range: b.range,
-                            parent_heading_index: b.parent_heading,
-                            parent_heading_slug: parent_slug,
-                            block_id: b.block_id.map(|s| s.to_string()),
-                            text,
-                        }
-                    })
-                    .collect();
-
-                CoreOperationResult::ContentBlocks { uri, blocks }
+                self.handle_get_content_blocks(
+                    uri,
+                    realm_name,
+                    kind_filter,
+                    heading_filter,
+                    block_id,
+                    include_text,
+                )
+                .await
             }
 
             CoreOperation::SearchBlockText {
