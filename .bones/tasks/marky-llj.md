@@ -1,11 +1,13 @@
 ---
 id: marky-llj
 title: 'Phase 4.1: Add DocumentIndex::from_text() and migrate from_ast callers'
-status: active
+status: closed
 type: task
 priority: 2
 parent: marky-0xtn
 ---
+
+
 
 
 ## Context
@@ -88,3 +90,7 @@ parent: marky-0xtn
 - No keeping from_ast callers "for now" — all 18 must be migrated
 - No adding from_text to production paths — production uses from_engine_result_with_frontmatter directly
 - FORBIDDEN: leaving markymark_parser::parse imports in migrated files — from_text() internalizes the parse step
+
+## Log
+
+- [2026-03-23T17:46:38Z] [Seth] Completed: from_text() added to from_engine.rs (6 lines, ephemeral DocumentEngine). All 18 from_ast callers migrated across 11 files. Zero from_ast callers remain. Slug difference discovered: engine slugifies @ as - vs Rust strips it — updated test expectation. Pre-existing unused_mut warning fixed in realm_isolation.rs. All tests pass (workspace), clippy clean.
