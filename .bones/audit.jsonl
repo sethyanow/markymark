@@ -887,3 +887,7 @@
 {"timestamp":"2026-03-23T14:45:42.261675+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-lpb","details":{"kind":"blocks","to":"marky-a02"}}
 {"timestamp":"2026-03-23T14:51:38.247355+00:00","actor":"Seth","event_type":"updated","task_id":"marky-a02","details":{"status":"active"}}
 {"timestamp":"2026-03-23T15:02:16.159322+00:00","actor":"Seth","event_type":"closed","task_id":"marky-a02","details":{"notes":null}}
+{"timestamp":"2026-03-23T15:03:08.102899+00:00","actor":"Seth","event_type":"logged","task_id":"marky-a02","details":{"message":"Completed: FFI hash exposure (Phase 1a). Added marky_engine_get_content_hash to exports.zig + Rust extern + content_hash() method. 12 tests (4 core, 8 adversarial). All 64 workspace test suites pass. Clippy clean. SRE review sharpened skeleton: fixed file path ambiguity (exports.zig not c_adapter.zig), added 3 new anti-patterns, added Key Considerations. No surprises — pure plumbing task matched skeleton exactly."}}
+{"timestamp":"2026-03-23T15:05:08.198073+00:00","actor":"Seth","event_type":"created","task_id":"marky-1ic","details":{}}
+{"timestamp":"2026-03-23T15:05:13.637102+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-lpb","details":{"kind":"parent-child","to":"marky-1ic"}}
+{"timestamp":"2026-03-23T15:05:13.637545+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-lpb","details":{"kind":"blocks","to":"marky-1ic"}}
