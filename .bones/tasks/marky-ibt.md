@@ -12,6 +12,7 @@ parent: marky-0xtn
 
 
 
+
 ## Context
 
 - Phase 4.5 (marky-qu1) deleted the blob serialization path. The CMd4c FFI path is the next deletion target.
@@ -102,3 +103,7 @@ parent: marky-0xtn
 - FORBIDDEN: deleting engine/ffi_types.zig or engine/exports.zig — those are the CEngineResult path (the REPLACEMENT)
 - FORBIDDEN: keeping CMd4c types "for future use" — zero consumers since Phase 3
 - FORBIDDEN: deleting the `engine_from_text` benchmark arm when removing the md4c benchmark — it exercises the live CEngineResult path
+
+## Log
+
+- [2026-03-23T21:44:00Z] [Seth] Debrief: Clean deletion following Phase 4.5 pattern. SRE caught step ordering issue (Zig refs before file deletion) and resolved benchmark naming decision (renamed to bench_engine_from_text). Net -2,527 lines. Reflections: Skeleton was accurate after SRE fixes. Remaining 6/14 epic criteria likely pre-satisfied from Phase 1 — next task (marky-ozi) audits and closes epic.

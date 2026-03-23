@@ -10,17 +10,21 @@ Completed work details live in git history, not here.
 
 ## Current State (2026-03-23)
 
-### marky-0xtn Phases 1-3 + 4.1-4.5 complete — Phase 4 deletion sweep continues
+### marky-0xtn Phases 1-3 + 4.1-4.6 complete — nearing epic closure
 
-Phases 1-3 of the blob-removal epic are done. All consumers (LSP, MCP) now use
-persistent DocumentEngine + CEngineResult. Phases 4.1-4.3 migrated all callers
-to from_text() and deleted from_ast.rs + from_scan.rs. Phase 4.4 deleted the
-scanner module. Phase 4.5 (marky-qu1, commit `49770d0`) deleted the entire blob
-serialization path: Rust from_blob/ directory (6 source + 6 test files), ScanBlob,
-get_blob(), gen_golden_blob binary, golden_v1.blob fixture; Zig serialize.zig,
-blob.zig, cached_blob, getBlob, marky_engine_get_blob — net -4,094 lines.
-Next: delete CMd4c* types (criterion 7), md4c module in kernels (criterion 9).
-6/14 epic criteria checked; remaining 8 are Phase 4 deletion targets.
+Phases 1-3 done (LSP, MCP on CEngineResult). Phase 4 deletion sweep nearly complete:
+4.1-4.3 migrated callers/deleted from_ast/from_scan. 4.4 deleted scanner module.
+4.5 (marky-qu1, `49770d0`) deleted blob path (-4,094 lines).
+4.6 (marky-ibt, `ab8c531`) deleted CMd4c FFI layer (-2,527 lines): Rust md4c module,
+Zig ffi_types/exports/exports_tests, benchmark arm renamed to bench_engine_from_text.
+
+**8/14 epic criteria now checked.** Remaining 6 unchecked:
+- Criteria 1-2: CEngineResult struct matches / parity tests — likely already satisfied from Phase 1
+- Criterion 11: All tests passing — 983/983 pass as of Phase 4.6
+- Criterion 12: Pre-commit hooks passing — needs verification
+- Criteria 13-14: generation field / _reserved bytes — built in Phase 1, need re-verification
+
+Next session should audit remaining criteria — several may be closeable with verification only.
 
 **Note:** The `zig-kernels` feature in markymark-core is now completely hollow — all
 `cfg(feature = "zig-kernels")` references were in the deleted scanner module. The feature
