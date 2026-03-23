@@ -65,6 +65,8 @@ async fn indexes_markdown_and_returns_deterministic_symbols() {
         .execute(CoreOperation::GetOutline {
             uri: DocumentUri::from_file_path(&first),
             realm: None,
+            format: "flat".to_string(),
+            include_text: false,
         })
         .await;
     match outline {

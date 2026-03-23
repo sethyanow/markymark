@@ -74,6 +74,10 @@ pub enum CoreOperation {
         uri: DocumentUri,
         /// Realm to query. Defaults to "default" when `None`.
         realm: Option<String>,
+        /// Output format: "flat" (default) or "tree" (hierarchical).
+        format: String,
+        /// When true (and format="tree"), inline section text in each node.
+        include_text: bool,
     },
     /// Find all references to the symbol at a position.
     FindReferences {
@@ -215,6 +219,49 @@ pub enum CoreOperation {
         /// Realm to query. Defaults to `"default"` when `None`.
         realm: Option<String>,
     },
+    /// Export a pipe-delimited docs_index block from realm state.
+    ExportDocsIndex {
+        /// Realm to export. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+        /// Override the `[name]` prefix for each root entry.
+        name_override: Option<String>,
+    },
+    /// Enrich a document's outline with LLM-generated summaries.
+    EnrichDocument {
+        /// Target document.
+        uri: DocumentUri,
+        /// Realm to query. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+        /// Directory for sidecar files. When `None`, uses `.markymark/` under the workspace root.
+        sidecar_dir: Option<std::path::PathBuf>,
+        /// Force re-enrichment even if sidecar is fresh.
+        force: bool,
+    },
+
+    /// Recommend documents matching an intent query using combined text + graph ranking.
+    RecommendDocs {
+        /// Intent or search query.
+        query: String,
+        /// Realm to query. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+        /// Maximum recommendations to return.
+        top_k: u32,
+        /// Whether to include per-section summaries from sidecars.
+        include_sections: bool,
+    },
+
+    /// Run curation diagnostics composing graph-analysis + diagnostics for actionable suggestions.
+    CurationDiagnostics {
+        /// Realm to diagnose. Defaults to `"default"` when `None`.
+        realm: Option<String>,
+        /// Whether to generate cross-link suggestions (default true).
+        include_suggestions: bool,
+        /// Maximum suggestions to return (default 20).
+        max_suggestions: u32,
+        /// Maximum items per diagnostic category (default 50).
+        max_items_per_category: u32,
+    },
+
     /// Get content blocks for a document URI with optional filtering.
     GetContentBlocks {
         /// Target document.
@@ -266,6 +313,105 @@ pub struct PatternMatch {
     pub context_start_line: u32,
 }
 
+/// A section summary within a recommended document.
+#[derive(Debug, Clone)]
+pub struct RecommendedSection {
+    /// Heading path (e.g. "Overview > Getting Started").
+    pub heading_path: String,
+    /// Heading level (1-6).
+    pub level: u8,
+    /// LLM-generated summary text.
+    pub summary: String,
+}
+
+/// A single document recommendation from the recommend-docs operation.
+#[derive(Debug, Clone)]
+pub struct DocRecommendation {
+    /// Document URI.
+    pub uri: DocumentUri,
+    /// Document title.
+    pub title: String,
+    /// Combined relevance score (0.0-1.0).
+    pub relevance_score: f32,
+    /// Text search score (0.0-1.0).
+    pub search_score: f32,
+    /// Normalized graph hub score (0.0-1.0).
+    pub hub_score: f32,
+    /// Fields that matched the query.
+    pub matched_fields: Vec<String>,
+    /// Document tags.
+    pub tags: Vec<String>,
+    /// Document-level summary from sidecar.
+    pub document_summary: Option<String>,
+    /// Per-section summaries from sidecar.
+    pub sections: Option<Vec<RecommendedSection>>,
+}
+
+/// A suggestion for improving documentation quality (cross-link, index page, etc.).
+#[derive(Debug, Clone)]
+pub struct CurationSuggestion {
+    /// Source document URI (the document that should add a link).
+    pub source_doc: DocumentUri,
+    /// Target document URI (the document being linked to).
+    pub target_doc: DocumentUri,
+    /// Human-readable reason for the suggestion.
+    pub reason: String,
+    /// Type of suggestion.
+    pub suggestion_type: CurationSuggestionType,
+}
+
+/// The type of curation suggestion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CurationSuggestionType {
+    /// Add a cross-link between two documents.
+    CrossLink,
+    /// Reduce orphan status by linking to a hub.
+    ReduceOrphan,
+}
+
+/// A document with its connectivity score.
+#[derive(Debug, Clone)]
+pub struct ConnectivityDoc {
+    /// Document URI.
+    pub uri: DocumentUri,
+    /// Total link count (in-degree + out-degree).
+    pub connectivity: u32,
+    /// Incoming link count.
+    pub in_degree: u32,
+    /// Outgoing link count.
+    pub out_degree: u32,
+}
+
+/// Aggregate statistics for the curation report.
+#[derive(Debug, Clone)]
+pub struct CurationStats {
+    /// Total documents in realm.
+    pub total_docs: u32,
+    /// Number of orphan documents.
+    pub orphan_count: u32,
+    /// Percentage of orphan documents (0.0-100.0).
+    pub orphan_percentage: f32,
+    /// Average connectivity across all documents.
+    pub avg_connectivity: f32,
+    /// Median connectivity across all documents.
+    pub median_connectivity: f32,
+    /// Total broken links from diagnostics.
+    pub broken_link_count: u32,
+}
+
+/// Full curation diagnostics report.
+#[derive(Debug, Clone)]
+pub struct CurationReportData {
+    /// Documents with no resolved links in or out.
+    pub orphan_docs: Vec<DocumentUri>,
+    /// Documents with connectivity below the median and threshold.
+    pub low_connectivity_docs: Vec<ConnectivityDoc>,
+    /// Actionable cross-link suggestions.
+    pub suggestions: Vec<CurationSuggestion>,
+    /// Aggregate statistics.
+    pub stats: CurationStats,
+}
+
 /// A content block result returned from the engine.
 #[derive(Debug, Clone)]
 pub struct ContentBlockResult {
@@ -310,11 +456,30 @@ pub trait CoreEngine: Send + Sync {
     async fn execute(&self, operation: CoreOperation) -> CoreOperationResult;
 }
 
+/// An owned node in the hierarchical outline tree.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutlineTreeNode {
+    /// Heading title (empty string for root node).
+    pub title: String,
+    /// Heading level (0 for root, 1-6 for headings).
+    pub level: u8,
+    /// Source range of the heading line.
+    pub range: Range,
+    /// Section text content (when include_text requested).
+    pub text: Option<String>,
+    /// LLM-generated summary (from sidecar enrichment).
+    pub summary: Option<String>,
+    /// Child nodes.
+    pub children: Vec<OutlineTreeNode>,
+}
+
 /// The result of a core engine operation.
 #[derive(Debug)]
 pub enum CoreOperationResult {
-    /// An outline (list of heading descriptions).
+    /// An outline (list of heading descriptions, flat format).
     Outline(Vec<String>),
+    /// A hierarchical outline tree.
+    OutlineTree(OutlineTreeNode),
     /// A list of locations (uri, range).
     Locations(Vec<(DocumentUri, Range)>),
     /// A workspace edit (uri, list of (range, replacement text)).
@@ -437,6 +602,47 @@ pub enum CoreOperationResult {
         /// Per-file diagnostics: `(document_uri, diagnostics)`.
         /// Only files that have at least one diagnostic are included.
         items: Vec<(crate::DocumentUri, Vec<CoreDiagnostic>)>,
+    },
+    /// Exported docs_index entries (one per root).
+    DocsIndexExport {
+        /// Realm that was exported.
+        realm: String,
+        /// Pipe-delimited docs_index entry strings.
+        entries: Vec<String>,
+        /// Number of markdown documents included.
+        doc_count: usize,
+        /// Number of roots that produced entries.
+        root_count: usize,
+        /// Number of documents skipped (URI didn't match any root).
+        skipped_count: usize,
+    },
+    /// Result of enriching a document with LLM summaries.
+    EnrichmentResult {
+        /// Document URI that was enriched.
+        uri: DocumentUri,
+        /// Number of sections that were summarized.
+        sections_enriched: usize,
+        /// Whether the sidecar was fresh (skipped) or regenerated.
+        was_stale: bool,
+        /// Model used for enrichment.
+        model_id: String,
+    },
+    /// Result of recommend-docs: ranked document recommendations.
+    Recommendations {
+        /// Realm that was searched.
+        realm: String,
+        /// The original query.
+        query: String,
+        /// Ranked recommendations: (uri, title, relevance_score, search_score, hub_score,
+        /// matched_fields, tags, document_summary, sections).
+        results: Vec<DocRecommendation>,
+    },
+    /// Result of curation diagnostics: orphans, low-connectivity docs, suggestions.
+    CurationReport {
+        /// Realm that was analyzed.
+        realm: String,
+        /// Full curation report.
+        report: CurationReportData,
     },
     /// Content blocks for a document.
     ContentBlocks {

@@ -15,15 +15,49 @@ pub struct OutlineRequest {
     /// Realm to query. Defaults to `"default"` when omitted.
     #[serde(default)]
     pub realm: Option<String>,
+    /// Output format: `"flat"` (default, backward-compatible list) or `"tree"` (hierarchical JSON).
+    #[serde(default)]
+    pub format: Option<String>,
+    /// When `true` and `format="tree"`, inline section text content within each node.
+    #[serde(default)]
+    pub include_text: bool,
 }
 
-/// Response payload for `get-outline`.
+/// Response payload for `get-outline` (flat format).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct OutlineResponse {
     /// Input document URI.
     pub uri: String,
     /// Heading outline entries.
     pub headings: Vec<String>,
+}
+
+/// A node in the hierarchical outline tree.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct OutlineTreeNodeDto {
+    /// Heading title (empty string for the root node).
+    pub title: String,
+    /// Heading level (0 for root, 1-6 for headings).
+    pub level: u8,
+    /// Source range of the heading line.
+    pub range: RangeDto,
+    /// Section text content (present only when `include_text=true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// LLM-generated summary (from sidecar enrichment).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    /// Child nodes in the outline hierarchy.
+    pub children: Vec<OutlineTreeNodeDto>,
+}
+
+/// Response payload for `get-outline` (tree format).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct OutlineTreeResponse {
+    /// Input document URI.
+    pub uri: String,
+    /// Root of the outline tree.
+    pub tree: OutlineTreeNodeDto,
 }
 
 /// Request payload for `search-symbols`.
@@ -674,6 +708,233 @@ pub struct GraphAnalysisResponse {
     pub broken_links: Vec<BrokenLinkDto>,
     /// Weakly-connected clusters. `null` when `include_clusters` was `false`.
     pub clusters: Option<Vec<ClusterDto>>,
+}
+
+// ── export-docs-index ──
+
+/// Request payload for `export-docs-index`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExportDocsIndexRequest {
+    /// Realm to export. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+    /// Override the name used in the `[name]` prefix of each entry.
+    /// When omitted, the last path component of each root is used (kebab-case).
+    #[serde(default)]
+    pub name_override: Option<String>,
+}
+
+/// Response payload for `export-docs-index`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExportDocsIndexResponse {
+    /// Realm that was exported.
+    pub realm: String,
+    /// One pipe-delimited docs_index entry per root.
+    pub entries: Vec<String>,
+    /// Number of markdown documents included.
+    pub doc_count: usize,
+    /// Number of roots that produced entries.
+    pub root_count: usize,
+    /// Number of documents skipped (URI didn't match any root).
+    pub skipped_count: usize,
+}
+
+// ---------------------------------------------------------------------------
+// enrich-document
+// ---------------------------------------------------------------------------
+
+/// Request payload for `enrich-document`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct EnrichDocumentRequest {
+    /// Document URI (`file://...`) to enrich.
+    pub uri: String,
+    /// Realm to query. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+    /// Override the sidecar directory path.
+    /// When omitted, uses `.markymark/` under the workspace root.
+    #[serde(default)]
+    pub sidecar_dir: Option<String>,
+    /// Force re-enrichment even if the existing sidecar is fresh.
+    #[serde(default)]
+    pub force: bool,
+}
+
+/// Response payload for `enrich-document`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct EnrichDocumentResponse {
+    /// Document URI that was enriched.
+    pub uri: String,
+    /// Number of sections that were summarized.
+    pub sections_enriched: usize,
+    /// Whether the sidecar was stale (regenerated) or fresh (skipped).
+    pub was_stale: bool,
+    /// Model identifier used for enrichment.
+    pub model_id: String,
+}
+
+// ---------------------------------------------------------------------------
+// recommend-docs
+// ---------------------------------------------------------------------------
+
+/// Request payload for `recommend-docs`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RecommendDocsRequest {
+    /// Intent or search query describing what the agent is looking for.
+    pub query: String,
+
+    /// Realm to search. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+
+    /// Maximum number of document recommendations to return (default 5, max 20).
+    #[serde(default = "default_recommend_top_k")]
+    pub top_k: u32,
+
+    /// When true, include per-section summaries from enrichment sidecars.
+    #[serde(default)]
+    pub include_sections: bool,
+}
+
+fn default_recommend_top_k() -> u32 {
+    5
+}
+
+/// A single section summary within a recommended document.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RecommendedSectionDto {
+    /// Heading path (e.g. "Overview > Getting Started").
+    pub heading_path: String,
+    /// Heading level (1-6).
+    pub level: u8,
+    /// LLM-generated summary of this section.
+    pub summary: String,
+}
+
+/// A single document recommendation with combined relevance scoring.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DocRecommendationDto {
+    /// Document URI.
+    pub uri: String,
+    /// Document title (first H1 or derived from filename).
+    pub title: String,
+    /// Combined relevance score (0.0-1.0).
+    pub relevance_score: f32,
+    /// Text search score from workspace search (0.0-1.0).
+    pub search_score: f32,
+    /// Normalized graph hub score (0.0-1.0).
+    pub hub_score: f32,
+    /// Fields that matched the query (e.g. "title", "heading").
+    pub matched_fields: Vec<String>,
+    /// Document tags.
+    pub tags: Vec<String>,
+    /// Document-level summary from enrichment sidecar, if available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_summary: Option<String>,
+    /// Per-section summaries when `include_sections` is true and sidecar exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sections: Option<Vec<RecommendedSectionDto>>,
+}
+
+/// Response payload for `recommend-docs`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RecommendDocsResponse {
+    /// The realm that was searched.
+    pub realm: String,
+    /// The original query.
+    pub query: String,
+    /// Ranked document recommendations.
+    pub recommendations: Vec<DocRecommendationDto>,
+}
+
+// ── curation-diagnostics ──
+
+fn default_include_suggestions() -> bool {
+    true
+}
+fn default_max_suggestions() -> u32 {
+    20
+}
+fn default_max_items_per_category() -> u32 {
+    50
+}
+
+/// Request payload for `curation-diagnostics`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CurationDiagnosticsRequest {
+    /// Realm to diagnose. Defaults to `"default"` when omitted.
+    #[serde(default)]
+    pub realm: Option<String>,
+
+    /// Whether to generate cross-link suggestions.
+    #[serde(default = "default_include_suggestions")]
+    pub include_suggestions: bool,
+
+    /// Maximum number of suggestions to return.
+    #[serde(default = "default_max_suggestions")]
+    pub max_suggestions: u32,
+
+    /// Maximum items per diagnostic category (orphans, low-connectivity).
+    #[serde(default = "default_max_items_per_category")]
+    pub max_items_per_category: u32,
+}
+
+/// A curation suggestion for improving documentation quality.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CurationSuggestionDto {
+    /// Source document URI (the document that should add a link).
+    pub source_doc: String,
+    /// Target document URI (the document being linked to).
+    pub target_doc: String,
+    /// Human-readable reason for the suggestion.
+    pub reason: String,
+    /// Type of suggestion: `"cross_link"` or `"reduce_orphan"`.
+    pub suggestion_type: String,
+}
+
+/// A document with its connectivity score.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ConnectivityDocDto {
+    /// Document URI.
+    pub uri: String,
+    /// Total link count (in-degree + out-degree).
+    pub connectivity: u32,
+    /// Incoming link count.
+    pub in_degree: u32,
+    /// Outgoing link count.
+    pub out_degree: u32,
+}
+
+/// Aggregate curation statistics.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CurationStatsDto {
+    /// Total documents in realm.
+    pub total_docs: u32,
+    /// Number of orphan documents.
+    pub orphan_count: u32,
+    /// Percentage of orphan documents (0.0-100.0).
+    pub orphan_percentage: f32,
+    /// Average connectivity across all documents.
+    pub avg_connectivity: f32,
+    /// Median connectivity across all documents.
+    pub median_connectivity: f32,
+    /// Total broken links from diagnostics.
+    pub broken_link_count: u32,
+}
+
+/// Response payload for `curation-diagnostics`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CurationDiagnosticsResponse {
+    /// The realm that was analyzed.
+    pub realm: String,
+    /// Documents with no resolved links in or out.
+    pub orphan_docs: Vec<String>,
+    /// Documents with connectivity below the median and threshold.
+    pub low_connectivity_docs: Vec<ConnectivityDocDto>,
+    /// Actionable cross-link suggestions.
+    pub suggestions: Vec<CurationSuggestionDto>,
+    /// Aggregate statistics.
+    pub stats: CurationStatsDto,
 }
 
 // ---- Content Blocks ----

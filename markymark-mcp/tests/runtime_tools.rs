@@ -6,12 +6,13 @@ use std::sync::Arc;
 use common::TempWorkspace;
 #[cfg(feature = "semantic-search")]
 use markymark_core::prelude::EmbeddingProvider;
+use markymark_mcp::{
+    CurationDiagnosticsRequest, CurationDiagnosticsResponse, ExportDocsIndexRequest,
+    ExportDocsIndexResponse, MarkymarkMcp, OutlineRequest, OutlineResponse, RecommendDocsRequest,
+    RecommendDocsResponse, RuntimeEngine, SearchSymbolsRequest, SearchSymbolsResponse,
+};
 #[cfg(feature = "semantic-search")]
 use markymark_mcp::{HashEmbeddingProvider, SemanticSearchRequest, SemanticSearchResponse};
-use markymark_mcp::{
-    MarkymarkMcp, OutlineRequest, OutlineResponse, RuntimeEngine, SearchSymbolsRequest,
-    SearchSymbolsResponse,
-};
 use rmcp::handler::server::wrapper::Parameters;
 
 #[tokio::test]
@@ -30,6 +31,8 @@ async fn mcp_tools_return_real_indexed_data() {
         .get_outline_tool(Parameters(OutlineRequest {
             uri: format!("file://{}", file.to_string_lossy()),
             realm: None,
+            format: None,
+            include_text: false,
         }))
         .await
         .expect("outline tool should return a result");
@@ -51,6 +54,49 @@ async fn mcp_tools_return_real_indexed_data() {
     let symbols: SearchSymbolsResponse = symbols_result.into_typed().expect("typed symbols");
     assert_eq!(symbols.symbols.len(), 1);
     assert_eq!(symbols.symbols[0].name, "Deep Dive");
+}
+
+#[tokio::test]
+async fn export_docs_index_tool_returns_real_indexed_data() {
+    let ws = TempWorkspace::new("export-docs-index");
+    fs::create_dir_all(ws.root().join("core")).expect("create core dir");
+    fs::write(ws.root().join("README.md"), "# My Docs\n").expect("write README");
+    fs::write(ws.root().join("core/_index.md"), "# Core Index\n").expect("write core index");
+    fs::write(ws.root().join("core/types.md"), "# Types\n").expect("write types");
+
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
+    let mcp = MarkymarkMcp::new(Arc::new(engine));
+
+    let result = mcp
+        .export_docs_index_tool(Parameters(ExportDocsIndexRequest {
+            realm: None,
+            name_override: Some("my-docs".to_string()),
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: ExportDocsIndexResponse = result.into_typed().expect("typed response");
+    assert_eq!(payload.realm, "default");
+    assert_eq!(payload.entries.len(), 1);
+    assert_eq!(payload.doc_count, 3);
+    assert_eq!(payload.skipped_count, 0);
+
+    let entry = &payload.entries[0];
+    assert!(
+        entry.starts_with("[my-docs]|root: "),
+        "expected [my-docs] prefix, got: {entry}"
+    );
+    assert!(
+        entry.contains("|.:{README.md}"),
+        "expected root-level README.md"
+    );
+    assert!(
+        entry.contains("|core:{_index.md,types.md}"),
+        "expected core category with sorted files"
+    );
 }
 
 #[cfg(feature = "semantic-search")]
@@ -83,4 +129,103 @@ async fn semantic_search_tool_returns_real_engine_results() {
     assert!(!payload.results.is_empty());
     assert_eq!(payload.results[0].heading, "Intro");
     assert!(payload.results[0].section_preview.len() <= 200);
+}
+
+#[tokio::test]
+async fn recommend_docs_tool_returns_real_ranked_results() {
+    let ws = TempWorkspace::new("recommend-docs");
+    fs::write(
+        ws.root().join("rust_guide.md"),
+        "# Rust Guide\n\nLearn Rust programming with examples.\n",
+    )
+    .expect("write rust guide");
+    fs::write(
+        ws.root().join("python_guide.md"),
+        "# Python Guide\n\nLearn Python programming with examples.\n",
+    )
+    .expect("write python guide");
+
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
+    let mcp = MarkymarkMcp::new(Arc::new(engine));
+
+    let result = mcp
+        .recommend_docs_tool(Parameters(RecommendDocsRequest {
+            query: "Rust".to_string(),
+            realm: None,
+            top_k: 5,
+            include_sections: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: RecommendDocsResponse = result.into_typed().expect("typed response");
+    assert_eq!(payload.realm, "default");
+    assert_eq!(payload.query, "Rust");
+    assert!(!payload.recommendations.is_empty());
+
+    // Rust guide should be the top recommendation (title match)
+    let top = &payload.recommendations[0];
+    assert_eq!(top.title, "Rust Guide");
+    assert!(top.relevance_score > 0.0);
+    assert!(top.search_score > 0.0);
+}
+
+#[tokio::test]
+async fn curation_diagnostics_detects_orphans_end_to_end() {
+    let ws = TempWorkspace::new("curation-e2e");
+    // Hub doc: linked to by a and b
+    fs::write(ws.root().join("hub.md"), "# Hub\n\nCentral reference.\n").unwrap();
+    fs::write(
+        ws.root().join("a.md"),
+        "# Doc A\n\nSee [Hub](hub.md) for details.\n",
+    )
+    .unwrap();
+    fs::write(
+        ws.root().join("b.md"),
+        "# Doc B\n\nRefer to [Hub](hub.md).\n",
+    )
+    .unwrap();
+    // Orphan doc: no links in or out
+    fs::write(
+        ws.root().join("orphan.md"),
+        "# Orphan\n\nCompletely isolated.\n",
+    )
+    .unwrap();
+
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
+    let mcp = MarkymarkMcp::new(Arc::new(engine));
+
+    let result = mcp
+        .curation_diagnostics_tool(Parameters(CurationDiagnosticsRequest {
+            realm: None,
+            include_suggestions: true,
+            max_suggestions: 20,
+            max_items_per_category: 50,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: CurationDiagnosticsResponse =
+        result.into_typed().expect("typed curation response");
+    assert_eq!(payload.realm, "default");
+    assert_eq!(payload.stats.total_docs, 4);
+    assert_eq!(payload.stats.orphan_count, 1);
+    assert_eq!(payload.orphan_docs.len(), 1);
+    assert!(
+        payload.orphan_docs[0].contains("orphan.md"),
+        "orphan doc should be orphan.md, got: {}",
+        payload.orphan_docs[0]
+    );
+    // Should have suggestions for the orphan
+    assert!(
+        !payload.suggestions.is_empty(),
+        "should suggest cross-links for orphan"
+    );
+    assert_eq!(payload.suggestions[0].suggestion_type, "reduce_orphan");
 }

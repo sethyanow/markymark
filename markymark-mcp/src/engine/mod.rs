@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-#[cfg(feature = "semantic-search")]
 use std::sync::Arc;
 
 use tokio::sync::{RwLock, RwLockReadGuard};
@@ -9,6 +8,7 @@ use tokio::sync::{RwLock, RwLockReadGuard};
 use anyhow::bail;
 use async_trait::async_trait;
 use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
+use markymark_core::inference::InferenceProvider;
 #[cfg(feature = "semantic-search")]
 use markymark_core::prelude::{EmbedError, EmbeddingProvider};
 use markymark_core::scanner::Md4cScanBackend;
@@ -19,11 +19,15 @@ use markymark_parser::structured::parse_structured;
 
 mod add_root;
 mod content_blocks;
+mod curation;
 mod diagnostics;
+mod enrich;
 mod export;
-mod helpers;
+mod export_docs_index;
+pub(crate) mod helpers;
 mod outline;
 mod realm_ops;
+mod recommend;
 mod references;
 mod search;
 mod search_block_text;
@@ -158,6 +162,8 @@ pub struct RuntimeEngine {
     /// Embedding provider shared across all realms (only when semantic-search feature enabled).
     #[cfg(feature = "semantic-search")]
     pub(crate) provider: Option<Arc<dyn EmbeddingProvider>>,
+    /// Inference provider for LLM-powered enrichment (optional).
+    pub(crate) inference_provider: Option<Arc<dyn InferenceProvider>>,
 }
 
 impl Default for RuntimeEngine {
@@ -171,6 +177,7 @@ impl Default for RuntimeEngine {
             state: RwLock::new(realms),
             #[cfg(feature = "semantic-search")]
             provider: None,
+            inference_provider: None,
         }
     }
 }
@@ -204,6 +211,7 @@ impl RuntimeEngine {
             state: RwLock::new(realms),
             #[cfg(feature = "semantic-search")]
             provider: None,
+            inference_provider: None,
         })
     }
 
@@ -234,6 +242,7 @@ impl RuntimeEngine {
         Ok(Self {
             state: RwLock::new(realms),
             provider,
+            inference_provider: None,
         })
     }
 
@@ -342,12 +351,20 @@ impl CoreEngine for RuntimeEngine {
             CoreOperation::GetOutline {
                 uri,
                 realm: realm_name,
+                format,
+                include_text,
             } => {
                 let (_realm_key, realm_data) = match self.read_realm(realm_name.as_deref()).await {
                     Ok(v) => v,
                     Err(e) => return e,
                 };
-                outline::handle_get_outline(&realm_data.index, &uri)
+                outline::handle_get_outline(
+                    &realm_data.index,
+                    &realm_data.roots,
+                    &uri,
+                    &format,
+                    include_text,
+                )
             }
             CoreOperation::SearchSymbols {
                 query,
@@ -535,6 +552,89 @@ impl CoreEngine for RuntimeEngine {
                     }
                     None => diagnostics::handle_get_diagnostics_realm(&realm_data, &realm_key),
                 }
+            }
+            CoreOperation::ExportDocsIndex {
+                realm,
+                name_override,
+            } => {
+                let realm_key = realm.as_deref().unwrap_or(DEFAULT_REALM);
+                let state = self.state.read().await;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                export_docs_index::handle_export_docs_index(
+                    realm_data,
+                    realm_key.to_string(),
+                    name_override,
+                )
+            }
+            CoreOperation::EnrichDocument {
+                uri,
+                realm,
+                sidecar_dir,
+                force,
+            } => {
+                let realm_key = realm.as_deref().unwrap_or(DEFAULT_REALM);
+                let state = self.state.read().await;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                enrich::handle_enrich_document(
+                    &realm_data.index,
+                    &realm_data.roots,
+                    &uri,
+                    sidecar_dir.as_deref(),
+                    force,
+                    self.inference_provider.as_deref(),
+                )
+                .await
+            }
+            CoreOperation::RecommendDocs {
+                query,
+                realm,
+                top_k,
+                include_sections,
+            } => {
+                let realm_key = realm.as_deref().unwrap_or(DEFAULT_REALM);
+                let state = self.state.read().await;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                recommend::handle_recommend_docs(
+                    realm_key,
+                    &realm_data.index,
+                    &realm_data.roots,
+                    &query,
+                    top_k,
+                    include_sections,
+                )
+            }
+            CoreOperation::CurationDiagnostics {
+                realm,
+                include_suggestions,
+                max_suggestions,
+                max_items_per_category,
+            } => {
+                let realm_key = realm.as_deref().unwrap_or(DEFAULT_REALM);
+                let state = self.state.read().await;
+                let Some(realm_data) = state.get(realm_key) else {
+                    return CoreOperationResult::Error(CoreError::Message(format!(
+                        "realm does not exist: {realm_key}"
+                    )));
+                };
+                curation::handle_curation_diagnostics(
+                    realm_key,
+                    &realm_data.index,
+                    include_suggestions,
+                    max_suggestions,
+                    max_items_per_category,
+                )
             }
             CoreOperation::GetContentBlocks {
                 uri,

@@ -56,6 +56,82 @@ GitHub Pages deployment researched — see archive for details.
 45 files, 6,443 lines. 14 decision trees. 18 mistakes tracked. All gaps closed.
 Known issue: XML tag false positives in code blocks (marky-8la).
 
+### Zig Agent Docs: Grade A (2026-03-05)
+
+50 files, 238 internal links, 0 orphans, 0 broken links. 10 hubs (top: core/memory.md with
+19 incoming). 18 mistakes with severity emoji. 10 decision trees. stdlib/ category (11 files)
+merged from modules/zig/02-std/. docs_index in AGENTS.md and CLAUDE.md updated. Exceeds
+rust_agent_docs baseline on hub count (10 vs 5). Curation complete (marky-u2mb closed).
+
+### Layered Retrieval Vision (Epic marky-b9o4, 2026-02-26)
+
+Five-layer architecture: L0 ambient docs_index (preserved, auto-generated), L1 smart retrieval
+(recommend-docs MCP tool), L2 curation diagnostics, L3 multi-project federation,
+L4 memory integration (MEMORY.md + beads in search surface). Key constraint: docs_index pattern
+stays because it ramrods symbols into agent instructions at zero latency — everything builds
+on top. Related: marky-mkr, marky-y4be, marky-c9wi.
+
+**Layer progress:** L0 ✅ (export-docs-index) → L1 ✅ (recommend-docs + tree intelligence) → L2 ✅ (curation-diagnostics) → L3 ✅ (multi-root federation) → L4 ✅ (structured doc search)
+
+### Layer 3: Multi-Root Federation (marky-eluj, 2026-03-05)
+
+Validated via 7 integration tests in `markymark-mcp/tests/multi_root_federation.rs`. Multi-root
+infrastructure (add-root/remove-root) already worked correctly — no bugs found. Key findings:
+wiki-link resolution is realm-wide (cross-root `[[target]]` resolves), relative markdown links are
+source-anchored, same-stem disambiguation uses insertion order (first-added root wins), root
+removal correctly causes cross-root links to become broken. All tools (search-workspace,
+graph-analysis, recommend-docs, curation-diagnostics, export-docs-index) work across roots.
+
+### Layer 2: Curation Diagnostics (marky-stip, 2026-03-05)
+
+New `curation-diagnostics` MCP tool composing graph-analysis with per-document degree computation.
+Detects orphan docs (in-degree=0 AND out-degree=0), scores connectivity per document, identifies
+low-connectivity docs (below median AND below threshold of 2 links), and generates actionable
+cross-link suggestions (orphan → nearest hub by directory co-location). SRE edge cases: empty
+realm, single-doc realm (no self-link suggestions), max_suggestions/max_items_per_category caps.
+Key modules: `engine/curation.rs` (handler with `GraphData` struct for extracted state),
+`tools/curation.rs` (MCP tool), `engine/tests/curation.rs` (11 tests). Algorithm recomputes
+degree maps from RealmIndex since graph-analysis doesn't expose per-doc degree.
+
+### Layer 4: Structured Document Search (marky-6m1o, 2026-03-05)
+
+Extended search-workspace to include structured documents (JSON, YAML, TOML, JSONL, etc.).
+Key implementation decisions: SRE plan assumed `value_range` had byte offsets, but `Range` is
+line/col-based — adapted to simpler `source_contains()` full-text search instead of per-value
+extraction. Scoring mirrors markdown tiers: URI stem (1.0), key-path via `search_keys()` (0.8),
+source text (0.6). Filters (frontmatter, tag, property) correctly exclude structured docs.
+`uri_to_title()` generalized with `TITLE_STRIP_EXTENSIONS` constant for all file types.
+Key modules: `markymark-index/src/structured_document.rs` (source_contains method),
+`markymark-mcp/src/search.rs` (score_structured_document + integration). 9 new tests (2 unit,
+7 integration), 270 total passing. All epic success criteria met — L0 through L4 complete.
+
+### Tree Intelligence Sub-Epic (marky-d21j, child of marky-b9o4, 2026-02-26)
+
+PageIndex-style hierarchical retrieval. Three phases all complete:
+(1) ✅ expose existing OutlineNode as hierarchical JSON via get-outline format=tree + include_text,
+(2) ✅ optional LLM enrichment with sidecar `.markymark/` JSON + content-hash invalidation,
+(3) ✅ recommend-docs MCP tool composing search-workspace + graph-analysis + sidecar summaries.
+Key modules: `engine/recommend.rs` (handler), `tools/recommend.rs` (MCP tool), `engine/outline.rs`
+(`try_load_sidecar` now `pub(crate)` for shared use). Algorithm: 0.7*search_score + 0.3*hub_score,
+top_k results with optional section summaries. Sub-epic marky-d21j complete.
+
+### PR #52 Copilot Review Triage (2026-03-05)
+
+Triaged 7 findings (6 inline + 1 suppressed). 2 dismissed, 5 valid → 5 beads created.
+
+**Dismissed false positives:**
+- `root_to_file_uri()` "produces `file:////`" — reviewer's math wrong, `"file://" + "/tmp/x" = "file:///tmp/x"`.
+  Same pattern in `DocumentUri::from_file_path()`.
+- `stem_to_uri.insert()` "disagrees with graph-analysis" — both `curation.rs` and `graph.rs` use
+  identical `.insert()` pattern. Consistently last-indexed wins.
+
+**Valid findings (beads):**
+- marky-se77 (P2): export_docs_index root_count contract violation + `./{absolute}` display
+- marky-qfut (P2): curation degree map uses path-based markdown link resolution while graph.rs uses stem-based
+- marky-niw2 (P2): enrich.rs silent I/O errors (`let _ =`) + sidecar path collisions with override
+- marky-d175 (P3): outline format not validated at MCP boundary
+- marky-f2oa (P4): repeated allocations in outline section extraction + structured doc search
+
 ---
 
 ## Key Failure Patterns

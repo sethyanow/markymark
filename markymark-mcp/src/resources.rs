@@ -99,6 +99,8 @@ impl MarkymarkMcp {
             .execute(CoreOperation::GetOutline {
                 uri: doc_uri,
                 realm,
+                format: "flat".to_string(),
+                include_text: false,
             })
             .await
         {
