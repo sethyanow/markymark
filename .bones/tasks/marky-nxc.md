@@ -1,11 +1,13 @@
 ---
 id: marky-nxc
 title: 'Code quality review: decompose god files and methods'
-status: open
+status: closed
 type: epic
 priority: 2
 depends_on: [marky-eji, marky-aef, marky-3yo, marky-fba, marky-6lc, marky-r9o, marky-iqg, marky-3gi, marky-zr6, marky-lgt]
 ---
+
+
 
 
 
@@ -259,3 +261,4 @@ block on the same struct, re-exported from mod.rs).
 ## Log
 
 - [2026-03-23T03:03:51Z] [Seth] SRE refinement complete (13-category review). Key changes: (1) Fixed factual errors: 13 fields not 14, 7 retain-or-remove instances not 8. (2) Corrected Phase 1→3 ordering dependency — all phases independent (different crates). (3) Replaced placeholder return type in read_realm with RwLockReadGuard::try_map design. (4) Resolved Phase 3 'consider' language — keep helpers in server.rs. (5) Rewrote all success criteria from numeric targets to structural criteria. (6) Added cfg(feature=embeddings) as explicit Key Consideration with anti-pattern. (7) Added agent failure mode predictions to Anti-Patterns (skip retain_or_remove helper, single commit, default-features-only testing). (8) Added feature-flag testing criterion (cargo nextest --all-features). (9) Documented retain_or_remove helper design challenge (generic over map types). (10) Documented resolve_realm lifetime design (try_map). Assessment: APPROVE with changes applied.
+- [2026-03-23T12:33:17Z] [Seth] Review-implementation APPROVED. All 17/17 success criteria verified with evidence. 1280/1280 tests (default), 1405/1405 tests (all-features), clippy clean. Adversarial reflection clean — pure decomposition, no new boundaries or fragility. Anti-patterns all clear. Final file sizes: realm/mod.rs 467, cross_doc.rs 386, search.rs 181, journal.rs 24, server.rs 775, helpers.rs 363, engine/mod.rs 575. All well under 1000-line limit.
