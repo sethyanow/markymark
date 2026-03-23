@@ -1,12 +1,13 @@
 ---
 id: marky-ut8
 title: 'Phase 4.2: Migrate from_scan_with_frontmatter production callers + delete from_ast.rs'
-status: active
+status: closed
 type: task
 priority: 2
 owner: Seth
 parent: marky-0xtn
 ---
+
 
 
 
@@ -111,15 +112,15 @@ parent: marky-0xtn
 
 ## Success Criteria
 
-- [ ] MCP `fallback_scan_with_frontmatter` uses `from_text` (no from_scan_with_frontmatter)
-- [ ] MCP `AddRoot` handler uses `index_root_into_realm` (no inline scan loop)
-- [ ] LSP `fallback_scan_with_frontmatter` uses `from_text` (no from_scan_with_frontmatter)
-- [ ] LSP test migrated to `from_text`
-- [ ] `from_ast.rs` deleted — file removed, mod declaration removed
-- [ ] compile_fail doctest updated to use `from_text` — verified the compile error is a lifetime error (not unresolved import)
-- [ ] cargo test --workspace passes
-- [ ] cargo clippy --workspace -- -D warnings passes
-- [ ] Equivalence test includes frontmatter-only document case
+- [x] MCP `fallback_scan_with_frontmatter` uses `from_text` (no from_scan_with_frontmatter)
+- [x] MCP `AddRoot` handler uses `index_root_into_realm` (no inline scan loop)
+- [x] LSP `fallback_scan_with_frontmatter` uses `from_text` (no from_scan_with_frontmatter)
+- [x] LSP test migrated to `from_text`
+- [x] `from_ast.rs` deleted — file removed, mod declaration removed
+- [x] compile_fail doctest updated to use `from_text` — verified the compile error is a lifetime error (not unresolved import)
+- [x] cargo test --workspace passes
+- [x] cargo clippy --workspace -- -D warnings passes
+- [x] Equivalence test includes frontmatter-only document case
 
 ## Anti-Patterns
 
