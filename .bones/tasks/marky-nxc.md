@@ -4,8 +4,10 @@ title: 'Code quality review: decompose god files and methods'
 status: open
 type: epic
 priority: 2
-depends_on: [marky-eji, marky-aef, marky-3yo, marky-fba, marky-6lc, marky-r9o, marky-iqg, marky-3gi]
+depends_on: [marky-eji, marky-aef, marky-3yo, marky-fba, marky-6lc, marky-r9o, marky-iqg, marky-3gi, marky-zr6]
 ---
+
+
 
 
 
@@ -183,7 +185,7 @@ block on the same struct, re-exported from mod.rs).
 - [x] `execute()` contains only match arms that delegate — no inline business logic longer than ~10 lines
 
 ### Phase 3: server.rs method extraction
-- [ ] `hover()` delegates to per-symbol-type builder methods (6 builders)
+- [x] `hover()` delegates to per-symbol-type builder methods (6 builders)
 - [ ] `references()` delegates to per-symbol-type helper methods (4+ helpers)
 - [ ] `did_change()` intentionally unchanged (complexity is state, not dispatch)
 

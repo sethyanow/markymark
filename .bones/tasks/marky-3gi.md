@@ -1,11 +1,13 @@
 ---
 id: marky-3gi
 title: Extract hover() per-symbol-type builder methods in server.rs
-status: active
+status: closed
 type: task
 priority: 2
 parent: marky-nxc
 ---
+
+
 
 
 
@@ -123,11 +125,11 @@ async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
 
 ## Success Criteria
 
-- [ ] 6 standalone hover builder functions exist in server.rs: `hover_heading`, `hover_wiki_link`, `hover_markdown_link`, `hover_xml_tag`, `hover_code_span`, `hover_structured_key`
-- [ ] hover() match body is 6 one-line delegation calls (no inline business logic)
-- [ ] server.rs remains under 1000 lines
-- [ ] All markymark-lsp tests pass
-- [ ] Clippy clean
+- [x] 6 standalone hover builder functions exist in server.rs: `hover_heading`, `hover_wiki_link`, `hover_markdown_link`, `hover_xml_tag`, `hover_code_span`, `hover_structured_key`
+- [x] hover() match body is 6 one-line delegation calls (no inline business logic)
+- [x] server.rs remains under 1000 lines (993 lines)
+- [x] All markymark-lsp tests pass (197/197)
+- [x] Clippy clean
 
 ## Anti-Patterns
 
@@ -145,3 +147,7 @@ async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
 - **`resolve_wiki_link` import**: Currently used inline at L580. After extraction, `hover_wiki_link` uses it — the import already exists at file scope.
 - **Line count risk**: server.rs is at 978 lines (verified 2026-03-23). The match body (L574-672, 99 lines) shrinks to ~8 lines (-91). Six new functions add ~105 lines (body + signatures + blanks). Net: approximately +14 lines → ~992 total. Should stay under 1000, but verify with `wc -l` after extraction. If over 1000, STOP and escalate.
 - **Test coverage**: hover behavior is tested via LSP integration tests in `markymark-cli/tests/lsp_methods.rs` and `markymark-lsp/tests/`. No unit tests exist for hover directly — the refactoring is validated by the integration test suite.
+
+## Log
+
+- [2026-03-23T11:57:24Z] [Seth] Debrief: Pure extraction, zero surprises. Skeleton matched reality exactly — SRE refinements (test-only block placement, lifetime annotations) prevented the only plausible issues. server.rs 978→993 lines (+15 net). Reflections: No design decisions emerged, no workarounds, no corrections. The standalone-function-over-methods pattern (when self isn't used) is well-established now (5 hover + now 6 total). Next task: marky-zr6 (references extraction + function relocation to helpers.rs) — line count requires relocating all 10 standalone functions since references extraction alone would push to ~1015.
