@@ -1,12 +1,13 @@
 ---
 id: marky-0xtn
 title: 'Epic: Eliminate blob serialization — expand CEngineResult FFI pattern'
-status: open
+status: closed
 type: epic
 priority: 2
 depends_on: [marky-xfgb, marky-llj, marky-ut8, marky-zcj, marky-7ru, marky-qu1, marky-ibt, marky-ozi]
 labels: [architecture, blob-removal, ffi]
 ---
+
 
 
 

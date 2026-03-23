@@ -1,11 +1,12 @@
 ---
 id: marky-ozi
 title: 'Phase 4.7: Audit remaining epic criteria and close marky-0xtn'
-status: active
+status: closed
 type: task
 priority: 2
 parent: marky-0xtn
 ---
+
 
 
 
