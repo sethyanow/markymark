@@ -1,12 +1,14 @@
 ---
 id: marky-fgl8
 title: Split extract.rs into submodules
-status: open
+status: closed
 type: task
 priority: 2
 owner: sethyanow@users.noreply.github.com
 parent: marky-ix3
 ---
+
+
 
 
 ## Goal
@@ -33,3 +35,7 @@ Split markymark-parser/src/extract.rs (863 lines) into submodules before adding 
 - [ ] cargo clippy clean
 - [ ] Pre-commit hooks pass
 - [ ] Public API unchanged (re-exports in mod.rs)
+
+## Log
+
+- [2026-03-23T13:15:12Z] [Seth] Closed as superseded. The original goal (split 863-line extract.rs into 5+ submodules before code span additions) was solved by the Zig migration path instead. All 11 regex extractors migrated to Zig ExtractionRenderer; extract.rs is now extract/mod.rs (11 lines) + frontmatter.rs (597 lines). No split needed — the problem no longer exists.
