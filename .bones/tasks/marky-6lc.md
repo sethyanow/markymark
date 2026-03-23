@@ -14,6 +14,7 @@ parent: marky-nxc
 
 
 
+
 ## Context
 
 `markymark-mcp/src/engine/mod.rs` execute() GetContentBlocks arm (L612-685, ~74 lines) contains
@@ -114,3 +115,4 @@ CoreOperation::GetContentBlocks {
 ## Log
 
 - [2026-03-23T10:42:42Z] [Seth] SRE review (fresh session, 13-category). APPROVE with 2 corrections applied: (1) Added anti-pattern blocking inline realm-lookup copy — read_realm conversion is a deliverable. (2) Clarified Step 4 as confirmed no-op — ContentBlockResult used via fully-qualified path, not imported. All architecture claims verified against current code: line numbers, read_realm error message equivalence, module ordering, add_root.rs precedent pattern.
+- [2026-03-23T10:50:40Z] [Seth] Debrief: Clean extraction, skeleton matched reality exactly. No workarounds, no surprises, no corrections. read_realm error equivalence confirmed during SRE, zero test regressions. Next task inherits: impl RuntimeEngine split pattern now has 3 precedents (add_root, content_blocks, search_block_text next). Remaining Phase 2 work: SearchBlockText (marky-r9o, scoped) and SemanticSearch (~84 lines, cfg-gated, not yet scoped).
