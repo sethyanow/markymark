@@ -1,11 +1,13 @@
 ---
 id: marky-r9o
 title: Extract SearchBlockText arm from execute() into engine/search_block_text.rs
-status: open
+status: active
 type: task
 priority: 2
+owner: Seth
 parent: marky-nxc
 ---
+
 
 
 
@@ -83,14 +85,14 @@ CoreOperation::SearchBlockText {
 
 ## Success Criteria
 
-- [ ] `handle_search_block_text` method exists in `engine/search_block_text.rs` as `impl RuntimeEngine`
-- [ ] SearchBlockText arm in execute() is a single delegation call
-- [ ] Query validation (empty/whitespace rejection) preserved in extracted method
-- [ ] Kind filter parsing via `helpers::parse_block_kind` preserved
-- [ ] Map pipeline to `BlockTextMatchResult` preserved
-- [ ] All tests pass (default features)
-- [ ] All tests pass (all features)
-- [ ] Clippy clean
+- [x] `handle_search_block_text` method exists in `engine/search_block_text.rs` as `impl RuntimeEngine`
+- [x] SearchBlockText arm in execute() is a single delegation call
+- [x] Query validation (empty/whitespace rejection) preserved in extracted method
+- [x] Kind filter parsing via `helpers::parse_block_kind` preserved
+- [x] Map pipeline to `BlockTextMatchResult` preserved
+- [x] All tests pass (default features)
+- [x] All tests pass (all features)
+- [x] Clippy clean
 
 ## Anti-Patterns
 
