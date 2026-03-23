@@ -9,6 +9,7 @@ parent: marky-0xtn
 
 
 
+
 ## Context
 
 - Phase 4.3 (marky-zcj) deleted from_scan.rs — the only production consumer of ScanBackend.
@@ -67,3 +68,7 @@ parent: marky-0xtn
 - FORBIDDEN: deleting from_blob/ or blob paths — separate scope
 - No keeping scanner types "for compatibility" — zero consumers remain
 - No partial deletion (e.g., keeping types.rs "for reference") — the module is dead, delete it all
+
+## Log
+
+- [2026-03-23T20:39:33Z] [Seth] Debrief: Clean deletion — 4 scanner files + tests deleted, brza_kernels.rs assertion block removed, prelude re-exports cleaned. All architecture claims verified by SRE. Net -1368 lines. Reflections: No surprises — zero cascading dead code, skeleton matched reality except minor line number offset (corrected during SRE). zig-kernels feature in markymark-core now completely hollow (all cfg references were in scanner). Next task marky-qu1 scoped: blob serialization path deletion (~3,600 lines across Rust from_blob + Zig serialize/blob).

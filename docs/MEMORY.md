@@ -10,17 +10,23 @@ Completed work details live in git history, not here.
 
 ## Current State (2026-03-23)
 
-### marky-0xtn Phases 1-3 + 4.1-4.3 complete — Phase 4 deletion sweep continues
+### marky-0xtn Phases 1-3 + 4.1-4.4 complete — Phase 4 deletion sweep continues
 
 Phases 1-3 of the blob-removal epic are done. All consumers (LSP, MCP) now use
 persistent DocumentEngine + CEngineResult. Phase 4.1 added `from_text()` and
 migrated all from_ast callers. Phase 4.2 migrated all `from_scan_with_frontmatter`
 production callers, replaced MCP AddRoot handler, and deleted `from_ast.rs`.
-Phase 4.3 (marky-zcj, commit `e9e2d5d`) migrated 13 from_scan test/bench callers
-to from_text (or deleted scan-specific tests), then deleted `from_scan.rs` and
-3 dead helpers. `md4c_scan_tests.rs` deleted entirely.
-Next: delete ScanBackend trait + scanner module, from_blob/, blob.zig, CMd4c* types, md4c module.
-4/14 epic criteria checked; remaining 10 are Phase 4 deletion targets.
+Phase 4.3 (marky-zcj) migrated 13 from_scan test/bench callers to from_text,
+deleted `from_scan.rs` and 3 dead helpers. Phase 4.4 (marky-7ru, commit `23c5ea2`)
+deleted the entire markymark-core scanner module: ScanBackend trait, Md4cScanBackend,
+ZigScanBackend, 16 scanner types, tests — net -1368 lines across 9 files.
+Next: delete from_blob/, serialize.zig, blob.zig, CMd4c* types, exports.zig, md4c module.
+5/14 epic criteria checked; remaining 9 are Phase 4 deletion targets.
+
+**Note:** The `zig-kernels` feature in markymark-core is now completely hollow — all
+`cfg(feature = "zig-kernels")` references were in the deleted scanner module. The feature
+still activates the `markymark-kernels` optional dep but no code in markymark-core uses it.
+Cleanup deferred — not blocking.
 
 ### marky-0xtn Phase 1 complete (marky-e0kp, commit `2cd1310`)
 
