@@ -88,15 +88,16 @@ pub struct EmbeddingIndex {
 // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage
 unsafe impl Send for EmbeddingIndex {}
 
-// SAFETY: Shared access (`&self`) only calls `search` and `count`, which are
-// read-only operations on the Zig side (no interior mutation). Concurrent
-// readers are safe. The `RwLock` in RuntimeEngine ensures no reader overlaps
-// with a writer.
+// SAFETY: `&self` methods (`search`, `count`, `dimensions`) are read-only at
+// the FFI boundary — Zig `search` takes `*const EmbeddingIndex` and performs no
+// interior mutation. Concurrent shared reads are safe. All mutating FFI calls
+// (`add`, `remove`) require `&mut self`, so the Rust borrow checker prevents
+// concurrent read+write or write+write access. The `handle` field is private,
+// so no external code can call mutating FFI through a shared reference.
 //
-// WARNING: This `Sync` impl is only safe under external read-write locking.
-// If `EmbeddingIndex` is accessed without the `RwLock` guard held by the
-// caller, data races are possible. Do not share this type across threads
-// without external synchronization.
+// In production, `SemanticIndex` wraps this type behind `Arc<TokioMutex>` in
+// `RealmIndex` as defense-in-depth, but that is not a soundness requirement —
+// the `&self`/`&mut self` split is the compile-time enforcement.
 // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage
 unsafe impl Sync for EmbeddingIndex {}
 
