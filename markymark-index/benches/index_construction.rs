@@ -78,7 +78,9 @@ fn bench_index_construction(c: &mut Criterion) {
                 // Measured: extraction creation + index construction
                 let extraction = result.to_extraction().unwrap();
                 black_box(DocumentIndex::from_engine_result_with_frontmatter(
-                    &extraction, fm, aliases,
+                    &extraction,
+                    fm,
+                    aliases,
                 ));
             },
             BatchSize::SmallInput,
@@ -95,9 +97,7 @@ fn bench_index_construction(c: &mut Criterion) {
             },
             |(result, fm, aliases)| {
                 // Measured: direct arena decode (no EngineExtraction intermediary)
-                black_box(
-                    DocumentIndex::from_engine_result_direct(&result, fm, aliases).unwrap(),
-                );
+                black_box(DocumentIndex::from_engine_result_direct(&result, fm, aliases).unwrap());
             },
             BatchSize::SmallInput,
         );
