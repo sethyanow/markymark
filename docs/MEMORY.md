@@ -13,7 +13,26 @@ Detailed patterns live in topic files. Historical context lives in the archive.
 
 ---
 
-## Current State (2026-03-05)
+## Current State (2026-03-23)
+
+### Bazel Build System (2026-03-23)
+
+Added Bazel alongside Cargo for optimized release builds with cross-language ThinLTO.
+
+**Why:** rustc 1.93 uses LLVM 21, Zig 0.15.2 ships LLVM 20. Version mismatch prevents
+cross-language LTO under Cargo. Bazel with `toolchains_llvm_bootstrapped` (LLVM 21.1.8)
+provides a unified toolchain.
+
+**Setup:** `MODULE.bazel` (rules_rust 0.68.1, rules_zig 0.12.3), `.bazelrc`, `BUILD.bazel`
+per crate. `zig_static_library` in `zig/BUILD.bazel` replaces build.rs for Bazel builds.
+
+**macOS caveat:** `-Clinker-plugin-lto` doesn't work on macOS (ld64.lld rejects `-plugin-opt`).
+Release config uses `-Clto=thin,-Cembed-bitcode=yes` instead. `-Cembed-bitcode=yes` overrides
+rules_rust's default `=no`.
+
+**Cargo is unaffected** — remains the dev-loop build. Bazel is the release/CI path.
+
+---
 
 ### Investigation Complete: Semantic Index and Block Model
 
