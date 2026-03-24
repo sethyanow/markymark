@@ -13,7 +13,37 @@ Detailed patterns live in topic files. Historical context lives in the archive.
 
 ---
 
-## Current State (2026-03-05)
+## Current State (2026-03-23)
+
+### marky-0xtn COMPLETE — blob serialization eliminated (PR #55)
+
+Epic closed. All 14/14 criteria verified. PR #55 targeting dev.
+CEngineResult is now the sole FFI path for all consumers (LSP, MCP, tests).
+~6,600 lines of dead code deleted across Phases 4.1-4.6.
+
+**Hollow feature note:** The `zig-kernels` feature in markymark-core is now completely
+hollow — all `cfg(feature = "zig-kernels")` references were in the deleted scanner module.
+The feature still activates the `markymark-kernels` optional dep but no code in
+markymark-core uses it. Cleanup deferred — not blocking.
+
+### Bazel Build System (2026-03-23)
+
+Added Bazel alongside Cargo for optimized release builds with cross-language ThinLTO.
+
+**Why:** rustc 1.93 uses LLVM 21, Zig 0.15.2 ships LLVM 20. Version mismatch prevents
+cross-language LTO under Cargo. Bazel with `toolchains_llvm_bootstrapped` (LLVM 21.1.8)
+provides a unified toolchain.
+
+**Setup:** `MODULE.bazel` (rules_rust 0.68.1, rules_zig 0.12.3), `.bazelrc`, `BUILD.bazel`
+per crate. `zig_static_library` in `zig/BUILD.bazel` replaces build.rs for Bazel builds.
+
+**macOS caveat:** `-Clinker-plugin-lto` doesn't work on macOS (ld64.lld rejects `-plugin-opt`).
+Release config uses `-Clto=thin,-Cembed-bitcode=yes` instead. `-Cembed-bitcode=yes` overrides
+rules_rust's default `=no`.
+
+**Cargo is unaffected** — remains the dev-loop build. Bazel is the release/CI path.
+
+---
 
 ### Investigation Complete: Semantic Index and Block Model
 
@@ -141,6 +171,13 @@ These prevent repeat mistakes. Do not remove without replacement.
 
 Running multiple `bd` commands in parallel can trigger a Dolt nil-pointer panic even with
 `BD_NO_DB=true BEADS_NO_DAEMON=1`. Run `bd` operations one-at-a-time.
+
+### Global env fault-injection hooks leak across parallel tests (2026-02-27)
+
+Using process-wide env vars to force failure paths (`set_var`/`remove_var`) causes
+cross-test contamination under Rust's parallel test runner. Unrelated tests can observe
+the injected flags and fail nondeterministically. Prefer URI-scoped or instance-scoped
+fault hooks for integration tests; avoid global mutable process state.
 
 ### Context window exhaustion from task chaining (fail-context-runaway)
 

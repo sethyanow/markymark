@@ -38,7 +38,7 @@ pub use dto::*;
 #[cfg(feature = "semantic-search")]
 pub use engine::HashEmbeddingProvider;
 pub use engine::RuntimeEngine;
-pub use slim::{ExecuteRequest, SlimMarkymarkMcp, run_slim_stdio};
+pub use slim::{run_slim_stdio, ExecuteRequest, SlimMarkymarkMcp};
 
 pub(crate) const SEMANTIC_SEARCH_MAX_TOP_K: u32 = 100;
 

@@ -94,9 +94,9 @@ pub(crate) async fn handle_enrich_document(
         // No headings → write a minimal sidecar and return.
         let sidecar = DocumentSidecar::new(current_hash, provider.model_id().to_string());
         if let Err(e) = write_sidecar(&sidecar_file, &sidecar) {
-            return CoreOperationResult::Error(CoreError::Message(
-                format!("enrichment succeeded but sidecar failed to persist: {e}"),
-            ));
+            return CoreOperationResult::Error(CoreError::Message(format!(
+                "enrichment succeeded but sidecar failed to persist: {e}"
+            )));
         }
         return CoreOperationResult::EnrichmentResult {
             uri: uri.clone(),
@@ -151,9 +151,9 @@ pub(crate) async fn handle_enrich_document(
 
     let sections_count = sidecar.sections.len();
     if let Err(e) = write_sidecar(&sidecar_file, &sidecar) {
-        return CoreOperationResult::Error(CoreError::Message(
-            format!("enrichment succeeded but sidecar failed to persist: {e}"),
-        ));
+        return CoreOperationResult::Error(CoreError::Message(format!(
+            "enrichment succeeded but sidecar failed to persist: {e}"
+        )));
     }
 
     CoreOperationResult::EnrichmentResult {
@@ -282,8 +282,12 @@ fn resolve_sidecar_location(
 /// Write sidecar JSON to disk, creating parent directories as needed.
 fn write_sidecar(path: &Path, sidecar: &DocumentSidecar) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("failed to create sidecar directory {}: {e}", parent.display()))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "failed to create sidecar directory {}: {e}",
+                parent.display()
+            )
+        })?;
     }
     let json = serde_json::to_string_pretty(sidecar)
         .map_err(|e| format!("failed to serialize sidecar: {e}"))?;

@@ -393,16 +393,12 @@ async fn cross_directory_link_counted_in_degrees() {
     let b_uri_str = markymark_core::DocumentUri::from_file_path(&dir.path().join("b.md"))
         .as_str()
         .to_string();
-    let other_b_uri_str =
-        markymark_core::DocumentUri::from_file_path(&other.join("b.md"))
-            .as_str()
-            .to_string();
+    let other_b_uri_str = markymark_core::DocumentUri::from_file_path(&other.join("b.md"))
+        .as_str()
+        .to_string();
 
     // b.md should NOT be in orphans (it's linked to)
-    let b_is_orphan = report
-        .orphan_docs
-        .iter()
-        .any(|o| o.as_str() == b_uri_str);
+    let b_is_orphan = report.orphan_docs.iter().any(|o| o.as_str() == b_uri_str);
     assert!(
         !b_is_orphan,
         "b.md should not be orphan — sub/a.md links to it via ../b.md"

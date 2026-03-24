@@ -22,26 +22,22 @@ impl CoreEngine for MockEngine {
             CoreOperation::GetOutline { .. } => {
                 CoreOperationResult::Outline(vec!["Heading".to_string()])
             }
-            CoreOperation::SearchSymbols { query, .. } => {
-                CoreOperationResult::Symbols(vec![(
-                    query,
-                    DocumentUri::from_file_path(Path::new("/vault/notes.md")),
-                    Range::new(Position::new(0, 0), Position::new(0, 7)),
-                )])
-            }
+            CoreOperation::SearchSymbols { query, .. } => CoreOperationResult::Symbols(vec![(
+                query,
+                DocumentUri::from_file_path(Path::new("/vault/notes.md")),
+                Range::new(Position::new(0, 0), Position::new(0, 7)),
+            )]),
             CoreOperation::FindReferences { .. } => CoreOperationResult::Locations(vec![(
                 DocumentUri::from_file_path(Path::new("/vault/notes.md")),
                 Range::new(Position::new(1, 0), Position::new(1, 5)),
             )]),
-            CoreOperation::Rename { new_name, .. } => {
-                CoreOperationResult::WorkspaceEdit(vec![(
-                    DocumentUri::from_file_path(Path::new("/vault/notes.md")),
-                    vec![(
-                        Range::new(Position::new(2, 0), Position::new(2, 7)),
-                        new_name,
-                    )],
-                )])
-            }
+            CoreOperation::Rename { new_name, .. } => CoreOperationResult::WorkspaceEdit(vec![(
+                DocumentUri::from_file_path(Path::new("/vault/notes.md")),
+                vec![(
+                    Range::new(Position::new(2, 0), Position::new(2, 7)),
+                    new_name,
+                )],
+            )]),
             CoreOperation::CreateRealm { name } => CoreOperationResult::RealmInfo {
                 name,
                 root_count: 0,
@@ -119,13 +115,11 @@ impl CoreEngine for MockEngine {
                 root_count: 1,
                 skipped_count: 0,
             },
-            CoreOperation::RecommendDocs { query, .. } => {
-                CoreOperationResult::Recommendations {
-                    realm: "default".to_string(),
-                    query,
-                    results: vec![],
-                }
-            }
+            CoreOperation::RecommendDocs { query, .. } => CoreOperationResult::Recommendations {
+                realm: "default".to_string(),
+                query,
+                results: vec![],
+            },
             CoreOperation::CurationDiagnostics { .. } => CoreOperationResult::CurationReport {
                 realm: "default".to_string(),
                 report: markymark_core::engine::CurationReportData {
@@ -146,14 +140,12 @@ impl CoreEngine for MockEngine {
                 uri,
                 blocks: vec![],
             },
-            CoreOperation::SearchBlockText { query, .. } => {
-                CoreOperationResult::BlockTextMatches {
-                    realm: "default".to_string(),
-                    query,
-                    matches: vec![],
-                    truncated: false,
-                }
-            }
+            CoreOperation::SearchBlockText { query, .. } => CoreOperationResult::BlockTextMatches {
+                realm: "default".to_string(),
+                query,
+                matches: vec![],
+                truncated: false,
+            },
             CoreOperation::EnrichDocument { uri, .. } => CoreOperationResult::EnrichmentResult {
                 uri,
                 sections_enriched: 0,

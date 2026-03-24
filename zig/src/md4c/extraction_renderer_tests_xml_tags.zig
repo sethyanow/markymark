@@ -210,34 +210,6 @@ test "xml_tags: block-level div extracted" {
     try testing.expect(!result.xml_tags[0].is_unclosed);
 }
 
-// ── FFI roundtrip via marky_md4c_extract ───────────────────────────
-
-test "xml_tags: FFI roundtrip via marky_md4c_extract" {
-    const exports = @import("exports.zig");
-    const CMd4cResult = exports.CMd4cResult;
-
-    const input = "<custom attr=\"val\">\n\ncontent\n\n</custom>\n";
-    var result: CMd4cResult = undefined;
-    const rc = exports.marky_md4c_extract(input.ptr, @intCast(input.len), &result);
-    try testing.expectEqual(@as(i32, 0), rc);
-    defer exports.marky_md4c_free(&result);
-
-    try testing.expectEqual(@as(u32, 1), result.xml_tags_count);
-    const xt = result.xml_tags.?[0];
-
-    // Verify tag name can be extracted from text_blob
-    const tag_name = result.text_blob.?[xt.tag_name_offset..][0..xt.tag_name_length];
-    try testing.expectEqualStrings("custom", tag_name);
-
-    // Verify raw_html starts with opening tag
-    const raw_html = result.text_blob.?[xt.raw_html_offset..][0..xt.raw_html_length];
-    try testing.expect(std.mem.startsWith(u8, raw_html, "<custom"));
-
-    // Verify flags
-    try testing.expectEqual(@as(u8, 0), xt.is_self_closing);
-    try testing.expectEqual(@as(u8, 0), xt.is_unclosed);
-}
-
 // ── Multiple tags on same line (block-level HTML) ───────────────────
 
 test "xml_tags: inline HTML tags extracted from paragraphs" {

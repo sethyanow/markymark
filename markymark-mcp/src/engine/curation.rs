@@ -208,9 +208,7 @@ fn compute_degree_maps(realm: &RealmIndex) -> (HashMap<String, u32>, HashMap<Str
             if url.starts_with("http://") || url.starts_with("https://") || url.starts_with('#') {
                 continue;
             }
-            if let Some(resolved) =
-                super::helpers::resolve_markdown_link(uri, url, &doc_uri_set)
-            {
+            if let Some(resolved) = super::helpers::resolve_markdown_link(uri, url, &doc_uri_set) {
                 if seen_targets.insert(resolved.clone()) {
                     *in_degree.entry(resolved).or_insert(0) += 1;
                     *out_degree.entry(source.clone()).or_insert(0) += 1;

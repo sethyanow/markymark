@@ -1,6 +1,7 @@
 ---
 id: marky-luy
 title: '[EPIC] g9t remediation: arena conformance closeout'
+status: open
 status: closed
 type: feature
 priority: 2

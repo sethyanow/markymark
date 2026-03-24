@@ -1,0 +1,46 @@
+module(
+    name = "markymark",
+    version = "0.7.1",
+    bazel_compatibility = [">=7.4.0"],
+)
+
+# ── Core Bazel deps ──────────────────────────────────────────────────────────
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "rules_cc", version = "0.2.17")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
+
+# ── LLVM toolchain (hermetic LLVM 21.1.8 — matches rustc 1.93) ──────────────
+bazel_dep(name = "toolchains_llvm_bootstrapped", version = "0.3.1")
+
+register_toolchains("@toolchains_llvm_bootstrapped//toolchain:all")
+
+# ── Rust ─────────────────────────────────────────────────────────────────────
+bazel_dep(name = "rules_rust", version = "0.68.1")
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2021",
+    versions = ["1.93.1"],
+)
+use_repo(rust, "rust_toolchains")
+
+register_toolchains("@rust_toolchains//:all")
+
+# ── Crate universe (third-party Cargo deps → Bazel targets) ─────────────────
+crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+
+crate.from_cargo(
+    name = "crates",
+    cargo_lockfile = "//:Cargo.lock",
+    manifests = ["//:Cargo.toml"],
+)
+use_repo(crate, "crates")
+
+# ── Zig ──────────────────────────────────────────────────────────────────────
+bazel_dep(name = "rules_zig", version = "0.12.3")
+
+zig = use_extension("@rules_zig//zig:extensions.bzl", "zig")
+zig.toolchain(zig_version = "0.15.2")
+use_repo(zig, "zig_toolchains")
+
+register_toolchains("@zig_toolchains//:all")

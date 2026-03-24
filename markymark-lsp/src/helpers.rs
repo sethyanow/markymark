@@ -330,25 +330,18 @@ pub(crate) fn references_for_wiki_link(
 
             for (md_uri, md_index) in iter_realm_documents(state) {
                 for other_wl in md_index.wiki_links() {
-                    if !include_declaration
-                        && md_uri == doc_uri
-                        && other_wl.range == wl.range
-                    {
+                    if !include_declaration && md_uri == doc_uri && other_wl.range == wl.range {
                         continue;
                     }
                     if let Some(ResolvedTarget::KeyPath {
                         uri: ref resolved_uri,
                         ref path,
                         ..
-                    }) = resolve_wiki_link(
-                        state.realm(),
-                        md_uri,
-                        other_wl.target,
-                        other_wl.heading,
-                    ) {
+                    }) =
+                        resolve_wiki_link(state.realm(), md_uri, other_wl.target, other_wl.heading)
+                    {
                         if resolved_uri == &target_uri && path == &target_path {
-                            if let Ok(loc) =
-                                crate::convert::to_lsp_location(md_uri, other_wl.range)
+                            if let Ok(loc) = crate::convert::to_lsp_location(md_uri, other_wl.range)
                             {
                                 locations.push(loc);
                             }

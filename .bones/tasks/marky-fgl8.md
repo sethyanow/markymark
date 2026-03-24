@@ -1,6 +1,7 @@
 ---
 id: marky-fgl8
 title: Split extract.rs into submodules
+status: open
 status: closed
 type: task
 priority: 2

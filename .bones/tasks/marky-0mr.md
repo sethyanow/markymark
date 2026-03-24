@@ -1,6 +1,7 @@
 ---
 id: marky-0mr
 title: 'G: Zig md4c streaming parser as fast-path replacement for tree-sitter'
+status: open
 status: closed
 type: feature
 priority: 2

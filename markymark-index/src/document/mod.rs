@@ -3,18 +3,13 @@
 mod helpers;
 mod types;
 
-mod from_ast;
-mod from_blob;
-mod from_scan;
+mod from_engine;
 
 #[cfg(test)]
 mod tests;
 
 pub use helpers::{mask_frontmatter, parse_frontmatter_owned, slugify};
 pub use types::*;
-
-pub use from_ast::{extract_raw_content_blocks, RawBlock};
-pub use from_blob::BlobError;
 
 use hashbrown::HashMap;
 use markymark_core::arena::DocumentArena;
@@ -153,12 +148,9 @@ impl DocumentIndex {
     ///
     /// ```compile_fail
     /// use markymark_index::DocumentIndex;
-    /// use markymark_parser::Parser;
     ///
     /// fn leak_index_text() -> &'static str {
-    ///     let mut parser = Parser::new().unwrap();
-    ///     let ast = parser.parse("# Title").unwrap();
-    ///     let index = DocumentIndex::from_ast(ast);
+    ///     let index = DocumentIndex::from_text("# Title");
     ///     index.headings()[0].text
     /// }
     /// ```

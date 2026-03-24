@@ -4,12 +4,9 @@
 //! blockquotes, thematic breaks, and tables into ContentBlock entries.
 
 use super::*;
-use markymark_parser::Parser;
 
 fn build_index(source: &str) -> DocumentIndex {
-    let mut parser = Parser::new().unwrap();
-    let ast = parser.parse(source).unwrap();
-    DocumentIndex::from_ast(ast)
+    DocumentIndex::from_text(source)
 }
 
 // ---------------------------------------------------------------------------
@@ -293,16 +290,7 @@ fn ordered_list_items_extracted() {
     );
 }
 
-#[test]
-fn from_scan_path_has_empty_content_blocks() {
-    use markymark_core::scanner::Md4cScanBackend;
-    let source = "# Heading\n\nParagraph content.\n";
-    let index = DocumentIndex::from_scan(source, &Md4cScanBackend);
-    assert!(
-        index.content_blocks().is_empty(),
-        "from_scan path should have empty content_blocks"
-    );
-}
+// from_scan_path_has_empty_content_blocks removed — scan path deleted (marky-0xtn)
 
 #[test]
 fn multiple_block_kinds_mixed() {

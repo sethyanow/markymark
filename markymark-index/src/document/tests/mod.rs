@@ -4,12 +4,9 @@ use super::*;
 use bumpalo::Bump;
 use hashbrown::HashMap;
 use markymark_core::prelude::*;
-use markymark_parser::Parser;
 
 fn build_index(source: &str) -> DocumentIndex {
-    let mut parser = Parser::new().unwrap();
-    let ast = parser.parse(source).unwrap();
-    DocumentIndex::from_ast(ast)
+    DocumentIndex::from_text(source)
 }
 
 /// Compile-time assertion: DocumentIndex must be Send + Sync for tower-lsp
@@ -202,10 +199,8 @@ fn outline_node_children_arena_slice() {
 }
 
 #[test]
-fn from_ast_propagates_arena_lifetime() {
-    let mut parser = Parser::new().unwrap();
-    let ast = parser.parse("# Arena\n").unwrap();
-    let index = DocumentIndex::from_ast(ast);
+fn from_text_propagates_arena_lifetime() {
+    let index = DocumentIndex::from_text("# Arena\n");
 
     let heading: &HeadingEntry<'_> = &index.headings()[0];
     assert_eq!(heading.text, "Arena");
@@ -478,31 +473,22 @@ fn block_text_out_of_bounds_returns_empty() {
 }
 
 #[test]
-fn block_text_blob_constructed_returns_empty() {
-    // Blob path has no source text — block_text must return "" gracefully
-    let blob_index = {
-        use markymark_core::scanner::Md4cScanBackend;
-        let source = "# Heading\n\nParagraph ^my-block\n";
-        // Build via from_scan (used internally by blob path) — no blob file needed
-        DocumentIndex::from_scan(source, &Md4cScanBackend)
-    };
-    // from_scan DOES retain source text, so let's test the real blob scenario:
-    // The blob path sets source_text = "" — but we can't easily construct a blob
-    // in a unit test. Instead, verify the API contract: out-of-range returns "".
-    let block = blob_index.block_by_id("my-block");
+fn block_text_with_block_id() {
+    let source = "# Heading\n\nParagraph ^my-block\n";
+    let index = build_index(source);
+    let block = index.block_by_id("my-block");
     assert!(block.is_some());
-    // block_text with the actual block should work since from_scan retains source
-    let text = blob_index.block_text(block.unwrap());
+    let text = index.block_text(block.unwrap());
     // The text covers the ^my-block marker range, which is within source_text
     assert!(!text.is_empty());
 }
 
 #[test]
-fn content_blocks_populated_from_ast() {
+fn content_blocks_populated() {
     let index = build_index("# Heading\n\nParagraph content.\n");
     assert!(
         !index.content_blocks().is_empty(),
-        "content_blocks should be populated via from_ast tree-sitter extraction"
+        "content_blocks should be populated via engine extraction"
     );
     assert!(
         index
@@ -616,27 +602,26 @@ fn test_block_ref_uuid_v4_format_preserved_exactly() {
 }
 
 // ---------------------------------------------------------------------------
-// from_ast delegation to from_scan: code spans are extracted
+// Code spans extraction
 // ---------------------------------------------------------------------------
 
 #[test]
-fn from_ast_extracts_code_spans_via_scan() {
+fn engine_extracts_code_spans() {
     let source = "# Hello\n\nUse `DocumentArena` for allocation.\n";
     let index = build_index(source);
     assert!(
         !index.code_spans().is_empty(),
-        "from_ast should extract code spans (delegates to from_scan)"
+        "engine should extract code spans"
     );
     assert_eq!(index.code_spans()[0].text, "DocumentArena");
 }
 
 // ---------------------------------------------------------------------------
-// md4c scan-based construction tests (feature-gated)
+// incremental / fallback tests
 // ---------------------------------------------------------------------------
 
 mod content_block_tests;
 mod incremental_tests;
-mod md4c_scan_tests;
 
 // ---------------------------------------------------------------------------
 // CRLF frontmatter handling (marky-e7i3)
@@ -708,16 +693,77 @@ fn mask_frontmatter_mixed_endings_picks_earliest_close() {
     );
 }
 
+// ---------- from_text tests ----------
+
+#[test]
+fn from_text_mixed_markdown() {
+    let source = "---\ntitle: Test Doc\ntags: [a, b]\n---\n\n# Hello\n\nSome text with a [[wiki link]] and #tag.\n\n## Sub heading\n\n[md link](https://example.com)\n";
+    let idx = DocumentIndex::from_text(source);
+
+    // Headings
+    assert_eq!(idx.headings().len(), 2);
+    assert_eq!(idx.headings()[0].text, "Hello");
+    assert_eq!(idx.headings()[0].level, 1);
+    assert_eq!(idx.headings()[1].text, "Sub heading");
+    assert_eq!(idx.headings()[1].level, 2);
+
+    // Wiki links
+    assert_eq!(idx.wiki_links().len(), 1);
+    assert_eq!(idx.wiki_links()[0].target, "wiki link");
+
+    // Tags
+    assert_eq!(idx.tags().len(), 1);
+    assert_eq!(idx.tags()[0].name, "tag");
+
+    // Markdown links
+    assert_eq!(idx.markdown_links().len(), 1);
+    assert_eq!(idx.markdown_links()[0].url, "https://example.com");
+
+    // Frontmatter preserved
+    assert!(
+        !idx.frontmatter().is_empty(),
+        "frontmatter should be populated"
+    );
+    let titles: Vec<_> = idx
+        .frontmatter()
+        .iter()
+        .filter(|f| f.key == "title")
+        .collect();
+    assert_eq!(titles.len(), 1);
+}
+
+#[test]
+fn from_text_frontmatter_only() {
+    let source = "---\ntitle: Just FM\nauthor: Test\n---\n";
+    let idx = DocumentIndex::from_text(source);
+
+    assert!(
+        !idx.frontmatter().is_empty(),
+        "frontmatter should be populated"
+    );
+    assert!(
+        idx.headings().is_empty(),
+        "no headings in frontmatter-only doc"
+    );
+    assert!(idx.wiki_links().is_empty());
+    assert!(idx.tags().is_empty());
+}
+
+#[test]
+fn from_text_empty_input() {
+    let idx = DocumentIndex::from_text("");
+    assert!(idx.headings().is_empty());
+    assert!(idx.wiki_links().is_empty());
+    assert!(idx.tags().is_empty());
+    assert!(idx.frontmatter().is_empty());
+}
+
 // ---------------------------------------------------------------------------
 // Empty frontmatter with trailing newline (marky-840n)
 // ---------------------------------------------------------------------------
 
 #[test]
 fn parse_frontmatter_owned_empty_lf() {
-    // With the bug, find_frontmatter_close("---\nBody") returns None,
-    // so parse_frontmatter_owned returns empty (frontmatter not detected).
-    // With the fix, it returns Some((0, 4)), yaml="" → empty but detected.
-    // We verify via mask_frontmatter that the delimiter is actually recognized.
     let source = "---\n---\nBody";
     let (fm, _aliases) = helpers::parse_frontmatter_owned(source);
     assert!(fm.is_empty(), "empty frontmatter should produce no keys");
