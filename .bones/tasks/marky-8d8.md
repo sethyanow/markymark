@@ -31,7 +31,7 @@ Phase 3b/3c parameterize DocumentIndex on text_blob lifetime for zero-copy borro
 ## Success Criteria
 - [x] `from_engine_result_direct` decodes CEngineResult.text_blob into arena — no intermediate EngineExtraction
 - [x] EngineExtraction intermediary not used in the LSP hot path (old path may remain as fallback)
-- [ ] Benchmark: direct decode measurably faster than EngineExtraction path (Phase 3a alone)
+- [x] Benchmark: direct decode measurably faster than EngineExtraction path (Phase 3a alone)
 - [ ] `DocumentIndex<'engine>` compiles with engine lifetime parameter
 - [ ] Text fields in DocumentIndex entries borrow `&'engine str` from text_blob
 - [ ] self_cell / DocumentIndexCell reworked to accommodate text_blob lifetime
