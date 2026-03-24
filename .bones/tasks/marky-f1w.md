@@ -1,11 +1,15 @@
 ---
 id: marky-f1w
 title: 'Task 1: FFI edit range plumbing — extend update signature, zero-value pass-through'
-status: open
+status: closed
 type: task
 priority: 2
+owner: Seth
 parent: marky-686
 ---
+
+
+
 
 ## Context
 
@@ -28,15 +32,15 @@ From parent sub-epic marky-686:
 
 ## Success Criteria
 
-- [ ] `marky_engine_update` C export in `exports.zig` takes 3 additional `u32` params: `edit_offset`, `edit_old_len`, `edit_new_len`
-- [ ] Zig `DocumentEngine.update()` signature accepts edit range params (ignored — passed through to no-op)
-- [ ] Rust extern block declares matching 6-param signature
-- [ ] Rust `EditRange` struct defined: `{ offset: u32, old_len: u32, new_len: u32 }`
-- [ ] Rust `DocumentEngine::update()` accepts `Option<EditRange>`, converts `None` to 0/0/0
-- [ ] All existing callers updated to pass `None` (LSP, MCP, 9 kernel tests, 3 Zig export tests)
-- [ ] Test: `update(text, Some(EditRange { offset: 0, old_len: 0, new_len: 0 }))` produces same content hash as `update(text, None)`
-- [ ] Test: `update(text, Some(EditRange { offset: 100, old_len: 50, new_len: 75 }))` succeeds (non-zero values don't crash — verifies FFI param marshaling)
-- [ ] All existing tests pass (behavioral equivalence)
+- [x] `marky_engine_update` C export in `exports.zig` takes 3 additional `u32` params: `edit_offset`, `edit_old_len`, `edit_new_len`
+- [x] Zig `DocumentEngine.update()` signature accepts edit range params (ignored — passed through to no-op)
+- [x] Rust extern block declares matching 6-param signature
+- [x] Rust `EditRange` struct defined: `{ offset: u32, old_len: u32, new_len: u32 }`
+- [x] Rust `DocumentEngine::update()` accepts `Option<EditRange>`, converts `None` to 0/0/0
+- [x] All existing callers updated to pass `None` (LSP, MCP, 9 kernel tests, 3 Zig export tests + 5 Zig engine tests)
+- [x] Test: `update(text, Some(EditRange { offset: 0, old_len: 0, new_len: 0 }))` produces same content hash as `update(text, None)`
+- [x] Test: `update(text, Some(EditRange { offset: 100, old_len: 50, new_len: 75 }))` succeeds (non-zero values don't crash — verifies FFI param marshaling)
+- [x] All existing tests pass (behavioral equivalence)
 
 ## Anti-Patterns
 
@@ -138,3 +142,7 @@ Most failure categories are structurally eliminated for this task: params are u3
 - Temporal Betrayal: `&mut self` in Rust, single-threaded engine access — no concurrent calls possible
 - Dependency Treachery: No new external dependencies — same parseAll pipeline
 - Resource Exhaustion: 3 extra u32 stack values — negligible
+
+## Log
+
+- [2026-03-24T09:16:15Z] [Seth] Task 1 complete. Extended marky_engine_update FFI (Zig+Rust) with edit_offset/edit_old_len/edit_new_len u32 params. Zero-value sentinel (0/0/0) = no range info. Zig side accepts but ignores params (TODO for Task 2). All callers updated: LSP, MCP, 14 Zig tests, 9 Rust kernel tests. 3 new tests: basic edit range, zero-value equivalence, non-zero marshaling. 62 test suites, 0 failures, clippy clean. Commit d0c3d710.

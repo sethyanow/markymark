@@ -1752,3 +1752,6 @@
 {"timestamp":"2026-03-24T09:02:12.171878+00:00","actor":"Seth","event_type":"created","task_id":"marky-f1w","details":{}}
 {"timestamp":"2026-03-24T09:02:21.092597+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-686","details":{"kind":"parent-child","to":"marky-f1w"}}
 {"timestamp":"2026-03-24T09:02:21.093134+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-686","details":{"kind":"blocks","to":"marky-f1w"}}
+{"timestamp":"2026-03-24T09:07:34.650694+00:00","actor":"Seth","event_type":"claimed","task_id":"marky-f1w","details":{"actor":"Seth"}}
+{"timestamp":"2026-03-24T09:16:15.459898+00:00","actor":"Seth","event_type":"logged","task_id":"marky-f1w","details":{"message":"Task 1 complete. Extended marky_engine_update FFI (Zig+Rust) with edit_offset/edit_old_len/edit_new_len u32 params. Zero-value sentinel (0/0/0) = no range info. Zig side accepts but ignores params (TODO for Task 2). All callers updated: LSP, MCP, 14 Zig tests, 9 Rust kernel tests. 3 new tests: basic edit range, zero-value equivalence, non-zero marshaling. 62 test suites, 0 failures, clippy clean. Commit d0c3d710."}}
+{"timestamp":"2026-03-24T09:16:20.188038+00:00","actor":"Seth","event_type":"closed","task_id":"marky-f1w","details":{"notes":null}}

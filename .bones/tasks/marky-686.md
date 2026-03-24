@@ -21,9 +21,9 @@ engine so it can reuse slugs for headings outside the edited region.
 - R4: Zig engine reuses slugs for headings outside the edit range, skipping slug recomputation
 
 ## Success Criteria
-- [ ] `marky_engine_update` C signature extended with `edit_offset`, `edit_old_len`, `edit_new_len` (u32)
-- [ ] Rust `DocumentEngine::update()` accepts optional `EditRange` parameter
-- [ ] Zero-values (0/0/0) mean "no range info" — Zig side falls back to full slug computation
+- [x] `marky_engine_update` C signature extended with `edit_offset`, `edit_old_len`, `edit_new_len` (u32)
+- [x] Rust `DocumentEngine::update()` accepts optional `EditRange` parameter
+- [x] Zero-values (0/0/0) mean "no range info" — Zig side falls back to full slug computation
 - [ ] Zig `update()` stores previous heading offsets + slugs for comparison
 - [ ] Headings whose byte range is entirely before or after the edit range reuse previous slugs
 - [ ] Test: edit at end of document, heading slugs at start not recomputed (verified via hash or direct comparison)
