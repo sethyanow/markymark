@@ -13,13 +13,32 @@ on:
         default: 'false'
         type: boolean
 
-env:
-  CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-Dwarnings"
-
 jobs:
-  build-and-test:
-    name: Build & Test
+  bazel-build-and-test:
+    name: Bazel Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bazelisk
+        uses: bazelbuild/setup-bazelisk@v3
+
+      - name: Cache Bazel
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/bazel
+          key: ${{ runner.os }}-bazel-${{ hashFiles('MODULE.bazel', 'Cargo.lock', '.bazelrc') }}
+          restore-keys: |
+            ${{ runner.os }}-bazel-
+
+      - name: Build all targets
+        run: bazel build //...
+
+      - name: Run all tests
+        run: bazel test //...
+
+  lint:
+    name: Lint & Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,31 +52,20 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-          # Disable Zig build cache — warm .zig-cache triggers Zig 0.15.2
-          # archive corruption on Linux x86_64.  The action restores cached
-          # artifacts to .zig-cache at the repo root, and despite --cache-dir
-          # CLI flags in build.rs, the warm cache still corrupts archives.
           use-cache: false
 
-      - name: Cache cargo registry & build
+      - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}-${{ hashFiles('zig/**/*.zig', 'zig/build.zig', 'zig/build.zig.zon') }}
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}-
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo-lint-
 
-      # Zig 0.15.2 bug: warm .zig-cache produces truncated archives on Linux
-      # x86_64.  Purge ALL Zig caches to force cold builds:
-      #  - .zig-cache at repo root (restored by setup-zig in prior runs)
-      #  - zig/.zig-cache (default local cache when cwd=zig/)
-      #  - target/*/build/markymark-kernels-*/out (previous build.rs output)
       - name: Purge stale Zig build artifacts
-        run: rm -rf .zig-cache zig/.zig-cache target/debug/build/markymark-kernels-*/out target/release/build/markymark-kernels-*/out
+        run: rm -rf .zig-cache zig/.zig-cache
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -65,22 +73,10 @@ jobs:
       - name: Clippy lint
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Run all tests
-        run: cargo test --workspace
-
-      - name: Run smoke tests
-        run: cargo test -p markymark-cli --test smoke_lsp --test smoke_mcp
-
-      - name: Run E2E LSP tests
-        run: cargo test -p markymark-cli --test lsp_methods -- --nocapture
-
-      - name: Run E2E MCP tests
-        run: cargo test -p markymark-cli --test mcp_methods -- --nocapture
-
   miri:
     name: Miri (unsafe arena validation)
     runs-on: ubuntu-latest
-    needs: build-and-test
+    needs: bazel-build-and-test
     steps:
       - uses: actions/checkout@v4
 
@@ -102,18 +98,16 @@ jobs:
 
       - name: Run Miri on arena safety tests
         env:
-          # Ignore leaks from intentional mem::forget in ptr::read ownership
-          # transfer pattern (tracked by marky-5yt for self_cell migration).
           MIRIFLAGS: "-Zmiri-ignore-leaks"
         run: |
           echo "Running Miri on markymark-core arena safety tests..."
           cargo +nightly miri test -p markymark-core --test miri_arena
           echo "Miri validation passed"
 
-  alignment:
-    name: Alignment Tests
+  cargo-canary:
+    name: Cargo Canary
     runs-on: ubuntu-latest
-    needs: build-and-test
+    needs: bazel-build-and-test
     steps:
       - uses: actions/checkout@v4
 
@@ -141,27 +135,21 @@ jobs:
       - name: Purge stale Zig build artifacts
         run: rm -rf .zig-cache zig/.zig-cache target/debug/build/markymark-kernels-*/out target/release/build/markymark-kernels-*/out
 
-      - name: Check marksman availability
-        id: marksman-check
-        run: |
-          if command -v marksman &> /dev/null; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-            echo "marksman found: $(which marksman)"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "SKIP: marksman not found — alignment tests will be skipped gracefully"
-          fi
+      - name: Run all tests
+        run: cargo test --workspace
 
-      - name: Run alignment tests
+      - name: Run smoke tests
+        run: cargo test -p markymark-cli --test smoke_lsp --test smoke_mcp
+
+      - name: Run E2E tests
         run: |
-          echo "Running alignment tests (marksman available: ${{ steps.marksman-check.outputs.available }})"
-          cargo test -p markymark-cli --test alignment -- --nocapture
-          echo "Alignment tests completed (tests skip gracefully if marksman unavailable)"
+          cargo test -p markymark-cli --test lsp_methods -- --nocapture
+          cargo test -p markymark-cli --test mcp_methods -- --nocapture
 
   benchmark:
     name: Performance Benchmarks
     runs-on: ubuntu-latest
-    needs: build-and-test
+    needs: bazel-build-and-test
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_benchmarks == 'true'
     steps:
       - uses: actions/checkout@v4

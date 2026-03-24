@@ -38,18 +38,17 @@ build:linux     --sandbox_add_mount_pair=/tmp
 # Print test errors in console
 test            --test_output=errors
 
-# ── Release config (cross-language ThinLTO) ──────────────────────────────────
+# ── Release config (cross-language ThinLTO — all platforms) ───────────────────
 build:release   --compilation_mode=opt
-
-# C/C++ ThinLTO
 build:release   --copt=-flto=thin
 build:release   --linkopt=-flto=thin
-
-# Rust: cross-language ThinLTO via linker plugin.
-# -Clinker-plugin-lto makes rustc emit bitcode for the linker instead of doing
-# its own LTO pass — required for Zig bitcode to be optimized alongside Rust.
-# tools/clang-lto-wrapper.sh strips -plugin-opt args that ld64.lld rejects.
-build:release   --@rules_rust//:extra_rustc_flags=-Clinker-plugin-lto,-Ccodegen-units=1,-Cembed-bitcode=yes,-Clinker=/opt/homebrew/opt/llvm/bin/clang-lto-wrapper,-Clink-arg=-fuse-ld=/opt/homebrew/bin/ld64.lld,-Clink-arg=-flto=thin
-
-# Strip release binaries
+build:release   --@rules_rust//:extra_rustc_flags=-Clinker-plugin-lto,-Ccodegen-units=1,-Cembed-bitcode=yes
 build:release   --strip=always
+
+# ── macOS LTO (use with: --config=release --config=macos-lto) ────────────────
+# Routes rustc link through Homebrew clang + ld64.lld.
+# clang-lto-wrapper strips -plugin-opt args that ld64.lld rejects.
+# extra_rustc_flag (singular) ACCUMULATES with extra_rustc_flags (plural).
+build:macos-lto --@rules_rust//rust/settings:extra_rustc_flag=-Clinker=/opt/homebrew/opt/llvm/bin/clang-lto-wrapper
+build:macos-lto --@rules_rust//rust/settings:extra_rustc_flag=-Clink-arg=-fuse-ld=/opt/homebrew/bin/ld64.lld
+build:macos-lto --@rules_rust//rust/settings:extra_rustc_flag=-Clink-arg=-flto=thin

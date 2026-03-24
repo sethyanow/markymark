@@ -50,11 +50,18 @@ cross-language LTO under Cargo. Bazel with patched rules_zig enables the full pi
 4. rustc invokes `clang-lto-wrapper` → `ld64.lld` → ThinLTO merges all bitcode
 5. `.llvm.NNN` suffixes on Zig internal symbols confirm cross-module LTO processing
 
-**Known issue:** Test `engine_fallback_scan_when_no_stale_state` fails under `--config=release`
-because LTO optimizes away the test-only fault injection check (magic filename). Passes
-without release config. Test infrastructure issue, not a production bug.
+**LTO canary:** `lto_eliminates_fault_injection` test asserts LTO is active under release
+config — passes when LTO correctly eliminates the test-only fault injection check. Skips
+in debug builds.
 
-**Cargo is unaffected** — remains the dev-loop build. Bazel is the release/CI path.
+**Bazel is now the primary build system** (2026-03-24). CI, release, and local install all
+use Bazel. Cargo is kept as a lightweight canary.
+
+- `.bazelrc` release config split: common flags in `build:release`, macOS-specific in
+  `build:macos-lto` using `extra_rustc_flag` (singular, accumulates)
+- `scripts/install.sh` builds with Bazel + copies to `~/.local/bin/`
+- CI: `bazel build //...` + `bazel test //...` primary, `cargo test` canary
+- Release: Bazel for macOS/Linux native, Cargo for Windows + Linux cross-compile
 
 ---
 
