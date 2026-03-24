@@ -1,11 +1,13 @@
 ---
 id: marky-g9h
 title: 'Task 2: Benchmark — verify from_engine_result_direct is measurably faster'
-status: open
+status: active
 type: task
 priority: 2
 parent: marky-8d8
 ---
+
+
 
 ## Context
 
@@ -39,21 +41,34 @@ From parent sub-epic marky-8d8:
 - NO comparing against `from_text()` (that includes engine creation — conflates parse time with construction time)
 - NO inventing numeric targets ("must be 2x faster") — measurable improvement is the criterion, not a threshold
 - NO running in debug mode — benchmarks require `--release`
+- NO adjusting criterion parameters (sample size, warm-up, BatchSize, measurement time) after seeing initial results to change the outcome — design correctly from the start, report honest numbers (ref: fail-benchmark-chasing)
+- NO rationalizing "no measurable difference" as a methodology problem to be solved — if criterion reports no improvement, that IS the result; log it honestly and escalate
 
 ## Implementation
 
-### Step 1: RED — Create benchmark file with both cases
+### Step 1: Create benchmark file with both cases
 **File:** `markymark-index/benches/index_construction.rs`
 - Add `[[bench]]` entry in `markymark-index/Cargo.toml`: `name = "index_construction"`, `harness = false`
 - Create benchmark with `criterion_group!` and `criterion_main!`
-- Reuse `generate_large_doc` from realm_update.rs or duplicate the generator (benchmark files are standalone)
+- Duplicate `generate_large_doc` from realm_update.rs (benchmark files are standalone, not library code)
 - Two bench functions in one group (`index_construction`):
-  - `via_extraction`: setup creates DocumentEngine + gets EngineResult + parses frontmatter.
-    Measured: `result.to_extraction()` + `DocumentIndex::from_engine_result_with_frontmatter()`
-  - `direct`: same setup. Measured: `DocumentIndex::from_engine_result_direct()`
-- Use `iter_batched` with `BatchSize::SmallInput` — EngineResult is cheap to clone via
-  re-calling `engine.get_result()` (engine already parsed, result is a pointer copy + FFI call)
-- Frontmatter parsing (`helpers::parse_frontmatter_owned`) goes in setup, not measured
+
+**Setup (IDENTICAL for both cases — not measured):**
+1. `let doc = generate_large_doc(0);`
+2. `let engine = DocumentEngine::new(&doc).unwrap();`
+3. `let result = engine.get_result().unwrap();`
+4. `let (fm, aliases) = helpers::parse_frontmatter_owned(&doc);`
+
+**`via_extraction` measured section:**
+1. `let extraction = result.to_extraction().unwrap();`
+2. `DocumentIndex::from_engine_result_with_frontmatter(&extraction, fm, aliases);`
+
+**`direct` measured section:**
+1. `DocumentIndex::from_engine_result_direct(&result, fm, aliases).unwrap();`
+
+- Use `iter_batched` with `BatchSize::SmallInput` — setup runs per iteration
+- In setup, call `engine.get_result().unwrap()` to get a fresh EngineResult (FFI call, no re-parse)
+- Clone `fm` and `aliases` in setup so each iteration has fresh owned data
 
 ### Step 2: Run benchmark, capture results
 - `cargo bench -p markymark-index --bench index_construction`
@@ -76,3 +91,14 @@ From parent sub-epic marky-8d8:
 - `generate_large_doc` produces a ~50KB doc with ~40 headings, ~15 tags, ~5 block IDs — exercises
   all element types at realistic scale.
 - Non-logic change (benchmark) — TDD escape hatch applies. No failing test needed.
+- **Honest expectations:** The direct path still uses intermediate Vec collection (blob → owned
+  Strings in Vecs → arena) because DocumentIndexCell's self_cell closure can't hold EngineResult
+  borrows. The savings come from skipping EngineExtraction struct allocation + fewer intermediate
+  data structures (no EngineHeading/EngineLink/etc. structs). Improvement may be modest. Report
+  what criterion shows — do NOT adjust methodology if results are smaller than expected.
+- **If no measurable improvement:** Log the honest results to bones. Escalate to user — this is
+  a valid outcome that informs Phase 3b/3c design decisions. Do not treat it as a failure to fix.
+
+## Log
+
+- [2026-03-24T16:58:32Z] [Seth] Benchmark results — NO measurable improvement. via_extraction: [16.759 µs 17.068 µs 17.350 µs], direct: [17.025 µs 17.273 µs 17.526 µs]. Confidence intervals overlap. Both paths go through owned String intermediaries (self_cell constraint). The EngineExtraction overhead is negligible at this doc size. Escalating to user — this informs Phase 3b/3c design: the real win requires eliminating the owned String intermediary via lifetime parameterization (DocumentIndex<'engine>), not just bypassing EngineExtraction.
