@@ -58,6 +58,25 @@ Full findings documented in `docs/research/semantic-index-block-model.md`.
 - DocumentIndex stores 15 types of indexed elements (headings, blocks, tags, code spans, etc.)
 - Incremental updates diff headings by text; no stable block IDs in semantic index
 
+### Phase 1 Complete: Content Hash Short-Circuit (marky-lpb, 2026-03-23)
+
+Zig's DocumentEngine already computes a content hash on every parse (hash of raw text input
+to md4c). Phase 1 exposes this hash via FFI and uses it to skip blob serialization +
+deserialization when document structure hasn't changed.
+
+**Key decision:** Hash is on raw text input, not extracted structure. Two different texts
+producing identical headings/links still get different hashes. This is conservative (may
+rebuild unnecessarily) but never wrong (never skips a real change).
+
+**Implementation:**
+- `marky_engine_get_content_hash` C FFI export → `DocumentEngine::content_hash()` returns `u64`
+- `EngineState` wrapper in `markymark-lsp/src/state/mod.rs` stores `engine` + `last_hash`
+- `build_markdown_index_via_engine` returns `Option<DocumentIndex>` — `None` when hash unchanged
+- `change_document` / `apply_document_changes` skip `realm.update_document()` on `None`
+- 16 FFI-level hash tests + 8 short-circuit tests in LSP state
+
+**Savings:** ~2ms blob/arena work skipped per non-structural edit. Parse still runs.
+
 ### Active Work
 
 - **Epic marky-z7uc**: Expose ContentBlock model via MCP tools

@@ -1,12 +1,13 @@
 ---
 id: marky-lpb
 title: 'Phase 1: Content Hash Short-Circuit'
-status: closed
+status: open
 type: epic
 priority: 2
 depends_on: [marky-a02, marky-1ic, marky-840]
 parent: marky-zsys
 ---
+
 
 
 
@@ -54,8 +55,8 @@ skipped on edits that don't change document structure.
 
 ## Acceptance Requirements
 **Agent Documentation:**
-- [ ] CLAUDE.md: no updates needed (internal optimization, no API change)
-- [ ] docs/MEMORY.md: update with content hash short-circuit decision
+- [x] CLAUDE.md: no updates needed (internal optimization, no API change)
+- [x] docs/MEMORY.md: update with content hash short-circuit decision
 
 **User Walkthrough Must Cover:**
 - FFI round-trip: create engine, get hash, update with same text, hash unchanged

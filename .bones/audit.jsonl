@@ -1743,3 +1743,6 @@
 {"timestamp":"2026-03-24T08:00:17.432966+00:00","actor":"Seth","event_type":"logged","task_id":"marky-1ic","details":{"message":"Debrief: EngineState wrapper + hash comparison implemented in ~30 lines of production code. Option return type and caller handling were pre-existing (SRE caught stale skeleton steps). 8 new tests including adversarial battery (empty, UTF-8, close-reopen, whitespace). 208 total tests pass, clippy clean. Reflections: skeleton steps 3-4 were pre-done — SRE correction was valuable. No workarounds, no surprises beyond stale skeleton. EngineState pattern established for future per-engine metadata."}}
 {"timestamp":"2026-03-24T08:01:17.392631+00:00","actor":"Seth","event_type":"closed","task_id":"marky-840","details":{"notes":null}}
 {"timestamp":"2026-03-24T08:01:22.764822+00:00","actor":"Seth","event_type":"closed","task_id":"marky-lpb","details":{"notes":null}}
+{"timestamp":"2026-03-24T08:29:13.392916+00:00","actor":"Seth","event_type":"reopened","task_id":"marky-840","details":{}}
+{"timestamp":"2026-03-24T08:29:14.100460+00:00","actor":"Seth","event_type":"reopened","task_id":"marky-lpb","details":{}}
+{"timestamp":"2026-03-24T08:29:18.618718+00:00","actor":"Seth","event_type":"updated","task_id":"marky-840","details":{"status":"active"}}

@@ -1,11 +1,13 @@
 ---
 id: marky-840
 title: 'Phase 1 Acceptance: Content Hash Short-Circuit'
-status: closed
+status: active
 type: task
 priority: 2
 parent: marky-lpb
 ---
+
+
 
 
 
@@ -20,6 +22,6 @@ This task verifies the phase's work and updates documentation.
 - User walkthrough: CLI commands verifying the phase's work per Acceptance Requirements in marky-lpb
 
 ## Success Criteria
-- [ ] docs/MEMORY.md updated with content hash short-circuit decision
-- [ ] User walkthrough presented and verified
+- [x] docs/MEMORY.md updated with content hash short-circuit decision
+- [x] User walkthrough presented and verified
 - [ ] User closes this task after review
