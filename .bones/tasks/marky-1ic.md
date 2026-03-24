@@ -1,11 +1,12 @@
 ---
 id: marky-1ic
 title: Short-circuit blob pipeline when content hash unchanged
-status: active
+status: closed
 type: task
 priority: 2
 parent: marky-lpb
 ---
+
 
 
 ## Context
