@@ -75,7 +75,7 @@ depends_on: [marky-n7wx, marky-lpb, marky-686, marky-8d8]
 - [x] Benchmark: unchanged-content update skips blob serialization + deserialization (measurable via criterion)
 - [x] `marky_engine_update` accepts edit range info; Zig side receives byte offset + old_len + new_len
 - [x] Headings outside edit range reuse previous slugs (verified by test: edit at end of doc, heading slugs not recomputed)
-- [ ] LSP `apply_document_changes` threads incremental edit byte bounds to engine update
+- [x] LSP `apply_document_changes` threads incremental edit byte bounds to engine update
 - [ ] `from_blob_inner` allocates directly into bumpalo arena — no intermediate `DecodedOwnedData` Vecs
 - [ ] `DocumentIndex<'blob>` compiles with blob lifetime; text fields borrow from blob data
 - [ ] `RealmIndex` and `ServerState` hold `DocumentIndex<'blob>` without lifetime conflicts

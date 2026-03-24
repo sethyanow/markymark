@@ -1,11 +1,13 @@
 ---
 id: marky-enr
 title: 'Task 3: LSP edit range threading — pass didChange byte bounds to engine'
-status: active
+status: closed
 type: task
 priority: 2
 parent: marky-686
 ---
+
+
 
 
 
@@ -134,3 +136,7 @@ From parent sub-epic marky-686:
 - **Clamped edits:** When `start_clamped` or `end_clamped` is true, the edit IS applied with adjusted
   byte positions. These MUST contribute to the bounding box — the text was modified, just at clamped
   positions. The `start_byte`/`old_end_byte` in the bounds struct already reflect clamping.
+
+## Log
+
+- [2026-03-24T15:35:20Z] [Seth] Task complete. Threaded LSP edit ranges to Zig engine. apply_document_changes accumulates bounding box via match on Option tuple, converts via .map() to EditRange, passes through build_markdown_index_via_engine to engine.update(). Full changes invalidate range (None). Skipped edits excluded. 3 async tests added. 1289/1289 workspace tests pass. Clippy clean.

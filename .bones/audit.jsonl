@@ -1766,3 +1766,5 @@
 {"timestamp":"2026-03-24T14:50:50.641511+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-686","details":{"kind":"parent-child","to":"marky-enr"}}
 {"timestamp":"2026-03-24T14:50:50.642004+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-686","details":{"kind":"blocks","to":"marky-enr"}}
 {"timestamp":"2026-03-24T15:17:13.062825+00:00","actor":"Seth","event_type":"updated","task_id":"marky-enr","details":{"status":"active"}}
+{"timestamp":"2026-03-24T15:35:20.656531+00:00","actor":"Seth","event_type":"logged","task_id":"marky-enr","details":{"message":"Task complete. Threaded LSP edit ranges to Zig engine. apply_document_changes accumulates bounding box via match on Option tuple, converts via .map() to EditRange, passes through build_markdown_index_via_engine to engine.update(). Full changes invalidate range (None). Skipped edits excluded. 3 async tests added. 1289/1289 workspace tests pass. Clippy clean."}}
+{"timestamp":"2026-03-24T15:35:25.887523+00:00","actor":"Seth","event_type":"closed","task_id":"marky-enr","details":{"notes":null}}
