@@ -1,6 +1,6 @@
 ---
 id: marky-qqb
-title: Validate Bazel CI/release workflows against GitHub Actions runners
+title: Bazel primary build system — cross-language ThinLTO, CI, release, install
 status: active
 type: task
 priority: 1
@@ -10,32 +10,60 @@ parent: marky-o8e
 
 
 
-
-## Requirements
-
-1. Open PR from `optimize` branch to trigger `ci.yml` on GitHub Actions
-2. Validate `bazel-build-and-test` job passes on `ubuntu-latest` (hermetic toolchains)
-3. Validate `lint` job passes (cargo fmt/clippy)
-4. Validate `cargo-canary` job passes
-5. Dry-run release matrix: macOS (`brew install llvm` + Bazel LTO), Linux (hermetic Bazel), Windows (Cargo fallback)
-
 ## Context
 
-Bazel was promoted to primary build system (optimize branch, 2026-03-24). CI and release
-workflows rewritten but untested on actual GitHub runners. Key risks:
-- `bazelbuild/setup-bazelisk@v3` may need version adjustment
-- macOS runner Homebrew LLVM install path may differ from local (`/opt/homebrew/`)
-- Bazel cache key and `~/.cache/bazel` path may not work on runners
-- `toolchains_llvm_bootstrapped` Linux toolchain download may timeout or fail
-- `apple_support` SDK resolution on GitHub macOS runners
+Promoted Bazel from "alongside Cargo" to the primary build system for markymark.
+Work done on `optimize` branch (2026-03-24). Cargo kept as lightweight canary.
 
-Parent: marky-o8e (Bazel adoption refinement)
+## What was done
 
-## Success Criteria
+### Cross-language ThinLTO (Rust ↔ Zig)
+- Patched `rules_zig` 0.12.3 with two-step bitcode build (`-femit-llvm-bc` → clang wrap → llvm-ar)
+- `clang-lto-wrapper` strips `-plugin-opt` args that macOS ld64.lld rejects
+- `-Clinker-plugin-lto` makes rustc emit bitcode for the linker (required for cross-lang)
+- LTO canary test (`lto_eliminates_fault_injection`) confirms optimization is active
+- `.llvm.NNN` suffixes on Zig internal symbols prove cross-module LTO processing
 
-- [ ] `bazel-build-and-test` job green on ubuntu-latest
-- [ ] `lint` job green (cargo fmt + clippy)
-- [ ] `cargo-canary` job green
-- [ ] Release matrix: macOS arm64 Bazel build produces binary artifact
-- [ ] Release matrix: Linux x86_64 Bazel build produces binary artifact
-- [ ] Release matrix: Windows Cargo build still works (no regression)
+### Platform config
+- `MODULE.bazel`: `apple_support` for macOS CC, `toolchains_llvm_bootstrapped` Linux-only (Apple SDK 403)
+- `.bazelrc` split: `build:release` (common LTO), `build:macos-lto` (Homebrew clang/ld64.lld)
+- `extra_rustc_flag` (singular, accumulates) for platform-specific additions
+
+### CI migration (ci.yml)
+- `bazel-build-and-test`: primary job, hermetic toolchains, no setup-zig, no Zig cache workarounds
+- `lint`: cargo fmt + clippy (stays Cargo)
+- `cargo-canary`: Cargo compatibility check
+- Miri + benchmarks: stay Cargo
+- **Untested on actual GitHub runners**
+
+### Release migration (release.yml)
+- Bazel for macOS (arm64, x86_64) and Linux x86_64 native builds with LTO
+- Cargo for Windows and Linux aarch64 cross-compile
+- `brew install llvm` step for macOS runners
+- **Untested on actual GitHub runners**
+
+### Local install
+- `scripts/install.sh` → builds with Bazel LTO → copies to `~/.local/bin/`
+- Auto-detects macOS for `--config=macos-lto`
+- Verified locally
+
+### Prereqs
+- Homebrew LLVM: `brew install llvm` (macOS)
+- `clang-lto-wrapper` installed at `/opt/homebrew/opt/llvm/bin/clang-lto-wrapper`
+
+## Remaining
+
+- [ ] Validate CI workflows on GitHub Actions runners
+- [ ] Validate release matrix on GitHub Actions runners
+- [ ] Update marky-o8e success criteria based on what landed
+
+## Commits
+
+- `e5cffe36` feat: enable cross-language ThinLTO between Rust and Zig
+- `cb74c067` test: flip fault-injection test into LTO canary
+- `62596a10` feat: promote Bazel to primary build system
+- `2a4b7389` bones: create marky-qqb
+
+## Log
+
+- [2026-03-24T20:40:23Z] [Seth] Session log: LTO confirmed via .llvm.NNN suffixes, config split validated via bazel cquery, install script tested, all 7 Bazel tests + all Cargo canary tests pass locally. CI/release workflows written but untested on runners.
