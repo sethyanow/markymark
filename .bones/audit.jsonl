@@ -1782,3 +1782,6 @@
 {"timestamp":"2026-03-24T16:27:24.428331+00:00","actor":"Seth","event_type":"claimed","task_id":"marky-u9q","details":{"actor":"Seth"}}
 {"timestamp":"2026-03-24T16:27:24.908621+00:00","actor":"Seth","event_type":"updated","task_id":"marky-u9q","details":{"status":"active"}}
 {"timestamp":"2026-03-24T16:41:29.779200+00:00","actor":"Seth","event_type":"closed","task_id":"marky-u9q","details":{"notes":null}}
+{"timestamp":"2026-03-24T16:43:33.245508+00:00","actor":"Seth","event_type":"created","task_id":"marky-g9h","details":{}}
+{"timestamp":"2026-03-24T16:43:38.308078+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-8d8","details":{"kind":"parent-child","to":"marky-g9h"}}
+{"timestamp":"2026-03-24T16:43:38.308539+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-8d8","details":{"kind":"blocks","to":"marky-g9h"}}
