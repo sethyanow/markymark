@@ -35,6 +35,7 @@ From parent sub-epic marky-686:
 - [ ] Rust `DocumentEngine::update()` accepts `Option<EditRange>`, converts `None` to 0/0/0
 - [ ] All existing callers updated to pass `None` (LSP, MCP, 9 kernel tests, 3 Zig export tests)
 - [ ] Test: `update(text, Some(EditRange { offset: 0, old_len: 0, new_len: 0 }))` produces same content hash as `update(text, None)`
+- [ ] Test: `update(text, Some(EditRange { offset: 100, old_len: 50, new_len: 75 }))` succeeds (non-zero values don't crash — verifies FFI param marshaling)
 - [ ] All existing tests pass (behavioral equivalence)
 
 ## Anti-Patterns
@@ -42,6 +43,8 @@ From parent sub-epic marky-686:
 - NO changing parseAll or slug computation logic (that's Task 2)
 - NO removing the zero-value sentinel contract (0/0/0 = no range info, defined by parent epic)
 - NO adding edit range to `create()` (only `update()` — create has no "previous state")
+- NO Rust-only signature change — Zig export MUST change in the same step (C ABI matches by symbol name only; linker won't catch param count mismatch, and extra args are silently ignored on x86-64/ARM64)
+- NO `#[allow(unused)]` or suppression of edit range params on Rust side — they must be forwarded to FFI
 
 ## Implementation
 
@@ -77,19 +80,22 @@ From parent sub-epic marky-686:
 
 ### Step 6: GREEN — Update all callers to pass None
 **Files:**
-- `markymark-lsp/src/state/mod.rs:218`: `.update(&masked)` → `.update(&masked, None)`
-- `markymark-mcp/src/engine/mod.rs:335`: `.update(&masked)` → `.update(&masked, None)`
-- 9 test call sites in `markymark-kernels/src/engine.rs` (lines 244, 255, 264, 307, 317, 319, 330, 356, 360): add `, None` to each `.update(...)` call
+- `markymark-lsp/src/state/mod.rs`: `build_markdown_index_via_engine` — `.update(&masked)` → `.update(&masked, None)`
+- `markymark-mcp/src/engine/mod.rs`: MCP engine update path — `.update(&masked)` → `.update(&masked, None)`
+- `markymark-kernels/src/engine.rs` tests (7 functions, 9 call sites): `test_engine_get_result_generation_increments`, `test_engine_content_hash_stable`, `test_engine_content_hash_changes`, `test_engine_content_hash_multibyte_utf8`, `test_engine_content_hash_repeated_updates_deterministic`, `test_engine_content_hash_redundant_headings`, `test_engine_content_hash_after_failed_update` — add `, None` to each `.update(...)` call
+- Use LSP findReferences on `update` method to confirm no call sites missed
 
 ### Step 7: Verify — Run tests
 - **Run:** `cargo nextest -p markymark-kernels` — kernel tests pass
 - **Run:** `cargo nextest` — full workspace tests pass
 - **Run:** `cargo clippy --workspace --all-targets` — no warnings from changes
 
-### Step 8: Write zero-value equivalence test
+### Step 8: Write zero-value equivalence test + non-zero marshaling test
 **File:** `markymark-kernels/src/engine.rs` (tests module)
 - `test_engine_update_edit_range_zero_equivalent`:
   Create two engines from same text. Update one with `None`, the other with `Some(EditRange { offset: 0, old_len: 0, new_len: 0 })`. Assert both produce same `content_hash()`.
+- `test_engine_update_edit_range_nonzero_succeeds`:
+  Create engine, update with `Some(EditRange { offset: 100, old_len: 50, new_len: 75 })`. Assert Ok — verifies non-zero values pass through FFI without error (even though Zig ignores them in Task 1).
 - **Run:** `cargo nextest -p markymark-kernels -E 'test(edit_range)'`
 
 ### Step 9: Final verification and commit
@@ -102,3 +108,33 @@ From parent sub-epic marky-686:
 - Zig unused params must be explicitly discarded (`_ = param;`) to avoid compiler warnings
 - The `text.is_empty()` branch in Rust's `update()` must also pass the edit range params to FFI
 - EditRange should derive Debug, Clone, Copy, PartialEq, Eq for ergonomics
+- **ABI safety:** Zig and Rust signatures must change atomically. C linker resolves by symbol name only — a Rust-side-only change (6 params declared, Zig export still has 3) links successfully but silently corrupts the stack / reads garbage for edit range params. The Zig export tests are the compile-time safety net: if the Zig export signature changes, the Zig tests must update to match, creating a forced coupling.
+- **Bazel build:** No BUILD.bazel changes needed (no new crates/deps), but verify `bazel build //markymark-cli:markymark` still compiles after the signature change — Bazel builds Zig separately from Cargo.
+
+### Adversarial Failure Catalog
+
+Most failure categories are structurally eliminated for this task: params are u32 value types (no encoding ambiguity), ignored on Zig side (no input hostility), `&mut self` prevents concurrency (no temporal betrayal), and Rust's compiler catches missed callers (no partial updates). The genuine risks are documented below.
+
+**Encoding Boundaries: Rust extern ↔ Zig C export parameter order**
+- Assumption: Rust extern declaration and Zig export list params in identical order
+- Betrayal: Param order swapped (e.g., `edit_old_len` before `edit_offset` on one side) — C ABI passes by position, not name. Values silently land in wrong registers.
+- Consequence: Silent in Task 1 (Zig ignores all three). Task 2 reads edit_offset but receives edit_new_len — wrong byte range, wrong slug reuse, subtle data corruption.
+- Mitigation: Non-zero marshaling test (Step 8) exercises the FFI path. Task 2's behavioral tests will catch order mismatches when params are actually consumed. Declare params in same order on both sides: `edit_offset, edit_old_len, edit_new_len`.
+
+**Encoding Boundaries: Dual-branch FFI call in Rust wrapper**
+- Assumption: Both `text.is_empty()` branches pass edit range params to FFI
+- Betrayal: Agent updates the non-empty branch but forgets the empty-text branch (which passes `std::ptr::null(), 0` for text). The empty branch calls with 3 args, the non-empty with 6.
+- Consequence: Compile error in Rust (both branches must match extern signature). **This is structurally caught.** But worth noting because the two branches look like they're doing different things.
+- Mitigation: Compiler enforces. Both branches call `marky_engine_update` with identical param count.
+
+**State Corruption: Zig `_ = param` discards edit range params**
+- Assumption: `_ = param;` is temporary and Task 2 will replace with real usage
+- Betrayal: Agent in Task 2 sees `_ = param;` and doesn't realize it needs replacement, or adds logic that uses some params but misses the `_` discard on others.
+- Consequence: Edit range partially consumed — some params silently ignored in Task 2
+- Mitigation: Add `// TODO(marky-686-task2): use edit range for slug reuse` comment next to each `_ =` discard. Task 2's success criteria explicitly require using these params.
+
+**Categories not applicable (by construction):**
+- Input Hostility: u32 value types, ignored in Task 1 — hostile values have no effect
+- Temporal Betrayal: `&mut self` in Rust, single-threaded engine access — no concurrent calls possible
+- Dependency Treachery: No new external dependencies — same parseAll pipeline
+- Resource Exhaustion: 3 extra u32 stack values — negligible
