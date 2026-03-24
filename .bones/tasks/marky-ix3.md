@@ -1,6 +1,7 @@
 ---
 id: marky-ix3
 title: '[EPIC] ix3: Code span extraction + Zig extraction consolidation'
+status: open
 status: closed
 type: epic
 priority: 2
@@ -69,6 +70,19 @@ This is a differentiating feature for markymark — no existing markdown LSP doe
 
 ## Success Criteria (MUST ALL BE TRUE)
 
+- [ ] CodeSpanEntry type in document/types.rs with optional kind and language_hint
+- [ ] Tier 1: backtick inline code spans extracted via all 3 paths
+- [ ] Blob v2: code_span_count field, reserved slots for future types, backward-compatible v1 read
+- [ ] ScanBackend::scan_code_spans() implemented for ZigScanBackend and Md4cScanBackend
+- [ ] LSP workspaceSymbol returns code span results
+- [ ] LSP hover shows code span backlinks
+- [ ] MCP search-symbols includes code spans
+- [ ] extract.rs split into submodules (fgl8 complete)
+- [ ] All 11 extractors migrated from extract.rs to Zig ExtractionRenderer (except frontmatter)
+- [ ] extract.rs reduced to frontmatter + orchestration shim
+- [ ] RealmIndex dedup for code span entries
+- [ ] All existing tests pass after each migration step
+- [ ] New tests for code span extraction on each path
 - [x] CodeSpanEntry type in document/types.rs with optional kind and language_hint
 - [x] Tier 1: backtick inline code spans extracted via all 3 paths
 - [x] Blob v2: code_span_count field, reserved slots for future types, backward-compatible v1 read

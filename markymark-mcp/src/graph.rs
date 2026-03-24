@@ -243,8 +243,7 @@ mod tests {
     }
 
     fn make_index(source: &str) -> DocumentIndex {
-        let ast = markymark_parser::parse(source).unwrap();
-        DocumentIndex::from_ast(ast)
+        DocumentIndex::from_text(source)
     }
 
     async fn make_realm(docs: &[(&str, &str)]) -> RealmIndex {

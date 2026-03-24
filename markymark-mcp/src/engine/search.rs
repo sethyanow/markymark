@@ -215,8 +215,7 @@ mod tests {
             source.push_str("` ");
         }
         source.push('\n');
-        let ast = markymark_parser::parse(&source).unwrap();
-        DocumentIndex::from_ast(ast)
+        DocumentIndex::from_text(&source)
     }
 
     #[tokio::test]

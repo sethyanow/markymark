@@ -168,34 +168,27 @@ impl RealmIndex {
     /// use [`add_document_structural`] + deferred embedding via [`semantic_index_arc`]
     /// to avoid holding outer locks during slow embedding I/O.
     pub async fn add_document(&mut self, uri: DocumentUri, index: DocumentIndex) {
-        #[cfg(feature = "embeddings")]
-        if let Some(semantic) = &self.semantic_index {
-            let mut guard = semantic.lock().await;
-            if let Err(err) = guard.add_document(uri.clone(), &index).await {
-                eprintln!(
-                    "warning: semantic indexing failed for {}: {err}",
-                    uri.as_str()
-                );
-            }
-        }
-
-        self.add_document_structural(uri, index);
+        self.add_documents(vec![(uri, index)]).await;
     }
 
-    /// Add multiple markdown documents to the realm index.
-    ///
-    /// Embeddings (when enabled) are generated in a single semantic batch,
-    /// then structural indexes are updated for each document.
+    /// Add many markdown documents to the realm index using semantic batching.
     pub async fn add_documents(&mut self, docs: Vec<(DocumentUri, DocumentIndex)>) {
+        if docs.is_empty() {
+            return;
+        }
+
         #[cfg(feature = "embeddings")]
         if let Some(semantic) = &self.semantic_index {
-            let semantic_docs = docs
+            let semantic_docs: Vec<(DocumentUri, &DocumentIndex)> = docs
                 .iter()
                 .map(|(uri, index)| (uri.clone(), index))
-                .collect::<Vec<_>>();
+                .collect();
             let mut guard = semantic.lock().await;
             if let Err(err) = guard.add_documents(semantic_docs).await {
-                eprintln!("warning: semantic indexing failed for document batch: {err}",);
+                eprintln!(
+                    "warning: semantic indexing failed for {} markdown documents: {err}",
+                    docs.len()
+                );
             }
         }
 

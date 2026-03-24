@@ -6,9 +6,7 @@ use markymark_parser::Parser;
 
 /// Helper: parse markdown and build a DocumentIndex, then extract frontmatter.
 fn parse_and_index(md: &str) -> DocumentIndex {
-    let mut parser = Parser::new().unwrap();
-    let ast = parser.parse(md).unwrap();
-    DocumentIndex::from_ast(ast)
+    DocumentIndex::from_text(md)
 }
 
 #[test]

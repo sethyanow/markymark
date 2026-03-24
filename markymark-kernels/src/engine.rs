@@ -1,13 +1,15 @@
 //! DocumentEngine FFI bindings.
 //!
 //! Wraps the Zig `marky_engine_*` C ABI functions to provide safe Rust
-//! access to the stateful document engine. The engine parses markdown,
-//! extracts headings/links/tags/block-ids, and serializes state to a
-//! flat binary blob for zero-copy transfer.
+//! access to the stateful document engine. The engine parses markdown
+//! and extracts headings/links/tags/block-ids via a structured C-ABI result.
 //!
 //! Created for marky-atsp (epic marky-io3h, Task 2).
 
+use crate::engine_ffi::{marky_engine_get_result, CEngineResult, EngineResult};
 use crate::scan::KernelError;
+
+pub use crate::engine_ffi::{convert_engine_result, EngineExtraction};
 
 // ---------------------------------------------------------------------------
 // FFI declarations
@@ -16,44 +18,8 @@ use crate::scan::KernelError;
 extern "C" {
     fn marky_engine_create(text: *const u8, text_len: u32) -> *mut std::ffi::c_void;
     fn marky_engine_update(handle: *mut std::ffi::c_void, text: *const u8, text_len: u32) -> i32;
-    fn marky_engine_get_blob(
-        handle: *mut std::ffi::c_void,
-        blob_ptr: *mut *const u8,
-        blob_len: *mut u32,
-    ) -> i32;
     fn marky_engine_destroy(handle: *mut std::ffi::c_void);
     fn marky_engine_get_content_hash(handle: *mut std::ffi::c_void) -> u64;
-}
-
-// ---------------------------------------------------------------------------
-// ScanBlob — thin view over serialized engine state
-// ---------------------------------------------------------------------------
-
-/// A borrowed view of the serialized blob from a [`DocumentEngine`].
-///
-/// The blob data is owned by the engine and valid until the next
-/// [`DocumentEngine::update`] or drop. The lifetime `'a` ties this
-/// to the engine borrow, so the borrow checker prevents use-after-update.
-#[derive(Debug)]
-pub struct ScanBlob<'a> {
-    data: &'a [u8],
-}
-
-impl<'a> ScanBlob<'a> {
-    /// Raw blob bytes.
-    pub fn data(&self) -> &[u8] {
-        self.data
-    }
-
-    /// Blob size in bytes.
-    pub fn len(&self) -> usize {
-        self.data.len()
-    }
-
-    /// Whether the blob is empty (should never be — minimum is 64-byte header).
-    pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -62,9 +28,8 @@ impl<'a> ScanBlob<'a> {
 
 /// A stateful document engine backed by Zig SIMD kernels.
 ///
-/// Parses markdown text, extracts headings, links, tags, and block IDs,
-/// and serializes the result to a flat binary blob. The engine caches
-/// the blob until the next update.
+/// Parses markdown text and extracts headings, links, tags, and block IDs.
+/// Results are accessed via the structured C-ABI [`get_result`](Self::get_result) method.
 ///
 /// # Thread Safety
 ///
@@ -85,12 +50,9 @@ pub struct DocumentEngine {
 // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage
 unsafe impl Send for DocumentEngine {}
 
-// SAFETY: `Sync` is intentionally NOT implemented. `get_blob(&self)` crosses
-// the FFI boundary into Zig's `DocumentEngine.getBlob`, which writes
-// `self.cached_blob` on a cache miss. Two threads sharing `&DocumentEngine`
-// could therefore race on that mutation, which is undefined behaviour.
-// Callers that need shared access must use `Mutex<DocumentEngine>` or
-// `RwLock<DocumentEngine>` — the surrounding `ServerState` already does this.
+// NOTE: `Sync` is not implemented. All mutation goes through `&mut self`
+// (enforced by Rust's borrow checker), and the LSP/MCP runtimes wrap
+// engines in synchronisation primitives for shared access.
 
 impl DocumentEngine {
     /// Create a new document engine from markdown text.
@@ -150,33 +112,57 @@ impl DocumentEngine {
         }
     }
 
-    /// Get the serialized blob for the current engine state.
+    /// Get a structured FFI result for the current engine state.
     ///
-    /// The blob is lazily computed on first call and cached until the next
-    /// [`update`](Self::update). The returned [`ScanBlob`] borrows `&self`,
-    /// so the borrow checker prevents calling `update` while a blob reference
-    /// is held.
-    pub fn get_blob(&self) -> Result<ScanBlob<'_>, KernelError> {
-        let mut blob_ptr: *const u8 = std::ptr::null();
-        let mut blob_len: u32 = 0;
+    /// Returned allocations are owned by [`EngineResult`] and automatically
+    /// freed on drop.
+    pub fn get_result(&self) -> Result<EngineResult, KernelError> {
+        let mut raw = CEngineResult {
+            headings: std::ptr::null_mut(),
+            links: std::ptr::null_mut(),
+            code_spans: std::ptr::null_mut(),
+            tags: std::ptr::null_mut(),
+            block_ids: std::ptr::null_mut(),
+            tasks: std::ptr::null_mut(),
+            embeds: std::ptr::null_mut(),
+            callouts: std::ptr::null_mut(),
+            block_refs: std::ptr::null_mut(),
+            query_blocks: std::ptr::null_mut(),
+            link_definitions: std::ptr::null_mut(),
+            properties: std::ptr::null_mut(),
+            xml_tags: std::ptr::null_mut(),
+            line_starts: std::ptr::null_mut(),
+            text_blob: std::ptr::null(),
+            content_hash: 0,
+            generation: 0,
+            headings_count: 0,
+            links_count: 0,
+            code_spans_count: 0,
+            tags_count: 0,
+            block_ids_count: 0,
+            tasks_count: 0,
+            embeds_count: 0,
+            callouts_count: 0,
+            block_refs_count: 0,
+            query_blocks_count: 0,
+            link_definitions_count: 0,
+            properties_count: 0,
+            xml_tags_count: 0,
+            line_starts_count: 0,
+            text_blob_len: 0,
+            token_estimate: 0,
+            _reserved: [0; 32],
+        };
 
-        // SAFETY: handle is valid, blob_ptr and blob_len are stack-local.
-        // On success, blob_ptr points into engine-owned memory valid until
-        // the next update() or destroy(). The ScanBlob lifetime is tied to
-        // &self, preventing use-after-update.
+        // SAFETY: `self.handle` is a valid handle created by marky_engine_create.
+        // `raw` is stack-owned and passed as a valid mutable pointer.
         // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
-        let rc = unsafe { marky_engine_get_blob(self.handle, &mut blob_ptr, &mut blob_len) };
-
+        let rc = unsafe { marky_engine_get_result(self.handle, &mut raw) };
         match rc {
-            0 => {
-                // SAFETY: blob_ptr is valid for blob_len bytes, owned by engine.
-                // We create a slice with lifetime tied to &self.
-                // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
-                let data = unsafe { std::slice::from_raw_parts(blob_ptr, blob_len as usize) };
-                Ok(ScanBlob { data })
-            }
+            0 => Ok(EngineResult::from_raw(raw)),
             -1 => Err(KernelError::InvalidInput),
-            -3 => Err(KernelError::InternalError(-3)),
+            -4 => Err(KernelError::InternalError(-4)),
+            -5 => Err(KernelError::InternalError(-5)),
             other => Err(KernelError::InternalError(other)),
         }
     }
@@ -224,97 +210,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_engine_lifecycle() {
-        let mut engine = DocumentEngine::new("# Hello\n").unwrap();
-        engine.update("# World\n").unwrap();
-
-        let blob = engine.get_blob().unwrap();
-        let data = blob.data();
-        assert!(data.len() >= 64, "blob must include header");
-
-        // Validate magic: 0x4D4B5343 ("MKSC") in little-endian
-        let magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-        assert_eq!(magic, 0x4D4B_5343, "blob magic mismatch");
-        // Drop cleans up
-    }
-
-    #[test]
-    fn test_engine_empty_input() {
-        let engine = DocumentEngine::new("").unwrap();
-        let blob = engine.get_blob().unwrap();
-        // Empty blob is header-only (128 bytes for v2)
-        assert_eq!(
-            blob.len(),
-            128,
-            "empty blob should be 128 bytes (v2 header only)"
-        );
-    }
-
-    #[test]
-    fn test_engine_update_changes_blob() {
-        let mut engine = DocumentEngine::new("# A\n").unwrap();
-        let blob1_len = engine.get_blob().unwrap().len();
-
-        engine.update("# B\n## C\n## D\n").unwrap();
-        let blob2_len = engine.get_blob().unwrap().len();
-
-        assert_ne!(
-            blob1_len, blob2_len,
-            "blob should change after update with different content"
-        );
-    }
-
-    #[test]
-    fn test_engine_multiple_updates() {
-        let mut engine = DocumentEngine::new("# Init\n").unwrap();
-        for i in 0..100 {
-            engine
-                .update(&format!("# Heading {i}\n[link](url) #tag\n"))
-                .unwrap();
-        }
-        // No crash, no leak — Drop cleans up
-    }
-
-    #[test]
     fn test_engine_is_send_not_sync() {
         // DocumentEngine is Send (ownership transfer across threads is safe)
-        // but deliberately NOT Sync (get_blob mutates Zig-side cached_blob,
-        // so concurrent &self access would race — marky-1n9q).
+        // but deliberately NOT Sync — all mutation is through &mut self.
         fn assert_send<T: Send>() {}
         assert_send::<DocumentEngine>();
-    }
-
-    #[test]
-    fn test_engine_blob_header_valid() {
-        let engine = DocumentEngine::new("# Hello\n[link](url) #tag ^id\n").unwrap();
-        let blob = engine.get_blob().unwrap();
-        let data = blob.data();
-
-        // Magic: 0x4D4B5343 in little-endian
-        let magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-        assert_eq!(magic, 0x4D4B_5343);
-
-        // Version: 2
-        let version = u16::from_le_bytes([data[4], data[5]]);
-        assert_eq!(version, 2);
-
-        // heading_count at offset 16 (after magic:4 + version:2 + flags:2 + content_hash:8)
-        let heading_count = u32::from_le_bytes([data[16], data[17], data[18], data[19]]);
-        assert!(
-            heading_count >= 1,
-            "should have at least 1 heading, got {heading_count}"
-        );
-    }
-
-    #[test]
-    fn test_engine_blob_caching() {
-        let engine = DocumentEngine::new("# Test\n").unwrap();
-        let blob1 = engine.get_blob().unwrap();
-        let blob2 = engine.get_blob().unwrap();
-
-        // Same cached blob — data should be identical
-        assert_eq!(blob1.data(), blob2.data());
-        assert_eq!(blob1.len(), blob2.len());
     }
 
     #[test]
@@ -323,6 +223,28 @@ mod tests {
         let debug = format!("{engine:?}");
         assert!(debug.contains("DocumentEngine"));
         assert!(debug.contains("handle_null: false"));
+    }
+
+    #[test]
+    fn test_engine_get_result_basic() {
+        let engine = DocumentEngine::new("# Hello\n\n[[Page|Alias]]\n").unwrap();
+        let result = engine.get_result().unwrap();
+        let extraction = result.to_extraction().unwrap();
+
+        assert_eq!(extraction.headings.len(), 1);
+        assert_eq!(extraction.wiki_links.len(), 1);
+        assert!(extraction.generation >= 1);
+    }
+
+    #[test]
+    fn test_engine_get_result_generation_increments() {
+        let mut engine = DocumentEngine::new("# One\n").unwrap();
+        let gen1 = engine.get_result().unwrap().as_raw().generation;
+
+        engine.update("# Two\n## Sub\n").unwrap();
+        let gen2 = engine.get_result().unwrap().as_raw().generation;
+
+        assert!(gen2 > gen1);
     }
 
     #[test]

@@ -15,6 +15,17 @@ Detailed patterns live in topic files. Historical context lives in the archive.
 
 ## Current State (2026-03-23)
 
+### marky-0xtn COMPLETE — blob serialization eliminated (PR #55)
+
+Epic closed. All 14/14 criteria verified. PR #55 targeting dev.
+CEngineResult is now the sole FFI path for all consumers (LSP, MCP, tests).
+~6,600 lines of dead code deleted across Phases 4.1-4.6.
+
+**Hollow feature note:** The `zig-kernels` feature in markymark-core is now completely
+hollow — all `cfg(feature = "zig-kernels")` references were in the deleted scanner module.
+The feature still activates the `markymark-kernels` optional dep but no code in
+markymark-core uses it. Cleanup deferred — not blocking.
+
 ### Bazel Build System (2026-03-23)
 
 Added Bazel alongside Cargo for optimized release builds with cross-language ThinLTO.
@@ -160,6 +171,13 @@ These prevent repeat mistakes. Do not remove without replacement.
 
 Running multiple `bd` commands in parallel can trigger a Dolt nil-pointer panic even with
 `BD_NO_DB=true BEADS_NO_DAEMON=1`. Run `bd` operations one-at-a-time.
+
+### Global env fault-injection hooks leak across parallel tests (2026-02-27)
+
+Using process-wide env vars to force failure paths (`set_var`/`remove_var`) causes
+cross-test contamination under Rust's parallel test runner. Unrelated tests can observe
+the injected flags and fail nondeterministically. Prefer URI-scoped or instance-scoped
+fault hooks for integration tests; avoid global mutable process state.
 
 ### Context window exhaustion from task chaining (fail-context-runaway)
 

@@ -11,13 +11,12 @@ use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
 use markymark_core::inference::InferenceProvider;
 #[cfg(feature = "semantic-search")]
 use markymark_core::prelude::{EmbedError, EmbeddingProvider};
-use markymark_core::scanner::Md4cScanBackend;
 use markymark_core::structured::DocumentKind;
 use markymark_core::{CoreError, DocumentUri};
 use markymark_index::{DocumentIndex, RealmIndex, StructuredDocumentIndex};
+use markymark_kernels::engine::DocumentEngine;
 use markymark_parser::structured::parse_structured;
 
-mod add_root;
 mod content_blocks;
 mod curation;
 mod diagnostics;
@@ -36,10 +35,15 @@ mod semantic_search;
 /// The name of the default realm created at startup.
 pub(crate) const DEFAULT_REALM: &str = "default";
 
-/// Per-realm state: index plus tracked workspace roots.
+/// Per-realm state: index, tracked workspace roots, and persistent document engines.
 pub(crate) struct RealmData {
     pub(crate) index: RealmIndex,
     pub(crate) roots: Vec<PathBuf>,
+    /// Persistent Zig document engines keyed by URI string.
+    /// `DocumentEngine` is `Send` but NOT `Sync` (raw `*mut c_void` handle).
+    /// Wrapping in `std::sync::Mutex` satisfies the `Sync` bound required by
+    /// `RwLock<HashMap<String, RealmData>>` on `RuntimeEngine`.
+    pub(crate) engines: HashMap<String, std::sync::Mutex<DocumentEngine>>,
 }
 
 impl RealmData {
@@ -48,6 +52,7 @@ impl RealmData {
         Self {
             index: build_realm_index(provider),
             roots: Vec::new(),
+            engines: HashMap::new(),
         }
     }
 
@@ -56,6 +61,7 @@ impl RealmData {
         Self {
             index: build_realm_index(),
             roots: Vec::new(),
+            engines: HashMap::new(),
         }
     }
 }
@@ -266,15 +272,182 @@ impl RuntimeEngine {
     }
 }
 
+// -- Test hooks for forced failures (debug_assertions only) --
+
+fn should_force_engine_create_fail_for_tests(uri_str: &str) -> bool {
+    cfg!(debug_assertions) && uri_str.contains("__marky_test_force_create_fail__")
+}
+
+fn should_force_engine_update_fail_for_tests(uri_str: &str) -> bool {
+    cfg!(debug_assertions) && uri_str.contains("__marky_test_force_update_fail__")
+}
+
+fn should_force_engine_result_conversion_fail_for_tests(uri_str: &str) -> bool {
+    cfg!(debug_assertions) && uri_str.contains("__marky_test_force_conversion_fail__")
+}
+
+/// Build a [`DocumentIndex`] from raw text via an ephemeral engine.
+///
+/// This is the last-resort fallback when the persistent engine fails and
+/// no stale index is cached. Panics on failure — acceptable because it's
+/// the end of the fallback chain.
+fn fallback_scan_with_frontmatter(text: &str) -> DocumentIndex {
+    DocumentIndex::from_text(text)
+}
+
+/// Build a [`DocumentIndex`] from a persistent engine for a single markdown file.
+///
+/// Creates or updates the engine for `uri_str` in `realm.engines`, then converts
+/// the engine result to a `DocumentIndex`. On failure, falls back to stale engine
+/// snapshot first, then scan path if no stale state exists.
+fn build_markdown_index_via_engine(
+    realm: &mut RealmData,
+    uri: &DocumentUri,
+    source: &str,
+) -> Option<DocumentIndex> {
+    let uri_str = uri.as_str();
+    let has_stale_index = realm.index.get_document(uri).is_some();
+
+    let (fm, aliases) = markymark_index::parse_frontmatter_owned(source);
+    let masked = markymark_index::mask_frontmatter(source);
+
+    if let Some(engine_mutex) = realm.engines.get(uri_str) {
+        // Engine exists — update it.
+        let mut engine = match engine_mutex.lock() {
+            Ok(guard) => guard,
+            Err(_poisoned) => {
+                log::warn!(
+                    target: "markymark_mcp",
+                    "engine mutex poisoned for {}",
+                    uri_str
+                );
+                return if has_stale_index {
+                    None
+                } else {
+                    Some(fallback_scan_with_frontmatter(source))
+                };
+            }
+        };
+        let update_result = if should_force_engine_update_fail_for_tests(uri_str) {
+            Err("forced engine update failure (test hook)".to_string())
+        } else {
+            engine
+                .update(&masked)
+                .map_err(|e| format!("engine update failed: {e:?}"))
+        };
+
+        match update_result {
+            Ok(()) => {
+                match index_from_engine_result(uri_str, &engine, fm.clone(), aliases.clone(), source.to_string()) {
+                    Ok(index) => return Some(index),
+                    Err(e) => {
+                        log::warn!(
+                            target: "markymark_mcp",
+                            "engine result conversion failed for {}: {}, trying stale fallback",
+                            uri_str, e
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    target: "markymark_mcp",
+                    "{} for {}, trying stale engine snapshot",
+                    e, uri_str
+                );
+            }
+        }
+
+        // Stale engine snapshot fallback — get_result() returns last successful parse.
+        match index_from_engine_result(uri_str, &engine, fm.clone(), aliases.clone(), source.to_string()) {
+            Ok(index) => return Some(index),
+            Err(e) => {
+                log::warn!(
+                    target: "markymark_mcp",
+                    "stale engine snapshot failed for {}: {}",
+                    uri_str, e
+                );
+            }
+        }
+    } else {
+        // No engine yet — create one with masked text.
+        if should_force_engine_create_fail_for_tests(uri_str) {
+            log::warn!(
+                target: "markymark_mcp",
+                "forced engine create failure (test hook) for {}",
+                uri_str
+            );
+        } else {
+            match DocumentEngine::new(&masked) {
+                Ok(engine) => {
+                    let built = index_from_engine_result(uri_str, &engine, fm, aliases, source.to_string());
+                    realm
+                        .engines
+                        .insert(uri_str.to_string(), std::sync::Mutex::new(engine));
+                    match built {
+                        Ok(index) => return Some(index),
+                        Err(e) => {
+                            log::warn!(
+                                target: "markymark_mcp",
+                                "engine result conversion failed (new engine) for {}: {}, using fallback",
+                                uri_str, e
+                            );
+                        }
+                    }
+                }
+                Err(e) => log::warn!(
+                    target: "markymark_mcp",
+                    "engine create failed for {}: {:?}",
+                    uri_str, e
+                ),
+            }
+        }
+    }
+
+    // Final fallback: stale index (None preserves existing) or scan path.
+    if has_stale_index {
+        None
+    } else {
+        Some(fallback_scan_with_frontmatter(source))
+    }
+}
+
+/// Convert engine result to a DocumentIndex with frontmatter and source text.
+///
+/// When `source` is provided, the resulting index retains source text for
+/// `block_text()` and extracts content blocks via tree-sitter block parsing.
+fn index_from_engine_result(
+    uri_str: &str,
+    engine: &DocumentEngine,
+    frontmatter: Vec<markymark_index::FrontmatterOwnedEntry>,
+    aliases: Vec<String>,
+    source: String,
+) -> Result<DocumentIndex, String> {
+    let result = engine
+        .get_result()
+        .map_err(|e| format!("get_result failed: {e:?}"))?;
+    if should_force_engine_result_conversion_fail_for_tests(uri_str) {
+        return Err("forced engine result conversion failure (test hook)".to_string());
+    }
+    let extraction = result
+        .to_extraction()
+        .map_err(|e| format!("to_extraction failed: {e:?}"))?;
+    Ok(DocumentIndex::from_engine_result_with_source(
+        &extraction,
+        frontmatter,
+        aliases,
+        source,
+    ))
+}
+
 /// Index all markdown files under a root into a realm.
 ///
-/// Markdown documents use the Zig scan path (`from_scan_with_frontmatter`) for
-/// full extraction including code spans, tasks, embeds, callouts, etc.
-/// Frontmatter is parsed directly from source text (no tree-sitter needed).
+/// Markdown documents use persistent Zig DocumentEngines for extraction via
+/// CEngineResult. Each file gets a persistent engine in `realm.engines`.
+/// On engine failure, falls back to stale engine snapshot, then scan path.
 /// Structured documents (JSON, YAML, TOML, etc.) still use tree-sitter via
 /// `StructuredDocumentIndex::from_ast`.
 pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
-    let backend = Md4cScanBackend;
     let documents = helpers::collect_documents(root);
     let mut markdown_docs = Vec::new();
 
@@ -287,28 +460,10 @@ pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
         let uri = DocumentUri::from_file_path(&path);
 
         if kind == DocumentKind::Markdown {
-            let (fm_owned, aliases_owned) = markymark_index::parse_frontmatter_owned(&source);
-
-            // Extract content blocks via tree-sitter block-tree parse.
-            // This runs only the block grammar (no inline parsing), so it's
-            // lightweight. The blocks feed into from_scan_inner alongside
-            // md4c-extracted headings, links, and inline elements.
-            let raw_blocks = markymark_index::document::extract_raw_content_blocks(&source);
-
-            // Mask frontmatter block so md4c doesn't misparse `---` as a
-            // setext heading underline. Replace non-newline bytes with spaces
-            // to preserve line counting and byte offsets.
-            let scan_source = markymark_index::mask_frontmatter(&source);
-            markdown_docs.push((
-                uri,
-                DocumentIndex::from_scan_with_blocks(
-                    &scan_source,
-                    &backend,
-                    fm_owned,
-                    aliases_owned,
-                    raw_blocks,
-                ),
-            ));
+            if let Some(index) = build_markdown_index_via_engine(realm, &uri, &source) {
+                markdown_docs.push((uri, index));
+            }
+            // None means stale index preserved — skip re-adding.
         } else {
             let ast = match parse_structured(&source, kind) {
                 Ok(ast) => ast,
@@ -325,7 +480,7 @@ pub(crate) async fn index_root_into_realm(root: &Path, realm: &mut RealmData) {
     }
 }
 
-/// Remove all documents under a root from a realm's index.
+/// Remove all documents under a root from a realm's index and clean up engines.
 pub(crate) async fn unindex_root_from_realm(root: &Path, realm: &mut RealmData) {
     let prefix = DocumentUri::from_file_path(root);
     let prefix_str = prefix.as_str();
@@ -338,8 +493,10 @@ pub(crate) async fn unindex_root_from_realm(root: &Path, realm: &mut RealmData) 
         .map(|(uri, _)| uri.clone())
         .collect();
 
-    for uri in to_remove {
-        realm.index.remove_document(&uri).await;
+    for uri in &to_remove {
+        realm.index.remove_document(uri).await;
+        // Clean up persistent engine — DocumentEngine::drop calls marky_engine_destroy.
+        realm.engines.remove(uri.as_str());
     }
 }
 
@@ -425,7 +582,37 @@ impl CoreEngine for RuntimeEngine {
                 let mut state = self.state.write().await;
                 realm_ops::handle_destroy_realm(&mut state, name)
             }
-            CoreOperation::AddRoot { realm, root } => self.handle_add_root(realm, root).await,
+            CoreOperation::AddRoot { realm, root } => {
+                // Phase 1: validate and register root (write lock, fast sync).
+                {
+                    let mut state = self.state.write().await;
+                    if let Err(e) = realm_ops::validate_and_register_root(&mut state, &realm, &root)
+                    {
+                        return CoreOperationResult::Error(e);
+                    }
+                } // write lock released
+
+                // Index all documents under the root using persistent engines.
+                // This holds the write lock during file I/O — acceptable because
+                // AddRoot is rare (user-initiated) and startup uses the same pattern.
+                let mut state = self.state.write().await;
+                let realm_data = match state.get_mut(&realm) {
+                    Some(data) => data,
+                    None => {
+                        return CoreOperationResult::Error(CoreError::Message(format!(
+                            "realm not found after registration: {realm}"
+                        )));
+                    }
+                };
+
+                index_root_into_realm(&root, realm_data).await;
+
+                CoreOperationResult::RealmInfo {
+                    name: realm.clone(),
+                    root_count: realm_data.roots.len(),
+                    document_count: realm_data.index.document_count(),
+                }
+            }
             CoreOperation::RemoveRoot { realm, root } => {
                 let mut state = self.state.write().await;
                 realm_ops::handle_remove_root(&mut state, realm, root).await

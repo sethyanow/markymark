@@ -24,12 +24,6 @@ const freeTags = doc.freeTags;
 const freeBlockIds = doc.freeBlockIds;
 const freeStoredHeadingsList = doc.freeStoredHeadingsList;
 const freeStoredLinksList = doc.freeStoredLinksList;
-const blob = @import("blob.zig");
-
-// Import blob tests
-test {
-    _ = @import("blob.zig");
-}
 
 // --- Extraction correctness ---
 
@@ -130,79 +124,6 @@ test "test_byte_offset_to_position" {
     try testing.expectEqual(@as(u32, 2), p2.col);
 }
 
-// --- Blob serialization ---
-
-test "test_blob_header" {
-    const input = "# Hello\n";
-    var engine = try DocumentEngine.create(input, testing.allocator);
-    defer engine.destroy();
-
-    const blob_data = try engine.getBlob();
-    const header = blob.readHeader(blob_data);
-
-    try testing.expectEqual(blob.BLOB_MAGIC, header.magic);
-    try testing.expectEqual(blob.BLOB_VERSION, header.version);
-    try testing.expectEqual(@as(u32, 1), header.heading_count);
-    try testing.expectEqual(@as(u32, 0), header.link_count);
-}
-
-test "test_blob_text_pool" {
-    const input = "# Hello\n";
-    var engine = try DocumentEngine.create(input, testing.allocator);
-    defer engine.destroy();
-
-    const blob_data = try engine.getBlob();
-    const header = blob.readHeader(blob_data);
-    const offsets = blob.computeSectionOffsets(header).?;
-
-    // Read the heading from the blob
-    const bh = try blob.readStruct(blob.BlobHeading, blob_data, offsets.headings);
-    try testing.expectEqual(@as(u8, 1), bh.level);
-
-    // Verify text pool contains "Hello"
-    const text_start = offsets.text_pool + bh.text_off;
-    const text_end = text_start + bh.text_len;
-    try testing.expectEqualStrings("Hello", blob_data[text_start..text_end]);
-
-    // Verify text pool contains slug "hello"
-    const slug_start = offsets.text_pool + bh.slug_off;
-    const slug_end = slug_start + bh.slug_len;
-    try testing.expectEqualStrings("hello", blob_data[slug_start..slug_end]);
-}
-
-test "test_blob_empty_document" {
-    const input = "";
-    var engine = try DocumentEngine.create(input, testing.allocator);
-    defer engine.destroy();
-
-    const blob_data = try engine.getBlob();
-    // Empty document blob is header only (128 bytes for v2)
-    try testing.expectEqual(@as(usize, 128), blob_data.len);
-
-    const header = blob.readHeader(blob_data);
-    try testing.expectEqual(@as(u32, 0), header.heading_count);
-    try testing.expectEqual(@as(u32, 0), header.link_count);
-    try testing.expectEqual(@as(u32, 0), header.tag_count);
-    try testing.expectEqual(@as(u32, 0), header.block_id_count);
-}
-
-test "test_blob_validate_rejects_bad_magic" {
-    var buf: [128]u8 = .{0} ** 128;
-    std.mem.writeInt(u32, buf[0..4], 0xDEADBEEF, .little);
-    try testing.expectError(error.InvalidMagic, blob.validateBlob(&buf));
-}
-
-test "test_blob_validates_after_serialize" {
-    const input = "# Title\n\n[link](url.md) #tag ^block\n";
-    var engine = try DocumentEngine.create(input, testing.allocator);
-    defer engine.destroy();
-
-    const blob_data = try engine.getBlob();
-    const header = try blob.validateBlob(blob_data);
-    try testing.expectEqual(blob.BLOB_MAGIC, header.magic);
-    try testing.expectEqual(blob.BLOB_VERSION, header.version);
-}
-
 // --- Update ---
 
 test "test_update_replaces_state" {
@@ -212,22 +133,6 @@ test "test_update_replaces_state" {
     try testing.expectEqualStrings("A", engine.headings[0].text);
     try engine.update("# B\n");
     try testing.expectEqualStrings("B", engine.headings[0].text);
-}
-
-test "test_update_invalidates_blob" {
-    var engine = try DocumentEngine.create("# A\n", testing.allocator);
-    defer engine.destroy();
-
-    const blob1 = try engine.getBlob();
-    const blob1_len = blob1.len;
-
-    try engine.update("# B\n## C\n");
-    // Blob should be invalidated
-    try testing.expectEqual(@as(?[]u8, null), engine.cached_blob);
-
-    const blob2 = try engine.getBlob();
-    // New blob should be different (more headings = larger)
-    try testing.expect(blob2.len != blob1_len or blob2.ptr != blob1.ptr);
 }
 
 test "test_update_changes_counts" {
@@ -327,33 +232,6 @@ test "tags inside code blocks are filtered" {
     try testing.expectEqualStrings("visible", engine.tags[0].name);
 }
 
-test "getBlob caches result" {
-    var engine = try DocumentEngine.create("# Test\n", testing.allocator);
-    defer engine.destroy();
-
-    const blob1 = try engine.getBlob();
-    const blob2 = try engine.getBlob();
-    // Same pointer — cached
-    try testing.expectEqual(blob1.ptr, blob2.ptr);
-}
-
-test "blob line_starts roundtrip" {
-    const input = "# Line1\nLine2\n";
-    var engine = try DocumentEngine.create(input, testing.allocator);
-    defer engine.destroy();
-
-    const blob_data = try engine.getBlob();
-    const header = blob.readHeader(blob_data);
-    const offsets = blob.computeSectionOffsets(header).?;
-
-    // Read line_starts from blob
-    for (0..header.line_count) |i| {
-        const offset = offsets.line_starts + @as(u32, @intCast(i)) * @sizeOf(u32);
-        const ls = std.mem.readInt(u32, blob_data[offset..][0..4], .little);
-        try testing.expectEqual(engine.line_starts[i], ls);
-    }
-}
-
 test "slugifyText truncated slug returns content not empty string" {
     // When heading text produces >512 slug bytes, slugify() returns -2 (truncated).
     // The output buffer holds 512 valid bytes. Fix: return out[0..512], not "".
@@ -422,28 +300,6 @@ test "slugifyText truncated heading via DocumentEngine is non-empty" {
 }
 
 // --- marky-wdnc: defense-in-depth guards ---
-
-test "H2: serializeState returns OutOfMemory for oversized element counts" {
-    // Construct a DocumentEngine with a fake oversized headings slice.
-    // Uses the many-pointer trick (MEMORY.md): [*] slicing has no bounds check,
-    // and the guard fires before any data access so the fake pointer is never
-    // dereferenced.
-    var engine = try DocumentEngine.create("", testing.allocator);
-    defer engine.destroy();
-
-    // Save original empty headings and replace with fake oversized slice
-    const original_headings = engine.headings;
-    var sentinel: StoredHeading = undefined;
-    const p: [*]StoredHeading = @ptrCast(&sentinel);
-    const huge_len = @as(usize, std.math.maxInt(u32)) + 1;
-    engine.headings = p[0..huge_len];
-
-    // getBlob → serializeState should return OutOfMemory from the guard
-    try testing.expectError(error.OutOfMemory, engine.getBlob());
-
-    // Restore original before destroy to avoid freeing fake pointer
-    engine.headings = original_headings;
-}
 
 test "H4: FENCE_MAP_MAX constant has expected value" {
     try testing.expectEqual(@as(u32, 256), doc.FENCE_MAP_MAX);
@@ -591,30 +447,6 @@ test "engine code span positions are correct" {
     try testing.expectEqual(@as(u32, 0), engine.code_spans[0].start.col);
 }
 
-test "engine code span blob roundtrip" {
-    const engine = try DocumentEngine.create("Hello `world` end", testing.allocator);
-    defer engine.destroy();
-
-    const blob_data = try engine.getBlob();
-    // Validate the blob has code_span_count in header
-    const header = blob.readHeader(blob_data);
-    try testing.expectEqual(@as(u32, 1), header.code_span_count);
-    try testing.expectEqual(@as(u32, 0), header.heading_count);
-
-    // Verify blob validates successfully
-    const validated = try blob.validateBlob(blob_data);
-    try testing.expectEqual(@as(u32, 1), validated.code_span_count);
-}
-
-test "engine code span blob roundtrip empty" {
-    const engine = try DocumentEngine.create("No code here", testing.allocator);
-    defer engine.destroy();
-
-    const blob_data = try engine.getBlob();
-    const header = blob.readHeader(blob_data);
-    try testing.expectEqual(@as(u32, 0), header.code_span_count);
-}
-
 test "engine update preserves code spans" {
     const engine = try DocumentEngine.create("`a`", testing.allocator);
     defer engine.destroy();
@@ -641,17 +473,6 @@ test "engine extracts XML tags from block-level HTML" {
     try testing.expect(!engine.xml_tags[0].is_unclosed);
     // Position info populated
     try testing.expect(engine.xml_tags[0].end.line > 0 or engine.xml_tags[0].end.col > 0);
-}
-
-test "engine xml_tags blob serialization roundtrip" {
-    const blob_mod = @import("blob.zig");
-
-    var engine = try DocumentEngine.create("<tag>\n\ntext\n\n</tag>\n", testing.allocator);
-    defer engine.destroy();
-
-    const blob_data = try engine.getBlob();
-    const header = blob_mod.readHeader(blob_data);
-    try testing.expectEqual(@as(u32, 1), header.xml_tag_count);
 }
 
 test "engine xml_tags empty document has no xml_tags" {

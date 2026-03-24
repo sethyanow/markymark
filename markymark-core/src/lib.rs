@@ -161,7 +161,6 @@ pub mod engine;
 pub mod frontmatter;
 pub mod graph_traits;
 pub mod inference;
-pub mod scanner;
 pub mod sidecar;
 pub mod structured;
 
@@ -173,9 +172,6 @@ pub mod prelude {
 
     pub use crate::embeddings::{EmbedError, EmbeddingProvider};
     pub use crate::inference::{InferenceError, InferenceProvider};
-    #[cfg(feature = "zig-kernels")]
-    pub use crate::scanner::ZigScanBackend;
-    pub use crate::scanner::{ScanAllResult, ScanBackend, ScanError};
     pub use crate::structured::{DocumentKind, KeyEntry, StructuredAst, ValueKind};
     pub use crate::{CoreError, CoreResult, DocumentUri, Position, Range};
 }

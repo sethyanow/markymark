@@ -507,8 +507,8 @@ async fn test_incremental_no_change_for_unknown_uri() {
 }
 
 // ── Engine parity tests (marky-n78f) ─────────────────────────────────────────
-// These tests verify that open_document produces correct index data. They pass
-// now (via from_scan) and must continue to pass after migration (via from_blob).
+// These tests verify that open_document produces correct index data via
+// the CEngineResult pipeline (from_engine_result).
 
 #[tokio::test]
 async fn test_engine_parity_headings() {
@@ -593,6 +593,86 @@ async fn test_engine_parity_block_ids() {
 }
 
 #[tokio::test]
+async fn test_engine_result_path_indexes_markdown_features() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new("file:///test/engine-result.md").unwrap();
+    state
+        .open_document(
+            uri.clone(),
+            "# Title\n\nSee [[target]] and #tag.\n\n- [ ] todo\n\nline ^block\n".to_string(),
+        )
+        .await;
+
+    let index = state.get_document_index(&uri).unwrap();
+    assert_eq!(index.headings().len(), 1);
+    assert_eq!(index.headings()[0].text, "Title");
+    assert_eq!(index.wiki_links().len(), 1);
+    assert_eq!(index.wiki_links()[0].target, "target");
+    assert_eq!(index.tags().len(), 1);
+    assert_eq!(index.tags()[0].name, "tag");
+    assert!(
+        index.block_by_id("block").is_some(),
+        "block id should be indexed"
+    );
+}
+
+#[tokio::test]
+async fn test_update_failure_returns_stale_index_not_empty() {
+    let mut state = ServerState::new();
+    let uri =
+        DocumentUri::new("file:///test/__marky_test_force_update_fail__/stale-update-fallback.md")
+            .unwrap();
+
+    state
+        .open_document(uri.clone(), "# Initial\n\nSome text #keep\n".to_string())
+        .await;
+    let before = state.get_document_index(&uri).unwrap();
+    assert_eq!(before.headings()[0].text, "Initial");
+    assert_eq!(before.tags()[0].name, "keep");
+
+    state.change_document(&uri, String::new()).await;
+
+    let after = state.get_document_index(&uri).unwrap();
+    assert!(
+        !after.headings().is_empty(),
+        "stale fallback should preserve prior non-empty index"
+    );
+    assert_eq!(after.headings()[0].text, "Initial");
+    assert_eq!(after.tags()[0].name, "keep");
+}
+
+#[tokio::test]
+async fn test_result_conversion_failure_uses_fallback_path() {
+    let mut state = ServerState::new();
+    let uri = DocumentUri::new(
+        "file:///test/__marky_test_force_conversion_fail__/conversion-fallback.md",
+    )
+    .unwrap();
+
+    state
+        .open_document(uri.clone(), "# Old\n\nOld body #old\n".to_string())
+        .await;
+    let before = state.get_document_index(&uri).unwrap();
+    assert_eq!(before.headings()[0].text, "Old");
+
+    state
+        .change_document(&uri, "# New\n\nNew body #new\n".to_string())
+        .await;
+
+    let after = state.get_document_index(&uri).unwrap();
+    assert_eq!(
+        after.headings()[0].text,
+        "Old",
+        "conversion failure should keep stale index via fallback path"
+    );
+    let tag_names: Vec<_> = after.tags().iter().map(|t| t.name).collect();
+    assert!(
+        tag_names.contains(&"old"),
+        "fallback index should preserve previous tags"
+    );
+}
+
+#[tokio::test]
 async fn test_engine_lifecycle_open_and_close() {
     // Open a document → index is available. Close → index gone. Engine lifecycle.
     let mut state = ServerState::new();
@@ -651,20 +731,16 @@ async fn test_frontmatter_preserved_in_index() {
     assert_eq!(index.headings()[0].text, "Real Heading");
 }
 
-/// Regression test for marky-mh1p: the scan-based fallback path (used when the
-/// Zig engine fails) must also preserve frontmatter and mask `---` delimiters.
-/// This directly exercises `fallback_scan_with_frontmatter`'s logic.
+/// Regression test for marky-mh1p: the fallback path (used when the Zig engine
+/// fails) must preserve frontmatter and mask `---` delimiters.
+/// This exercises the from_text convenience constructor used by the fallback.
 #[tokio::test]
 async fn test_frontmatter_preserved_via_scan_fallback_path() {
-    use markymark_core::scanner::Md4cScanBackend;
-    use markymark_index::{mask_frontmatter, parse_frontmatter_owned, DocumentIndex};
+    use markymark_index::DocumentIndex;
 
     let text = "---\ntitle: Fallback Test\naliases: [fb1, fb2]\ntags: [scan, fallback]\n---\n\n# Only Heading\n\nSome body text.\n";
 
-    // Reproduce the exact fallback_scan_with_frontmatter logic:
-    let (fm, aliases) = parse_frontmatter_owned(text);
-    let masked = mask_frontmatter(text);
-    let index = DocumentIndex::from_scan_with_frontmatter(&masked, &Md4cScanBackend, fm, aliases);
+    let index = DocumentIndex::from_text(text);
 
     // Frontmatter must be present with correct key/value.
     assert!(

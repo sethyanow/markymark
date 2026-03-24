@@ -6,11 +6,13 @@
 
 const std = @import("std");
 const DocumentEngine = @import("document.zig").DocumentEngine;
-const blob = @import("blob.zig");
+const result_ffi = @import("ffi_types.zig");
+const get_result = @import("get_result.zig");
 
 /// Allocator used for engine heap allocations.
 /// page_allocator is the simplest choice for long-lived, FFI-owned memory.
 const engine_allocator = std.heap.page_allocator;
+pub const CEngineResult = result_ffi.CEngineResult;
 
 // ── Export functions ──────────────────────────────────────────────────
 
@@ -48,38 +50,30 @@ export fn marky_engine_update(handle: ?*anyopaque, text: ?[*]const u8, text_len:
     return 0;
 }
 
-/// Get the serialized blob for the current engine state.
-///
-/// On success, writes blob pointer and length to the output parameters.
-/// The blob memory is owned by the engine — valid until next update() or destroy().
-/// Caller must NOT free the returned pointer.
+/// Get a CEngineResult snapshot for the current engine state.
 ///
 /// Returns:
-///   0  — success (blob_ptr and blob_len set)
-///  -1  — invalid input (null handle or null output pointers)
-///  -3  — allocation failure (out of memory during serialization)
-///  -4  — parse failure (md4c error during serialization)
-///  -5  — blob size overflow (exceeds u32 max)
-export fn marky_engine_get_blob(
-    handle: ?*anyopaque,
-    blob_ptr: ?*[*]const u8,
-    blob_len: ?*u32,
-) i32 {
+///   0  — success
+///  -1  — invalid input (null handle or null output pointer)
+///  -4  — allocation failure (out of memory)
+///  -5  — overflow (text blob/counts exceed u32 max)
+export fn marky_engine_get_result(handle: ?*anyopaque, out: ?*CEngineResult) i32 {
     const engine = castHandle(handle) orelse return -1;
-    const out_ptr = blob_ptr orelse return -1;
-    const out_len = blob_len orelse return -1;
+    const out_result = out orelse return -1;
 
-    const data = engine.getBlob() catch |e| return switch (e) {
-        error.OutOfMemory => @as(i32, -3),
-        error.ParseFailed => @as(i32, -4),
+    get_result.getResult(engine, out_result) catch |e| return switch (e) {
+        error.OutOfMemory => @as(i32, -4),
+        error.Overflow => @as(i32, -5),
     };
-
-    // Defense-in-depth: blobs are bounded by u32 throughout (computeBlobSize returns ?u32),
-    // so this can only trigger on 64-bit if somehow >4 GB of blob data is produced.
-    if (data.len > std.math.maxInt(u32)) return @as(i32, -5);
-    out_ptr.* = data.ptr;
-    out_len.* = @intCast(data.len);
     return 0;
+}
+
+/// Free all allocations attached to a CEngineResult.
+///
+/// Passing null is a no-op. Result is zeroed after free so double-free is safe.
+export fn marky_engine_free_result(result: ?*CEngineResult) void {
+    const r = result orelse return;
+    get_result.freeResult(r);
 }
 
 /// Get the content hash for the current engine state.
@@ -174,67 +168,67 @@ test "engine_update_null_text_nonzero_len" {
     try testing.expectEqual(@as(i32, -1), rc);
 }
 
-test "engine_get_blob_basic" {
+test "engine_get_result_basic" {
+    const text = "# Heading\n\n[[Page|Alias]]\n";
+    const handle = marky_engine_create(text.ptr, @intCast(text.len));
+    try testing.expect(handle != null);
+    defer marky_engine_destroy(handle);
+
+    var result: CEngineResult = std.mem.zeroes(CEngineResult);
+    defer marky_engine_free_result(&result);
+
+    const rc = marky_engine_get_result(handle, &result);
+    try testing.expectEqual(@as(i32, 0), rc);
+    try testing.expectEqual(@as(u32, 1), result.headings_count);
+    try testing.expectEqual(@as(u32, 1), result.links_count);
+    try testing.expect(result.text_blob_len > 0);
+    try testing.expect(result.generation >= 1);
+}
+
+test "engine_get_result_null_checks" {
     const text = "# Hello\n";
     const handle = marky_engine_create(text.ptr, @intCast(text.len));
     try testing.expect(handle != null);
     defer marky_engine_destroy(handle);
 
-    var blob_ptr: [*]const u8 = undefined;
-    var blob_len: u32 = undefined;
-    const rc = marky_engine_get_blob(handle, &blob_ptr, &blob_len);
-    try testing.expectEqual(@as(i32, 0), rc);
-    try testing.expect(blob_len >= @sizeOf(blob.ScanBlobHeader));
-
-    // Validate header magic and version
-    const header = blob.readHeader(blob_ptr[0..blob_len]);
-    try testing.expectEqual(blob.BLOB_MAGIC, header.magic);
-    try testing.expectEqual(blob.BLOB_VERSION, header.version);
-    try testing.expect(header.heading_count >= 1);
+    var result: CEngineResult = std.mem.zeroes(CEngineResult);
+    try testing.expectEqual(@as(i32, -1), marky_engine_get_result(null, &result));
+    try testing.expectEqual(@as(i32, -1), marky_engine_get_result(handle, null));
 }
 
-test "engine_get_blob_null_handle" {
-    var blob_ptr: [*]const u8 = undefined;
-    var blob_len: u32 = undefined;
-    const rc = marky_engine_get_blob(null, &blob_ptr, &blob_len);
-    try testing.expectEqual(@as(i32, -1), rc);
+test "engine_get_result_generation_increments_on_update" {
+    const text = "# One\n";
+    const handle = marky_engine_create(text.ptr, @intCast(text.len));
+    try testing.expect(handle != null);
+    defer marky_engine_destroy(handle);
+
+    var result1: CEngineResult = std.mem.zeroes(CEngineResult);
+    defer marky_engine_free_result(&result1);
+    try testing.expectEqual(@as(i32, 0), marky_engine_get_result(handle, &result1));
+    const gen1 = result1.generation;
+    try testing.expect(gen1 >= 1);
+
+    const updated = "# Two\n## Sub\n";
+    try testing.expectEqual(@as(i32, 0), marky_engine_update(handle, updated.ptr, @intCast(updated.len)));
+
+    var result2: CEngineResult = std.mem.zeroes(CEngineResult);
+    defer marky_engine_free_result(&result2);
+    try testing.expectEqual(@as(i32, 0), marky_engine_get_result(handle, &result2));
+    try testing.expect(result2.generation > gen1);
 }
 
-test "engine_get_blob_null_output_ptrs" {
+test "engine_free_result_null_and_double_free_safe" {
+    marky_engine_free_result(null);
+
     const text = "# Test\n";
     const handle = marky_engine_create(text.ptr, @intCast(text.len));
     try testing.expect(handle != null);
     defer marky_engine_destroy(handle);
 
-    // Null blob_ptr
-    var blob_len: u32 = undefined;
-    try testing.expectEqual(@as(i32, -1), marky_engine_get_blob(handle, null, &blob_len));
-
-    // Null blob_len
-    var blob_ptr: [*]const u8 = undefined;
-    try testing.expectEqual(@as(i32, -1), marky_engine_get_blob(handle, &blob_ptr, null));
-
-    // Both null
-    try testing.expectEqual(@as(i32, -1), marky_engine_get_blob(handle, null, null));
-}
-
-test "engine_get_blob_caching" {
-    const text = "# Cached\n";
-    const handle = marky_engine_create(text.ptr, @intCast(text.len));
-    try testing.expect(handle != null);
-    defer marky_engine_destroy(handle);
-
-    var ptr1: [*]const u8 = undefined;
-    var len1: u32 = undefined;
-    try testing.expectEqual(@as(i32, 0), marky_engine_get_blob(handle, &ptr1, &len1));
-
-    var ptr2: [*]const u8 = undefined;
-    var len2: u32 = undefined;
-    try testing.expectEqual(@as(i32, 0), marky_engine_get_blob(handle, &ptr2, &len2));
-
-    // Same cached blob — pointer and length should match
-    try testing.expectEqual(ptr1, ptr2);
-    try testing.expectEqual(len1, len2);
+    var result: CEngineResult = std.mem.zeroes(CEngineResult);
+    try testing.expectEqual(@as(i32, 0), marky_engine_get_result(handle, &result));
+    marky_engine_free_result(&result);
+    marky_engine_free_result(&result);
 }
 
 test "engine_lifecycle" {
@@ -262,14 +256,12 @@ test "engine_lifecycle" {
         try testing.expectEqual(@as(i32, 0), rc);
     }
 
-    // Get blob after all updates — should be valid
-    var blob_ptr: [*]const u8 = undefined;
-    var blob_len: u32 = undefined;
-    const rc = marky_engine_get_blob(handle, &blob_ptr, &blob_len);
+    // Get result after all updates — should be valid
+    var result: CEngineResult = undefined;
+    const rc = marky_engine_get_result(handle, &result);
     try testing.expectEqual(@as(i32, 0), rc);
+    defer marky_engine_free_result(&result);
 
-    // Validate header
-    const header = blob.readHeader(blob_ptr[0..blob_len]);
-    try testing.expectEqual(blob.BLOB_MAGIC, header.magic);
-    try testing.expectEqual(blob.BLOB_VERSION, header.version);
+    // Should reflect the last update's content ("# Final\n")
+    try testing.expectEqual(@as(u32, 1), result.headings_count);
 }

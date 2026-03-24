@@ -1,15 +1,8 @@
 use markymark_index::DocumentIndex;
-use markymark_parser::Parser;
 
-// Types used indirectly via DocumentIndex methods:
-// HeadingEntry, ContentBlock, TocEntry, OutlineNode,
-// WikiLinkEntry, TagEntry, MarkdownLinkEntry
-
-/// Helper: parse markdown source and build a DocumentIndex.
+/// Helper: build a DocumentIndex from raw text via the engine path.
 fn index_from(source: &str) -> DocumentIndex {
-    let mut parser = Parser::new().expect("parser init");
-    let ast = parser.parse(source).expect("parse");
-    DocumentIndex::from_ast(ast)
+    DocumentIndex::from_text(source)
 }
 
 // ---------------------------------------------------------------------------
@@ -57,7 +50,10 @@ fn test_heading_slug_generation() {
     let headings = idx.headings();
 
     assert_eq!(headings[0].slug, "hello-world");
-    assert_eq!(headings[1].slug, "special-chrs");
+    // Engine slugifies @ as '-' (then dash-collapse produces "special-ch-rs")
+    // vs the Rust slugify which strips @ entirely ("special-chrs").
+    // Engine behavior is canonical since LSP/MCP use it.
+    assert_eq!(headings[1].slug, "special-ch-rs");
     assert_eq!(headings[2].slug, "already-slugged");
 }
 

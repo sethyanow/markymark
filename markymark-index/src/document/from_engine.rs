@@ -1,31 +1,10 @@
-//! [`DocumentIndex::from_blob`] — construct index from Zig engine binary blob.
-//!
-//! Reads the flat binary format produced by the Zig [`DocumentEngine`] and
-//! constructs a [`DocumentIndex`] with the same content as [`from_scan`] for
-//! the same input document.
-//!
-//! # Blob format (from `zig/src/engine/blob.zig`)
-//!
-//! ```text
-//! [ScanBlobHeader: 64 bytes (v1) | 128 bytes (v2)]
-//!   magic(4) version(2) flags(2) content_hash(8)
-//!   heading_count(4) link_count(4) tag_count(4) block_id_count(4)
-//!   line_count(4) text_pool_size(4) token_estimate(4) total_blob_size(4)
-//!   code_span_count(4@48), v2-only counts at 52..84, reserved bytes through 127
-//! [BlobHeading × heading_count: 40 bytes each]
-//! [BlobLink    × link_count:    40 bytes each]
-//! [BlobTag     × tag_count:     24 bytes each]
-//! [BlobBlockId × block_id_count: 28 bytes each]
-//! [u32         × line_count]    (line_starts — not needed, positions pre-computed)
-//! [u8          × text_pool_size] (contiguous text pool)
-//! ```
-//!
-//! [`from_scan`]: super::DocumentIndex::from_scan
+//! [`DocumentIndex::from_engine_result`] — construct index from CEngineResult conversion.
 
 use bumpalo::collections::Vec as BumpVec;
 use hashbrown::HashMap;
 use markymark_core::arena::{arena_alloc_str, DocumentArena};
 use markymark_core::{Position, Range};
+use markymark_kernels::engine::{DocumentEngine, EngineExtraction};
 
 use super::{
     helpers, BlockKind, BlockRefEntry, CalloutEntry, CodeSpanEntry, ContentBlock,
@@ -35,87 +14,182 @@ use super::{
     XmlTagEntry,
 };
 
-mod decode;
-mod header;
-mod owned;
-use self::decode::decode_owned_data;
-pub use self::header::BlobError;
-use self::header::*;
-use self::owned::DecodedOwnedData;
+/// Intermediate content block from tree-sitter block-tree parse.
+struct RawBlock {
+    kind: BlockKind,
+    start_byte: usize,
+    end_byte: usize,
+    start_row: u32,
+    start_col: u32,
+    end_row: u32,
+    end_col: u32,
+}
 
-// ---------------------------------------------------------------------------
-// DocumentIndex::from_blob
-// ---------------------------------------------------------------------------
+/// Extract content blocks from source text via tree-sitter block-tree parsing.
+///
+/// Parses only the block grammar (no inline parsing). Blocks whose start_byte
+/// falls within the frontmatter region are excluded.
+///
+/// Degrades gracefully to empty on parser failure or tree-sitter panics.
+fn extract_content_blocks(source: &str) -> Vec<RawBlock> {
+    // catch_unwind guards against tree-sitter panics on edge-case inputs
+    // (e.g. node byte ranges exceeding source length).
+    std::panic::catch_unwind(|| extract_content_blocks_inner(source))
+        .unwrap_or_default()
+}
+
+fn extract_content_blocks_inner(source: &str) -> Vec<RawBlock> {
+    let mut parser = match markymark_parser::Parser::new() {
+        Ok(p) => p,
+        Err(_) => return Vec::new(),
+    };
+    let block_tree = match parser.parse_block_tree_only(source, None) {
+        Some(t) => t,
+        None => return Vec::new(),
+    };
+    let fm_end = helpers::frontmatter_byte_end(source);
+    let root = block_tree.root_node();
+    let mut blocks = Vec::new();
+    collect_blocks(root, source, fm_end, &mut blocks);
+    blocks.sort_by_key(|b| b.start_byte);
+    blocks
+}
+
+/// Recursively walk tree-sitter nodes collecting content blocks.
+fn collect_blocks(
+    node: tree_sitter::Node,
+    source: &str,
+    fm_end: usize,
+    blocks: &mut Vec<RawBlock>,
+) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.start_byte() < fm_end {
+            continue;
+        }
+
+        let push = |blocks: &mut Vec<RawBlock>, kind: BlockKind, node: tree_sitter::Node| {
+            let sp = node.start_position();
+            let ep = node.end_position();
+            blocks.push(RawBlock {
+                kind,
+                start_byte: node.start_byte(),
+                end_byte: node.end_byte(),
+                start_row: sp.row as u32,
+                start_col: sp.column as u32,
+                end_row: ep.row as u32,
+                end_col: ep.column as u32,
+            });
+        };
+
+        match child.kind() {
+            "section" | "document" => {
+                collect_blocks(child, source, fm_end, blocks);
+            }
+            "paragraph" => push(blocks, BlockKind::Paragraph, child),
+            "list" => {
+                let mut list_cursor = child.walk();
+                for list_child in child.children(&mut list_cursor) {
+                    if list_child.kind() == "list_item" {
+                        if is_logseq_heading(list_child, source) {
+                            continue;
+                        }
+                        push(blocks, BlockKind::ListItem, list_child);
+                    }
+                }
+            }
+            "fenced_code_block" | "indented_code_block" => push(blocks, BlockKind::CodeBlock, child),
+            "block_quote" => push(blocks, BlockKind::BlockQuote, child),
+            "thematic_break" => push(blocks, BlockKind::ThematicBreak, child),
+            "pipe_table" => push(blocks, BlockKind::Table, child),
+            _ => {}
+        }
+    }
+}
+
+/// Check if a list_item is a Logseq-style heading (e.g., `- # Heading`).
+fn is_logseq_heading(node: tree_sitter::Node, source: &str) -> bool {
+    let text = match node.utf8_text(source.as_bytes()) {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+    let first_line = match text.lines().next() {
+        Some(l) => l,
+        None => return false,
+    };
+    let trimmed = first_line.trim_start();
+    let after_marker = if let Some(rest) = trimmed.strip_prefix("- ")
+        .or_else(|| trimmed.strip_prefix("* "))
+        .or_else(|| trimmed.strip_prefix("+ "))
+    {
+        rest
+    } else {
+        return false;
+    };
+    after_marker.starts_with('#')
+}
 
 impl DocumentIndex {
-    /// Build a document index from a Zig engine binary blob.
+    /// Build a document index from raw markdown text via an ephemeral engine.
     ///
-    /// Produces a [`DocumentIndex`] equivalent to [`from_scan`] for the same
-    /// input text. The blob is the output of `DocumentEngine::get_blob()`.
+    /// This is a **test convenience** — it creates a temporary [`DocumentEngine`],
+    /// extracts results, and drops the engine. Production code should use
+    /// [`from_engine_result_with_frontmatter`] with a persistent engine.
     ///
-    /// XML tags are read directly from the blob (v2 format). V1 blobs
-    /// produce zero XML tags.
+    /// # Panics
     ///
-    /// # Errors
-    ///
-    /// Returns [`BlobError`] if the blob is malformed:
-    /// - [`BlobError::TooSmall`] — fewer than 64 bytes (v1) or 128 bytes (v2)
-    /// - [`BlobError::InvalidMagic`] — magic number mismatch
-    /// - [`BlobError::UnsupportedVersion`] — version not in {1, 2}
-    /// - [`BlobError::SizeMismatch`] — computed size ≠ actual length
-    /// - [`BlobError::TextPoolOutOfBounds`] — an entry's text offset+len overflows pool
-    /// - [`BlobError::InvalidUtf8`] — text pool contains invalid UTF-8
-    ///
-    /// [`from_scan`]: DocumentIndex::from_scan
-    pub fn from_blob(data: &[u8]) -> Result<Self, BlobError> {
-        Self::from_blob_inner(data, Vec::new(), Vec::new())
+    /// Panics if the engine fails to create, get results, or convert extraction.
+    /// This is intentional — test code should surface failures immediately.
+    pub fn from_text(text: &str) -> Self {
+        let (fm, aliases) = helpers::parse_frontmatter_owned(text);
+        let masked = helpers::mask_frontmatter(text);
+        let engine = DocumentEngine::new(&masked).expect("from_text: engine create failed");
+        let result = engine.get_result().expect("from_text: get_result failed");
+        let extraction = result
+            .to_extraction()
+            .expect("from_text: to_extraction failed");
+        Self::from_engine_result_with_source(&extraction, fm, aliases, text.to_string())
     }
 
-    /// Build a document index from a blob with pre-parsed frontmatter.
-    ///
-    /// Same as [`from_blob`] but accepts owned frontmatter entries and aliases
-    /// parsed from the original source text. The blob format does not carry
-    /// frontmatter, so this is the only way to populate frontmatter in an
-    /// index built from a blob.
-    pub fn from_blob_with_frontmatter(
-        data: &[u8],
+    /// Build a document index from an owned engine extraction.
+    pub fn from_engine_result(data: &EngineExtraction) -> Self {
+        Self::from_engine_result_inner(data, Vec::new(), Vec::new(), String::new(), Vec::new())
+    }
+
+    /// Build a document index from engine extraction with pre-parsed frontmatter.
+    pub fn from_engine_result_with_frontmatter(
+        data: &EngineExtraction,
         frontmatter: Vec<FrontmatterOwnedEntry>,
         aliases: Vec<String>,
-    ) -> Result<Self, BlobError> {
-        Self::from_blob_inner(data, frontmatter, aliases)
+    ) -> Self {
+        Self::from_engine_result_inner(data, frontmatter, aliases, String::new(), Vec::new())
     }
 
-    fn from_blob_inner(
-        data: &[u8],
+    /// Build a document index from engine extraction with frontmatter and source text.
+    ///
+    /// When `source` is non-empty, content blocks are extracted via tree-sitter
+    /// block-tree parsing and `block_text()` returns original source slices.
+    /// Use this in production paths where the original text is available.
+    pub fn from_engine_result_with_source(
+        data: &EngineExtraction,
+        frontmatter: Vec<FrontmatterOwnedEntry>,
+        aliases: Vec<String>,
+        source: String,
+    ) -> Self {
+        let raw_blocks = extract_content_blocks(&source);
+        Self::from_engine_result_inner(data, frontmatter, aliases, source, raw_blocks)
+    }
+
+    fn from_engine_result_inner(
+        data: &EngineExtraction,
         fm_owned: Vec<FrontmatterOwnedEntry>,
         aliases_owned: Vec<String>,
-    ) -> Result<Self, BlobError> {
-        let header = validate_blob(data)?;
-        let offsets = compute_offsets(&header);
-        let text_pool =
-            &data[offsets.text_pool..offsets.text_pool + header.text_pool_size as usize];
-
-        let DecodedOwnedData {
-            headings: headings_owned,
-            wiki_links: wiki_owned,
-            markdown_links: markdown_owned,
-            tags: tags_owned,
-            blocks: blocks_owned,
-            code_spans: code_spans_owned,
-            tasks: tasks_owned,
-            embeds: embeds_owned,
-            callouts: callouts_owned,
-            block_refs: block_refs_owned,
-            query_blocks: query_blocks_owned,
-            link_definitions: link_defs_owned,
-            properties: properties_owned,
-            xml_tags: xml_tags_owned,
-        } = decode_owned_data(data, &header, &offsets, text_pool)?;
-
-        // ── Build DocumentIndex via self_cell ────────────────────────
+        source: String,
+        raw_blocks: Vec<RawBlock>,
+    ) -> Self {
         let owner = DocumentOwner {
             arena: DocumentArena::new(),
-            source_text: String::new(), // No source text available from blob
+            source_text: source,
         };
         let cell = DocumentIndexCell::new(owner, move |owner| {
             let arena_ref = owner.arena.bump();
@@ -123,9 +197,8 @@ impl DocumentIndex {
             // --- Headings ---
             let mut headings_builder = BumpVec::new_in(arena_ref);
             let mut slug_to_heading = HashMap::new();
-            for h in &headings_owned {
+            for h in &data.headings {
                 let text = arena_alloc_str(arena_ref, &h.text);
-                // Slug is pre-computed and deduped by Zig engine — use as-is.
                 let slug = arena_alloc_str(arena_ref, &h.slug);
                 let start_pos = Position::new(h.start_line, h.start_col);
                 let end_pos = Position::new(h.end_line, h.end_col);
@@ -145,16 +218,12 @@ impl DocumentIndex {
 
             // --- Wiki links ---
             let mut wiki_builder = BumpVec::new_in(arena_ref);
-            for wl in &wiki_owned {
+            for wl in &data.wiki_links {
                 let target = arena_alloc_str(arena_ref, &wl.target);
                 let alias = wl.alias.as_deref().map(|a| arena_alloc_str(arena_ref, a));
                 let start_pos = Position::new(wl.start_line, wl.start_col);
                 let end_pos = Position::new(wl.end_line, wl.end_col);
                 let start_byte = wl.source_offset as usize;
-                // Compute end_byte matching from_scan's calculation:
-                //   [[target]]:        2 + target_len + 2 = target_len + 4
-                //   [[target|alias]]:  2 + target_len + 1 + text_len + 2
-                //                    = target_len + text_len + 5
                 let end_byte = if wl.alias.is_some() {
                     start_byte + wl.target_len as usize + wl.text_len as usize + 5
                 } else {
@@ -174,16 +243,13 @@ impl DocumentIndex {
 
             // --- Markdown links ---
             let mut ml_builder = BumpVec::new_in(arena_ref);
-            for ml in &markdown_owned {
+            for ml in &data.markdown_links {
                 let text = arena_alloc_str(arena_ref, &ml.text);
                 let url = arena_alloc_str(arena_ref, &ml.url);
                 let anchor = ml.anchor.as_deref().map(|a| arena_alloc_str(arena_ref, a));
                 let start_pos = Position::new(ml.start_line, ml.start_col);
                 let end_pos = Position::new(ml.end_line, ml.end_col);
                 let start_byte = ml.source_offset as usize;
-                // Compute end_byte matching from_scan:
-                //   [text](target): 1 + text_len + 1 + 1 + target_len + 1
-                //                 = text_len + target_len + 4
                 let end_byte = start_byte + ml.text_len as usize + ml.target_len as usize + 4;
                 ml_builder.push(MarkdownLinkEntry {
                     text,
@@ -198,7 +264,7 @@ impl DocumentIndex {
 
             // --- Tags ---
             let mut tags_builder = BumpVec::new_in(arena_ref);
-            for t in &tags_owned {
+            for t in &data.tags {
                 tags_builder.push(TagEntry {
                     name: arena_alloc_str(arena_ref, &t.name),
                 });
@@ -207,12 +273,11 @@ impl DocumentIndex {
 
             // --- Block IDs (Obsidian ^block-id markers) ---
             let mut block_id_map: HashMap<&str, ContentBlock<'_>> = HashMap::new();
-            for b in &blocks_owned {
+            for b in &data.block_ids {
                 let id = arena_alloc_str(arena_ref, &b.id);
                 let start_pos = Position::new(b.start_line, b.start_col);
                 let end_pos = Position::new(b.end_line, b.end_col);
                 let start_byte = b.source_offset as usize;
-                // end_byte = offset of '^' + 1 (for '^') + id_len
                 let end_byte = start_byte + 1 + b.id_len as usize;
                 block_id_map.insert(
                     id,
@@ -227,12 +292,51 @@ impl DocumentIndex {
                 );
             }
 
-            // Content blocks: empty (no source text available from blob)
-            let content_blocks: &[ContentBlock<'_>] = &[];
+            // --- Content blocks (from tree-sitter block-tree parse) ---
+            let mut cb_builder = BumpVec::new_in(arena_ref);
+            for rb in &raw_blocks {
+                // Parent heading: last heading on a line before this block
+                let parent_heading = headings
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .find(|(_, h)| h.range.start.line < rb.start_row)
+                    .map(|(i, _)| i);
 
-            // --- XML Tags (decoded from blob v2) ---
+                // Merge block_id if a ^marker falls within this block's byte range
+                let merged_block_id = block_id_map.iter().find_map(|(&id, bid)| {
+                    if bid.start_byte >= rb.start_byte && bid.start_byte < rb.end_byte {
+                        Some(id)
+                    } else {
+                        None
+                    }
+                });
+
+                cb_builder.push(ContentBlock {
+                    kind: rb.kind,
+                    range: Range::new(
+                        Position::new(rb.start_row, rb.start_col),
+                        Position::new(rb.end_row, rb.end_col),
+                    ),
+                    start_byte: rb.start_byte,
+                    end_byte: rb.end_byte,
+                    parent_heading,
+                    block_id: merged_block_id,
+                });
+            }
+            let content_blocks = cb_builder.into_bump_slice();
+
+            // Overwrite block_id_map entries with merged content blocks
+            // so block_by_id() returns the full paragraph range, not just the ^marker.
+            for cb in content_blocks {
+                if let Some(id) = cb.block_id {
+                    block_id_map.insert(id, *cb);
+                }
+            }
+
+            // --- XML Tags ---
             let mut xt_builder = BumpVec::new_in(arena_ref);
-            for xt in &xml_tags_owned {
+            for xt in &data.xml_tags {
                 let tag_name = arena_alloc_str(arena_ref, &xt.tag_name);
                 let start_pos = Position::new(xt.start_line, xt.start_col);
                 let end_pos = Position::new(xt.end_line, xt.end_col);
@@ -251,7 +355,7 @@ impl DocumentIndex {
 
             // --- Code spans ---
             let mut cs_builder = BumpVec::new_in(arena_ref);
-            for cs in &code_spans_owned {
+            for cs in &data.code_spans {
                 let text = arena_alloc_str(arena_ref, &cs.text);
                 let start_pos = Position::new(cs.start_line, cs.start_col);
                 let end_pos = Position::new(cs.end_line, cs.end_col);
@@ -282,11 +386,10 @@ impl DocumentIndex {
 
             // --- Properties ---
             let mut props_builder = BumpVec::new_in(arena_ref);
-            for pd in &properties_owned {
+            for pd in &data.properties {
                 let key = arena_alloc_str(arena_ref, &pd.key);
                 let value = match pd.value_type {
                     1 => {
-                        // List: split on comma, trim items
                         let items: Vec<&str> = pd.value.split(',').map(|s| s.trim()).collect();
                         let mut bump_items = BumpVec::new_in(arena_ref);
                         for item in items {
@@ -295,7 +398,6 @@ impl DocumentIndex {
                         PropertyValueEntry::List(bump_items.into_bump_slice())
                     }
                     2 => {
-                        // PageRef: strip [[ and ]]
                         let inner = pd.value.trim_start_matches("[[").trim_end_matches("]]");
                         PropertyValueEntry::PageRef(arena_alloc_str(arena_ref, inner))
                     }
@@ -307,7 +409,7 @@ impl DocumentIndex {
 
             // --- Tasks ---
             let mut tasks_builder = BumpVec::new_in(arena_ref);
-            for td in &tasks_owned {
+            for td in &data.tasks {
                 let state = arena_alloc_str(arena_ref, &td.state);
                 let text = arena_alloc_str(arena_ref, &td.text);
                 let start_pos = Position::new(td.start_line, td.start_col);
@@ -324,7 +426,7 @@ impl DocumentIndex {
 
             // --- Embeds ---
             let mut embeds_builder = BumpVec::new_in(arena_ref);
-            for ed in &embeds_owned {
+            for ed in &data.embeds {
                 let target = arena_alloc_str(arena_ref, &ed.target);
                 let start_pos = Position::new(ed.start_line, ed.start_col);
                 let end_pos = Position::new(ed.end_line, ed.end_col);
@@ -339,7 +441,7 @@ impl DocumentIndex {
 
             // --- Callouts ---
             let mut callouts_builder = BumpVec::new_in(arena_ref);
-            for cd in &callouts_owned {
+            for cd in &data.callouts {
                 let callout_type = arena_alloc_str(arena_ref, &cd.callout_type);
                 let title = cd.title.as_deref().map(|t| arena_alloc_str(arena_ref, t));
                 let start_pos = Position::new(cd.start_line, cd.start_col);
@@ -356,7 +458,7 @@ impl DocumentIndex {
 
             // --- Block refs ---
             let mut block_refs_builder = BumpVec::new_in(arena_ref);
-            for br in &block_refs_owned {
+            for br in &data.block_refs {
                 let uuid = arena_alloc_str(arena_ref, &br.uuid);
                 let start_pos = Position::new(br.start_line, br.start_col);
                 let end_pos = Position::new(br.end_line, br.end_col);
@@ -369,7 +471,7 @@ impl DocumentIndex {
 
             // --- Query blocks ---
             let mut qb_builder = BumpVec::new_in(arena_ref);
-            for qb in &query_blocks_owned {
+            for qb in &data.query_blocks {
                 let query = arena_alloc_str(arena_ref, &qb.query);
                 let start_pos = Position::new(qb.start_line, qb.start_col);
                 let end_pos = Position::new(qb.end_line, qb.end_col);
@@ -384,7 +486,7 @@ impl DocumentIndex {
 
             // --- Link definitions ---
             let mut ld_builder = BumpVec::new_in(arena_ref);
-            for ld in &link_defs_owned {
+            for ld in &data.link_definitions {
                 let label = arena_alloc_str(arena_ref, &ld.label);
                 let url = arena_alloc_str(arena_ref, &ld.url);
                 let title = ld.title.as_deref().map(|t| arena_alloc_str(arena_ref, t));
@@ -425,13 +527,6 @@ impl DocumentIndex {
             }
         });
 
-        Ok(Self { cell })
+        Self { cell }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests;

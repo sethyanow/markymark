@@ -91,9 +91,7 @@ impl EmbeddingProvider for TestEmbeddingProvider {
 }
 
 fn build_doc_index(markdown: &str) -> DocumentIndex {
-    let mut parser = markymark_parser::Parser::new().unwrap();
-    let ast = parser.parse(markdown).unwrap();
-    DocumentIndex::from_ast(ast)
+    DocumentIndex::from_text(markdown)
 }
 
 // --- P2: empty heading skip tests ---

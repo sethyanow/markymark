@@ -4,13 +4,10 @@ use markymark_core::structured::{DocumentKind, KeyEntry, StructuredAst, ValueKin
 use markymark_core::DocumentUri;
 use markymark_index::resolution;
 use markymark_index::{DocumentIndex, RealmIndex, ResolvedTarget, StructuredDocumentIndex};
-use markymark_parser::Parser;
 
-/// Helper: parse markdown source and build a DocumentIndex.
+/// Helper: build a DocumentIndex from raw text via the engine path.
 fn index_from(source: &str) -> DocumentIndex {
-    let mut parser = Parser::new().expect("parser init");
-    let ast = parser.parse(source).expect("parse");
-    DocumentIndex::from_ast(ast)
+    DocumentIndex::from_text(source)
 }
 
 /// Helper: create a file:// URI from a filename.

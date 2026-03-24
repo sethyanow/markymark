@@ -2,12 +2,10 @@
 
 use bumpalo::collections::Vec as BumpVec;
 use bumpalo::Bump;
-use std::collections::HashMap as StdHashMap;
 
 use super::types::*;
 
 use markymark_core::arena::arena_alloc_str;
-use markymark_core::prelude::Position;
 
 /// Convert an owned frontmatter value to an arena-allocated entry.
 pub(super) fn owned_value_to_arena<'arena>(
@@ -70,18 +68,6 @@ pub fn slugify(text: &str) -> String {
 
     // Trim dashes from start/end
     result.trim_matches('-').to_string()
-}
-
-/// Deduplicate a slug given a set of already-used slugs.
-pub(super) fn dedup_slug(base: &str, used: &mut StdHashMap<String, usize>) -> String {
-    let count = used.entry(base.to_string()).or_insert(0);
-    let slug = if *count == 0 {
-        base.to_string()
-    } else {
-        format!("{}-{}", base, count)
-    };
-    *count += 1;
-    slug
 }
 
 /// Build flat TOC entries with depth calculation.
@@ -188,80 +174,6 @@ pub(crate) fn build_outline<'arena>(
     }
 
     freeze_outline(arena, root)
-}
-
-// ---------------------------------------------------------------------------
-// Byte-offset to Position helpers (for scan-based construction)
-// ---------------------------------------------------------------------------
-
-/// Build a sorted list of byte offsets where each line starts.
-/// Line 0 starts at offset 0. Line N starts after the N-th newline.
-pub(super) fn byte_offset_line_starts(text: &str) -> Vec<u32> {
-    let mut starts = vec![0u32];
-    for (i, b) in text.bytes().enumerate() {
-        if b == b'\n' {
-            starts.push((i + 1) as u32);
-        }
-    }
-    starts
-}
-
-/// Convert a byte offset to a Position (0-based line, 0-based character).
-pub(super) fn byte_offset_to_position(line_starts: &[u32], offset: u32) -> Position {
-    let line = match line_starts.binary_search(&offset) {
-        Ok(exact) => exact,
-        Err(insert) => insert - 1,
-    };
-    let col = offset - line_starts[line];
-    Position::new(line as u32, col)
-}
-
-/// Extract frontmatter from a parsed AST as owned data.
-///
-/// Returns `(frontmatter_entries, aliases)` where aliases are extracted from the
-/// `aliases` frontmatter key. Used by both `from_ast` and `from_scan_with_frontmatter`.
-pub(super) fn extract_frontmatter_from_ast(
-    ast: &markymark_parser::Ast,
-) -> (Vec<FrontmatterOwnedEntry>, Vec<String>) {
-    let mut frontmatter_owned = Vec::new();
-    let mut aliases_owned = Vec::new();
-
-    if let Some(fm) = ast.frontmatter() {
-        for (key, value) in fm.iter() {
-            let key_str = (*key).to_string();
-            let value_owned = parser_value_to_owned(value);
-            if key_str == "aliases" {
-                collect_alias_strings(&value_owned, &mut aliases_owned);
-            }
-            frontmatter_owned.push(FrontmatterOwnedEntry {
-                key: key_str,
-                value: value_owned,
-            });
-        }
-    }
-
-    (frontmatter_owned, aliases_owned)
-}
-
-/// Convert a parser `FrontmatterValue` to an owned value.
-fn parser_value_to_owned(value: &markymark_parser::FrontmatterValue) -> FrontmatterValueOwned {
-    use markymark_parser::FrontmatterValue;
-    match value {
-        FrontmatterValue::String(s) => FrontmatterValueOwned::String((*s).to_string()),
-        FrontmatterValue::Integer(n) => FrontmatterValueOwned::Integer(*n),
-        FrontmatterValue::Float(f) => FrontmatterValueOwned::Float(*f),
-        FrontmatterValue::Boolean(b) => FrontmatterValueOwned::Boolean(*b),
-        FrontmatterValue::List(items) => {
-            FrontmatterValueOwned::List(items.iter().map(parser_value_to_owned).collect())
-        }
-        FrontmatterValue::Map(entries) => FrontmatterValueOwned::Map(
-            entries
-                .iter()
-                .map(|(k, v)| ((*k).to_string(), parser_value_to_owned(v)))
-                .collect(),
-        ),
-        FrontmatterValue::Null => FrontmatterValueOwned::Null,
-    }
 }
 
 /// Extract alias strings from a frontmatter value.

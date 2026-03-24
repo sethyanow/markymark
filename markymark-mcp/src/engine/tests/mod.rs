@@ -806,3 +806,323 @@ async fn collect_documents_markdown_unchanged() {
     assert_eq!(docs.len(), 2);
     assert!(docs.iter().all(|(_, k)| *k == DocumentKind::Markdown));
 }
+
+// -- Engine-based indexing tests (Phase 3: marky-xfgb) --
+
+#[tokio::test]
+async fn engine_index_creates_persistent_engines() {
+    let dir = make_temp_realm_dir("engine-creates");
+    fs::write(dir.path().join("one.md"), "# Heading One\n\nSome text.\n").unwrap();
+    fs::write(dir.path().join("two.md"), "# Heading Two\n\nMore text.\n").unwrap();
+
+    let mut realm = RealmData::new();
+    index_root_into_realm(dir.path(), &mut realm).await;
+
+    // Engine path should create a persistent engine per markdown file.
+    assert_eq!(
+        realm.engines.len(),
+        2,
+        "expected 2 persistent engines, one per markdown file"
+    );
+
+    // Documents should also be indexed (behavioral parity with scan path).
+    assert_eq!(realm.index.document_count(), 2);
+}
+
+#[tokio::test]
+async fn engine_fallback_stale_on_update_failure() {
+    let dir = make_temp_realm_dir("update-fail");
+    // Magic filename triggers forced update failure on second index.
+    let path = dir.path().join("__marky_test_force_update_fail__.md");
+    fs::write(&path, "# Original\n\nFirst version.\n").unwrap();
+
+    let mut realm = RealmData::new();
+
+    // First index: engine created successfully with original content.
+    index_root_into_realm(dir.path(), &mut realm).await;
+    assert_eq!(realm.engines.len(), 1);
+    assert_eq!(realm.index.document_count(), 1);
+
+    // Modify the file — the update will be forced to fail.
+    fs::write(&path, "# Changed\n\nSecond version.\n").unwrap();
+
+    // Second index: update fails, should fall back to stale engine snapshot.
+    index_root_into_realm(dir.path(), &mut realm).await;
+
+    // Document should still be indexed (stale fallback, not empty).
+    assert_eq!(
+        realm.index.document_count(),
+        1,
+        "document should still be indexed via stale engine fallback"
+    );
+
+    // Verify content is present — stale snapshot should have the original heading.
+    let uri = DocumentUri::from_file_path(&path);
+    let doc = realm.index.get_document(&uri);
+    assert!(
+        doc.is_some(),
+        "document should be retrievable after stale fallback"
+    );
+    assert!(
+        !doc.unwrap().headings().is_empty(),
+        "stale fallback document should have headings from original parse"
+    );
+}
+
+#[tokio::test]
+async fn engine_fallback_scan_when_no_stale_state() {
+    let dir = make_temp_realm_dir("create-fail");
+    // Magic filename triggers forced create failure — no engine created.
+    let path = dir.path().join("__marky_test_force_create_fail__.md");
+    fs::write(&path, "# Scan Fallback\n\nShould use scan path.\n").unwrap();
+
+    let mut realm = RealmData::new();
+
+    // First index: engine create forced to fail, no stale state exists.
+    // Should fall back to scan path and still produce a valid index.
+    index_root_into_realm(dir.path(), &mut realm).await;
+
+    // No engine should be created (create was forced to fail).
+    assert_eq!(
+        realm.engines.len(),
+        0,
+        "no engine should be created when create is forced to fail"
+    );
+
+    // But the document should still be indexed via scan fallback.
+    assert_eq!(
+        realm.index.document_count(),
+        1,
+        "scan fallback should produce a document index"
+    );
+
+    // Verify content — scan path should extract headings.
+    let uri = DocumentUri::from_file_path(&path);
+    let doc = realm.index.get_document(&uri);
+    assert!(
+        doc.is_some(),
+        "document should be retrievable via scan fallback"
+    );
+    assert!(
+        !doc.unwrap().headings().is_empty(),
+        "scan fallback document should have headings"
+    );
+}
+
+#[tokio::test]
+async fn engine_cleanup_on_root_removal() {
+    let dir = make_temp_realm_dir("cleanup");
+    fs::write(dir.path().join("doc.md"), "# Cleanup Test\n\nContent.\n").unwrap();
+
+    let mut realm = RealmData::new();
+
+    // Index the root — engine should be created.
+    index_root_into_realm(dir.path(), &mut realm).await;
+    assert_eq!(realm.engines.len(), 1, "engine should exist after indexing");
+    assert_eq!(realm.index.document_count(), 1);
+
+    // Remove the root — engine should be cleaned up.
+    unindex_root_from_realm(dir.path(), &mut realm).await;
+    assert_eq!(
+        realm.engines.len(),
+        0,
+        "engine should be removed when root is unindexed"
+    );
+    assert_eq!(
+        realm.index.document_count(),
+        0,
+        "documents should be removed when root is unindexed"
+    );
+}
+
+#[tokio::test]
+async fn engine_frontmatter_preserved() {
+    let dir = make_temp_realm_dir("frontmatter-engine");
+    fs::write(
+        dir.path().join("doc.md"),
+        "---\ntitle: Engine FM Test\ntags: [alpha, beta]\naliases: [efm]\n---\n\n# Content\n\nBody text.\n",
+    )
+    .unwrap();
+
+    let mut realm = RealmData::new();
+    index_root_into_realm(dir.path(), &mut realm).await;
+
+    // Engine should be created (not scan path).
+    assert_eq!(realm.engines.len(), 1);
+
+    // Frontmatter should be accessible via search filter.
+    let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
+    let doc = realm
+        .index
+        .get_document(&uri)
+        .expect("document should exist");
+
+    // Verify frontmatter entries are present.
+    let fm = doc.frontmatter();
+    assert!(
+        !fm.is_empty(),
+        "frontmatter should be preserved via engine path"
+    );
+    // Check that the title key is present.
+    assert!(
+        fm.iter().any(|e| e.key == "title"),
+        "frontmatter should contain 'title' key"
+    );
+}
+
+/// Verify `DocumentIndex::from_text()` produces equivalent output to
+/// `fallback_scan_with_frontmatter()` for a mixed markdown document.
+///
+/// This equivalence test ensures the engine path (from_text) can safely
+/// replace the scan path (fallback_scan_with_frontmatter) as the fallback
+/// in both MCP and LSP.
+#[test]
+fn from_text_equivalence_with_fallback_scan_mixed_doc() {
+    use markymark_index::DocumentIndex;
+
+    let text = "\
+---
+title: Equivalence Test
+tags: [alpha, beta]
+aliases: [eq1, eq2]
+---
+
+# First Heading
+
+Some body with a [[wiki link]] and a [markdown link](http://example.com).
+
+## Second Heading {#custom-id}
+
+A paragraph with `inline code` and <custom-tag>content</custom-tag>.
+
+- [ ] Task one
+- [x] Task two
+
+> [!note]
+> A callout block.
+
+^block-ref-id
+";
+
+    let scan_index = fallback_scan_with_frontmatter(text);
+    let engine_index = DocumentIndex::from_text(text);
+
+    // Headings: count and text
+    let scan_headings: Vec<(&str, u8)> = scan_index
+        .headings()
+        .iter()
+        .map(|h| (h.text, h.level))
+        .collect();
+    let engine_headings: Vec<(&str, u8)> = engine_index
+        .headings()
+        .iter()
+        .map(|h| (h.text, h.level))
+        .collect();
+    assert_eq!(
+        scan_headings, engine_headings,
+        "headings mismatch: scan={scan_headings:?} vs engine={engine_headings:?}"
+    );
+
+    // Tags
+    let scan_tags: Vec<&str> = scan_index.tags().iter().map(|t| t.name).collect();
+    let engine_tags: Vec<&str> = engine_index.tags().iter().map(|t| t.name).collect();
+    assert_eq!(
+        scan_tags, engine_tags,
+        "tags mismatch: scan={scan_tags:?} vs engine={engine_tags:?}"
+    );
+
+    // Wiki links
+    let scan_wiki: Vec<&str> = scan_index.wiki_links().iter().map(|w| w.target).collect();
+    let engine_wiki: Vec<&str> = engine_index.wiki_links().iter().map(|w| w.target).collect();
+    assert_eq!(
+        scan_wiki, engine_wiki,
+        "wiki links mismatch: scan={scan_wiki:?} vs engine={engine_wiki:?}"
+    );
+
+    // Markdown links
+    let scan_md_links: Vec<(&str, &str)> = scan_index
+        .markdown_links()
+        .iter()
+        .map(|l| (l.text, l.url))
+        .collect();
+    let engine_md_links: Vec<(&str, &str)> = engine_index
+        .markdown_links()
+        .iter()
+        .map(|l| (l.text, l.url))
+        .collect();
+    assert_eq!(
+        scan_md_links, engine_md_links,
+        "markdown links mismatch: scan={scan_md_links:?} vs engine={engine_md_links:?}"
+    );
+
+    // Frontmatter keys
+    let scan_fm: Vec<&str> = scan_index.frontmatter().iter().map(|f| f.key).collect();
+    let engine_fm: Vec<&str> = engine_index.frontmatter().iter().map(|f| f.key).collect();
+    assert_eq!(
+        scan_fm, engine_fm,
+        "frontmatter keys mismatch: scan={scan_fm:?} vs engine={engine_fm:?}"
+    );
+
+    // Aliases
+    assert_eq!(
+        scan_index.aliases(),
+        engine_index.aliases(),
+        "aliases mismatch"
+    );
+
+    // XML tags
+    let scan_xml: Vec<&str> = scan_index.xml_tags().iter().map(|x| x.tag_name).collect();
+    let engine_xml: Vec<&str> = engine_index.xml_tags().iter().map(|x| x.tag_name).collect();
+    assert_eq!(
+        scan_xml, engine_xml,
+        "xml tags mismatch: scan={scan_xml:?} vs engine={engine_xml:?}"
+    );
+
+    // Tasks
+    assert_eq!(
+        scan_index.tasks().len(),
+        engine_index.tasks().len(),
+        "task count mismatch"
+    );
+
+    // Code spans
+    let scan_code: Vec<&str> = scan_index.code_spans().iter().map(|c| c.text).collect();
+    let engine_code: Vec<&str> = engine_index.code_spans().iter().map(|c| c.text).collect();
+    assert_eq!(
+        scan_code, engine_code,
+        "code spans mismatch: scan={scan_code:?} vs engine={engine_code:?}"
+    );
+}
+
+/// Verify equivalence for a frontmatter-only document (no markdown body).
+///
+/// Adversarial finding: after mask_frontmatter, the entire text is whitespace.
+/// Both paths should produce an index with frontmatter but no headings/links.
+#[test]
+fn from_text_equivalence_frontmatter_only_doc() {
+    use markymark_index::DocumentIndex;
+
+    let text = "---\ntitle: Only Frontmatter\ntags: [solo]\n---\n";
+
+    let scan_index = fallback_scan_with_frontmatter(text);
+    let engine_index = DocumentIndex::from_text(text);
+
+    // Frontmatter preserved
+    let scan_fm: Vec<&str> = scan_index.frontmatter().iter().map(|f| f.key).collect();
+    let engine_fm: Vec<&str> = engine_index.frontmatter().iter().map(|f| f.key).collect();
+    assert_eq!(
+        scan_fm, engine_fm,
+        "frontmatter keys mismatch for frontmatter-only doc"
+    );
+
+    // No headings, links, etc.
+    assert_eq!(scan_index.headings().len(), engine_index.headings().len());
+    assert_eq!(
+        scan_index.wiki_links().len(),
+        engine_index.wiki_links().len()
+    );
+    assert_eq!(
+        scan_index.markdown_links().len(),
+        engine_index.markdown_links().len()
+    );
+}
