@@ -1,0 +1,11 @@
+--- zig/private/common/cdeps.bzl	2026-03-24 05:58:32
++++ zig/private/common/cdeps.bzl	2026-03-24 06:11:54
+@@ -38,7 +38,7 @@
+     all_libraries = []
+     dynamic_libraries = []
+     for link in linking_context.linker_inputs.to_list():
+-        args.add_all(link.user_link_flags)
++        args.add_all([f for f in link.user_link_flags if f != "-pthread" and not f.startswith("-Wl,") and not f.startswith("-l")])
+         inputs.extend(link.additional_inputs)
+         for lib in link.libraries:
+             file = None

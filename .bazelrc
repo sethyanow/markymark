@@ -1,22 +1,55 @@
 # ── Common ────────────────────────────────────────────────────────────────────
-build --incompatible_enable_cc_toolchain_resolution
+common          --enable_platform_specific_config
+
+# CC toolchain settings required by toolchains_llvm_bootstrapped
+common          --experimental_cc_static_library
+common          --experimental_cc_shared_library
+common          --incompatible_use_cc_configure_from_rules_cc
+common          --experimental_starlark_cc_import
+common          --compiler=clang
+
+# Use CC linker for Zig code (prevents -pthread and other CC flag leaks)
+common          --@rules_zig//zig/settings:use_cc_common_link=True
+
+# LLVM backend for Zig (self-hosted backend is fragile)
+common          --@rules_zig//zig/settings:zigopt=-fllvm
+
+# macOS configuration
+common:macos    --action_env=MACOSX_DEPLOYMENT_TARGET=13.0
+common:macos    --macos_sdk_version=13.0
+# Use system LLD (Homebrew LLVM) for CC linking — enables cross-language LTO.
+# Apple ld doesn't support cross-language LTO; system ld64.lld does.
+common:macos    --linkopt=-fuse-ld=/opt/homebrew/bin/ld64.lld
+common:macos    --linkopt=-flto=thin
 
 # Disable libtool on macOS (required for rules_rust cross-compilation)
-build --@rules_cc//cc/toolchains/args/archiver_flags:use_libtool_on_macos=False
+build           --@rules_cc//cc/toolchains/args/archiver_flags:use_libtool_on_macos=False
 
 # rules_rust bootstrap
-build --@rules_rust//rust/settings:experimental_use_sh_toolchain_for_bootstrap_process_wrapper
+build           --@rules_rust//rust/settings:experimental_use_sh_toolchain_for_bootstrap_process_wrapper
+
+# Runfiles support
+common          --enable_runfiles
+
+# Mount zig cache into sandboxes
+build:macos     --sandbox_add_mount_pair=/var/tmp
+build:linux     --sandbox_add_mount_pair=/tmp
+
+# Print test errors in console
+test            --test_output=errors
 
 # ── Release config (cross-language ThinLTO) ──────────────────────────────────
-build:release --compilation_mode=opt
+build:release   --compilation_mode=opt
 
 # C/C++ ThinLTO
-build:release --copt=-flto=thin
-build:release --linkopt=-flto=thin
+build:release   --copt=-flto=thin
+build:release   --linkopt=-flto=thin
 
-# Rust: ThinLTO with embedded bitcode for cross-language optimization.
-# -Cembed-bitcode=yes overrides rules_rust default of =no.
-build:release --@rules_rust//:extra_rustc_flags=-Clto=thin,-Ccodegen-units=1,-Cembed-bitcode=yes
+# Rust: cross-language ThinLTO via linker plugin.
+# -Clinker-plugin-lto makes rustc emit bitcode for the linker instead of doing
+# its own LTO pass — required for Zig bitcode to be optimized alongside Rust.
+# tools/clang-lto-wrapper.sh strips -plugin-opt args that ld64.lld rejects.
+build:release   --@rules_rust//:extra_rustc_flags=-Clinker-plugin-lto,-Ccodegen-units=1,-Cembed-bitcode=yes,-Clinker=/opt/homebrew/opt/llvm/bin/clang-lto-wrapper,-Clink-arg=-fuse-ld=/opt/homebrew/bin/ld64.lld,-Clink-arg=-flto=thin
 
 # Strip release binaries
-build:release --strip=always
+build:release   --strip=always

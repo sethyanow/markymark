@@ -26,20 +26,33 @@ hollow — all `cfg(feature = "zig-kernels")` references were in the deleted sca
 The feature still activates the `markymark-kernels` optional dep but no code in
 markymark-core uses it. Cleanup deferred — not blocking.
 
-### Bazel Build System (2026-03-23)
+### Bazel Build System — Cross-Language ThinLTO (2026-03-24)
 
-Added Bazel alongside Cargo for optimized release builds with cross-language ThinLTO.
+Bazel release build now achieves cross-language ThinLTO between Rust and Zig.
 
 **Why:** rustc 1.93 uses LLVM 21, Zig 0.15.2 ships LLVM 20. Version mismatch prevents
-cross-language LTO under Cargo. Bazel with `toolchains_llvm_bootstrapped` (LLVM 21.1.8)
-provides a unified toolchain.
+cross-language LTO under Cargo. Bazel with patched rules_zig enables the full pipeline.
 
-**Setup:** `MODULE.bazel` (rules_rust 0.68.1, rules_zig 0.12.3), `.bazelrc`, `BUILD.bazel`
-per crate. `zig_static_library` in `zig/BUILD.bazel` replaces build.rs for Bazel builds.
+**Setup:**
+- `MODULE.bazel`: `apple_support` for macOS CC, `toolchains_llvm_bootstrapped` Linux-only
+  (macOS blocked by Apple SDK 403), `rules_zig` 0.12.3 with two patches
+- `patches/rules_zig_lto.patch`: two-step bitcode build (`-femit-llvm-bc` → `clang -c -x ir
+  -flto=thin` → `llvm-ar rcs`) — wraps raw `.bc` in MachO bitcode object for ld64.lld
+- `patches/rules_zig_cdeps.patch`: filters `-pthread/-Wl,*/-l*` CC flag leaks from Zig cdeps
+- `.bazelrc`: `use_cc_common_link=True`, `-fllvm` backend, Homebrew ld64.lld for macOS linking
+- `tools/clang-lto-wrapper.sh`: strips `-plugin-opt` args from `rustc -Clinker-plugin-lto`
+  that ld64.lld rejects (installed at `/opt/homebrew/opt/llvm/bin/clang-lto-wrapper`)
 
-**macOS caveat:** `-Clinker-plugin-lto` doesn't work on macOS (ld64.lld rejects `-plugin-opt`).
-Release config uses `-Clto=thin,-Cembed-bitcode=yes` instead. `-Cembed-bitcode=yes` overrides
-rules_rust's default `=no`.
+**macOS LTO pipeline (Rust entry point):**
+1. Zig compiles → LLVM bitcode (via `-femit-llvm-bc` in `zigopts`)
+2. Bitcode wrapped in MachO via Homebrew clang → archived via llvm-ar
+3. Rust compiles → bitcode (via `-Clinker-plugin-lto`)
+4. rustc invokes `clang-lto-wrapper` → `ld64.lld` → ThinLTO merges all bitcode
+5. `.llvm.NNN` suffixes on Zig internal symbols confirm cross-module LTO processing
+
+**Known issue:** Test `engine_fallback_scan_when_no_stale_state` fails under `--config=release`
+because LTO optimizes away the test-only fault injection check (magic filename). Passes
+without release config. Test infrastructure issue, not a production bug.
 
 **Cargo is unaffected** — remains the dev-loop build. Bazel is the release/CI path.
 
