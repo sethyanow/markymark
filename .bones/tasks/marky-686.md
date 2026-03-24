@@ -4,9 +4,12 @@ title: 'Phase 2: Edit Range Threading'
 status: open
 type: epic
 priority: 2
-depends_on: [marky-lpb, marky-f1w, marky-v60]
+depends_on: [marky-lpb, marky-f1w, marky-v60, marky-enr]
 parent: marky-zsys
 ---
+
+
+
 
 
 

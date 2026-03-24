@@ -1761,3 +1761,7 @@
 {"timestamp":"2026-03-24T09:54:53.407384+00:00","actor":"Seth","event_type":"updated","task_id":"marky-v60","details":{"status":"active"}}
 {"timestamp":"2026-03-24T14:45:27.602385+00:00","actor":"Seth","event_type":"closed","task_id":"marky-v60","details":{"notes":null}}
 {"timestamp":"2026-03-24T14:45:41.370472+00:00","actor":"Seth","event_type":"logged","task_id":"marky-v60","details":{"message":"Implemented slug reuse in DocumentEngine.update(). Simplified skeleton's temp-array approach: read directly from self.headings between parseAll and freeState. 12/12 criteria met. 11 Zig tests + 2 Rust FFI tests + 7 adversarial tests (incl GPA leak check for 100 reuse cycles). Also fixed 2 pre-existing export test arg count bugs from marky-f1w. Key decisions: dupe-before-free OOM ordering, catch break on inner loop, explicit zero-value check. 728/728 Zig, 101/101 Rust kernel, 1286/1286 workspace."}}
+{"timestamp":"2026-03-24T14:49:51.421668+00:00","actor":"Seth","event_type":"created","task_id":"marky-enr","details":{}}
+{"timestamp":"2026-03-24T14:50:44.309176+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-686","details":{"kind":"blocks","to":"marky-enr"}}
+{"timestamp":"2026-03-24T14:50:50.641511+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-686","details":{"kind":"parent-child","to":"marky-enr"}}
+{"timestamp":"2026-03-24T14:50:50.642004+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-686","details":{"kind":"blocks","to":"marky-enr"}}
