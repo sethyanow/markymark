@@ -1803,3 +1803,5 @@
 {"timestamp":"2026-03-24T18:56:54.842320+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-8d8","details":{"kind":"blocks","to":"marky-bt9"}}
 {"timestamp":"2026-03-24T18:57:02.613676+00:00","actor":"Seth","event_type":"logged","task_id":"marky-03r","details":{"message":"Debrief: Clean refactor — try_new drop-in, &str subslicing worked as designed, 63% speedup at 100KB. Pre-closure Vecs hold Copy C structs (option a). No workarounds. Reflections: Benchmark improvement larger than expected (scales with doc count). SRE corrected Step 1 TDD framing (refactor baseline, not compile-error). Phase 3 sub-epic 9/9 — acceptance task marky-bt9 created."}}
 {"timestamp":"2026-03-24T18:59:26.939473+00:00","actor":"Seth","event_type":"updated","task_id":"marky-bt9","details":{"status":"active"}}
+{"timestamp":"2026-03-24T19:14:50.131159+00:00","actor":"Seth","event_type":"closed","task_id":"marky-bt9","details":{"notes":null}}
+{"timestamp":"2026-03-24T19:14:55.136563+00:00","actor":"Seth","event_type":"closed","task_id":"marky-8d8","details":{"notes":null}}

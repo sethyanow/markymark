@@ -1,11 +1,12 @@
 ---
 id: marky-bt9
 title: 'Phase 3 Acceptance: Direct Arena Decode'
-status: active
+status: closed
 type: task
 priority: 2
 parent: marky-8d8
 ---
+
 
 
 

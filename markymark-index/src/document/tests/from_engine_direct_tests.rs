@@ -407,7 +407,10 @@ fn test_direct_multibyte_utf8_parity() {
 
     // Headings — at minimum the h1 should be extracted
     assert_eq!(old.headings().len(), new.headings().len(), "headings count");
-    assert!(new.headings().len() >= 1, "should have at least one heading");
+    assert!(
+        !new.headings().is_empty(),
+        "should have at least one heading"
+    );
     assert_eq!(old.headings()[0].text, new.headings()[0].text);
     assert_eq!(new.headings()[0].text, "日本語の見出し");
 
@@ -426,7 +429,11 @@ fn test_direct_multibyte_utf8_parity() {
     }
 
     // Code spans — parity
-    assert_eq!(old.code_spans().len(), new.code_spans().len(), "code_spans count");
+    assert_eq!(
+        old.code_spans().len(),
+        new.code_spans().len(),
+        "code_spans count"
+    );
     for (i, (o, n)) in old.code_spans().iter().zip(new.code_spans()).enumerate() {
         assert_eq!(o.text, n.text, "code_span[{i}].text");
     }
@@ -453,5 +460,8 @@ fn test_direct_second_run_independent() {
     // But they should be independent allocations (different pointers)
     let ptr1 = idx1.headings()[0].text.as_ptr();
     let ptr2 = idx2.headings()[0].text.as_ptr();
-    assert_ne!(ptr1, ptr2, "text fields should be independent copies in separate owners");
+    assert_ne!(
+        ptr1, ptr2,
+        "text fields should be independent copies in separate owners"
+    );
 }

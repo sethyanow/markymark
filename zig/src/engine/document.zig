@@ -82,7 +82,7 @@ pub const DocumentEngine = struct {
     ///
     /// `edit_offset`, `edit_old_len`, `edit_new_len`: byte-level edit range.
     /// Zero-values (0/0/0) mean "no range info" — full recomputation.
-    /// TODO(marky-686-task2): use edit range for slug reuse
+    /// Edit range enables slug reuse for headings before the edited region.
     pub fn update(self: *DocumentEngine, text: []const u8, edit_offset: u32, edit_old_len: u32, edit_new_len: u32) Error!void {
         self.slug_reuse_count = 0;
 
