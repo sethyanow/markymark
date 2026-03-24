@@ -10,6 +10,7 @@ parent: marky-8d8
 
 
 
+
 ## Context
 
 Phase 3a benchmark gate for sub-epic marky-8d8. After marky-u9q landed the direct arena
@@ -104,3 +105,4 @@ From parent sub-epic marky-8d8:
 
 - [2026-03-24T16:58:32Z] [Seth] Benchmark results — NO measurable improvement. via_extraction: [16.759 µs 17.068 µs 17.350 µs], direct: [17.025 µs 17.273 µs 17.526 µs]. Confidence intervals overlap. Both paths go through owned String intermediaries (self_cell constraint). The EngineExtraction overhead is negligible at this doc size. Escalating to user — this informs Phase 3b/3c design: the real win requires eliminating the owned String intermediary via lifetime parameterization (DocumentIndex<'engine>), not just bypassing EngineExtraction.
 - [2026-03-24T17:02:32Z] [Seth] CORRECTION: Prior benchmark assessment invalid — run on busy loaded laptop, measurements are noise. Benchmark file is correct and compiles. Results need re-run on a quiet machine to be meaningful. No conclusions drawn.
+- [2026-03-24T17:20:33Z] [Seth] CI benchmark results (GitHub Actions, clean runner): via_extraction [49.320 µs 49.432 µs 49.536 µs], direct [49.841 µs 49.942 µs 50.042 µs]. No improvement — direct is ~1% slower (noise). Confirms: eliminating EngineExtraction alone is not a measurable win. Both paths dominated by owned String allocation + arena copy. Real improvement requires Phase 3b/3c lifetime parameterization.

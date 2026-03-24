@@ -205,7 +205,7 @@ jobs:
 
       - name: Run criterion benchmarks
         run: |
-          cargo bench -p markymark-index --bench index_construction 2>&1 | tee benchmark-artifacts/criterion-index-construction.txt
+          cargo bench -p markymark-index --features bench-internals --bench index_construction 2>&1 | tee benchmark-artifacts/criterion-index-construction.txt
           echo "Criterion benchmarks completed"
 
       - name: Upload benchmark artifacts
