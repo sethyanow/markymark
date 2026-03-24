@@ -1765,3 +1765,4 @@
 {"timestamp":"2026-03-24T14:50:44.309176+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-686","details":{"kind":"blocks","to":"marky-enr"}}
 {"timestamp":"2026-03-24T14:50:50.641511+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-686","details":{"kind":"parent-child","to":"marky-enr"}}
 {"timestamp":"2026-03-24T14:50:50.642004+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-686","details":{"kind":"blocks","to":"marky-enr"}}
+{"timestamp":"2026-03-24T15:17:13.062825+00:00","actor":"Seth","event_type":"updated","task_id":"marky-enr","details":{"status":"active"}}

@@ -12,7 +12,7 @@ use markymark_index::{
     mask_frontmatter, parse_frontmatter_owned, AnyDocumentIndex, DocumentIndex, RealmIndex,
     StructuredDocumentIndex,
 };
-use markymark_kernels::engine::DocumentEngine;
+use markymark_kernels::engine::{DocumentEngine, EditRange};
 use markymark_parser::structured::parse_structured;
 
 pub use crate::diagnostics::{DiagnosticSeverity, MarkyDiagnostic};
@@ -183,6 +183,7 @@ impl ServerState {
         &mut self,
         uri: &DocumentUri,
         text: &str,
+        edit_range: Option<EditRange>,
     ) -> Option<DocumentIndex> {
         let uri_str = uri.as_str();
         let has_stale_index = self.realm.get_document(uri).is_some();
@@ -215,7 +216,7 @@ impl ServerState {
             } else {
                 engine_state
                     .engine
-                    .update(&masked, None)
+                    .update(&masked, edit_range)
                     .map_err(|e| format!("engine update failed: {e:?}"))
             };
 
@@ -330,7 +331,7 @@ impl ServerState {
         match kind {
             Some(DocumentKind::Markdown) | None => {
                 let index = self
-                    .build_markdown_index_via_engine(&uri, &text)
+                    .build_markdown_index_via_engine(&uri, &text, None)
                     .unwrap_or_else(|| Self::fallback_scan_with_frontmatter(&text));
                 self.realm.add_document(uri, index).await;
             }
@@ -351,7 +352,7 @@ impl ServerState {
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                if let Some(index) = self.build_markdown_index_via_engine(uri, &text) {
+                if let Some(index) = self.build_markdown_index_via_engine(uri, &text, None) {
                     self.realm.update_document(uri.clone(), index).await;
                 }
             }
@@ -381,7 +382,9 @@ impl ServerState {
             return;
         }
 
-        // Phase 1: Apply text edits to the stored document text
+        // Phase 1: Apply text edits and accumulate edit range bounding box
+        let mut accumulated: Option<(usize, usize, usize)> = None;
+
         let final_text = {
             let Some(text) = self.documents.get_mut(uri.as_str()) else {
                 return;
@@ -391,6 +394,8 @@ impl ServerState {
                 match change {
                     DocumentChange::Full(new_text) => {
                         *text = new_text;
+                        // Full replacement invalidates any accumulated range
+                        accumulated = None;
                     }
                     DocumentChange::Incremental {
                         start_line,
@@ -432,18 +437,38 @@ impl ServerState {
                         }
 
                         text.replace_range(bounds.start_byte..bounds.old_end_byte, &new_text);
+
+                        // Accumulate bounding box from applied edits
+                        let old_len = bounds.old_end_byte - bounds.start_byte;
+                        accumulated = Some(match accumulated {
+                            Some((min_start, total_old, total_new)) => (
+                                min_start.min(bounds.start_byte),
+                                total_old + old_len,
+                                total_new + new_text.len(),
+                            ),
+                            None => (bounds.start_byte, old_len, new_text.len()),
+                        });
                     }
                 }
             }
             text.clone()
         };
 
+        // Convert accumulated bounding box to EditRange
+        let edit_range = accumulated.map(|(start, old_len, new_len)| EditRange {
+            offset: start as u32,
+            old_len: old_len as u32,
+            new_len: new_len as u32,
+        });
+
         // Phase 2: Re-index with the final text via the engine pipeline
         let kind = Self::document_kind_from_uri(uri);
 
         match kind {
             Some(DocumentKind::Markdown) | None => {
-                if let Some(index) = self.build_markdown_index_via_engine(uri, &final_text) {
+                if let Some(index) =
+                    self.build_markdown_index_via_engine(uri, &final_text, edit_range)
+                {
                     self.realm.update_document(uri.clone(), index).await;
                 }
             }
@@ -525,11 +550,11 @@ mod tests {
         let text = "# Hello\n";
 
         // First call — always returns Some (new engine, no previous hash)
-        let result1 = state.build_markdown_index_via_engine(&uri, text);
+        let result1 = state.build_markdown_index_via_engine(&uri, text, None);
         assert!(result1.is_some(), "first call should return Some");
 
         // Second call with same text — hash unchanged, should return None
-        let result2 = state.build_markdown_index_via_engine(&uri, text);
+        let result2 = state.build_markdown_index_via_engine(&uri, text, None);
         assert!(
             result2.is_none(),
             "second call with unchanged text should return None"
@@ -541,11 +566,11 @@ mod tests {
         let mut state = ServerState::new();
         let uri = DocumentUri::new("file:///test/hash_changed.md").unwrap();
 
-        let result1 = state.build_markdown_index_via_engine(&uri, "# Hello\n");
+        let result1 = state.build_markdown_index_via_engine(&uri, "# Hello\n", None);
         assert!(result1.is_some(), "first call should return Some");
 
         let result2 =
-            state.build_markdown_index_via_engine(&uri, "# Hello\n## World\n");
+            state.build_markdown_index_via_engine(&uri, "# Hello\n## World\n", None);
         assert!(
             result2.is_some(),
             "changed content should return Some"
@@ -557,7 +582,7 @@ mod tests {
         let mut state = ServerState::new();
         let uri = DocumentUri::new("file:///test/first_call.md").unwrap();
 
-        let result = state.build_markdown_index_via_engine(&uri, "# First\n");
+        let result = state.build_markdown_index_via_engine(&uri, "# First\n", None);
         assert!(
             result.is_some(),
             "first call for any URI should return Some"
@@ -569,12 +594,12 @@ mod tests {
         let mut state = ServerState::new();
         let uri = DocumentUri::new("file:///test/hash_whitespace.md").unwrap();
 
-        let r1 = state.build_markdown_index_via_engine(&uri, "# Hello\n");
+        let r1 = state.build_markdown_index_via_engine(&uri, "# Hello\n", None);
         assert!(r1.is_some());
 
         // Add trailing whitespace — different bytes, different hash, no short-circuit
         // This is conservative: structure hasn't changed, but hash is byte-level
-        let r2 = state.build_markdown_index_via_engine(&uri, "# Hello \n");
+        let r2 = state.build_markdown_index_via_engine(&uri, "# Hello \n", None);
         assert!(
             r2.is_some(),
             "whitespace-only change should return Some (hash is byte-level, not structural)"
@@ -588,18 +613,18 @@ mod tests {
         let text = "# Hello\n";
 
         // First call — returns Some, stores engine + hash
-        let r1 = state.build_markdown_index_via_engine(&uri, text);
+        let r1 = state.build_markdown_index_via_engine(&uri, text, None);
         assert!(r1.is_some());
 
         // Second call — short-circuits
-        let r2 = state.build_markdown_index_via_engine(&uri, text);
+        let r2 = state.build_markdown_index_via_engine(&uri, text, None);
         assert!(r2.is_none());
 
         // Close removes engine state
         state.engines.remove(uri.as_str());
 
         // Reopen with same content — new engine, no previous hash, returns Some
-        let r3 = state.build_markdown_index_via_engine(&uri, text);
+        let r3 = state.build_markdown_index_via_engine(&uri, text, None);
         assert!(
             r3.is_some(),
             "after close+reopen, first call should return Some even for same content"
@@ -612,15 +637,15 @@ mod tests {
         let uri = DocumentUri::new("file:///test/hash_utf8.md").unwrap();
         let text = "# 日本語のヘッダー\n\n本文テキスト\n";
 
-        let r1 = state.build_markdown_index_via_engine(&uri, text);
+        let r1 = state.build_markdown_index_via_engine(&uri, text, None);
         assert!(r1.is_some(), "first call should return Some");
 
-        let r2 = state.build_markdown_index_via_engine(&uri, text);
+        let r2 = state.build_markdown_index_via_engine(&uri, text, None);
         assert!(r2.is_none(), "same multi-byte content should short-circuit");
 
         // Change one character in the heading
         let r3 = state
-            .build_markdown_index_via_engine(&uri, "# 日本語のヘッダ\n\n本文テキスト\n");
+            .build_markdown_index_via_engine(&uri, "# 日本語のヘッダ\n\n本文テキスト\n", None);
         assert!(r3.is_some(), "changed multi-byte content should return Some");
     }
 
@@ -630,11 +655,11 @@ mod tests {
         let uri = DocumentUri::new("file:///test/hash_empty.md").unwrap();
 
         // Empty content — hash is 0 per Zig engine behavior
-        let r1 = state.build_markdown_index_via_engine(&uri, "");
+        let r1 = state.build_markdown_index_via_engine(&uri, "", None);
         assert!(r1.is_some(), "first call with empty content should return Some");
 
         // Second call with same empty content — hash still 0, should short-circuit
-        let r2 = state.build_markdown_index_via_engine(&uri, "");
+        let r2 = state.build_markdown_index_via_engine(&uri, "", None);
         assert!(
             r2.is_none(),
             "second call with same empty content should return None"
@@ -646,17 +671,115 @@ mod tests {
         let mut state = ServerState::new();
         let uri = DocumentUri::new("file:///test/hash_revert.md").unwrap();
 
-        let r1 = state.build_markdown_index_via_engine(&uri, "# Hello\n");
+        let r1 = state.build_markdown_index_via_engine(&uri, "# Hello\n", None);
         assert!(r1.is_some(), "first call should return Some");
 
-        let r2 = state.build_markdown_index_via_engine(&uri, "# World\n");
+        let r2 = state.build_markdown_index_via_engine(&uri, "# World\n", None);
         assert!(r2.is_some(), "changed content should return Some");
 
         // Revert to original — hash differs from last (World), so should return Some
-        let r3 = state.build_markdown_index_via_engine(&uri, "# Hello\n");
+        let r3 = state.build_markdown_index_via_engine(&uri, "# Hello\n", None);
         assert!(
             r3.is_some(),
             "reverted content should return Some (different from last hash)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_apply_incremental_changes_threads_edit_range() {
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/edit_range_threading.md").unwrap();
+
+        // Multi-heading doc: two headings, body after each
+        let text = "# First\n\nBody\n\n# Second\n\nMore body\n".to_string();
+        state.open_document(uri.clone(), text).await;
+
+        // Apply incremental change at the end (after both headings):
+        // insert " appended" at end of "More body" on line 6, char 9
+        let changes = vec![DocumentChange::Incremental {
+            start_line: 6,
+            start_character: 9,
+            end_line: 6,
+            end_character: 9,
+            text: " appended".to_string(),
+        }];
+
+        state.apply_document_changes(&uri, changes).await;
+
+        // With edit range threaded, headings before the edit should reuse slugs
+        let engine_state = state.engines.get(uri.as_str()).unwrap().lock().unwrap();
+        assert!(
+            engine_state.engine.slug_reuse_count() > 0,
+            "incremental edit at end should reuse slugs for headings before edit range, \
+             got slug_reuse_count={}",
+            engine_state.engine.slug_reuse_count()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_apply_full_change_passes_none() {
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/full_change_none.md").unwrap();
+
+        // Open with two headings
+        let text = "# First\n\n# Second\n".to_string();
+        state.open_document(uri.clone(), text).await;
+
+        // Apply a Full change — should pass None to engine (no incremental info)
+        let changes = vec![DocumentChange::Full(
+            "# First\n\n# Second\n\nNew paragraph\n".to_string(),
+        )];
+
+        state.apply_document_changes(&uri, changes).await;
+
+        // Full change → no edit range → no slug reuse
+        let engine_state = state.engines.get(uri.as_str()).unwrap().lock().unwrap();
+        assert_eq!(
+            engine_state.engine.slug_reuse_count(),
+            0,
+            "Full change should pass None to engine, so no slug reuse"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_apply_mixed_full_then_incremental_invalidates_range() {
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/mixed_changes.md").unwrap();
+
+        // Open with two headings
+        let text = "# First\n\n# Second\n\nBody\n".to_string();
+        state.open_document(uri.clone(), text).await;
+
+        // Mixed sequence: Full replacement first, then incremental edit
+        // The Full change should invalidate any accumulated range
+        let changes = vec![
+            DocumentChange::Full("# First\n\n# Second\n\nBody\n".to_string()),
+            DocumentChange::Incremental {
+                start_line: 4,
+                start_character: 4,
+                end_line: 4,
+                end_character: 4,
+                text: " extra".to_string(),
+            },
+        ];
+
+        state.apply_document_changes(&uri, changes).await;
+
+        // After Full change invalidates range, subsequent Incremental should still
+        // accumulate from scratch. But the key behavior: a Full anywhere in the
+        // sequence resets the accumulated range.
+        // For now, after implementation this tests that the incremental after Full
+        // DOES produce a range (not None from the Full).
+        // Pre-implementation: slug_reuse_count will be 0 regardless (None always passed)
+        let engine_state = state.engines.get(uri.as_str()).unwrap().lock().unwrap();
+        let reuse = engine_state.engine.slug_reuse_count();
+        // After GREEN: reuse > 0 (Incremental after Full builds fresh range)
+        // Currently: reuse == 0 (None always passed) — this test establishes the behavior
+        // We assert the post-implementation expectation
+        assert!(
+            reuse > 0,
+            "Incremental after Full should still thread edit range, got slug_reuse_count={}",
+            reuse
         );
     }
 }
