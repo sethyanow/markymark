@@ -1796,3 +1796,4 @@
 {"timestamp":"2026-03-24T18:24:00.644599+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-8d8","details":{"kind":"parent-child","to":"marky-03r"}}
 {"timestamp":"2026-03-24T18:24:00.645487+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-8d8","details":{"kind":"blocks","to":"marky-03r"}}
 {"timestamp":"2026-03-24T18:24:07.824457+00:00","actor":"Seth","event_type":"logged","task_id":"marky-03r","details":{"message":"Task scoped during executing-plans session. Design divergence from R6/R7: user confirmed blob-in-owner approach over lifetime parameter cascade (2026-03-24). Key insight: double-copy exists because text_blob not in self_cell owner. Fix: Vec<u8> in DocumentOwner, try_new for fallible reads, direct &'a str borrows from owner.text_blob."}}
+{"timestamp":"2026-03-24T18:41:35.198705+00:00","actor":"Seth","event_type":"updated","task_id":"marky-03r","details":{"status":"active"}}

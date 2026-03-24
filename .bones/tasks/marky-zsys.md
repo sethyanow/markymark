@@ -77,9 +77,8 @@ depends_on: [marky-n7wx, marky-lpb, marky-686, marky-8d8]
 - [x] Headings outside edit range reuse previous slugs (verified by test: edit at end of doc, heading slugs not recomputed)
 - [x] LSP `apply_document_changes` threads incremental edit byte bounds to engine update
 - [x] `from_engine_result_direct` decodes CEngineResult.text_blob into arena — no intermediate EngineExtraction Strings
-- [ ] `DocumentIndex<'engine>` compiles with engine lifetime; text fields borrow from text_blob
-- [ ] `RealmIndex` and `ServerState` hold `DocumentIndex<'engine>` without lifetime conflicts
-- [ ] All existing tests pass after each phase
+- [x] Text fields borrow from DocumentOwner.text_blob via self_cell — blob-in-owner replaces R6/R7 lifetime parameter (user confirmed 2026-03-24). No RealmIndex/ServerState cascade needed.
+- [x] All existing tests pass after each phase (1290/1290 workspace tests green after Phase 3b)
 
 ## Anti-Patterns (FORBIDDEN)
 

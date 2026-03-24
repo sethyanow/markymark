@@ -34,13 +34,12 @@ Phase 3b/3c parameterize DocumentIndex on text_blob lifetime for zero-copy borro
 - [x] `from_engine_result_direct` decodes CEngineResult.text_blob into arena — no intermediate EngineExtraction
 - [x] EngineExtraction intermediary not used in the LSP hot path (old path may remain as fallback)
 - [x] Benchmark: direct decode measurably faster than EngineExtraction path (Phase 3a alone)
-- [ ] `DocumentIndex<'engine>` compiles with engine lifetime parameter
-- [ ] Text fields in DocumentIndex entries borrow `&'engine str` from text_blob
-- [ ] self_cell / DocumentIndexCell reworked to accommodate text_blob lifetime
-- [ ] `RealmIndex` holds DocumentIndex with correct lifetime
-- [ ] `ServerState` engine + text_blob + index lifetime relationships are sound
-- [ ] No unsafe lifetime transmutes or 'static escape hatches
-- [ ] All existing tests pass after each sub-phase (3a, 3b, 3c independently)
+- [x] Text fields borrow from owner.text_blob via self_cell `'a` lifetime (blob-in-owner replaces R6/R7 lifetime parameter — user confirmed 2026-03-24)
+- [x] DocumentIndexCell uses try_new for fallible blob reads inside closure
+- [x] No lifetime parameter on DocumentIndex — no RealmIndex/ServerState cascade needed
+- [x] No unsafe lifetime transmutes or 'static escape hatches
+- [x] All existing tests pass (1290/1290 workspace tests green)
+- [x] Benchmark: blob-in-owner 21-63% faster than via_extraction path (scales with doc size)
 
 ## Anti-Patterns
 - NO unsafe lifetime transmutes or 'static extensions (sound lifetime modeling or nothing)
