@@ -1,11 +1,12 @@
 ---
 id: marky-840
 title: 'Phase 1 Acceptance: Content Hash Short-Circuit'
-status: open
+status: closed
 type: task
 priority: 2
 parent: marky-lpb
 ---
+
 
 
 

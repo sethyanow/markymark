@@ -9,6 +9,7 @@ parent: marky-lpb
 
 
 
+
 ## Context
 Phase 1, Seam 1b of epic marky-zsys. Parent sub-epic marky-lpb.
 
@@ -141,3 +142,7 @@ actually needed. Keeping the old hash forces the next call to retry the full pip
 ### Mutex<EngineState> access pattern
 All callers hold `&mut self` on `ServerState`, so the mutex is uncontested. The `lock()` call
 is defense-in-depth, not contention management. The `EngineState` wrapper doesn't change this.
+
+## Log
+
+- [2026-03-24T08:00:17Z] [Seth] Debrief: EngineState wrapper + hash comparison implemented in ~30 lines of production code. Option return type and caller handling were pre-existing (SRE caught stale skeleton steps). 8 new tests including adversarial battery (empty, UTF-8, close-reopen, whitespace). 208 total tests pass, clippy clean. Reflections: skeleton steps 3-4 were pre-done — SRE correction was valuable. No workarounds, no surprises beyond stale skeleton. EngineState pattern established for future per-engine metadata.
