@@ -9,6 +9,7 @@ parent: marky-lpb
 
 
 
+
 ## Context
 Phase 1, Seam 1a of epic marky-zsys. Parent sub-epic marky-lpb.
 
@@ -96,3 +97,7 @@ serializing all access. No concurrent-access risk.
 No `build.zig` changes needed. `export fn` in `exports.zig` produces a C-linkage symbol
 automatically, just like the existing 4 engine exports. The Zig static library already
 links into `markymark-kernels` via the `cc` crate build script.
+
+## Log
+
+- [2026-03-23T15:03:08Z] [Seth] Completed: FFI hash exposure (Phase 1a). Added marky_engine_get_content_hash to exports.zig + Rust extern + content_hash() method. 12 tests (4 core, 8 adversarial). All 64 workspace test suites pass. Clippy clean. SRE review sharpened skeleton: fixed file path ambiguity (exports.zig not c_adapter.zig), added 3 new anti-patterns, added Key Considerations. No surprises — pure plumbing task matched skeleton exactly.

@@ -544,11 +544,12 @@ mod tests {
                 // docs/b/page.md should have in-degree 1 (linked from a/index.md)
                 let b_uri = DocumentUri::from_file_path(&PathBuf::from("/docs/b/page.md"));
                 let b_hub = hubs.iter().find(|(u, _)| u == &b_uri);
-                assert!(
-                    b_hub.is_some(),
-                    "docs/b/page.md should be in hubs list"
+                assert!(b_hub.is_some(), "docs/b/page.md should be in hubs list");
+                assert_eq!(
+                    b_hub.unwrap().1,
+                    1,
+                    "docs/b/page.md should have in-degree 1"
                 );
-                assert_eq!(b_hub.unwrap().1, 1, "docs/b/page.md should have in-degree 1");
 
                 // docs/c/page.md should NOT have in-degree (link was NOT to it)
                 let c_uri = DocumentUri::from_file_path(&PathBuf::from("/docs/c/page.md"));
@@ -583,8 +584,7 @@ mod tests {
                 assert!(broken_links.is_empty(), "broken: {broken_links:?}");
                 assert_eq!(total_internal_links, 1);
 
-                let sub_uri =
-                    DocumentUri::from_file_path(&PathBuf::from("/root/sub/README.md"));
+                let sub_uri = DocumentUri::from_file_path(&PathBuf::from("/root/sub/README.md"));
                 let sub_hub = hubs.iter().find(|(u, _)| u == &sub_uri);
                 assert!(sub_hub.is_some(), "sub/README.md should be in hubs");
                 assert_eq!(sub_hub.unwrap().1, 1, "sub/README.md in-degree should be 1");

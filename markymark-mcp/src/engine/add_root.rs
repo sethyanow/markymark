@@ -46,8 +46,7 @@ impl RuntimeEngine {
             let uri = DocumentUri::from_file_path(&path);
 
             if kind == DocumentKind::Markdown {
-                let (fm_owned, aliases_owned) =
-                    markymark_index::parse_frontmatter_owned(&source);
+                let (fm_owned, aliases_owned) = markymark_index::parse_frontmatter_owned(&source);
                 let scan_source = markymark_index::mask_frontmatter(&source);
                 parsed_md.push((
                     uri,

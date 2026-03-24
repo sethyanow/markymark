@@ -425,9 +425,7 @@ impl CoreEngine for RuntimeEngine {
                 let mut state = self.state.write().await;
                 realm_ops::handle_destroy_realm(&mut state, name)
             }
-            CoreOperation::AddRoot { realm, root } => {
-                self.handle_add_root(realm, root).await
-            }
+            CoreOperation::AddRoot { realm, root } => self.handle_add_root(realm, root).await,
             CoreOperation::RemoveRoot { realm, root } => {
                 let mut state = self.state.write().await;
                 realm_ops::handle_remove_root(&mut state, realm, root).await

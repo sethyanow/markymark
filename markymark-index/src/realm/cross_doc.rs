@@ -85,9 +85,7 @@ impl RealmIndex {
             if let Some(stem_str) = path.file_stem().and_then(|s| s.to_str()) {
                 let lowered = stem_str.to_ascii_lowercase();
                 if let Some(spur) = self.interner.get(&lowered) {
-                    retain_or_remove_hash(&mut self.stem_to_uris, &spur, |u| {
-                        u.as_str() != key
-                    });
+                    retain_or_remove_hash(&mut self.stem_to_uris, &spur, |u| u.as_str() != key);
                 }
             }
         }
@@ -137,9 +135,7 @@ impl RealmIndex {
                 let root_paths: Vec<String> =
                     st_idx.root_keys().iter().map(|k| k.path.clone()).collect();
                 for path in &root_paths {
-                    retain_or_remove_hash(&mut self.key_path_to_docs, path, |u| {
-                        u.as_str() != key
-                    });
+                    retain_or_remove_hash(&mut self.key_path_to_docs, path, |u| u.as_str() != key);
                 }
             }
         }
@@ -152,11 +148,7 @@ impl RealmIndex {
 
     /// Populate all cross-doc indexes for a markdown document (full add).
     /// Used by both add_document and update_document's first-add fallback.
-    pub(super) fn populate_cross_doc_indexes(
-        &mut self,
-        uri: &DocumentUri,
-        index: &DocumentIndex,
-    ) {
+    pub(super) fn populate_cross_doc_indexes(&mut self, uri: &DocumentUri, index: &DocumentIndex) {
         // Headings (Spur-keyed)
         for entry in index.headings() {
             let slug_spur = self.interner.get_or_intern(entry.slug);

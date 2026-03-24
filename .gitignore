@@ -20,9 +20,13 @@ Thumbs.db
 .claude-harness/
 # Claude Code - Local settings
 .claude/settings.local.json
+.claude/worktrees/
 
 # bv (beads viewer) local config and caches
 .bv/
+
+# Bones cache (binary, machine-local)
+.bones/cache/
 
 # Zig
 .zig-cache/
@@ -38,6 +42,7 @@ MODULE.bazel.lock
 
 # Local scratch / exports
 temp_coderabbit_notes.md
+temp_pre_pr_reviews.md
 TEST_BIG_FILE.md
 bd_export_laptop*.jsonl
 .sprite

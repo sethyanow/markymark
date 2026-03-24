@@ -51,9 +51,7 @@ impl ServerHandler for SlimMarkymarkMcp {
                 "Slim markymark MCP router. Use execute({operation, params}) for all operations."
                     .to_string(),
             ),
-            capabilities: ServerCapabilities::builder()
-                .enable_tools()
-                .build(),
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..ServerInfo::default()
         }
     }
@@ -137,12 +135,24 @@ impl SlimMarkymarkMcp {
         }
 
         match operation {
-            "get-outline" => route!(crate::dto::OutlineRequest, tools::outline::handle_get_outline, params),
-            "search-symbols" => route!(crate::dto::SearchSymbolsRequest, tools::search::handle_search_symbols, params),
+            "get-outline" => route!(
+                crate::dto::OutlineRequest,
+                tools::outline::handle_get_outline,
+                params
+            ),
+            "search-symbols" => route!(
+                crate::dto::SearchSymbolsRequest,
+                tools::search::handle_search_symbols,
+                params
+            ),
             "semantic-search" => {
                 #[cfg(feature = "semantic-search")]
                 {
-                    route!(crate::dto::SemanticSearchRequest, tools::search::handle_semantic_search, params)
+                    route!(
+                        crate::dto::SemanticSearchRequest,
+                        tools::search::handle_semantic_search,
+                        params
+                    )
                 }
                 #[cfg(not(feature = "semantic-search"))]
                 {
@@ -153,24 +163,96 @@ impl SlimMarkymarkMcp {
                     ))
                 }
             }
-            "find-references" => route!(crate::dto::FindReferencesRequest, tools::refs::handle_find_references, params),
-            "rename" => route!(crate::dto::RenameRequest, tools::refs::handle_rename, params),
-            "create-realm" => route_realm!(crate::dto::CreateRealmRequest, tools::realm::handle_create_realm, params),
-            "destroy-realm" => route_realm!(crate::dto::DestroyRealmRequest, tools::realm::handle_destroy_realm, params),
-            "add-root" => route_realm!(crate::dto::AddRootRequest, tools::realm::handle_add_root, params),
-            "remove-root" => route_realm!(crate::dto::RemoveRootRequest, tools::realm::handle_remove_root, params),
-            "realm-stats" => route!(crate::dto::RealmStatsRequest, tools::realm::handle_realm_stats, params),
-            "export-index" => route!(crate::dto::ExportIndexRequest, tools::outline::handle_export_index, params),
-            "search-workspace" => route!(crate::dto::SearchWorkspaceRequest, tools::search::handle_search_workspace, params),
-            "search-for-pattern" => route!(crate::dto::SearchForPatternRequest, tools::search::handle_search_for_pattern, params),
-            "graph-analysis" => route!(crate::dto::GraphAnalysisRequest, tools::graph::handle_graph_analysis, params),
-            "get-diagnostics" => route!(crate::dto::GetDiagnosticsRequest, tools::diagnostics::handle_get_diagnostics, params),
-            "export-docs-index" => route!(crate::dto::ExportDocsIndexRequest, tools::export_docs_index::handle_export_docs_index, params),
-            "enrich-document" => route!(crate::dto::EnrichDocumentRequest, tools::enrich::handle_enrich_document, params),
-            "recommend-docs" => route!(crate::dto::RecommendDocsRequest, tools::recommend::handle_recommend_docs, params),
-            "curation-diagnostics" => route!(crate::dto::CurationDiagnosticsRequest, tools::curation::handle_curation_diagnostics, params),
-            "get-content-blocks" => route!(crate::dto::GetContentBlocksRequest, tools::blocks::handle_get_content_blocks, params),
-            "search-block-text" => route!(crate::dto::SearchBlockTextRequest, tools::blocks::handle_search_block_text, params),
+            "find-references" => route!(
+                crate::dto::FindReferencesRequest,
+                tools::refs::handle_find_references,
+                params
+            ),
+            "rename" => route!(
+                crate::dto::RenameRequest,
+                tools::refs::handle_rename,
+                params
+            ),
+            "create-realm" => route_realm!(
+                crate::dto::CreateRealmRequest,
+                tools::realm::handle_create_realm,
+                params
+            ),
+            "destroy-realm" => route_realm!(
+                crate::dto::DestroyRealmRequest,
+                tools::realm::handle_destroy_realm,
+                params
+            ),
+            "add-root" => route_realm!(
+                crate::dto::AddRootRequest,
+                tools::realm::handle_add_root,
+                params
+            ),
+            "remove-root" => route_realm!(
+                crate::dto::RemoveRootRequest,
+                tools::realm::handle_remove_root,
+                params
+            ),
+            "realm-stats" => route!(
+                crate::dto::RealmStatsRequest,
+                tools::realm::handle_realm_stats,
+                params
+            ),
+            "export-index" => route!(
+                crate::dto::ExportIndexRequest,
+                tools::outline::handle_export_index,
+                params
+            ),
+            "search-workspace" => route!(
+                crate::dto::SearchWorkspaceRequest,
+                tools::search::handle_search_workspace,
+                params
+            ),
+            "search-for-pattern" => route!(
+                crate::dto::SearchForPatternRequest,
+                tools::search::handle_search_for_pattern,
+                params
+            ),
+            "graph-analysis" => route!(
+                crate::dto::GraphAnalysisRequest,
+                tools::graph::handle_graph_analysis,
+                params
+            ),
+            "get-diagnostics" => route!(
+                crate::dto::GetDiagnosticsRequest,
+                tools::diagnostics::handle_get_diagnostics,
+                params
+            ),
+            "export-docs-index" => route!(
+                crate::dto::ExportDocsIndexRequest,
+                tools::export_docs_index::handle_export_docs_index,
+                params
+            ),
+            "enrich-document" => route!(
+                crate::dto::EnrichDocumentRequest,
+                tools::enrich::handle_enrich_document,
+                params
+            ),
+            "recommend-docs" => route!(
+                crate::dto::RecommendDocsRequest,
+                tools::recommend::handle_recommend_docs,
+                params
+            ),
+            "curation-diagnostics" => route!(
+                crate::dto::CurationDiagnosticsRequest,
+                tools::curation::handle_curation_diagnostics,
+                params
+            ),
+            "get-content-blocks" => route!(
+                crate::dto::GetContentBlocksRequest,
+                tools::blocks::handle_get_content_blocks,
+                params
+            ),
+            "search-block-text" => route!(
+                crate::dto::SearchBlockTextRequest,
+                tools::blocks::handle_search_block_text,
+                params
+            ),
             unknown => Ok(tools::tool_error(
                 "unknown_operation",
                 format!(
