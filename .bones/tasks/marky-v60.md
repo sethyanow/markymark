@@ -1,11 +1,12 @@
 ---
 id: marky-v60
 title: 'Task 2: Zig slug reuse — skip makeSlug for headings before edit range'
-status: open
+status: active
 type: task
 priority: 2
 parent: marky-686
 ---
+
 
 ## Context
 
@@ -31,13 +32,15 @@ From parent sub-epic marky-686:
 ## Success Criteria
 
 - [ ] `DocumentEngine` has `slug_reuse_count: u32` field, reset to 0 on each update
-- [ ] `update()` saves old headings' `(source_offset, slug)` before calling parseAll
-- [ ] Heading processing skips `makeSlug` for headings with `source_offset < edit_offset`, duping old slug instead
+- [ ] `update()` post-processes new headings between parseAll success and freeState, reading old slugs from `self.headings`
+- [ ] For new headings with `source_offset < edit_offset`: dupe old slug, free parseAll slug, replace. Dupe BEFORE free (OOM safety).
 - [ ] `slug_reuse_count` incremented for each reused slug
-- [ ] Zero-value edit range (0/0/0) bypasses reuse logic entirely (full recompute, count stays 0)
+- [ ] Zero-value edit range (0/0/0) bypasses reuse logic via explicit check (not just arithmetic coincidence), count stays 0
 - [ ] `marky_engine_get_slug_reuse_count` C export + Rust `slug_reuse_count()` wrapper
 - [ ] Zig test: edit at end of document → headings at start reuse slugs (slug_reuse_count > 0)
 - [ ] Zig test: edit inside heading → that heading's slug recomputed (count reflects partial reuse)
+- [ ] Zig test: heading exactly at edit_offset → NOT reused (strict less-than boundary)
+- [ ] Zig test: slug_reuse_count resets between updates (reuse update → zero-range update → count == 0)
 - [ ] Rust FFI test: edit range after headings → slug_reuse_count > 0
 - [ ] Rust FFI test: zero-value range → slug_reuse_count == 0
 - [ ] All existing tests pass
@@ -70,15 +73,17 @@ From parent sub-epic marky-686:
 
 ### Step 4: GREEN — Implement slug reuse in update()
 **File:** `zig/src/engine/document.zig`
-- In `update()`, remove the three `_ = edit_*;` discards
-- Before calling `parseAll`:
-  a. Allocate temp array of `struct { offset: u32, slug: []const u8 }` from old `self.headings`
-  b. Copy each old heading's `source_offset` and dupe its `slug` bytes (old memory freed later)
-- After `parseAll` succeeds, before installing new headings: iterate new headings
-  - If `edit_offset == 0 AND edit_old_len == 0 AND edit_new_len == 0`: skip reuse entirely
-  - For each new heading with `source_offset < edit_offset`: find old heading at same offset, if found: free new slug, assign duped old slug, increment `slug_reuse_count`
-  - Otherwise: keep parseAll-computed slug
-- Free temp old-slug array after processing
+- In `update()`, remove the three `_ = edit_*;` discards (lines 87-89)
+- After `parseAll` succeeds (line 128), BEFORE `self.freeState()` (line 131), insert reuse pass:
+  1. Explicit zero-value check: `if (edit_offset == 0 and edit_old_len == 0 and edit_new_len == 0)` → skip reuse entirely
+  2. Iterate `new_headings` with pointer capture (`|*new_h|`):
+     - If `new_h.source_offset < edit_offset`: scan `self.headings` (old, still valid) for matching `source_offset`
+     - If found: `const duped = allocator.dupe(u8, old_h.slug) catch continue;` (OOM = skip this heading)
+     - Then: `allocator.free(new_h.slug);` (free parseAll's fresh slug AFTER dupe succeeds)
+     - Then: `new_h.slug = duped; self.slug_reuse_count += 1;`
+  3. No match found or source_offset >= edit_offset: keep parseAll-computed slug
+- **No temp array needed** — `self.headings` is still valid between parseAll and freeState. Old slug
+  bytes are read directly and duped into new allocations. freeState then frees the originals safely.
 
 ### Step 5: GREEN — Expose slug_reuse_count via FFI
 **Files:**
@@ -99,15 +104,15 @@ From parent sub-epic marky-686:
 
 ## Key Considerations
 
-- **Temp allocation for old slugs:** Old headings are in `self.headings` which gets freed by `freeState()`.
-  Must dupe slug bytes into temp storage before parseAll runs. Use `self.allocator` for the temp array;
-  free it after the reuse pass. Heading count is typically < 100, so this is small.
+- **No temp array needed (SRE simplification):** `self.headings` (old data) remains valid between
+  parseAll success (line 128) and `freeState()` (line 131). The reuse pass reads directly from
+  `self.headings` and dupes slug bytes into new allocations. No temp snapshot required.
 - **Matching old→new headings:** For headings before `edit_offset`, the `source_offset` is identical
   in old and new text (no byte shift). Linear scan over old headings is fine (O(n*m) where n,m < 100).
-- **freeState ordering:** `update()` currently calls `freeState()` AFTER parseAll succeeds (line 122).
-  The old heading data lives until freeState. So the temp copy must happen before parseAll (because
-  parseAll might fail, and we don't want to leak the temp on error). Use errdefer to free temp on failure.
-- **The heading loop lives inside parseAll (lines 298-324).** To skip makeSlug, we'd need to either
+- **freeState ordering:** `update()` calls `freeState()` at line 131, AFTER parseAll succeeds at line 128.
+  The reuse pass MUST be inserted between these two lines. After freeState, old slug memory is freed —
+  reading it is undefined behavior (anti-pattern: NO pointer reuse across freeState boundary).
+- **The heading loop lives inside parseAll (lines 307-332).** To skip makeSlug, we'd need to either
   modify parseAll or post-process. Anti-pattern says don't modify parseAll's signature. The post-processing
   approach: parseAll computes all slugs, then update() replaces eligible ones. This computes slugs
   we'll throw away for reused headings — acceptable for v1. If profiling shows this matters, refactor
@@ -115,3 +120,37 @@ From parent sub-epic marky-686:
 - **Dedup safety guarantee:** Headings before `edit_offset` are safe because their preceding heading
   context is identical (all preceding headings are also before the edit). After-edit-range headings
   may have different dedup suffixes if headings with same base slug were added/removed in the edit.
+  Verified: `makeSlug` dedup scans `extraction.headings[0..i]` (lines 30-36 in document_helpers.zig).
+
+### Adversarial Failure Catalog (SRE)
+
+**OOM during slug replacement**
+- Assumption: `allocator.dupe()` succeeds for every reusable heading
+- Betrayal: OOM after duping slugs for headings 0-2 but failing on heading 3
+- Consequence: If new slug freed BEFORE dupe attempt: use-after-free. If dupe attempted FIRST: heading 3
+  keeps its fresh parseAll slug, headings 0-2 have duped old slugs. Mixed state but all allocator-owned.
+- Mitigation: **Dupe old slug first, free new slug second.** On OOM, `catch continue` — heading keeps
+  fresh slug. `freeHeadings` (document_free.zig:26) handles both origins uniformly via `allocator.free`.
+
+**Stale edit_offset (Input Hostility)**
+- Assumption: `edit_offset` corresponds to the text being parsed
+- Betrayal: Caller passes stale offset from a different text version, causing `source_offset < edit_offset`
+  to be true for all headings (over-reuse)
+- Consequence: Benign — old and new slugs are identical when text hasn't changed in those regions.
+  If text DID change, source_offsets won't match between old and new headings, so the matching
+  loop finds nothing and no reuse occurs.
+- Mitigation: Structural — offset matching is the safety net against stale ranges.
+
+**slug_reuse_count accumulation (Temporal Betrayal)**
+- Assumption: Count resets to 0 each update
+- Betrayal: If reset forgotten, count accumulates, giving wrong values across updates
+- Consequence: Rust FFI `count > 0` test passes even if reuse didn't happen THIS update
+- Mitigation: Success criterion requires Zig test: reuse update → zero-range update → count == 0.
+  Tests count reset across sequential updates on same engine instance.
+
+**Encoding boundary (edit_offset vs source_offset)**
+- Assumption: Both are byte offsets in UTF-8 text
+- Betrayal: LSP protocol uses UTF-16 code unit offsets — conversion is Task 3's responsibility
+- Consequence: Wrong headings reused if offsets are in different units
+- Mitigation: This task uses raw byte offsets. Task 3 (LSP threading) must convert UTF-16 → bytes.
+  All tests in this task use explicit byte offsets to avoid ambiguity.

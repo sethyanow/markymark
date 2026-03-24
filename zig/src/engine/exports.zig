@@ -86,6 +86,14 @@ export fn marky_engine_get_content_hash(handle: ?*anyopaque) u64 {
     return engine.content_hash;
 }
 
+/// Return the number of headings that reused slugs from the previous parse
+/// during the most recent `update()` call. Zero after `create()` or when
+/// no edit range was provided.
+export fn marky_engine_get_slug_reuse_count(handle: ?*anyopaque) u32 {
+    const engine = castHandle(handle) orelse return 0;
+    return engine.slug_reuse_count;
+}
+
 /// Destroy a DocumentEngine, freeing all owned memory.
 ///
 /// After this call the handle is invalid. Passing null is a no-op.
@@ -209,7 +217,7 @@ test "engine_get_result_generation_increments_on_update" {
     try testing.expect(gen1 >= 1);
 
     const updated = "# Two\n## Sub\n";
-    try testing.expectEqual(@as(i32, 0), marky_engine_update(handle, updated.ptr, @intCast(updated.len)));
+    try testing.expectEqual(@as(i32, 0), marky_engine_update(handle, updated.ptr, @intCast(updated.len), 0, 0, 0));
 
     var result2: CEngineResult = std.mem.zeroes(CEngineResult);
     defer marky_engine_free_result(&result2);
@@ -252,7 +260,7 @@ test "engine_lifecycle" {
     };
 
     for (docs) |doc| {
-        const rc = marky_engine_update(handle, doc.ptr, @intCast(doc.len));
+        const rc = marky_engine_update(handle, doc.ptr, @intCast(doc.len), 0, 0, 0);
         try testing.expectEqual(@as(i32, 0), rc);
     }
 

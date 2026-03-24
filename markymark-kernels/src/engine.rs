@@ -46,6 +46,7 @@ extern "C" {
     ) -> i32;
     fn marky_engine_destroy(handle: *mut std::ffi::c_void);
     fn marky_engine_get_content_hash(handle: *mut std::ffi::c_void) -> u64;
+    fn marky_engine_get_slug_reuse_count(handle: *mut std::ffi::c_void) -> u32;
 }
 
 // ---------------------------------------------------------------------------
@@ -208,6 +209,15 @@ impl DocumentEngine {
         // allocation.
         // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
         unsafe { marky_engine_get_content_hash(self.handle) }
+    }
+
+    /// Number of headings that reused slugs from the previous parse during
+    /// the most recent [`update`](Self::update). Zero after creation or when
+    /// no edit range was provided (0/0/0).
+    pub fn slug_reuse_count(&self) -> u32 {
+        // SAFETY: handle is valid — pure field read, no mutation.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        unsafe { marky_engine_get_slug_reuse_count(self.handle) }
     }
 }
 
@@ -438,7 +448,6 @@ mod tests {
     #[test]
     fn test_engine_update_edit_range_nonzero_succeeds() {
         // Non-zero edit range values must pass through FFI without error
-        // (Zig ignores them in Task 1, but the marshaling must not crash)
         let mut engine = DocumentEngine::new("# Hello world\n").unwrap();
         engine
             .update(
@@ -448,5 +457,48 @@ mod tests {
             .unwrap();
         let hash = engine.content_hash();
         assert_ne!(hash, 0, "non-zero edit range must not crash FFI");
+    }
+
+    #[test]
+    fn test_engine_slug_reuse_edit_at_end() {
+        // Two headings, edit appends text after both.
+        // "# Alpha\n## Beta\n" — Alpha at byte 0, Beta at byte 8.
+        let mut engine = DocumentEngine::new("# Alpha\n## Beta\n").unwrap();
+        assert_eq!(engine.slug_reuse_count(), 0, "no reuse after create");
+
+        // Append after all headings: edit_offset=17 (past "## Beta\n")
+        engine
+            .update(
+                "# Alpha\n## Beta\nSome new text\n",
+                Some(EditRange { offset: 17, old_len: 0, new_len: 14 }),
+            )
+            .unwrap();
+        assert!(
+            engine.slug_reuse_count() > 0,
+            "headings before edit_offset should reuse slugs"
+        );
+        assert_eq!(engine.slug_reuse_count(), 2, "both headings before offset 17");
+    }
+
+    #[test]
+    fn test_engine_slug_reuse_zero_range_no_reuse() {
+        let mut engine = DocumentEngine::new("# Alpha\n## Beta\n").unwrap();
+
+        // First: update WITH edit range to get reuse
+        engine
+            .update(
+                "# Alpha\n## Beta\nExtra\n",
+                Some(EditRange { offset: 17, old_len: 0, new_len: 6 }),
+            )
+            .unwrap();
+        assert!(engine.slug_reuse_count() > 0, "should have reuse with edit range");
+
+        // Then: update with None (zero range) — count must reset to 0
+        engine.update("# Alpha\n## Beta\n", None).unwrap();
+        assert_eq!(
+            engine.slug_reuse_count(),
+            0,
+            "zero range must bypass reuse logic"
+        );
     }
 }

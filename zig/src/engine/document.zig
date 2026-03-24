@@ -59,6 +59,7 @@ pub const DocumentEngine = struct {
     token_estimate: u32 = 0,
     content_hash: u64 = 0,
     generation: u64 = 0,
+    slug_reuse_count: u32 = 0,
 
     pub const Error = error{
         OutOfMemory,
@@ -83,10 +84,8 @@ pub const DocumentEngine = struct {
     /// Zero-values (0/0/0) mean "no range info" — full recomputation.
     /// TODO(marky-686-task2): use edit range for slug reuse
     pub fn update(self: *DocumentEngine, text: []const u8, edit_offset: u32, edit_old_len: u32, edit_new_len: u32) Error!void {
-        // Edit range params reserved for Task 2 (slug reuse).
-        _ = edit_offset;
-        _ = edit_old_len;
-        _ = edit_new_len;
+        self.slug_reuse_count = 0;
+
         // Parse new text FIRST, before freeing old state.
         // This ensures old state is preserved on parse failure.
         var new_headings: []StoredHeading = &.{};
@@ -126,6 +125,29 @@ pub const DocumentEngine = struct {
             &new_token_estimate,
             &new_content_hash,
         ) catch |e| return e;
+
+        // Slug reuse: for headings before the edit range, reuse the slug from
+        // the previous parse instead of the freshly computed one. self.headings
+        // (old state) is still valid here — freeState hasn't run yet.
+        const has_edit_range = edit_offset != 0 or edit_old_len != 0 or edit_new_len != 0;
+        if (has_edit_range) {
+            for (new_headings) |*new_h| {
+                if (new_h.source_offset < edit_offset) {
+                    // Find old heading at same source_offset
+                    for (self.headings) |old_h| {
+                        if (old_h.source_offset == new_h.source_offset) {
+                            // Dupe old slug BEFORE freeing new (OOM safety).
+                            // On OOM: break inner loop, heading keeps fresh slug.
+                            const duped = self.allocator.dupe(u8, old_h.slug) catch break;
+                            self.allocator.free(new_h.slug);
+                            new_h.slug = duped;
+                            self.slug_reuse_count += 1;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
 
         // Parse succeeded — free old state, install new state
         self.freeState();

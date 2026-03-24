@@ -494,3 +494,217 @@ test "engine xml_tags update replaces old xml_tags" {
     try testing.expectEqual(@as(usize, 1), engine.xml_tags.len);
     try testing.expectEqualStrings("span", engine.xml_tags[0].tag_name);
 }
+
+// --- Slug reuse tests (marky-v60) ---
+
+test "slug reuse: edit at end preserves earlier slugs" {
+    // Document: two headings at known byte offsets
+    // "# Alpha\n## Beta\n" — Alpha at offset 0, Beta at offset 8
+    const initial = "# Alpha\n## Beta\n";
+    var engine = try DocumentEngine.create(initial, testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 2), engine.headings.len);
+    try testing.expectEqualStrings("alpha", engine.headings[0].slug);
+    try testing.expectEqualStrings("beta", engine.headings[1].slug);
+
+    // Append text after all headings: edit at offset 17 (past end of "## Beta\n")
+    // Both headings are before edit_offset=17, so both should reuse slugs
+    const updated = "# Alpha\n## Beta\nSome new text\n";
+    try engine.update(updated, 17, 0, 14); // offset=17, old_len=0, new_len=14 ("Some new text\n")
+
+    try testing.expectEqual(@as(usize, 2), engine.headings.len);
+    try testing.expectEqualStrings("alpha", engine.headings[0].slug);
+    try testing.expectEqualStrings("beta", engine.headings[1].slug);
+    try testing.expect(engine.slug_reuse_count > 0);
+    try testing.expectEqual(@as(u32, 2), engine.slug_reuse_count);
+}
+
+test "slug reuse: edit inside heading forces recomputation" {
+    // "# Alpha\n## Beta\n" — Alpha at offset 0 (len 7+newline=8), Beta at offset 8
+    const initial = "# Alpha\n## Beta\n";
+    var engine = try DocumentEngine.create(initial, testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 2), engine.headings.len);
+    try testing.expectEqualStrings("alpha", engine.headings[0].slug);
+
+    // Edit covers first heading: offset=0, replaced "# Alpha\n" (8 bytes) with "# Gamma\n" (8 bytes)
+    // Alpha is at offset 0, which is NOT < edit_offset(0), so it must be recomputed
+    // Beta is at offset 8, which is >= edit_offset(0), so also recomputed
+    const updated = "# Gamma\n## Beta\n";
+    try engine.update(updated, 0, 8, 8);
+
+    try testing.expectEqual(@as(usize, 2), engine.headings.len);
+    try testing.expectEqualStrings("gamma", engine.headings[0].slug);
+    try testing.expectEqualStrings("beta", engine.headings[1].slug);
+    // No reuse — edit starts at offset 0, no heading has source_offset < 0
+    try testing.expectEqual(@as(u32, 0), engine.slug_reuse_count);
+}
+
+test "slug reuse: heading exactly at edit_offset is NOT reused" {
+    // "# First\n## Second\n## Third\n"
+    // Byte offsets: First at 0, Second at 8, Third at 18
+    const initial = "# First\n## Second\n## Third\n";
+    var engine = try DocumentEngine.create(initial, testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 3), engine.headings.len);
+    // Verify actual byte offsets from md4c extraction
+    try testing.expectEqual(@as(u32, 0), engine.headings[0].source_offset);
+    try testing.expectEqual(@as(u32, 8), engine.headings[1].source_offset);
+
+    // Edit at offset 8 (exactly where Second starts)
+    // First (offset 0 < 8) → reused. Second (offset 8 == 8, NOT <) → recomputed.
+    const updated = "# First\n## Changed\n## Third\n";
+    try engine.update(updated, 8, 10, 11); // "## Second\n" (10 bytes) → "## Changed\n" (11 bytes)
+
+    try testing.expectEqual(@as(usize, 3), engine.headings.len);
+    try testing.expectEqualStrings("first", engine.headings[0].slug);
+    try testing.expectEqualStrings("changed", engine.headings[1].slug);
+    // Only First reused (offset 0 < 8)
+    try testing.expectEqual(@as(u32, 1), engine.slug_reuse_count);
+}
+
+test "slug reuse: count resets between updates" {
+    const initial = "# Alpha\n## Beta\n";
+    var engine = try DocumentEngine.create(initial, testing.allocator);
+    defer engine.destroy();
+
+    // First update with edit range → should have reuse
+    const updated = "# Alpha\n## Beta\nExtra\n";
+    try engine.update(updated, 17, 0, 6);
+    try testing.expect(engine.slug_reuse_count > 0);
+
+    // Second update with zero range → count must reset to 0
+    try engine.update("# Alpha\n## Beta\n", 0, 0, 0);
+    try testing.expectEqual(@as(u32, 0), engine.slug_reuse_count);
+}
+
+// --- Adversarial stress tests (marky-v60) ---
+
+test "adversarial: no headings with edit range" {
+    // Empty pattern: document with no headings, non-zero edit range
+    const initial = "Just plain text, no headings\n";
+    var engine = try DocumentEngine.create(initial, testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 0), engine.headings.len);
+
+    const updated = "Just plain modified text, no headings\n";
+    try engine.update(updated, 5, 5, 14);
+    try testing.expectEqual(@as(u32, 0), engine.slug_reuse_count);
+    try testing.expectEqual(@as(usize, 0), engine.headings.len);
+}
+
+test "adversarial: single heading reuse" {
+    // Singular pattern: exactly one heading, edit after it
+    const initial = "# Solo\nBody text here\n";
+    var engine = try DocumentEngine.create(initial, testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 1), engine.headings.len);
+    try testing.expectEqualStrings("solo", engine.headings[0].slug);
+
+    const updated = "# Solo\nModified body text\n";
+    try engine.update(updated, 7, 14, 18);
+    try testing.expectEqual(@as(u32, 1), engine.slug_reuse_count);
+    try testing.expectEqualStrings("solo", engine.headings[0].slug);
+}
+
+test "adversarial: duplicate heading text preserves dedup slugs" {
+    // Redundant pattern: three headings with same text → slugs "foo", "foo-1", "foo-2"
+    const initial = "# Foo\n# Foo\n# Foo\n";
+    var engine = try DocumentEngine.create(initial, testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 3), engine.headings.len);
+    try testing.expectEqualStrings("foo", engine.headings[0].slug);
+    try testing.expectEqualStrings("foo-1", engine.headings[1].slug);
+    try testing.expectEqualStrings("foo-2", engine.headings[2].slug);
+
+    // Edit after all headings — all three should reuse their dedup slugs
+    const updated = "# Foo\n# Foo\n# Foo\nNew paragraph\n";
+    try engine.update(updated, 18, 0, 14);
+    try testing.expectEqual(@as(u32, 3), engine.slug_reuse_count);
+    // Verify dedup suffixes are preserved (not recomputed fresh)
+    try testing.expectEqualStrings("foo", engine.headings[0].slug);
+    try testing.expectEqualStrings("foo-1", engine.headings[1].slug);
+    try testing.expectEqualStrings("foo-2", engine.headings[2].slug);
+}
+
+test "adversarial: edit_offset at u32 max" {
+    // Type boundary: absurdly large edit_offset — all headings are "before" it
+    const initial = "# One\n## Two\n";
+    var engine = try DocumentEngine.create(initial, testing.allocator);
+    defer engine.destroy();
+
+    // edit_offset=maxInt(u32): every heading's source_offset is < this
+    const updated = "# One\n## Two\nMore\n";
+    try engine.update(updated, std.math.maxInt(u32), 0, 5);
+    try testing.expectEqual(@as(u32, 2), engine.slug_reuse_count);
+}
+
+test "adversarial: multibyte UTF-8 heading with edit at byte boundary" {
+    // Encoding boundary: heading text with multibyte chars
+    // "# Café\n" = '#'(1) + ' '(1) + 'C'(1) + 'a'(1) + 'f'(1) + 'é'(2) + '\n'(1) = 8 bytes
+    const initial = "# Caf\xc3\xa9\n## Next\n";
+    var engine = try DocumentEngine.create(initial, testing.allocator);
+    defer engine.destroy();
+
+    try testing.expectEqual(@as(usize, 2), engine.headings.len);
+
+    // Edit at offset 8 (right after "# Café\n") — first heading is before, reused
+    const updated = "# Caf\xc3\xa9\n## Changed\n";
+    try engine.update(updated, 8, 8, 11);
+    try testing.expectEqual(@as(u32, 1), engine.slug_reuse_count);
+}
+
+test "adversarial: 100 updates with slug reuse — no memory leaks" {
+    // State transition + the "second run": verify no leaks across many reuse cycles.
+    // Uses GeneralPurposeAllocator which detects leaks on deinit.
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer {
+        const check = gpa.deinit();
+        if (check == .leak) @panic("Memory leak detected in slug reuse update×100");
+    }
+    const allocator = gpa.allocator();
+
+    var engine = try DocumentEngine.create("# Stable\n## Also Stable\n", allocator);
+    defer engine.destroy();
+
+    var i: u32 = 0;
+    while (i < 100) : (i += 1) {
+        var buf: [128]u8 = undefined;
+        // Append varying text after headings — headings reuse slugs each time
+        const text = std.fmt.bufPrint(&buf, "# Stable\n## Also Stable\nIteration {d}\n", .{i}) catch continue;
+        try engine.update(text, 25, 0, @intCast(text.len - 25));
+        try testing.expectEqual(@as(u32, 2), engine.slug_reuse_count);
+    }
+}
+
+test "adversarial: five sequential updates alternating reuse and full recompute" {
+    // State transitions: repeated updates exercising reuse then reset
+    var engine = try DocumentEngine.create("# A\n## B\n", testing.allocator);
+    defer engine.destroy();
+
+    // Update 1: edit at end → reuse both
+    try engine.update("# A\n## B\nX\n", 9, 0, 2);
+    try testing.expectEqual(@as(u32, 2), engine.slug_reuse_count);
+
+    // Update 2: zero range → no reuse, count resets
+    try engine.update("# A\n## B\n", 0, 0, 0);
+    try testing.expectEqual(@as(u32, 0), engine.slug_reuse_count);
+
+    // Update 3: edit at start → nothing before offset 0, no reuse
+    try engine.update("# C\n## B\n", 0, 4, 4);
+    try testing.expectEqual(@as(u32, 0), engine.slug_reuse_count);
+
+    // Update 4: edit between headings → first reused, second not
+    try engine.update("# C\nNew line\n## B\n", 4, 0, 9);
+    try testing.expectEqual(@as(u32, 1), engine.slug_reuse_count);
+
+    // Update 5: edit at end again → both reused (offsets match: C at 0, B at 13)
+    try engine.update("# C\nNew line\n## B\nTrailing\n", 18, 0, 9);
+    try testing.expectEqual(@as(u32, 2), engine.slug_reuse_count);
+}
