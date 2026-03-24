@@ -1,11 +1,12 @@
 ---
 id: marky-1ic
 title: Short-circuit blob pipeline when content hash unchanged
-status: open
+status: active
 type: task
 priority: 2
 parent: marky-lpb
 ---
+
 
 ## Context
 Phase 1, Seam 1b of epic marky-zsys. Parent sub-epic marky-lpb.
@@ -30,7 +31,15 @@ The three callers of `build_markdown_index_via_engine` in `markymark-lsp/src/sta
 
 ## Implementation
 
-1. **Write failing tests** (`markymark-lsp/src/state/mod.rs` or new test file):
+**Code state (SRE verified 2026-03-24):** `build_markdown_index_via_engine` already returns
+`Option<DocumentIndex>` (for the stale-index fallback case). Callers (`open_document`,
+`change_document`, `apply_document_changes`) already handle `None`. The remaining work is
+introducing the `EngineState` wrapper and hash comparison logic.
+
+**Test access:** `build_markdown_index_via_engine` is private. Tests must go in a
+`#[cfg(test)] mod tests` block inside `state/mod.rs`, or make the method `pub(crate)`.
+
+1. **Write failing tests** (`markymark-lsp/src/state/mod.rs` — internal `#[cfg(test)]` module):
    - `test_build_index_returns_none_for_unchanged_content`: create `ServerState`, call
      `build_markdown_index_via_engine("file:///test.md", "# Hello\n")` → returns `Some`.
      Call again with same URI and same text → returns `None`.
@@ -38,28 +47,33 @@ The three callers of `build_markdown_index_via_engine` in `markymark-lsp/src/sta
      `"# Hello\n"` then `"# Hello\n## World\n"` → both return `Some`.
    - `test_build_index_first_call_always_returns_some`: new URI always returns `Some`
      (no previous hash to compare).
+   - `test_build_index_returns_some_for_reverted_content`: call with `"# Hello\n"`,
+     then `"# World\n"`, then `"# Hello\n"` again → all three return `Some` (hash
+     changes each time, even when reverting to original content). Catches: comparing
+     against initial hash instead of last hash.
 
 2. **Introduce `EngineState` wrapper struct** (`markymark-lsp/src/state/mod.rs`):
-   Define `struct EngineState { engine: DocumentEngine, last_hash: u64 }` near `ServerState`.
-   Change `engines` field type: `HashMap<String, Mutex<EngineState>>`.
-   Update `close_document` (line 384-388) which does `self.engines.remove()` — no logic change needed.
+   Define `struct EngineState { engine: DocumentEngine, last_hash: u64 }` near `ServerState` (~line 96).
+   Change `engines` field type from `HashMap<String, Mutex<DocumentEngine>>` to
+   `HashMap<String, Mutex<EngineState>>` (line 111).
+   Update `close_document` (~line 430) — `self.engines.remove()` still works, no logic change.
 
-3. **Change `build_markdown_index_via_engine` return type** to `Option<DocumentIndex>`:
-   - **Existing engine path** (line 156-196): after `engine.update(&masked)` succeeds, call
-     `engine.content_hash()`. Compare with `engine_state.last_hash`. If equal → update
-     `last_hash` (defensive), return `None`. If different → continue to `get_blob()` +
-     `from_blob_with_frontmatter()`, update `last_hash`, return `Some(index)`.
-   - **New engine path** (line 197-235): create engine, get initial hash, store
-     `EngineState { engine, last_hash: hash }`, return `Some(index)` (always).
-   - **Fallback paths**: all return `Some(fallback_scan_with_frontmatter(text))`.
-   - **Poisoned mutex path**: return `Some(fallback)` (can't compare hash, rebuild conservatively).
+3. **Add hash comparison in existing engine update path** (~line 214, `Ok(())` branch):
+   After `engine.update(&masked)` succeeds:
+   - Call `engine.content_hash()` to get the new hash.
+   - Compare with `engine_state.last_hash`.
+   - If equal → return `None` (no structural change, skip blob pipeline).
+   - If different → continue to `index_from_engine_result()`. **Only update
+     `engine_state.last_hash = new_hash` when index build succeeds.** On failure,
+     keep old hash so the next call retries the full pipeline.
+   - Access pattern: the mutex guard already dereferences to `DocumentEngine`; with
+     `EngineState`, destructure or field-access through the guard instead.
 
-4. **Update callers** (`markymark-lsp/src/state/mod.rs`):
-   - `open_document` (line 256): `if let Some(index) = self.build_markdown_index_via_engine(...)`.
-     First call for a URI always returns Some — but defend with an else log-warn + fallback.
-   - `change_document` (line 276): `if let Some(index) = self.build_markdown_index_via_engine(...)`.
-     `None` → skip `realm.update_document()` entirely.
-   - `apply_document_changes` (line 368): same pattern as `change_document`.
+4. **Set initial hash on new engine creation path** (~line 252):
+   After `DocumentEngine::new(&masked)` succeeds:
+   - Call `engine.content_hash()`.
+   - Store `EngineState { engine, last_hash: hash }` in the engines map.
+   - Return `Some(index)` as before.
 
 5. **Run tests and clippy**:
    - `cargo test -p markymark-lsp` — new hash tests + all existing tests pass
@@ -73,21 +87,22 @@ The three callers of `build_markdown_index_via_engine` in `markymark-lsp/src/sta
      that `None` is returned (test) + existing bench timing sufficient for the criterion?
 
 ## Success Criteria
-- [ ] `EngineState` wrapper struct stores `DocumentEngine` + `last_hash: u64`
-- [ ] `ServerState.engines` uses `HashMap<String, Mutex<EngineState>>`
-- [ ] `build_markdown_index_via_engine` returns `Option<DocumentIndex>`
-- [ ] Returns `None` when content hash is unchanged after `engine.update()`
-- [ ] Returns `Some(index)` on first call for a URI (no previous hash)
-- [ ] Returns `Some(index)` when content hash changes
-- [ ] `change_document` skips `realm.update_document()` when `None`
-- [ ] `apply_document_changes` skips `realm.update_document()` when `None`
-- [ ] `open_document` handles `Option` return correctly (always gets Some)
-- [ ] Test: None returned for unchanged content
-- [ ] Test: Some returned for changed content
-- [ ] Test: first call always returns Some
-- [ ] Benchmark: unchanged-content update measurably faster (or documented why existing bench is sufficient)
-- [ ] `cargo test -p markymark-lsp` passes
-- [ ] `cargo clippy -p markymark-lsp` clean
+- [x] `EngineState` wrapper struct stores `DocumentEngine` + `last_hash: u64`
+- [x] `ServerState.engines` uses `HashMap<String, Mutex<EngineState>>`
+- [x] `build_markdown_index_via_engine` returns `Option<DocumentIndex>` (pre-existing)
+- [x] Returns `None` when content hash is unchanged after `engine.update()`
+- [x] Returns `Some(index)` on first call for a URI (no previous hash)
+- [x] Returns `Some(index)` when content hash changes
+- [x] `change_document` skips `realm.update_document()` when `None` (pre-existing)
+- [x] `apply_document_changes` skips `realm.update_document()` when `None` (pre-existing)
+- [x] `open_document` handles `Option` return correctly (pre-existing)
+- [x] Test: None returned for unchanged content
+- [x] Test: Some returned for changed content
+- [x] Test: first call always returns Some
+- [x] Test: Some returned for reverted content (A→B→A)
+- [x] Benchmark: existing bench operates below short-circuit level; test proves None returned (blob pipeline skipped). realm_update bench: ~22-29µs. Savings are above this level (~2ms blob/arena work per epic analysis).
+- [x] `cargo test -p markymark-lsp` passes (208 tests, 0 failures)
+- [x] `cargo clippy -p markymark-lsp` clean
 
 ## Anti-Patterns
 - NO pre-parse text hashing on Rust side (use engine's content_hash, not a competing hash)
@@ -96,6 +111,8 @@ The three callers of `build_markdown_index_via_engine` in `markymark-lsp/src/sta
 - NO skipping the hash check on new engine creation path (always set initial hash, always return Some)
 - NO removing the fallback_scan_with_frontmatter paths (they handle error recovery; wrap in Some)
 - NO introducing the hash comparison in open_document — only change_document and apply_document_changes benefit
+- NO updating last_hash when index_from_engine_result fails — must keep old hash so next call retries
+- NO marking pre-existing criteria as task deliverables — Option return type and caller handling are pre-existing, not this task's work
 
 ## Key Considerations
 
@@ -113,6 +130,12 @@ hash if masking produces different byte sequences. This is conservative and corr
 The first call for any URI creates a new engine — there's no previous hash to compare. The
 `None` path only activates on subsequent calls with unchanged content. `open_document` should
 still handle `None` defensively (log + fallback) but it's structurally impossible on first call.
+
+### Only update last_hash on successful index build
+If `engine.update()` succeeds but `index_from_engine_result()` fails, do NOT update
+`last_hash`. If we update the hash but fail to build the index, the next call with the
+same content would compare equal hashes and return `None` — skipping a rebuild that was
+actually needed. Keeping the old hash forces the next call to retry the full pipeline.
 
 ### Mutex<EngineState> access pattern
 All callers hold `&mut self` on `ServerState`, so the mutex is uncontested. The `lock()` call

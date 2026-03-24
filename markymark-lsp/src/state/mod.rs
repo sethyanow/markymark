@@ -93,6 +93,14 @@ fn position_was_clamped(text: &str, line: u32, character: u32) -> bool {
     target_character > content.encode_utf16().count()
 }
 
+/// Per-document engine state: the Zig engine plus the content hash from its
+/// last successful index build. Used to short-circuit blob serialization when
+/// the document's structural content hasn't changed.
+struct EngineState {
+    engine: DocumentEngine,
+    last_hash: u64,
+}
+
 /// The internal state of the LSP server.
 ///
 /// Manages document text storage, per-document Zig DocumentEngine instances,
@@ -108,7 +116,7 @@ pub struct ServerState {
     /// cached state), so we gate shared access through a mutex even though
     /// all call-sites already hold `&mut self` and the mutex is uncontested.
     /// INVARIANT: all maps use `uri.as_str().to_string()` as the key.
-    engines: HashMap<String, std::sync::Mutex<DocumentEngine>>,
+    engines: HashMap<String, std::sync::Mutex<EngineState>>,
 }
 
 impl Default for ServerState {
@@ -187,7 +195,7 @@ impl ServerState {
         if let Some(engine_mutex) = self.engines.get(uri_str) {
             // Engine exists — update it. The mutex is uncontested here because
             // build_markdown_index_via_engine takes &mut self.
-            let mut engine = match engine_mutex.lock() {
+            let mut engine_state = match engine_mutex.lock() {
                 Ok(guard) => guard,
                 Err(_poisoned) => {
                     log::warn!(
@@ -205,21 +213,34 @@ impl ServerState {
             let update_result = if Self::should_force_engine_update_fail_for_tests(uri_str) {
                 Err("forced engine update failure (test hook, uri)".to_string())
             } else {
-                engine
+                engine_state
+                    .engine
                     .update(&masked)
                     .map_err(|e| format!("engine update failed: {e:?}"))
             };
 
             match update_result {
                 Ok(()) => {
+                    // Content hash short-circuit: skip blob pipeline when
+                    // document structure hasn't changed.
+                    let new_hash = engine_state.engine.content_hash();
+                    if new_hash == engine_state.last_hash {
+                        return None;
+                    }
+
                     match Self::index_from_engine_result(
                         uri_str,
-                        &engine,
+                        &engine_state.engine,
                         fm.clone(),
                         aliases.clone(),
                     ) {
-                        Ok(index) => return Some(index),
+                        Ok(index) => {
+                            engine_state.last_hash = new_hash;
+                            return Some(index);
+                        }
                         Err(e) => {
+                            // Don't update last_hash — index build failed.
+                            // Next call will retry the full pipeline.
                             log::warn!(
                                 target: "markymark_lsp",
                                 "engine result conversion failed for {}: {}, trying stale fallback",
@@ -237,7 +258,12 @@ impl ServerState {
                 }
             }
 
-            match Self::index_from_engine_result(uri_str, &engine, fm.clone(), aliases.clone()) {
+            match Self::index_from_engine_result(
+                uri_str,
+                &engine_state.engine,
+                fm.clone(),
+                aliases.clone(),
+            ) {
                 Ok(index) => return Some(index),
                 Err(e) => {
                     log::warn!(
@@ -252,9 +278,15 @@ impl ServerState {
             match DocumentEngine::new(&masked) {
                 Ok(engine) => {
                     let built = Self::index_from_engine_result(uri_str, &engine, fm, aliases);
+                    let initial_hash = engine.content_hash();
                     // Engine creation succeeded. Keep it even if current conversion failed.
-                    self.engines
-                        .insert(uri_str.to_string(), std::sync::Mutex::new(engine));
+                    self.engines.insert(
+                        uri_str.to_string(),
+                        std::sync::Mutex::new(EngineState {
+                            engine,
+                            last_hash: initial_hash,
+                        }),
+                    );
                     match built {
                         Ok(index) => return Some(index),
                         Err(e) => {
@@ -479,5 +511,152 @@ impl ServerState {
             None => return Vec::new(),
         };
         crate::diagnostics::compute_diagnostics(index, &self.realm, uri)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_index_returns_none_for_unchanged_content() {
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/hash_unchanged.md").unwrap();
+        let text = "# Hello\n";
+
+        // First call — always returns Some (new engine, no previous hash)
+        let result1 = state.build_markdown_index_via_engine(&uri, text);
+        assert!(result1.is_some(), "first call should return Some");
+
+        // Second call with same text — hash unchanged, should return None
+        let result2 = state.build_markdown_index_via_engine(&uri, text);
+        assert!(
+            result2.is_none(),
+            "second call with unchanged text should return None"
+        );
+    }
+
+    #[test]
+    fn test_build_index_returns_some_for_changed_content() {
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/hash_changed.md").unwrap();
+
+        let result1 = state.build_markdown_index_via_engine(&uri, "# Hello\n");
+        assert!(result1.is_some(), "first call should return Some");
+
+        let result2 =
+            state.build_markdown_index_via_engine(&uri, "# Hello\n## World\n");
+        assert!(
+            result2.is_some(),
+            "changed content should return Some"
+        );
+    }
+
+    #[test]
+    fn test_build_index_first_call_always_returns_some() {
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/first_call.md").unwrap();
+
+        let result = state.build_markdown_index_via_engine(&uri, "# First\n");
+        assert!(
+            result.is_some(),
+            "first call for any URI should return Some"
+        );
+    }
+
+    #[test]
+    fn test_build_index_whitespace_change_not_short_circuited() {
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/hash_whitespace.md").unwrap();
+
+        let r1 = state.build_markdown_index_via_engine(&uri, "# Hello\n");
+        assert!(r1.is_some());
+
+        // Add trailing whitespace — different bytes, different hash, no short-circuit
+        // This is conservative: structure hasn't changed, but hash is byte-level
+        let r2 = state.build_markdown_index_via_engine(&uri, "# Hello \n");
+        assert!(
+            r2.is_some(),
+            "whitespace-only change should return Some (hash is byte-level, not structural)"
+        );
+    }
+
+    #[test]
+    fn test_build_index_close_reopen_resets_hash() {
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/hash_close_reopen.md").unwrap();
+        let text = "# Hello\n";
+
+        // First call — returns Some, stores engine + hash
+        let r1 = state.build_markdown_index_via_engine(&uri, text);
+        assert!(r1.is_some());
+
+        // Second call — short-circuits
+        let r2 = state.build_markdown_index_via_engine(&uri, text);
+        assert!(r2.is_none());
+
+        // Close removes engine state
+        state.engines.remove(uri.as_str());
+
+        // Reopen with same content — new engine, no previous hash, returns Some
+        let r3 = state.build_markdown_index_via_engine(&uri, text);
+        assert!(
+            r3.is_some(),
+            "after close+reopen, first call should return Some even for same content"
+        );
+    }
+
+    #[test]
+    fn test_build_index_multibyte_utf8_short_circuits() {
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/hash_utf8.md").unwrap();
+        let text = "# 日本語のヘッダー\n\n本文テキスト\n";
+
+        let r1 = state.build_markdown_index_via_engine(&uri, text);
+        assert!(r1.is_some(), "first call should return Some");
+
+        let r2 = state.build_markdown_index_via_engine(&uri, text);
+        assert!(r2.is_none(), "same multi-byte content should short-circuit");
+
+        // Change one character in the heading
+        let r3 = state
+            .build_markdown_index_via_engine(&uri, "# 日本語のヘッダ\n\n本文テキスト\n");
+        assert!(r3.is_some(), "changed multi-byte content should return Some");
+    }
+
+    #[test]
+    fn test_build_index_empty_content_short_circuits() {
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/hash_empty.md").unwrap();
+
+        // Empty content — hash is 0 per Zig engine behavior
+        let r1 = state.build_markdown_index_via_engine(&uri, "");
+        assert!(r1.is_some(), "first call with empty content should return Some");
+
+        // Second call with same empty content — hash still 0, should short-circuit
+        let r2 = state.build_markdown_index_via_engine(&uri, "");
+        assert!(
+            r2.is_none(),
+            "second call with same empty content should return None"
+        );
+    }
+
+    #[test]
+    fn test_build_index_returns_some_for_reverted_content() {
+        let mut state = ServerState::new();
+        let uri = DocumentUri::new("file:///test/hash_revert.md").unwrap();
+
+        let r1 = state.build_markdown_index_via_engine(&uri, "# Hello\n");
+        assert!(r1.is_some(), "first call should return Some");
+
+        let r2 = state.build_markdown_index_via_engine(&uri, "# World\n");
+        assert!(r2.is_some(), "changed content should return Some");
+
+        // Revert to original — hash differs from last (World), so should return Some
+        let r3 = state.build_markdown_index_via_engine(&uri, "# Hello\n");
+        assert!(
+            r3.is_some(),
+            "reverted content should return Some (different from last hash)"
+        );
     }
 }
