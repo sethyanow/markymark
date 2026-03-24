@@ -40,10 +40,10 @@ export fn marky_engine_create(text: ?[*]const u8, text_len: u32) ?*anyopaque {
 ///  -1  — invalid input (null handle, null text with nonzero len)
 ///  -3  — allocation failure (out of memory)
 ///  -4  — parse failure (md4c error)
-export fn marky_engine_update(handle: ?*anyopaque, text: ?[*]const u8, text_len: u32) i32 {
+export fn marky_engine_update(handle: ?*anyopaque, text: ?[*]const u8, text_len: u32, edit_offset: u32, edit_old_len: u32, edit_new_len: u32) i32 {
     const engine = castHandle(handle) orelse return -1;
     const slice = resolveTextSlice(text, text_len) orelse return -1;
-    engine.update(slice) catch |e| return switch (e) {
+    engine.update(slice, edit_offset, edit_old_len, edit_new_len) catch |e| return switch (e) {
         error.OutOfMemory => @as(i32, -3),
         error.ParseFailed => @as(i32, -4),
     };
@@ -148,13 +148,13 @@ test "engine_update_basic" {
     defer marky_engine_destroy(handle);
 
     const new_text = "# New\n## Sub\n";
-    const rc = marky_engine_update(handle, new_text.ptr, @intCast(new_text.len));
+    const rc = marky_engine_update(handle, new_text.ptr, @intCast(new_text.len), 0, 0, 0);
     try testing.expectEqual(@as(i32, 0), rc);
 }
 
 test "engine_update_null_handle" {
     const text = "# Hello\n";
-    const rc = marky_engine_update(null, text.ptr, @intCast(text.len));
+    const rc = marky_engine_update(null, text.ptr, @intCast(text.len), 0, 0, 0);
     try testing.expectEqual(@as(i32, -1), rc);
 }
 
@@ -164,7 +164,7 @@ test "engine_update_null_text_nonzero_len" {
     try testing.expect(handle != null);
     defer marky_engine_destroy(handle);
 
-    const rc = marky_engine_update(handle, null, 10);
+    const rc = marky_engine_update(handle, null, 10, 0, 0, 0);
     try testing.expectEqual(@as(i32, -1), rc);
 }
 

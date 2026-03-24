@@ -332,7 +332,7 @@ fn build_markdown_index_via_engine(
             Err("forced engine update failure (test hook)".to_string())
         } else {
             engine
-                .update(&masked)
+                .update(&masked, None)
                 .map_err(|e| format!("engine update failed: {e:?}"))
         };
 

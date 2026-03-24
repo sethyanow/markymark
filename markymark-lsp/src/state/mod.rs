@@ -215,7 +215,7 @@ impl ServerState {
             } else {
                 engine_state
                     .engine
-                    .update(&masked)
+                    .update(&masked, None)
                     .map_err(|e| format!("engine update failed: {e:?}"))
             };
 

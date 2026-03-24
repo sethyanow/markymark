@@ -131,7 +131,7 @@ test "test_update_replaces_state" {
     defer engine.destroy();
 
     try testing.expectEqualStrings("A", engine.headings[0].text);
-    try engine.update("# B\n");
+    try engine.update("# B\n", 0, 0, 0);
     try testing.expectEqualStrings("B", engine.headings[0].text);
 }
 
@@ -141,7 +141,7 @@ test "test_update_changes_counts" {
 
     try testing.expectEqual(@as(usize, 1), engine.headings.len);
 
-    try engine.update("# One\n## Two\n### Three\n");
+    try engine.update("# One\n## Two\n### Three\n", 0, 0, 0);
     try testing.expectEqual(@as(usize, 3), engine.headings.len);
 }
 
@@ -174,7 +174,7 @@ test "test_update_100_times_no_leaks" {
     while (i < 100) : (i += 1) {
         var buf: [128]u8 = undefined;
         const text = std.fmt.bufPrint(&buf, "# Heading {d}\n\nSome [link](url{d}.md) text #tag{d}\n", .{ i, i, i }) catch continue;
-        try engine.update(text);
+        try engine.update(text, 0, 0, 0);
     }
 }
 
@@ -455,7 +455,7 @@ test "engine update preserves code spans" {
     try testing.expectEqualStrings("a", engine.code_spans[0].text);
 
     // Update with new content
-    try engine.update("`b` and `c`");
+    try engine.update("`b` and `c`", 0, 0, 0);
     try testing.expectEqual(@as(usize, 2), engine.code_spans.len);
     try testing.expectEqualStrings("b", engine.code_spans[0].text);
     try testing.expectEqualStrings("c", engine.code_spans[1].text);
@@ -490,7 +490,7 @@ test "engine xml_tags update replaces old xml_tags" {
     try testing.expectEqualStrings("div", engine.xml_tags[0].tag_name);
 
     // Update with different content
-    try engine.update("<span>\n\nnew\n\n</span>\n");
+    try engine.update("<span>\n\nnew\n\n</span>\n", 0, 0, 0);
     try testing.expectEqual(@as(usize, 1), engine.xml_tags.len);
     try testing.expectEqualStrings("span", engine.xml_tags[0].tag_name);
 }

@@ -12,12 +12,38 @@ use crate::scan::KernelError;
 pub use crate::engine_ffi::{convert_engine_result, EngineExtraction};
 
 // ---------------------------------------------------------------------------
+// Edit range for incremental updates
+// ---------------------------------------------------------------------------
+
+/// Byte-level edit range for incremental document updates.
+///
+/// Passed through FFI to the Zig engine so it can skip slug recomputation
+/// for headings outside the edited region. Zero-values (0/0/0) mean
+/// "no range info" — full recomputation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EditRange {
+    /// Byte offset where the edit starts in the old text.
+    pub offset: u32,
+    /// Length of the replaced span in the old text.
+    pub old_len: u32,
+    /// Length of the replacement span in the new text.
+    pub new_len: u32,
+}
+
+// ---------------------------------------------------------------------------
 // FFI declarations
 // ---------------------------------------------------------------------------
 
 extern "C" {
     fn marky_engine_create(text: *const u8, text_len: u32) -> *mut std::ffi::c_void;
-    fn marky_engine_update(handle: *mut std::ffi::c_void, text: *const u8, text_len: u32) -> i32;
+    fn marky_engine_update(
+        handle: *mut std::ffi::c_void,
+        text: *const u8,
+        text_len: u32,
+        edit_offset: u32,
+        edit_old_len: u32,
+        edit_new_len: u32,
+    ) -> i32;
     fn marky_engine_destroy(handle: *mut std::ffi::c_void);
     fn marky_engine_get_content_hash(handle: *mut std::ffi::c_void) -> u64;
 }
@@ -88,18 +114,22 @@ impl DocumentEngine {
     /// On success, old state is freed and replaced with the new parse result.
     /// On failure, old state is preserved unchanged.
     ///
+    /// `edit_range`: optional byte-level edit range for incremental updates.
+    /// `None` (or zero-valued range) means "no range info" — full recomputation.
+    ///
     /// Returns `Err(InvalidInput)` if `text` exceeds `u32::MAX` bytes.
-    pub fn update(&mut self, text: &str) -> Result<(), KernelError> {
+    pub fn update(&mut self, text: &str, edit_range: Option<EditRange>) -> Result<(), KernelError> {
         let text_len = u32::try_from(text.len()).map_err(|_| KernelError::InvalidInput)?;
+        let range = edit_range.unwrap_or(EditRange { offset: 0, old_len: 0, new_len: 0 });
 
         // SAFETY: handle is valid (created in new(), not yet destroyed).
         // For empty text, pass null + 0. For non-empty, pass valid slice.
         // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
         let rc = unsafe {
             if text.is_empty() {
-                marky_engine_update(self.handle, std::ptr::null(), 0)
+                marky_engine_update(self.handle, std::ptr::null(), 0, range.offset, range.old_len, range.new_len)
             } else {
-                marky_engine_update(self.handle, text.as_ptr(), text_len)
+                marky_engine_update(self.handle, text.as_ptr(), text_len, range.offset, range.old_len, range.new_len)
             }
         };
 
@@ -241,7 +271,7 @@ mod tests {
         let mut engine = DocumentEngine::new("# One\n").unwrap();
         let gen1 = engine.get_result().unwrap().as_raw().generation;
 
-        engine.update("# Two\n## Sub\n").unwrap();
+        engine.update("# Two\n## Sub\n", None).unwrap();
         let gen2 = engine.get_result().unwrap().as_raw().generation;
 
         assert!(gen2 > gen1);
@@ -252,7 +282,7 @@ mod tests {
         let text = "# Hello\n";
         let mut engine = DocumentEngine::new(text).unwrap();
         let hash1 = engine.content_hash();
-        engine.update(text).unwrap();
+        engine.update(text, None).unwrap();
         let hash2 = engine.content_hash();
         assert_eq!(hash1, hash2, "hash must be stable for same content");
     }
@@ -261,7 +291,7 @@ mod tests {
     fn test_engine_content_hash_changes() {
         let mut engine = DocumentEngine::new("# Hello\n").unwrap();
         let hash1 = engine.content_hash();
-        engine.update("# Hello\n## World\n").unwrap();
+        engine.update("# Hello\n## World\n", None).unwrap();
         let hash2 = engine.content_hash();
         assert_ne!(hash1, hash2, "hash must change when structure changes");
     }
@@ -304,7 +334,7 @@ mod tests {
         let mut engine = DocumentEngine::new("# Héllo Wörld 日本語\n").unwrap();
         let hash1 = engine.content_hash();
         assert_ne!(hash1, 0);
-        engine.update("# Héllo Wörld 日本語\n").unwrap();
+        engine.update("# Héllo Wörld 日本語\n", None).unwrap();
         let hash2 = engine.content_hash();
         assert_eq!(hash1, hash2, "multi-byte UTF-8 hash must be stable");
     }
@@ -314,9 +344,9 @@ mod tests {
         // The "second run": multiple updates cycle, hash must be deterministic
         let mut engine = DocumentEngine::new("# A\n").unwrap();
         let hash_a = engine.content_hash();
-        engine.update("# B\n").unwrap();
+        engine.update("# B\n", None).unwrap();
         let hash_b = engine.content_hash();
-        engine.update("# A\n").unwrap();
+        engine.update("# A\n", None).unwrap();
         let hash_a2 = engine.content_hash();
         assert_eq!(hash_a, hash_a2, "returning to same content must produce same hash");
         assert_ne!(hash_a, hash_b, "different content must produce different hash");
@@ -327,7 +357,7 @@ mod tests {
         // Redundant: duplicate structure — hash should be unique to text, not structure count
         let mut engine = DocumentEngine::new("# Same\n# Same\n").unwrap();
         let hash_dup = engine.content_hash();
-        engine.update("# Same\n").unwrap();
+        engine.update("# Same\n", None).unwrap();
         let hash_single = engine.content_hash();
         assert_ne!(
             hash_dup, hash_single,
@@ -353,11 +383,11 @@ mod tests {
         let mut engine = DocumentEngine::new("# Initial\n").unwrap();
         let hash1 = engine.content_hash();
         // Update to different content
-        engine.update("# Changed\n").unwrap();
+        engine.update("# Changed\n", None).unwrap();
         let hash2 = engine.content_hash();
         assert_ne!(hash1, hash2);
         // Update back — hash must match original
-        engine.update("# Initial\n").unwrap();
+        engine.update("# Initial\n", None).unwrap();
         let hash3 = engine.content_hash();
         assert_eq!(hash1, hash3, "hash must be consistent after round-trip updates");
     }
@@ -370,5 +400,53 @@ mod tests {
         // The hash is computed on the text passed to the engine (which includes
         // frontmatter bytes). As long as text is non-empty, hash should be non-zero.
         assert_ne!(hash, 0, "frontmatter-only doc is non-empty text");
+    }
+
+    #[test]
+    fn test_engine_update_with_edit_range() {
+        let mut engine = DocumentEngine::new("# Hello\n").unwrap();
+        // Update with zero-value edit range — should behave identically to None
+        engine
+            .update("# New\n", Some(EditRange { offset: 0, old_len: 0, new_len: 0 }))
+            .unwrap();
+        let hash = engine.content_hash();
+        assert_ne!(hash, 0);
+    }
+
+    #[test]
+    fn test_engine_update_edit_range_zero_equivalent() {
+        // None and Some(0/0/0) must produce identical results
+        let text_a = "# Hello\n";
+        let text_b = "# Updated\n## Sub\n";
+
+        let mut engine_none = DocumentEngine::new(text_a).unwrap();
+        engine_none.update(text_b, None).unwrap();
+        let hash_none = engine_none.content_hash();
+
+        let mut engine_zero = DocumentEngine::new(text_a).unwrap();
+        engine_zero
+            .update(text_b, Some(EditRange { offset: 0, old_len: 0, new_len: 0 }))
+            .unwrap();
+        let hash_zero = engine_zero.content_hash();
+
+        assert_eq!(
+            hash_none, hash_zero,
+            "None and Some(0/0/0) must produce identical content hash"
+        );
+    }
+
+    #[test]
+    fn test_engine_update_edit_range_nonzero_succeeds() {
+        // Non-zero edit range values must pass through FFI without error
+        // (Zig ignores them in Task 1, but the marshaling must not crash)
+        let mut engine = DocumentEngine::new("# Hello world\n").unwrap();
+        engine
+            .update(
+                "# Hello brave new world\n",
+                Some(EditRange { offset: 8, old_len: 5, new_len: 15 }),
+            )
+            .unwrap();
+        let hash = engine.content_hash();
+        assert_ne!(hash, 0, "non-zero edit range must not crash FFI");
     }
 }

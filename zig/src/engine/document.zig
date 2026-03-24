@@ -78,7 +78,15 @@ pub const DocumentEngine = struct {
 
     /// Update engine state with new markdown text.
     /// On success, old state is freed. On failure, old state is preserved.
-    pub fn update(self: *DocumentEngine, text: []const u8) Error!void {
+    ///
+    /// `edit_offset`, `edit_old_len`, `edit_new_len`: byte-level edit range.
+    /// Zero-values (0/0/0) mean "no range info" — full recomputation.
+    /// TODO(marky-686-task2): use edit range for slug reuse
+    pub fn update(self: *DocumentEngine, text: []const u8, edit_offset: u32, edit_old_len: u32, edit_new_len: u32) Error!void {
+        // Edit range params reserved for Task 2 (slug reuse).
+        _ = edit_offset;
+        _ = edit_old_len;
+        _ = edit_new_len;
         // Parse new text FIRST, before freeing old state.
         // This ensures old state is preserved on parse failure.
         var new_headings: []StoredHeading = &.{};
