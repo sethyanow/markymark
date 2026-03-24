@@ -1728,4 +1728,10 @@
 {"timestamp":"2026-03-23T22:43:20.758519+00:00","actor":"Seth","event_type":"updated","task_id":"marky-ozi","details":{"status":"active"}}
 {"timestamp":"2026-03-23T23:01:05.582374+00:00","actor":"Seth","event_type":"closed","task_id":"marky-ozi","details":{"notes":null}}
 {"timestamp":"2026-03-23T23:01:09.902279+00:00","actor":"Seth","event_type":"closed","task_id":"marky-0xtn","details":{"notes":null}}
+{"timestamp":"2026-03-23T23:38:02.041366+00:00","actor":"Seth","event_type":"created","task_id":"marky-h0x","details":{}}
+{"timestamp":"2026-03-23T23:38:23.607992+00:00","actor":"Seth","event_type":"claimed","task_id":"marky-h0x","details":{"actor":"Seth"}}
 {"timestamp":"2026-03-23T23:47:23.365159+00:00","actor":"Seth","event_type":"logged","task_id":"marky-0xtn","details":{"message":"Phase 4.7 (marky-ozi) audit + epic closure complete. All 14/14 criteria verified. review-implementation APPROVED. PR #55 created targeting dev. Branch blob-0xtn preserved."}}
+{"timestamp":"2026-03-23T23:53:42.610196+00:00","actor":"Seth","event_type":"logged","task_id":"marky-h0x","details":{"message":"Bazel build integration complete. MODULE.bazel + .bazelrc + BUILD.bazel per crate + zig/BUILD.bazel. Uses toolchains_llvm_bootstrapped (LLVM 21.1.8), rules_rust 0.68.1, rules_zig 0.12.3. Both debug and release (ThinLTO) builds pass. Cargo test suite fully green. Note: -Clinker-plugin-lto doesn't work on macOS (ld64.lld plugin-opt unsupported), using -Clto=thin with -Cembed-bitcode=yes instead."}}
+{"timestamp":"2026-03-23T23:53:46.117753+00:00","actor":"Seth","event_type":"closed","task_id":"marky-h0x","details":{"notes":null}}
+{"timestamp":"2026-03-24T00:55:25.972611+00:00","actor":"Seth","event_type":"created","task_id":"marky-o8e","details":{}}
+{"timestamp":"2026-03-24T00:57:40.906168+00:00","actor":"Seth","event_type":"created","task_id":"marky-eci","details":{}}

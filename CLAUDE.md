@@ -111,6 +111,28 @@ cargo run -- --mcp /path/to/workspace
 # See .claude/skills/prepare-release/SKILL.md
 ```
 
+### Bazel Build (Release / Cross-Language LTO)
+
+Bazel is the optimized release build path. It uses `toolchains_llvm_bootstrapped` (LLVM 21.1.8)
+with `rules_rust` and `rules_zig` to enable ThinLTO across the Rust-Zig FFI boundary.
+Cargo remains the day-to-day dev build system.
+
+```bash
+# Debug build
+bazel build //markymark-cli:markymark
+
+# Release build (ThinLTO across Rust + Zig)
+bazel build //markymark-cli:markymark --config=release
+
+# Run tests
+bazel test //...
+
+# Build just the Zig kernels
+bazel build //zig:marky_kernels
+```
+
+**Key files:** `MODULE.bazel` (deps/toolchains), `.bazelrc` (LTO flags), `*/BUILD.bazel` (per-crate targets).
+
 ## Code Navigation (LSP-first)
 
 **Use the built-in LSP tool first for Rust, Zig, Markdown, JSON, and all other common structured data formats listed in the README for code navigation.** It provides semantic understanding that text search cannot match.
@@ -165,6 +187,7 @@ has caused real bugs, wasted work, or merge conflicts.
 | 10 | **ONE task per session turn — no autonomous chaining** | After completing a task, STOP and report to user. Do not chain into the next task without explicit approval. After 2+ commits in a session, pause before starting more. Never start a destructive refactor (file split) near context limits — incomplete splits break the build. |
 | 11 | **No scoping out the integration layer** | Epics must be user-complete. If you build internal capability (index, engine, data model), the epic MUST include the tools/API/MCP/LSP that exposes it to users. Deferring the integration layer "out of scope" creates half-done features that nobody can use. If the full vertical slice is too large, split into phases within the same epic — don't cut the user-facing part. The work isn't done until someone outside the codebase can benefit from it. |
 | 12 | **Use DeepWiki for GitHub repo research** | Use the `deepwiki` MCP tools (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) to research external GitHub repos instead of spawning internet-researcher agents or WebFetch to scrape GitHub directly. DeepWiki is indexed and token-efficient. Case-sensitive repo names (e.g., `VectifyAI/PageIndex` not `vectifyai/pageindex`). |
+| 13 | **Bazel BUILD files must stay in sync with Cargo.toml** | When adding/removing crate deps in Cargo.toml, update the corresponding `BUILD.bazel` deps list. proc-macro crates go in `proc_macro_deps`, not `deps`. New workspace crates need a `BUILD.bazel`. |
 
 ## Landing the Plane (Session Completion)
 

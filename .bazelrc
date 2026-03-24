@@ -1,0 +1,22 @@
+# ── Common ────────────────────────────────────────────────────────────────────
+build --incompatible_enable_cc_toolchain_resolution
+
+# Disable libtool on macOS (required for rules_rust cross-compilation)
+build --@rules_cc//cc/toolchains/args/archiver_flags:use_libtool_on_macos=False
+
+# rules_rust bootstrap
+build --@rules_rust//rust/settings:experimental_use_sh_toolchain_for_bootstrap_process_wrapper
+
+# ── Release config (cross-language ThinLTO) ──────────────────────────────────
+build:release --compilation_mode=opt
+
+# C/C++ ThinLTO
+build:release --copt=-flto=thin
+build:release --linkopt=-flto=thin
+
+# Rust: ThinLTO with embedded bitcode for cross-language optimization.
+# -Cembed-bitcode=yes overrides rules_rust default of =no.
+build:release --@rules_rust//:extra_rustc_flags=-Clto=thin,-Ccodegen-units=1,-Cembed-bitcode=yes
+
+# Strip release binaries
+build:release --strip=always

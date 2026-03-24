@@ -1,0 +1,16 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+rust_library(
+    name = "markymark-kernels",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "markymark_kernels",
+    deps = [
+        "//zig:marky_kernels",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+rust_test(
+    name = "markymark-kernels_test",
+    crate = ":markymark-kernels",
+)

@@ -1,0 +1,25 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
+
+rust_binary(
+    name = "markymark",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "markymark",
+    deps = [
+        "//markymark-core",
+        "//markymark-lsp",
+        "//markymark-mcp",
+        "@crates//:tokio",
+        "@crates//:anyhow",
+        "@crates//:clap",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+rust_test(
+    name = "markymark-cli_test",
+    crate = ":markymark",
+    deps = [
+        "@crates//:serde_json",
+        "@crates//:tokio",
+    ],
+)

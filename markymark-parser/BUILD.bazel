@@ -1,0 +1,32 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+rust_library(
+    name = "markymark-parser",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "markymark_parser",
+    deps = [
+        "//markymark-core",
+        "@crates//:tree-sitter",
+        "@crates//:tree-sitter-md",
+        "@crates//:tree-sitter-json",
+        "@crates//:tree-sitter-yaml",
+        "@crates//:tree-sitter-toml-ng",
+        "@crates//:serde",
+        "@crates//:serde_json",
+        "@crates//:json5",
+        "@crates//:thiserror",
+        "@crates//:regex",
+        "@crates//:bumpalo",
+        "@crates//:self_cell",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+rust_test(
+    name = "markymark-parser_test",
+    crate = ":markymark-parser",
+    deps = [
+        "@crates//:insta",
+        "@crates//:proptest",
+    ],
+)

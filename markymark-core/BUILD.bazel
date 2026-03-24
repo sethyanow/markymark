@@ -1,0 +1,33 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+rust_library(
+    name = "markymark-core",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "markymark_core",
+    crate_features = ["zig-kernels"],
+    deps = [
+        "//markymark-kernels",
+        "@crates//:serde",
+        "@crates//:serde_json",
+        "@crates//:thiserror",
+        "@crates//:anyhow",
+        "@crates//:bumpalo",
+        "@crates//:hashbrown",
+    ],
+    proc_macro_deps = [
+        "@crates//:async-trait",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+rust_test(
+    name = "markymark-core_test",
+    crate = ":markymark-core",
+    deps = [
+        "@crates//:insta",
+        "@crates//:proptest",
+        "@crates//:tokio",
+        "@crates//:wiremock",
+        "@crates//:reqwest",
+    ],
+)
