@@ -107,12 +107,25 @@ EngineExtraction. LSP hot path now uses one copy (blob → arena) instead of two
 - Link parsing replicates convert_engine_result logic exactly (wiki vs markdown split, alias detection)
 
 **Foundation for Phase 3b:** Typed accessors + read_blob_str enable borrowing from text_blob
-directly into DocumentIndex fields when DocumentIndex<'engine> lifetime parameterization lands.
+directly into DocumentIndex fields via blob-in-owner approach (see below).
+
+### Phase 3b Design Decision: Blob-in-owner replaces lifetime parameter (2026-03-24)
+
+R6/R7 originally specified `DocumentIndex<'engine>` with lifetime cascade through
+RealmIndex/ServerState. Analysis revealed the double-copy exists because text_blob
+isn't in the self_cell owner — a structural problem, not a lifetime problem.
+
+**Fix:** Add `text_blob: Vec<u8>` to DocumentOwner. Inside the self_cell closure,
+`read_blob_str(&owner.text_blob, offset, len)` returns `&'a str` borrowing from
+the owner. Zero copy per string. No lifetime parameter, no API cascade.
+
+**User confirmed** this replaces R6/R7. Sub-epic criteria updated accordingly.
+Task: marky-03r.
 
 ### Active Work
 
-- **Epic marky-zsys**: Engine Pipeline v2 — Phase 1 + Phase 2 closed. Phase 3: 2/10 criteria met.
-  Next: scope Phase 3 benchmark task, then Phase 3b (lifetime parameterization).
+- **Epic marky-zsys**: Engine Pipeline v2 — Phase 1 + Phase 2 closed. Phase 3: 3/10 criteria met.
+  Next: marky-03r (blob-in-owner), then Phase 3 acceptance.
 
 ### Failure Pattern: Unauthorized architectural switch (fail-from-ast-switch)
 
