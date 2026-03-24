@@ -338,7 +338,13 @@ fn build_markdown_index_via_engine(
 
         match update_result {
             Ok(()) => {
-                match index_from_engine_result(uri_str, &engine, fm.clone(), aliases.clone(), source.to_string()) {
+                match index_from_engine_result(
+                    uri_str,
+                    &engine,
+                    fm.clone(),
+                    aliases.clone(),
+                    source.to_string(),
+                ) {
                     Ok(index) => return Some(index),
                     Err(e) => {
                         log::warn!(
@@ -359,7 +365,13 @@ fn build_markdown_index_via_engine(
         }
 
         // Stale engine snapshot fallback — get_result() returns last successful parse.
-        match index_from_engine_result(uri_str, &engine, fm.clone(), aliases.clone(), source.to_string()) {
+        match index_from_engine_result(
+            uri_str,
+            &engine,
+            fm.clone(),
+            aliases.clone(),
+            source.to_string(),
+        ) {
             Ok(index) => return Some(index),
             Err(e) => {
                 log::warn!(
@@ -380,7 +392,8 @@ fn build_markdown_index_via_engine(
         } else {
             match DocumentEngine::new(&masked) {
                 Ok(engine) => {
-                    let built = index_from_engine_result(uri_str, &engine, fm, aliases, source.to_string());
+                    let built =
+                        index_from_engine_result(uri_str, &engine, fm, aliases, source.to_string());
                     realm
                         .engines
                         .insert(uri_str.to_string(), std::sync::Mutex::new(engine));

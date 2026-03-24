@@ -34,8 +34,7 @@ struct RawBlock {
 fn extract_content_blocks(source: &str) -> Vec<RawBlock> {
     // catch_unwind guards against tree-sitter panics on edge-case inputs
     // (e.g. node byte ranges exceeding source length).
-    std::panic::catch_unwind(|| extract_content_blocks_inner(source))
-        .unwrap_or_default()
+    std::panic::catch_unwind(|| extract_content_blocks_inner(source)).unwrap_or_default()
 }
 
 fn extract_content_blocks_inner(source: &str) -> Vec<RawBlock> {
@@ -98,7 +97,9 @@ fn collect_blocks(
                     }
                 }
             }
-            "fenced_code_block" | "indented_code_block" => push(blocks, BlockKind::CodeBlock, child),
+            "fenced_code_block" | "indented_code_block" => {
+                push(blocks, BlockKind::CodeBlock, child)
+            }
             "block_quote" => push(blocks, BlockKind::BlockQuote, child),
             "thematic_break" => push(blocks, BlockKind::ThematicBreak, child),
             "pipe_table" => push(blocks, BlockKind::Table, child),
@@ -118,7 +119,8 @@ fn is_logseq_heading(node: tree_sitter::Node, source: &str) -> bool {
         None => return false,
     };
     let trimmed = first_line.trim_start();
-    let after_marker = if let Some(rest) = trimmed.strip_prefix("- ")
+    let after_marker = if let Some(rest) = trimmed
+        .strip_prefix("- ")
         .or_else(|| trimmed.strip_prefix("* "))
         .or_else(|| trimmed.strip_prefix("+ "))
     {

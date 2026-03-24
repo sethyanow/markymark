@@ -73,7 +73,6 @@ impl DocumentArena {
     pub fn bump(&self) -> &Bump {
         &self.0
     }
-
 }
 
 impl AsRef<Bump> for DocumentArena {
@@ -180,5 +179,4 @@ mod arena_allocation_tests {
         let arena = Bump::new();
         let _s: ArenaStr<'_> = arena.alloc_str("test");
     }
-
 }

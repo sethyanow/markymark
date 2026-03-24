@@ -74,9 +74,8 @@ Ship it
     );
 
     // New path: EngineResult → from_engine_result_direct (bypasses EngineExtraction)
-    let new_index =
-        DocumentIndex::from_engine_result_direct(&result, fm, aliases)
-            .expect("from_engine_result_direct failed");
+    let new_index = DocumentIndex::from_engine_result_direct(&result, fm, aliases)
+        .expect("from_engine_result_direct failed");
 
     // --- Compare ALL element types ---
 
@@ -139,7 +138,11 @@ Ship it
     }
 
     // Tags
-    assert_eq!(old_index.tags().len(), new_index.tags().len(), "tags count mismatch");
+    assert_eq!(
+        old_index.tags().len(),
+        new_index.tags().len(),
+        "tags count mismatch"
+    );
     for (i, (old, new)) in old_index
         .tags()
         .iter()
@@ -258,7 +261,10 @@ Ship it
     {
         assert_eq!(old.query, new.query, "query_block[{i}].query");
         assert_eq!(old.range, new.range, "query_block[{i}].range");
-        assert_eq!(old.start_byte, new.start_byte, "query_block[{i}].start_byte");
+        assert_eq!(
+            old.start_byte, new.start_byte,
+            "query_block[{i}].start_byte"
+        );
         assert_eq!(old.end_byte, new.end_byte, "query_block[{i}].end_byte");
     }
 
@@ -310,7 +316,10 @@ Ship it
         .enumerate()
     {
         assert_eq!(old.tag_name, new.tag_name, "xml_tag[{i}].tag_name");
-        assert_eq!(old.is_self_closing, new.is_self_closing, "xml_tag[{i}].is_self_closing");
+        assert_eq!(
+            old.is_self_closing, new.is_self_closing,
+            "xml_tag[{i}].is_self_closing"
+        );
         assert_eq!(old.is_unclosed, new.is_unclosed, "xml_tag[{i}].is_unclosed");
         assert_eq!(old.is_inline, new.is_inline, "xml_tag[{i}].is_inline");
         assert_eq!(old.range, new.range, "xml_tag[{i}].range");
@@ -337,7 +346,11 @@ Ship it
     assert_eq!(old_index.aliases(), new_index.aliases(), "aliases mismatch");
 
     // TOC
-    assert_eq!(old_index.toc().len(), new_index.toc().len(), "toc count mismatch");
+    assert_eq!(
+        old_index.toc().len(),
+        new_index.toc().len(),
+        "toc count mismatch"
+    );
     for (i, (old, new)) in old_index
         .toc()
         .iter()

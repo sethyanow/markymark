@@ -12,8 +12,8 @@ use crate::scan::KernelError;
 pub use crate::engine_ffi::{
     convert_engine_result, read_blob_str, CEngineBlockId, CEngineBlockRef, CEngineCallout,
     CEngineCodeSpan, CEngineEmbed, CEngineHeading, CEngineLink, CEngineLinkDefinition,
-    CEngineProperty, CEngineQueryBlock, CEngineTag, CEngineTask, CEngineXmlTag,
-    EngineExtraction, EngineResult,
+    CEngineProperty, CEngineQueryBlock, CEngineTag, CEngineTask, CEngineXmlTag, EngineExtraction,
+    EngineResult,
 };
 
 // ---------------------------------------------------------------------------
@@ -126,16 +126,34 @@ impl DocumentEngine {
     /// Returns `Err(InvalidInput)` if `text` exceeds `u32::MAX` bytes.
     pub fn update(&mut self, text: &str, edit_range: Option<EditRange>) -> Result<(), KernelError> {
         let text_len = u32::try_from(text.len()).map_err(|_| KernelError::InvalidInput)?;
-        let range = edit_range.unwrap_or(EditRange { offset: 0, old_len: 0, new_len: 0 });
+        let range = edit_range.unwrap_or(EditRange {
+            offset: 0,
+            old_len: 0,
+            new_len: 0,
+        });
 
         // SAFETY: handle is valid (created in new(), not yet destroyed).
         // For empty text, pass null + 0. For non-empty, pass valid slice.
         // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
         let rc = unsafe {
             if text.is_empty() {
-                marky_engine_update(self.handle, std::ptr::null(), 0, range.offset, range.old_len, range.new_len)
+                marky_engine_update(
+                    self.handle,
+                    std::ptr::null(),
+                    0,
+                    range.offset,
+                    range.old_len,
+                    range.new_len,
+                )
             } else {
-                marky_engine_update(self.handle, text.as_ptr(), text_len, range.offset, range.old_len, range.new_len)
+                marky_engine_update(
+                    self.handle,
+                    text.as_ptr(),
+                    text_len,
+                    range.offset,
+                    range.old_len,
+                    range.new_len,
+                )
             }
         };
 
@@ -340,7 +358,10 @@ mod tests {
         // Semantically hostile: valid text, no markdown structure
         let engine = DocumentEngine::new("   \n\n\t\t\n   ").unwrap();
         let hash = engine.content_hash();
-        assert_ne!(hash, 0, "whitespace-only input is non-empty, hash must be non-zero");
+        assert_ne!(
+            hash, 0,
+            "whitespace-only input is non-empty, hash must be non-zero"
+        );
     }
 
     #[test]
@@ -363,8 +384,14 @@ mod tests {
         let hash_b = engine.content_hash();
         engine.update("# A\n", None).unwrap();
         let hash_a2 = engine.content_hash();
-        assert_eq!(hash_a, hash_a2, "returning to same content must produce same hash");
-        assert_ne!(hash_a, hash_b, "different content must produce different hash");
+        assert_eq!(
+            hash_a, hash_a2,
+            "returning to same content must produce same hash"
+        );
+        assert_ne!(
+            hash_a, hash_b,
+            "different content must produce different hash"
+        );
     }
 
     #[test]
@@ -404,7 +431,10 @@ mod tests {
         // Update back — hash must match original
         engine.update("# Initial\n", None).unwrap();
         let hash3 = engine.content_hash();
-        assert_eq!(hash1, hash3, "hash must be consistent after round-trip updates");
+        assert_eq!(
+            hash1, hash3,
+            "hash must be consistent after round-trip updates"
+        );
     }
 
     #[test]
@@ -422,7 +452,14 @@ mod tests {
         let mut engine = DocumentEngine::new("# Hello\n").unwrap();
         // Update with zero-value edit range — should behave identically to None
         engine
-            .update("# New\n", Some(EditRange { offset: 0, old_len: 0, new_len: 0 }))
+            .update(
+                "# New\n",
+                Some(EditRange {
+                    offset: 0,
+                    old_len: 0,
+                    new_len: 0,
+                }),
+            )
             .unwrap();
         let hash = engine.content_hash();
         assert_ne!(hash, 0);
@@ -440,7 +477,14 @@ mod tests {
 
         let mut engine_zero = DocumentEngine::new(text_a).unwrap();
         engine_zero
-            .update(text_b, Some(EditRange { offset: 0, old_len: 0, new_len: 0 }))
+            .update(
+                text_b,
+                Some(EditRange {
+                    offset: 0,
+                    old_len: 0,
+                    new_len: 0,
+                }),
+            )
             .unwrap();
         let hash_zero = engine_zero.content_hash();
 
@@ -457,7 +501,11 @@ mod tests {
         engine
             .update(
                 "# Hello brave new world\n",
-                Some(EditRange { offset: 8, old_len: 5, new_len: 15 }),
+                Some(EditRange {
+                    offset: 8,
+                    old_len: 5,
+                    new_len: 15,
+                }),
             )
             .unwrap();
         let hash = engine.content_hash();
@@ -475,14 +523,22 @@ mod tests {
         engine
             .update(
                 "# Alpha\n## Beta\nSome new text\n",
-                Some(EditRange { offset: 17, old_len: 0, new_len: 14 }),
+                Some(EditRange {
+                    offset: 17,
+                    old_len: 0,
+                    new_len: 14,
+                }),
             )
             .unwrap();
         assert!(
             engine.slug_reuse_count() > 0,
             "headings before edit_offset should reuse slugs"
         );
-        assert_eq!(engine.slug_reuse_count(), 2, "both headings before offset 17");
+        assert_eq!(
+            engine.slug_reuse_count(),
+            2,
+            "both headings before offset 17"
+        );
     }
 
     #[test]
@@ -493,10 +549,17 @@ mod tests {
         engine
             .update(
                 "# Alpha\n## Beta\nExtra\n",
-                Some(EditRange { offset: 17, old_len: 0, new_len: 6 }),
+                Some(EditRange {
+                    offset: 17,
+                    old_len: 0,
+                    new_len: 6,
+                }),
             )
             .unwrap();
-        assert!(engine.slug_reuse_count() > 0, "should have reuse with edit range");
+        assert!(
+            engine.slug_reuse_count() > 0,
+            "should have reuse with edit range"
+        );
 
         // Then: update with None (zero range) — count must reset to 0
         engine.update("# Alpha\n## Beta\n", None).unwrap();

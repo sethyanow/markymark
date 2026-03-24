@@ -143,7 +143,13 @@ fn test_from_scan_block_id_range_nonzero_width() {
     // block_by_id returns the merged content block (paragraph), not the raw ^marker.
     // The paragraph starts at column 0 and covers the full line.
     assert_eq!(block.range.start.line, 0);
-    assert_eq!(block.range.start.character, 0, "merged block should start at paragraph start");
-    assert_ne!(block.range.start, block.range.end, "range must have non-zero width");
+    assert_eq!(
+        block.range.start.character, 0,
+        "merged block should start at paragraph start"
+    );
+    assert_ne!(
+        block.range.start, block.range.end,
+        "range must have non-zero width"
+    );
     assert_eq!(block.block_id, Some("my-block"));
 }

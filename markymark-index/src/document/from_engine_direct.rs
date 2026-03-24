@@ -103,16 +103,8 @@ impl DocumentIndex {
                     (target.to_owned(), None)
                 };
                 let start_byte = l.source_offset as usize;
-                let end_byte =
-                    start_byte + l.text_length as usize + l.target_length as usize + 4;
-                md_data.push((
-                    text.to_owned(),
-                    url,
-                    anchor,
-                    range,
-                    start_byte,
-                    end_byte,
-                ));
+                let end_byte = start_byte + l.text_length as usize + l.target_length as usize + 4;
+                md_data.push((text.to_owned(), url, anchor, range, start_byte, end_byte));
             }
         }
 

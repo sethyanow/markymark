@@ -563,12 +563,8 @@ mod tests {
         let result1 = state.build_markdown_index_via_engine(&uri, "# Hello\n", None);
         assert!(result1.is_some(), "first call should return Some");
 
-        let result2 =
-            state.build_markdown_index_via_engine(&uri, "# Hello\n## World\n", None);
-        assert!(
-            result2.is_some(),
-            "changed content should return Some"
-        );
+        let result2 = state.build_markdown_index_via_engine(&uri, "# Hello\n## World\n", None);
+        assert!(result2.is_some(), "changed content should return Some");
     }
 
     #[test]
@@ -638,9 +634,12 @@ mod tests {
         assert!(r2.is_none(), "same multi-byte content should short-circuit");
 
         // Change one character in the heading
-        let r3 = state
-            .build_markdown_index_via_engine(&uri, "# 日本語のヘッダ\n\n本文テキスト\n", None);
-        assert!(r3.is_some(), "changed multi-byte content should return Some");
+        let r3 =
+            state.build_markdown_index_via_engine(&uri, "# 日本語のヘッダ\n\n本文テキスト\n", None);
+        assert!(
+            r3.is_some(),
+            "changed multi-byte content should return Some"
+        );
     }
 
     #[test]
@@ -650,7 +649,10 @@ mod tests {
 
         // Empty content — hash is 0 per Zig engine behavior
         let r1 = state.build_markdown_index_via_engine(&uri, "", None);
-        assert!(r1.is_some(), "first call with empty content should return Some");
+        assert!(
+            r1.is_some(),
+            "first call with empty content should return Some"
+        );
 
         // Second call with same empty content — hash still 0, should short-circuit
         let r2 = state.build_markdown_index_via_engine(&uri, "", None);
