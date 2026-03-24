@@ -77,25 +77,25 @@ rebuild unnecessarily) but never wrong (never skips a real change).
 
 **Savings:** ~2ms blob/arena work skipped per non-structural edit. Parse still runs.
 
-### Phase 2 Progress: Edit Range Threading (marky-686, 2026-03-24)
+### Phase 2 COMPLETE: Edit Range Threading (marky-686, 2026-03-24)
 
-Task 1 (marky-f1w): FFI plumbing — `update()` accepts edit_offset/old_len/new_len. Done.
-Task 2 (marky-v60): Zig slug reuse — headings before edit_offset reuse old slugs. Done.
+All 3 tasks done, 10/10 sub-epic criteria met. Acceptance task pending.
 
-**Key pattern:** Old state (`self.headings`) is valid between `parseAll` success and `freeState()`.
-The reuse pass reads directly from old state and dupes slug bytes into new headings — no temp
-array needed. Dupe-before-free ordering prevents use-after-free on OOM.
+Task 1 (marky-f1w): FFI plumbing — `update()` accepts edit_offset/old_len/new_len.
+Task 2 (marky-v60): Zig slug reuse — headings before edit_offset reuse old slugs.
+Task 3 (marky-enr): LSP threading — `apply_document_changes` accumulates bounding box
+from incremental edits (min start_byte, sum old_len, sum new_len) and passes via
+`build_markdown_index_via_engine` to `engine.update()`. Full changes invalidate range.
 
-**Scope: before-only.** Headings after edit range NOT reused (dedup suffix `-N` may differ if
-headings added/removed in the edit range). `slug_reuse_count` exposed via FFI for observability.
-
-Next: Task 3 (LSP threading — `apply_document_changes` computes byte-range bounds from LSP's
-UTF-16 offsets and passes to engine). Task not yet scoped.
+**Key patterns:**
+- Bounding box: `match` on `Option<(usize, usize, usize)>` to accumulate, `.map()` to convert
+- Skipped edits (`end_before_start`) excluded from accumulation
+- `build_markdown_index_via_engine` signature: `(&mut self, uri, text, Option<EditRange>)`
 
 ### Active Work
 
-- **Epic marky-zsys**: Engine Pipeline v2 — Phase 2 in progress (7/10 sub-epic criteria met).
-  Next: Task 3 (LSP edit range threading).
+- **Epic marky-zsys**: Engine Pipeline v2 — Phase 2 complete (10/10), acceptance pending.
+  Next: Phase 2 acceptance task, then Phase 3 (zero-copy blob) unblocks.
 
 ### Failure Pattern: Unauthorized architectural switch (fail-from-ast-switch)
 
