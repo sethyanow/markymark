@@ -337,3 +337,255 @@ async fn search_workspace_sort_descending_score_ties_by_uri_ascending() {
         "results with equal score should be sorted by URI ascending"
     );
 }
+
+// --- Structured document search tests ---
+
+/// Helper to create a workspace with both markdown and structured files.
+async fn engine_with_mixed_files(
+    name: &str,
+    files: &[(&str, &str)],
+) -> (TempWorkspace, RuntimeEngine) {
+    let ws = TempWorkspace::new(name);
+    for (filename, content) in files {
+        // Ensure subdirectories exist.
+        let path = ws.root().join(filename);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("subdirectory should be created");
+        }
+        fs::write(&path, content).expect("test file should be created");
+    }
+    let engine = RuntimeEngine::from_workspace_roots(vec![ws.root()])
+        .await
+        .expect("workspace should index");
+    (ws, engine)
+}
+
+#[tokio::test]
+async fn search_workspace_finds_jsonl_by_value() {
+    let jsonl_content = r#"{"id": "issue-1", "title": "Fix authentication bug", "status": "open"}
+{"id": "issue-2", "title": "Add Layer 4 memory integration", "status": "closed"}"#;
+
+    let (_ws, engine) = engine_with_mixed_files(
+        "sw-jsonl",
+        &[
+            ("docs/guide.md", "# User Guide\n\nSome documentation.\n"),
+            ("issues.jsonl", jsonl_content),
+        ],
+    )
+    .await;
+
+    let results = search_workspace(&engine, Some("authentication"), None, None, None, 20).await;
+    assert!(
+        results
+            .iter()
+            .any(|r| r.uri.as_str().contains("issues.jsonl")),
+        "search should find JSONL file when query matches content value"
+    );
+}
+
+#[tokio::test]
+async fn search_workspace_finds_yaml_by_key_path() {
+    let yaml_content = "database:\n  host: localhost\n  port: 5432\n";
+
+    let (_ws, engine) = engine_with_mixed_files(
+        "sw-yaml",
+        &[
+            ("readme.md", "# Readme\n\nProject info.\n"),
+            ("config.yaml", yaml_content),
+        ],
+    )
+    .await;
+
+    let results = search_workspace(&engine, Some("database"), None, None, None, 20).await;
+    assert!(
+        results
+            .iter()
+            .any(|r| r.uri.as_str().contains("config.yaml")),
+        "search should find YAML file when query matches key path"
+    );
+}
+
+#[tokio::test]
+async fn search_workspace_mixed_results_sorted_by_score() {
+    let yaml_content = "host: localhost\nport: 5432\n";
+
+    let (_ws, engine) = engine_with_mixed_files(
+        "sw-mixed-sort",
+        &[
+            // Markdown: title match "config" → score 1.0
+            ("config.md", "# Config\n\nSome configuration docs.\n"),
+            // Structured: URI stem match "config" → score 1.0
+            ("config.yaml", yaml_content),
+            // Structured: key-path match only → score 0.8
+            ("server.yaml", "config:\n  enabled: true\n"),
+        ],
+    )
+    .await;
+
+    let results = search_workspace(&engine, Some("config"), None, None, None, 20).await;
+    assert!(
+        results.len() >= 2,
+        "should match at least the two config files, got: {}",
+        results.len()
+    );
+    // Verify sort order: score DESC.
+    for i in 1..results.len() {
+        assert!(
+            results[i - 1].score >= results[i].score,
+            "results must be sorted score DESC"
+        );
+    }
+}
+
+#[tokio::test]
+async fn search_workspace_filters_exclude_structured_docs() {
+    let yaml_content = "status: active\ntags: [project]\n";
+
+    let (_ws, engine) = engine_with_mixed_files(
+        "sw-filter-exclude",
+        &[
+            ("doc.md", "---\nstatus: active\n---\n# Doc\n\nContent.\n"),
+            ("config.yaml", yaml_content),
+        ],
+    )
+    .await;
+
+    // Frontmatter filter should only return markdown docs.
+    let results = search_workspace(&engine, None, Some(("status", "active")), None, None, 20).await;
+    for r in &results {
+        assert!(
+            !r.uri.as_str().ends_with(".yaml"),
+            "structured docs should be excluded when frontmatter filter is active"
+        );
+    }
+}
+
+#[tokio::test]
+async fn search_workspace_no_query_includes_structured_docs() {
+    let (_ws, engine) = engine_with_mixed_files(
+        "sw-no-query-struct",
+        &[
+            ("readme.md", "# Readme\n"),
+            ("config.json", r#"{"key": "value"}"#),
+        ],
+    )
+    .await;
+
+    let results = search_workspace(&engine, None, None, None, None, 20).await;
+    assert!(
+        results
+            .iter()
+            .any(|r| r.uri.as_str().contains("config.json")),
+        "no-query mode should include structured docs"
+    );
+    // All should score 1.0 in no-query mode.
+    for r in &results {
+        assert!(
+            (r.score - 1.0).abs() < f32::EPSILON,
+            "no-query results should all score 1.0"
+        );
+    }
+}
+
+#[tokio::test]
+async fn search_workspace_structured_doc_uri_title_strips_extension() {
+    let (_ws, engine) = engine_with_mixed_files(
+        "sw-struct-title",
+        &[("my-config.toml", "[database]\nhost = \"localhost\"\n")],
+    )
+    .await;
+
+    let results = search_workspace(&engine, Some("database"), None, None, None, 20).await;
+    assert_eq!(results.len(), 1, "should find the TOML file");
+    assert_eq!(
+        results[0].title, "my config",
+        "title should strip .toml extension and convert separators"
+    );
+}
+
+#[tokio::test]
+async fn search_workspace_empty_structured_doc_excluded_by_query() {
+    // An empty JSON file has 0 keys and empty source — should not match any query.
+    let (_ws, engine) = engine_with_mixed_files(
+        "sw-empty-struct",
+        &[("readme.md", "# Readme\n"), ("empty.json", "{}")],
+    )
+    .await;
+
+    let results = search_workspace(&engine, Some("anything"), None, None, None, 20).await;
+    assert!(
+        !results
+            .iter()
+            .any(|r| r.uri.as_str().contains("empty.json")),
+        "empty structured doc should not match a query"
+    );
+}
+
+#[tokio::test]
+async fn search_workspace_body_text_match_adds_body_field() {
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-body-match",
+        &[(
+            "doc.md",
+            "# Unrelated Title\n\nThis paragraph mentions quantum computing in detail.\n",
+        )],
+    )
+    .await;
+    let results = search_workspace(&engine, Some("quantum"), None, None, None, 20).await;
+    assert_eq!(
+        results.len(),
+        1,
+        "body text match should return the document"
+    );
+    assert!(
+        results[0].matched_fields.contains(&"body".to_string()),
+        "matched_fields should contain 'body', got: {:?}",
+        results[0].matched_fields
+    );
+    assert!(
+        (results[0].score - 0.4).abs() < f32::EPSILON,
+        "body-only match should score 0.4, got: {}",
+        results[0].score
+    );
+}
+
+#[tokio::test]
+async fn search_workspace_body_text_match_is_case_insensitive() {
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-body-case",
+        &[("doc.md", "# Title\n\nThe Quantum Realm is vast.\n")],
+    )
+    .await;
+    let results = search_workspace(&engine, Some("quantum realm"), None, None, None, 20).await;
+    assert_eq!(
+        results.len(),
+        1,
+        "case-insensitive body match should find document"
+    );
+    assert!(
+        results[0].matched_fields.contains(&"body".to_string()),
+        "matched_fields should contain 'body' for case-insensitive match"
+    );
+}
+
+#[tokio::test]
+async fn search_workspace_no_body_match_excludes_body_field() {
+    let (_ws, engine) = engine_with_workspace_files(
+        "sw-no-body",
+        &[(
+            "doc.md",
+            "# Relevant Title\n\nCompletely unrelated paragraph content.\n",
+        )],
+    )
+    .await;
+    let results = search_workspace(&engine, Some("relevant"), None, None, None, 20).await;
+    assert_eq!(results.len(), 1, "title match should return the document");
+    assert!(
+        !results[0].matched_fields.contains(&"body".to_string()),
+        "matched_fields should NOT contain 'body' when body text doesn't match"
+    );
+    assert!(
+        results[0].matched_fields.contains(&"title".to_string()),
+        "should match on title"
+    );
+}

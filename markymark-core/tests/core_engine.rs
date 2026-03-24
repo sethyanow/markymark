@@ -11,7 +11,12 @@ use markymark_core::{CoreError, DocumentUri, Position, Range};
 #[test]
 fn test_core_operation_get_outline_variant() {
     let uri = DocumentUri::from_file_path(&PathBuf::from("/vault/test.md"));
-    let op = CoreOperation::GetOutline { uri, realm: None };
+    let op = CoreOperation::GetOutline {
+        uri,
+        realm: None,
+        format: "flat".to_string(),
+        include_text: false,
+    };
     // Verify it's the correct variant via pattern matching
     match op {
         CoreOperation::GetOutline { uri, .. } => {
@@ -211,7 +216,12 @@ async fn test_core_engine_executes_operation() {
     let engine = MockEngine;
     let uri = DocumentUri::from_file_path(&PathBuf::from("/vault/notes.md"));
     let result = engine
-        .execute(CoreOperation::GetOutline { uri, realm: None })
+        .execute(CoreOperation::GetOutline {
+            uri,
+            realm: None,
+            format: "flat".to_string(),
+            include_text: false,
+        })
         .await;
 
     match result {

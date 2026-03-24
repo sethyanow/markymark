@@ -2,11 +2,13 @@
 id: marky-n7wx
 title: '[EPIC] RealmIndex v2: string interning, stem index, incremental updates, lazy cold indexes'
 status: open
+status: closed
 type: epic
 priority: 2
 owner: sethyanow@users.noreply.github.com
 parent: marky-io3h
 ---
+
 
 
 

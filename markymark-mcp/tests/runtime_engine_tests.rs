@@ -11,6 +11,8 @@ use markymark_core::Range;
 
 pub(crate) use common::TempWorkspace;
 
+#[path = "runtime_engine_tests/content_blocks.rs"]
+mod content_blocks;
 #[path = "runtime_engine_tests/export_index.rs"]
 mod export_index;
 #[path = "runtime_engine_tests/find_references.rs"]
@@ -23,6 +25,8 @@ mod realm_management;
 mod realm_stats;
 #[path = "runtime_engine_tests/rename.rs"]
 mod rename;
+#[path = "runtime_engine_tests/search_block_text.rs"]
+mod search_block_text;
 #[path = "runtime_engine_tests/search_symbols.rs"]
 mod search_symbols;
 #[path = "runtime_engine_tests/search_workspace.rs"]

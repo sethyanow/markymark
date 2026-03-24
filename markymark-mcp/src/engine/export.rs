@@ -1,12 +1,35 @@
 //! ExportIndex operation handler.
 
-use markymark_core::engine::CoreOperationResult;
+use markymark_core::engine::{ContentBlockResult, CoreOperationResult};
 use markymark_core::structured::DocumentKind;
 use markymark_core::{CoreError, DocumentUri};
 use markymark_index::document::{FrontmatterValueEntry, PropertyValueEntry};
+
+/// Convert a `FrontmatterValueEntry` to a `Vec<String>` for the wire DTO.
+fn fm_entry_to_strings(value: &FrontmatterValueEntry<'_>) -> Vec<String> {
+    match value {
+        FrontmatterValueEntry::String(s) => vec![s.to_string()],
+        FrontmatterValueEntry::Integer(n) => vec![n.to_string()],
+        FrontmatterValueEntry::Float(f) => vec![f.to_string()],
+        FrontmatterValueEntry::Boolean(b) => vec![b.to_string()],
+        FrontmatterValueEntry::List(items) => items.iter().flat_map(fm_entry_to_strings).collect(),
+        FrontmatterValueEntry::Map(entries) => entries
+            .iter()
+            .map(|(k, v)| {
+                let vs = fm_entry_to_strings(v).join(", ");
+                format!("{k}: {vs}")
+            })
+            .collect(),
+        FrontmatterValueEntry::Null => Vec::new(),
+    }
+}
 use markymark_index::RealmIndex;
 
-pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri) -> CoreOperationResult {
+pub(crate) fn handle_export_index(
+    realm: &RealmIndex,
+    uri: &DocumentUri,
+    include_blocks: bool,
+) -> CoreOperationResult {
     match realm.get_any_document(uri) {
         Some(markymark_index::AnyDocumentIndex::Markdown(index)) => {
             let headings = index
@@ -43,12 +66,7 @@ pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri) -> Core
                 .frontmatter()
                 .iter()
                 .map(|e| {
-                    let values = match &e.value {
-                        FrontmatterValueEntry::String(s) => vec![s.to_string()],
-                        FrontmatterValueEntry::List(items) => {
-                            items.iter().map(|s| s.to_string()).collect()
-                        }
-                    };
+                    let values = fm_entry_to_strings(&e.value);
                     (e.key.to_string(), values)
                 })
                 .collect();
@@ -68,6 +86,31 @@ pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri) -> Core
                 })
                 .collect();
 
+            let content_blocks = if include_blocks {
+                let heading_list = index.headings();
+                Some(
+                    index
+                        .content_blocks()
+                        .iter()
+                        .map(|b| {
+                            let parent_slug = b
+                                .parent_heading
+                                .and_then(|idx| heading_list.get(idx).map(|h| h.slug.to_string()));
+                            ContentBlockResult {
+                                kind: super::helpers::block_kind_str(&b.kind).to_string(),
+                                range: b.range,
+                                parent_heading_index: b.parent_heading,
+                                parent_heading_slug: parent_slug,
+                                block_id: b.block_id.map(|s| s.to_string()),
+                                text: Some(index.block_text(b).to_string()),
+                            }
+                        })
+                        .collect(),
+                )
+            } else {
+                None
+            };
+
             CoreOperationResult::DocumentExport {
                 uri: uri.clone(),
                 document_kind: Some(DocumentKind::Markdown),
@@ -77,6 +120,7 @@ pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri) -> Core
                 markdown_links,
                 frontmatter,
                 properties,
+                content_blocks,
             }
         }
         Some(markymark_index::AnyDocumentIndex::Structured(index)) => {
@@ -103,6 +147,7 @@ pub(crate) fn handle_export_index(realm: &RealmIndex, uri: &DocumentUri) -> Core
                 markdown_links: Vec::new(),
                 frontmatter: Vec::new(),
                 properties: Vec::new(),
+                content_blocks: None,
             }
         }
         None => CoreOperationResult::Error(CoreError::Message(format!(

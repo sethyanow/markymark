@@ -37,6 +37,8 @@ extern "C" {
         k: u32,
         written: *mut u32,
     ) -> i32;
+    fn zig_embedding_index_remove(handle: *mut std::ffi::c_void, id: *const u8, id_len: u32)
+        -> i32;
     fn zig_embedding_index_count(handle: *mut std::ffi::c_void) -> i32;
 }
 
@@ -86,15 +88,16 @@ pub struct EmbeddingIndex {
 // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage
 unsafe impl Send for EmbeddingIndex {}
 
-// SAFETY: Shared access (`&self`) only calls `search` and `count`, which are
-// read-only operations on the Zig side (no interior mutation). Concurrent
-// readers are safe. The `RwLock` in RuntimeEngine ensures no reader overlaps
-// with a writer.
+// SAFETY: `&self` methods (`search`, `count`, `dimensions`) are read-only at
+// the FFI boundary — Zig `search` takes `*const EmbeddingIndex` and performs no
+// interior mutation. Concurrent shared reads are safe. All mutating FFI calls
+// (`add`, `remove`) require `&mut self`, so the Rust borrow checker prevents
+// concurrent read+write or write+write access. The `handle` field is private,
+// so no external code can call mutating FFI through a shared reference.
 //
-// WARNING: This `Sync` impl is only safe under external read-write locking.
-// If `EmbeddingIndex` is accessed without the `RwLock` guard held by the
-// caller, data races are possible. Do not share this type across threads
-// without external synchronization.
+// In production, `SemanticIndex` wraps this type behind `Arc<TokioMutex>` in
+// `RealmIndex` as defense-in-depth, but that is not a soundness requirement —
+// the `&self`/`&mut self` split is the compile-time enforcement.
 // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage
 unsafe impl Sync for EmbeddingIndex {}
 
@@ -154,6 +157,24 @@ impl EmbeddingIndex {
             -3 => Err(KernelError::InternalError(-3)),
             other => Err(KernelError::InternalError(other)),
         }
+    }
+
+    /// Remove an entry by ID, freeing its Zig-side allocations.
+    ///
+    /// Returns `true` if the entry was found and removed, `false` otherwise.
+    pub fn remove(&mut self, id: &str) -> bool {
+        if id.is_empty() {
+            return false;
+        }
+        let Ok(id_len) = u32::try_from(id.len()) else {
+            return false;
+        };
+
+        // SAFETY: handle is valid (created in new(), not yet destroyed).
+        // id is a valid slice with correct length.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        let rc = unsafe { zig_embedding_index_remove(self.handle, id.as_ptr(), id_len) };
+        rc == 0
     }
 
     /// Search the index for the top-K most similar embeddings to `query`.
@@ -398,6 +419,36 @@ mod tests {
         for i in 1..results.len() {
             assert!(results[i - 1].score >= results[i].score);
         }
+    }
+
+    #[test]
+    fn test_embedding_index_remove_existing() {
+        let mut idx = EmbeddingIndex::new(4).unwrap();
+        idx.add("doc1", &[1.0, 0.0, 0.0, 0.0]).unwrap();
+        idx.add("doc2", &[0.0, 1.0, 0.0, 0.0]).unwrap();
+        assert_eq!(idx.count(), 2);
+
+        assert!(idx.remove("doc1"));
+        assert_eq!(idx.count(), 1);
+
+        // Only doc2 should remain in search results
+        let results = idx.search(&[0.0, 1.0, 0.0, 0.0], 5).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "doc2");
+    }
+
+    #[test]
+    fn test_embedding_index_remove_nonexistent() {
+        let mut idx = EmbeddingIndex::new(4).unwrap();
+        idx.add("doc1", &[1.0, 0.0, 0.0, 0.0]).unwrap();
+        assert!(!idx.remove("nope"));
+        assert_eq!(idx.count(), 1);
+    }
+
+    #[test]
+    fn test_embedding_index_remove_empty_id() {
+        let mut idx = EmbeddingIndex::new(4).unwrap();
+        assert!(!idx.remove(""));
     }
 
     #[test]

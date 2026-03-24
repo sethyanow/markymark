@@ -5,6 +5,38 @@ use bumpalo::Bump;
 
 use super::types::*;
 
+use markymark_core::arena::arena_alloc_str;
+
+/// Convert an owned frontmatter value to an arena-allocated entry.
+pub(super) fn owned_value_to_arena<'arena>(
+    value: FrontmatterValueOwned,
+    arena: &'arena Bump,
+) -> FrontmatterValueEntry<'arena> {
+    match value {
+        FrontmatterValueOwned::String(s) => {
+            FrontmatterValueEntry::String(arena_alloc_str(arena, &s))
+        }
+        FrontmatterValueOwned::Integer(n) => FrontmatterValueEntry::Integer(n),
+        FrontmatterValueOwned::Float(f) => FrontmatterValueEntry::Float(f),
+        FrontmatterValueOwned::Boolean(b) => FrontmatterValueEntry::Boolean(b),
+        FrontmatterValueOwned::List(items) => {
+            let mut list = BumpVec::new_in(arena);
+            for item in items {
+                list.push(owned_value_to_arena(item, arena));
+            }
+            FrontmatterValueEntry::List(list.into_bump_slice())
+        }
+        FrontmatterValueOwned::Map(entries) => {
+            let mut map = BumpVec::new_in(arena);
+            for (k, v) in entries {
+                map.push((arena_alloc_str(arena, &k), owned_value_to_arena(v, arena)));
+            }
+            FrontmatterValueEntry::Map(map.into_bump_slice())
+        }
+        FrontmatterValueOwned::Null => FrontmatterValueEntry::Null,
+    }
+}
+
 /// Convert heading text to a URL-safe slug.
 pub fn slugify(text: &str) -> String {
     let lower = text.to_lowercase();
@@ -144,20 +176,67 @@ pub(crate) fn build_outline<'arena>(
     freeze_outline(arena, root)
 }
 
+/// Extract alias strings from a frontmatter value.
+///
+/// Accepts String (single alias) or List (multiple aliases, string items only).
+/// Non-string types (Integer, Float, Boolean, Null, Map) and non-string list
+/// items are silently ignored — aliases are always strings in practice.
+fn collect_alias_strings(value: &FrontmatterValueOwned, aliases: &mut Vec<String>) {
+    match value {
+        FrontmatterValueOwned::String(s) => {
+            if !s.is_empty() {
+                aliases.push(s.clone());
+            }
+        }
+        FrontmatterValueOwned::List(items) => {
+            for item in items {
+                if let FrontmatterValueOwned::String(s) = item {
+                    if !s.is_empty() {
+                        aliases.push(s.clone());
+                    }
+                }
+            }
+        }
+        _ => {} // Non-string/list types ignored for aliases
+    }
+}
+
 /// Find the earliest frontmatter close delimiter (`\n---\n` or `\n---\r\n`).
 ///
 /// Returns `(byte_position, delimiter_len)` or `None`. Using `min()` instead
 /// of `or_else()` prevents picking a later CRLF close over an earlier LF close
 /// in mixed-ending files.
 fn find_frontmatter_close(rest: &str) -> Option<(usize, usize)> {
+    // Empty frontmatter at EOF (rest is just the closing delimiter)
+    if rest == "---" || rest == "---\r" {
+        return Some((0, rest.len()));
+    }
+
+    // Empty frontmatter with trailing newline (rest starts with closing delimiter).
+    // CRLF check MUST come before LF check ("---\r\n".starts_with("---\n") is false,
+    // but ordering is safer for consistency with the rest of this function).
+    if rest.starts_with("---\r\n") {
+        return Some((0, 5));
+    }
+    if rest.starts_with("---\n") {
+        return Some((0, 4));
+    }
+
     let lf = rest.find("\n---\n").map(|p| (p, 5));
     let crlf = rest.find("\n---\r\n").map(|p| (p, 6));
-    match (lf, crlf) {
-        (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
-        (a @ Some(_), None) => a,
-        (None, b @ Some(_)) => b,
-        (None, None) => None,
-    }
+    // Handle closing --- at EOF without trailing newline
+    let eof = if rest.ends_with("\r\n---") {
+        Some((rest.len() - 5, 5)) // content_end, delimiter_len (includes \r\n)
+    } else if rest.ends_with("\n---") {
+        Some((rest.len() - 4, 4)) // content_end, delimiter_len (includes \n)
+    } else {
+        None
+    };
+
+    [lf, crlf, eof]
+        .into_iter()
+        .flatten()
+        .min_by_key(|(pos, _)| *pos)
 }
 
 /// Parse frontmatter from raw markdown source text as owned data.
@@ -194,27 +273,19 @@ pub fn parse_frontmatter_owned(source: &str) -> (Vec<FrontmatterOwnedEntry>, Vec
 
             let value = if value_str.starts_with('[') && value_str.ends_with(']') {
                 let inner = &value_str[1..value_str.len() - 1];
-                let items: Vec<String> = inner
+                let items: Vec<FrontmatterValueOwned> = inner
                     .split(',')
-                    .map(|s| s.trim().to_string())
+                    .map(|s| s.trim())
                     .filter(|s| !s.is_empty())
+                    .map(scalar_to_owned)
                     .collect();
                 FrontmatterValueOwned::List(items)
             } else {
-                FrontmatterValueOwned::String(value_str.to_string())
+                scalar_to_owned(value_str)
             };
 
             if key == "aliases" {
-                match &value {
-                    FrontmatterValueOwned::String(s) => {
-                        if !s.is_empty() {
-                            aliases.push(s.clone());
-                        }
-                    }
-                    FrontmatterValueOwned::List(items) => {
-                        aliases.extend(items.iter().cloned());
-                    }
-                }
+                collect_alias_strings(&value, &mut aliases);
             }
 
             frontmatter.push(FrontmatterOwnedEntry { key, value });
@@ -222,6 +293,28 @@ pub fn parse_frontmatter_owned(source: &str) -> (Vec<FrontmatterOwnedEntry>, Vec
     }
 
     (frontmatter, aliases)
+}
+
+/// Convert a raw scalar string to an owned typed value using the shared detection functions.
+fn scalar_to_owned(raw: &str) -> FrontmatterValueOwned {
+    use markymark_parser::{detect_yaml_scalar, strip_yaml_quotes, YamlScalarHint};
+    let (stripped, was_quoted) = strip_yaml_quotes(raw);
+    if was_quoted {
+        return FrontmatterValueOwned::String(stripped.to_string());
+    }
+    match detect_yaml_scalar(stripped) {
+        YamlScalarHint::Null => FrontmatterValueOwned::Null,
+        YamlScalarHint::Boolean(b) => FrontmatterValueOwned::Boolean(b),
+        YamlScalarHint::Integer => match stripped.parse::<i64>() {
+            Ok(n) => FrontmatterValueOwned::Integer(n),
+            Err(_) => FrontmatterValueOwned::String(stripped.to_string()),
+        },
+        YamlScalarHint::Float => match stripped.parse::<f64>() {
+            Ok(f) if f.is_finite() => FrontmatterValueOwned::Float(f),
+            _ => FrontmatterValueOwned::String(stripped.to_string()),
+        },
+        YamlScalarHint::Str => FrontmatterValueOwned::String(stripped.to_string()),
+    }
 }
 
 /// Mask YAML frontmatter so md4c doesn't misparse `---` as a setext heading.
@@ -252,4 +345,22 @@ pub fn mask_frontmatter(source: &str) -> String {
     // Replacing every non-newline byte with 0x20 (space) always produces valid
     // UTF-8: multi-byte sequences have all bytes replaced, yielding ASCII spaces.
     String::from_utf8(bytes).unwrap_or_else(|_| source.to_string())
+}
+
+/// Return the byte offset where the frontmatter region ends (exclusive).
+///
+/// Returns 0 if the source has no frontmatter. Used by content block extraction
+/// to exclude blocks whose start_byte falls within the frontmatter region.
+pub fn frontmatter_byte_end(source: &str) -> usize {
+    let (prefix_len, rest) = if let Some(r) = source.strip_prefix("---\r\n") {
+        (5, r)
+    } else if let Some(r) = source.strip_prefix("---\n") {
+        (4, r)
+    } else {
+        return 0;
+    };
+    match find_frontmatter_close(rest) {
+        Some((close_pos, close_len)) => prefix_len + close_pos + close_len,
+        None => 0,
+    }
 }

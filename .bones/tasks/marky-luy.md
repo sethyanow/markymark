@@ -2,10 +2,13 @@
 id: marky-luy
 title: '[EPIC] g9t remediation: arena conformance closeout'
 status: open
+status: closed
 type: feature
 priority: 2
 owner: sethyanow@users.noreply.github.com
 ---
+
+
 
 
 
@@ -41,3 +44,7 @@ Phase B: parser/core conformance (g9t.1-3)
 Phase C: index/realm conformance (g9t.4-5)
 Phase D: transport adaptation (g9t.6)
 Phase E: benchmark + cleanup + closeout (g9t.7)
+
+## Log
+
+- [2026-03-23T13:59:48Z] [Seth] Review-implementation APPROVED. All 4 children closed, all scope gates verified: types.rs split (bjj), g9t.1-7 closed, architecture matches dec-arena-001/002/003, benchmarks exist with measurable metrics. mem::forget leak fixed via self_cell migration. Miri CI in place. Adversarial reflection surfaced two findings filed as marky-hk7 (dead reset() method) and marky-d6r (EmbeddingIndex Sync audit).

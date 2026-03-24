@@ -5,7 +5,7 @@
 
 use markymark_core::prelude::*;
 
-use crate::document::DocumentIndex;
+use crate::document::{BlockKind, DocumentIndex};
 use crate::structured_document::StructuredDocumentIndex;
 
 /// Owned copy of heading data for cross-document lookups.
@@ -42,6 +42,23 @@ pub struct ResolvedCodeSpan {
     pub start_byte: usize,
     /// Byte offset of span end.
     pub end_byte: usize,
+}
+
+/// A single match from a cross-document block text search.
+#[derive(Debug, Clone)]
+pub struct BlockTextMatch {
+    /// Document URI where the match was found.
+    pub uri: DocumentUri,
+    /// Block kind.
+    pub kind: BlockKind,
+    /// Source range of the block in the document.
+    pub range: Range,
+    /// Slug of the parent heading, if any.
+    pub parent_heading_slug: Option<String>,
+    /// Block reference ID, if any.
+    pub block_id: Option<String>,
+    /// The text content of the block (only present when `include_text` is true).
+    pub text: Option<String>,
 }
 
 /// Either a markdown or structured document index.

@@ -30,6 +30,7 @@ mod prompts;
 mod rename_ops;
 mod resources;
 pub(crate) mod search;
+mod slim;
 mod subscriptions;
 mod tools;
 
@@ -37,6 +38,7 @@ pub use dto::*;
 #[cfg(feature = "semantic-search")]
 pub use engine::HashEmbeddingProvider;
 pub use engine::RuntimeEngine;
+pub use slim::{ExecuteRequest, SlimMarkymarkMcp, run_slim_stdio};
 
 pub(crate) const SEMANTIC_SEARCH_MAX_TOP_K: u32 = 100;
 
@@ -177,7 +179,12 @@ impl MarkymarkMcp {
         realm: Option<String>,
     ) -> CoreOperationResult {
         self.engine
-            .execute(CoreOperation::GetOutline { uri, realm })
+            .execute(CoreOperation::GetOutline {
+                uri,
+                realm,
+                format: "flat".to_string(),
+                include_text: false,
+            })
             .await
     }
 
@@ -403,7 +410,7 @@ impl MarkymarkMcp {
     /// Export the full document index for a single document.
     #[tool(
         name = "export-index",
-        description = "Export headings, XML tags, wiki links, and markdown links for a document."
+        description = "Export headings, XML tags, wiki links, and markdown links for a document. Supports optional content block export via include_blocks parameter."
     )]
     pub async fn export_index_tool(
         &self,
@@ -415,7 +422,7 @@ impl MarkymarkMcp {
     /// Search workspace documents by text, frontmatter, properties, or tags.
     #[tool(
         name = "search-workspace",
-        description = "Search workspace documents by free text, frontmatter, Logseq properties, or tags. Returns ranked results with metadata preview."
+        description = "Search workspace documents by free text, frontmatter, Logseq properties, or tags. Returns ranked results with metadata preview. Free text queries match against titles, headings, frontmatter, properties, and body text (paragraph, list, code block content)."
     )]
     pub async fn search_workspace_tool(
         &self,
@@ -459,6 +466,79 @@ impl MarkymarkMcp {
         params: Parameters<GetDiagnosticsRequest>,
     ) -> Result<CallToolResult, McpError> {
         tools::diagnostics::handle_get_diagnostics(&*self.engine, params.0).await
+    }
+
+    /// Export a pipe-delimited docs_index block from realm state, matching the format
+    /// used in CLAUDE.md for ambient agent documentation awareness.
+    #[tool(
+        name = "export-docs-index",
+        description = "Generate a pipe-delimited docs_index block from a realm's indexed documents. Output is ready to paste into CLAUDE.md for ambient agent doc awareness. Groups files by directory (category) with deterministic sorting."
+    )]
+    pub async fn export_docs_index_tool(
+        &self,
+        params: Parameters<ExportDocsIndexRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::export_docs_index::handle_export_docs_index(&*self.engine, params.0).await
+    }
+
+    /// Enrich a document's outline with LLM-generated summaries stored in sidecar files.
+    #[tool(
+        name = "enrich-document",
+        description = "Enrich a document's outline with LLM-generated summaries. Summaries are stored in sidecar JSON files under .markymark/ (or a custom directory). Requires an inference provider to be configured. Skips enrichment if the sidecar is fresh (content hash matches) unless force=true."
+    )]
+    pub async fn enrich_document_tool(
+        &self,
+        params: Parameters<EnrichDocumentRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::enrich::handle_enrich_document(&*self.engine, params.0).await
+    }
+
+    /// Recommend documents matching an intent query using combined text search and graph analysis.
+    #[tool(
+        name = "recommend-docs",
+        description = "Recommend documents matching an intent query. Combines text search relevance with graph hub scores for two-stage retrieval. Returns ranked documents with optional section summaries from enrichment sidecars. Use this tool when an agent needs to find the most relevant documentation for a given task or question."
+    )]
+    pub async fn recommend_docs_tool(
+        &self,
+        params: Parameters<RecommendDocsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::recommend::handle_recommend_docs(&*self.engine, params.0).await
+    }
+
+    /// Run curation diagnostics on a realm to detect orphans, low-connectivity docs, and suggest cross-links.
+    #[tool(
+        name = "curation-diagnostics",
+        description = "Analyse documentation quality for a realm. Detects orphan documents (no links in or out), low-connectivity documents, and generates actionable cross-link suggestions. Returns structured curation report with aggregate statistics including orphan percentage and average connectivity. Use this tool to identify documentation quality gaps and get specific improvement recommendations."
+    )]
+    pub async fn curation_diagnostics_tool(
+        &self,
+        params: Parameters<CurationDiagnosticsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::curation::handle_curation_diagnostics(&*self.engine, params.0).await
+    }
+
+    /// Get content blocks for a document URI with optional filtering.
+    #[tool(
+        name = "get-content-blocks",
+        description = "Get content blocks (paragraphs, list items, code blocks, etc.) for a document URI. Supports filtering by block kind, parent heading slug, and block reference ID. Use `include_text` to include block text content."
+    )]
+    pub async fn get_content_blocks_tool(
+        &self,
+        params: Parameters<GetContentBlocksRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::blocks::handle_get_content_blocks(&*self.engine, params.0).await
+    }
+
+    /// Search block text across all documents in a realm (case-insensitive substring).
+    #[tool(
+        name = "search-block-text",
+        description = "Search block text across all documents in a realm. Performs case-insensitive substring matching against content block text (paragraphs, list items, code blocks, etc.). Returns block-level matches with document URI, block kind, range, and parent heading. Use `include_text` to include matched block text content. Use `kind` to restrict to a specific block type."
+    )]
+    pub async fn search_block_text_tool(
+        &self,
+        params: Parameters<SearchBlockTextRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        tools::blocks::handle_search_block_text(&*self.engine, params.0).await
     }
 }
 

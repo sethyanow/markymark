@@ -11,11 +11,12 @@ use tower_lsp_server::{Client, LanguageServer, LspService};
 
 use crate::state::{ServerState, SymbolAtPosition};
 use markymark_core::DocumentUri;
-use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link, ResolvedTarget};
+use markymark_index::resolution::{resolve_markdown_link, resolve_wiki_link};
 
 use crate::helpers::{
-    iter_realm_documents, resolved_target_to_location, structured_key_hover_markdown,
-    xml_hover_stats,
+    hover_code_span, hover_heading, hover_markdown_link, hover_structured_key, hover_wiki_link,
+    hover_xml_tag, iter_realm_documents, references_for_heading, references_for_structured_key,
+    references_for_wiki_link, references_for_xml_tag, resolved_target_to_location,
 };
 use crate::symbols::{key_entries_to_symbols, outline_children_to_symbols, xml_tags_to_symbols};
 
@@ -168,7 +169,7 @@ impl LanguageServer for Backend {
             // batch (marky-aemm). Globally unique values make it safe to remove
             // entries on close without collision risk on reopen (marky-jwsk).
             {
-                let mut deb = self.debounce.lock().unwrap();
+                let mut deb = self.debounce.lock().expect("debounce lock poisoned");
                 let gen = deb.next_generation;
                 deb.next_generation += 1;
                 deb.document_generations.insert(doc_uri.clone(), gen);
@@ -204,7 +205,7 @@ impl LanguageServer for Backend {
 
         // Atomically buffer this change batch and cancel any existing debounce (T1-1).
         {
-            let mut deb = self.debounce.lock().unwrap();
+            let mut deb = self.debounce.lock().expect("debounce lock poisoned");
             deb.pending_changes
                 .entry(doc_uri.clone())
                 .or_default()
@@ -229,7 +230,7 @@ impl LanguageServer for Backend {
             // If pending is absent the document was closed while we were sleeping;
             // abort fires at the next await — return early to avoid stale work (T2-8).
             let (batches, captured_gen) = {
-                let mut deb = debounce.lock().unwrap();
+                let mut deb = debounce.lock().expect("debounce lock poisoned");
                 deb.debounce_handles.remove(&doc_uri_clone);
                 match deb.pending_changes.remove(&doc_uri_clone) {
                     Some(batches) => {
@@ -262,7 +263,7 @@ impl LanguageServer for Backend {
                 // and now, the generation will have changed and we discard the stale
                 // batches (marky-aemm).
                 {
-                    let deb = debounce.lock().unwrap();
+                    let deb = debounce.lock().expect("debounce lock poisoned");
                     let current_gen = deb
                         .document_generations
                         .get(&doc_uri_clone)
@@ -290,7 +291,7 @@ impl LanguageServer for Backend {
 
         // Store abort handle.
         {
-            let mut deb = self.debounce.lock().unwrap();
+            let mut deb = self.debounce.lock().expect("debounce lock poisoned");
             deb.debounce_handles
                 .insert(doc_uri, join_handle.abort_handle());
         }
@@ -302,7 +303,7 @@ impl LanguageServer for Backend {
             // Cancel any pending debounce, clear buffered changes, and bump generation
             // before closing (T2-8, marky-aemm).
             {
-                let mut deb = self.debounce.lock().unwrap();
+                let mut deb = self.debounce.lock().expect("debounce lock poisoned");
                 if let Some(handle) = deb.debounce_handles.remove(&doc_uri) {
                     handle.abort();
                 }
@@ -417,136 +418,22 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        let mut locations = Vec::new();
-
-        match symbol {
-            SymbolAtPosition::Heading(ref heading) => {
-                let slug = &heading.slug;
-                // Search all documents for wiki links and markdown links referencing this slug
-                for (uri, index) in iter_realm_documents(&state) {
-                    for wl in index.wiki_links() {
-                        if wl.heading == Some(slug) {
-                            if let Ok(loc) = crate::convert::to_lsp_location(uri, wl.range) {
-                                locations.push(loc);
-                            }
-                        }
-                    }
-                    for ml in index.markdown_links() {
-                        if ml.anchor == Some(slug) {
-                            if let Ok(loc) = crate::convert::to_lsp_location(uri, ml.range) {
-                                locations.push(loc);
-                            }
-                        }
-                    }
-                }
-            }
+        let locations = match symbol {
+            SymbolAtPosition::Heading(ref h) => references_for_heading(&state, h),
             SymbolAtPosition::XmlTag(ref xt) => {
-                let tag_name = &xt.tag_name;
-                // Search all documents for XML tags with the same name
-                for (uri, index) in iter_realm_documents(&state) {
-                    for xml in index.xml_tags() {
-                        if !include_declaration && uri == &doc_uri && xml.range == xt.range {
-                            continue;
-                        }
-                        if xml.tag_name == *tag_name {
-                            if let Ok(loc) = crate::convert::to_lsp_location(uri, xml.range) {
-                                locations.push(loc);
-                            }
-                        }
-                    }
-                }
+                references_for_xml_tag(&state, &doc_uri, xt, include_declaration)
             }
             SymbolAtPosition::StructuredKey(ref info) => {
-                // Direction 1: Cursor on a structured doc key -> find all markdown wiki-links
-                // that resolve to this key path in this document.
-                let key_path = &info.path;
-
-                // Optionally include the declaration (the key itself)
-                if include_declaration {
-                    if let Some(st_idx) = state.get_structured_document_index(&doc_uri) {
-                        if let Some(entry) = st_idx.key_by_path(key_path) {
-                            if let Ok(loc) =
-                                crate::convert::to_lsp_location(&doc_uri, entry.key_range)
-                            {
-                                locations.push(loc);
-                            }
-                        }
-                    }
-                }
-
-                // Search all markdown documents for wiki-links that resolve to this key path
-                for (md_uri, md_index) in iter_realm_documents(&state) {
-                    for wl in md_index.wiki_links() {
-                        if let Some(ResolvedTarget::KeyPath {
-                            uri: ref target_uri,
-                            ref path,
-                            ..
-                        }) = resolve_wiki_link(state.realm(), md_uri, wl.target, wl.heading)
-                        {
-                            if target_uri == &doc_uri && path == key_path {
-                                if let Ok(loc) = crate::convert::to_lsp_location(md_uri, wl.range) {
-                                    locations.push(loc);
-                                }
-                            }
-                        }
-                    }
-                }
+                references_for_structured_key(&state, &doc_uri, info, include_declaration)
             }
             SymbolAtPosition::WikiLink(ref wl) => {
-                // Direction 2: Cursor on a wiki-link -> if it resolves to a KeyPath,
-                // find the key definition + other wiki-links referencing the same key.
-                let resolved = resolve_wiki_link(state.realm(), &doc_uri, wl.target, wl.heading);
-                match resolved {
-                    Some(ResolvedTarget::KeyPath {
-                        ref uri,
-                        ref path,
-                        range,
-                        ..
-                    }) => {
-                        let target_uri = uri.clone();
-                        let target_path = path.clone();
-
-                        // Include the key definition location
-                        if let Ok(loc) = crate::convert::to_lsp_location(&target_uri, range) {
-                            locations.push(loc);
-                        }
-
-                        // Find other wiki-links referencing the same key path
-                        for (md_uri, md_index) in iter_realm_documents(&state) {
-                            for other_wl in md_index.wiki_links() {
-                                // Skip the current wiki-link
-                                if !include_declaration
-                                    && md_uri == &doc_uri
-                                    && other_wl.range == wl.range
-                                {
-                                    continue;
-                                }
-                                if let Some(ResolvedTarget::KeyPath {
-                                    uri: ref resolved_uri,
-                                    ref path,
-                                    ..
-                                }) = resolve_wiki_link(
-                                    state.realm(),
-                                    md_uri,
-                                    other_wl.target,
-                                    other_wl.heading,
-                                ) {
-                                    if resolved_uri == &target_uri && path == &target_path {
-                                        if let Ok(loc) =
-                                            crate::convert::to_lsp_location(md_uri, other_wl.range)
-                                        {
-                                            locations.push(loc);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    _ => return Ok(None),
+                match references_for_wiki_link(&state, &doc_uri, wl, include_declaration) {
+                    Some(locs) => locs,
+                    None => return Ok(None),
                 }
             }
             _ => return Ok(None),
-        }
+        };
 
         if locations.is_empty() {
             Ok(None)
@@ -572,103 +459,12 @@ impl LanguageServer for Backend {
         };
 
         let markdown = match &symbol {
-            SymbolAtPosition::Heading(h) => {
-                let prefix = "#".repeat(h.level as usize);
-                format!("{} {}\n\nHeading (level {})", prefix, h.text, h.level)
-            }
-            SymbolAtPosition::WikiLink(wl) => {
-                let resolved = resolve_wiki_link(state.realm(), &doc_uri, wl.target, wl.heading);
-                match resolved {
-                    Some(ResolvedTarget::Document(uri)) => {
-                        format!("Wiki link to **{}**", uri.as_str())
-                    }
-                    Some(ResolvedTarget::Heading { uri, text, .. }) => {
-                        format!("Wiki link to heading **{}** in {}", text, uri.as_str())
-                    }
-                    Some(ResolvedTarget::Block { uri, id }) => {
-                        format!("Wiki link to block `{}` in {}", id, uri.as_str())
-                    }
-                    Some(ResolvedTarget::KeyPath {
-                        uri,
-                        path,
-                        value_kind,
-                        ..
-                    }) => {
-                        format!(
-                            "Wiki link to key `{}` ({:?}) in {}",
-                            path,
-                            value_kind,
-                            uri.as_str()
-                        )
-                    }
-                    None => {
-                        format!("Wiki link to **{}** (unresolved)", wl.target)
-                    }
-                }
-            }
-            SymbolAtPosition::MarkdownLink(ml) => {
-                format!("Markdown link: [{}]({})", ml.text, ml.url)
-            }
-            SymbolAtPosition::XmlTag(xt) => {
-                let mut lines = vec![format!("**`<{}>`** XML tag", xt.tag_name)];
-                let stats = xml_hover_stats(&state, xt.tag_name);
-                if !xt.attributes.is_empty() {
-                    let mut attrs: Vec<_> = xt.attributes.iter().collect();
-                    attrs.sort_by_key(|(k, _)| *k);
-                    let attr_list: Vec<String> = attrs
-                        .iter()
-                        .map(|(k, v)| format!("- `{}` = `{}`", k, v))
-                        .collect();
-                    lines.push(String::new());
-                    lines.push("**Attributes:**".to_string());
-                    lines.extend(attr_list);
-                }
-                lines.push(String::new());
-                lines.push("**Workspace usage:**".to_string());
-                lines.push(format!(
-                    "- Occurrences in workspace: **{}**",
-                    stats.occurrences
-                ));
-                lines.push(format!(
-                    "- Documents with this tag: **{}**",
-                    stats.document_count
-                ));
-                if !stats.attribute_counts.is_empty() {
-                    lines.push(String::new());
-                    lines.push("**Common attributes:**".to_string());
-                    lines.extend(
-                        stats
-                            .attribute_counts
-                            .iter()
-                            .map(|(name, count)| format!("- `{}` ({})", name, count)),
-                    );
-                }
-                if xt.is_self_closing {
-                    lines.push(String::new());
-                    lines.push("*Self-closing tag*".to_string());
-                }
-                if xt.is_unclosed {
-                    lines.push(String::new());
-                    lines.push("**Warning: unclosed tag**".to_string());
-                }
-                lines.join("\n")
-            }
-            SymbolAtPosition::CodeSpan(cs) => {
-                let mut lines = vec![format!("**`{}`** — inline code span", cs.text)];
-                let refs = state.realm().lookup_code_span(cs.text);
-                if refs.len() > 1 {
-                    lines.push(String::new());
-                    lines.push(format!("**Referenced in {} documents:**", refs.len()));
-                    for (ref_uri, _) in refs.iter().take(10) {
-                        lines.push(format!("- {}", ref_uri.as_str()));
-                    }
-                    if refs.len() > 10 {
-                        lines.push(format!("- ... and {} more", refs.len() - 10));
-                    }
-                }
-                lines.join("\n")
-            }
-            SymbolAtPosition::StructuredKey(ref info) => structured_key_hover_markdown(info),
+            SymbolAtPosition::Heading(h) => hover_heading(h),
+            SymbolAtPosition::WikiLink(wl) => hover_wiki_link(&state, &doc_uri, wl),
+            SymbolAtPosition::MarkdownLink(ml) => hover_markdown_link(ml),
+            SymbolAtPosition::XmlTag(xt) => hover_xml_tag(&state, xt),
+            SymbolAtPosition::CodeSpan(cs) => hover_code_span(&state, cs),
+            SymbolAtPosition::StructuredKey(ref info) => hover_structured_key(info),
         };
 
         Ok(Some(Hover {
@@ -938,7 +734,7 @@ impl Backend {
         &self,
         uri: &DocumentUri,
     ) -> Option<(Vec<Vec<crate::state::DocumentChange>>, u64)> {
-        let mut deb = self.debounce.lock().unwrap();
+        let mut deb = self.debounce.lock().expect("debounce lock poisoned");
         deb.debounce_handles.remove(uri);
         deb.pending_changes.remove(uri).map(|batches| {
             let gen = deb.document_generations.get(uri).copied().unwrap_or(0);
@@ -958,7 +754,7 @@ impl Backend {
     ) -> bool {
         let mut state_w = self.state.write().await;
         {
-            let deb = self.debounce.lock().unwrap();
+            let deb = self.debounce.lock().expect("debounce lock poisoned");
             let current_gen = deb.document_generations.get(uri).copied().unwrap_or(0);
             if current_gen != captured_gen {
                 return false;
@@ -972,7 +768,8 @@ impl Backend {
 
     /// Return the number of entries in the document_generations map (for testing).
     pub fn document_generations_count(&self) -> usize {
-        let deb = self.debounce.lock().unwrap();
+        let deb = self.debounce.lock().expect("debounce lock poisoned");
         deb.document_generations.len()
     }
 }
+

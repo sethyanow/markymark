@@ -1,6 +1,7 @@
 //! Document index entry types.
 
 use hashbrown::HashMap;
+use markymark_core::frontmatter::{FrontmatterMap, FrontmatterValueRef};
 use markymark_core::prelude::*;
 
 /// A heading entry in the document index.
@@ -16,30 +17,58 @@ pub struct HeadingEntry<'arena> {
     pub range: Range,
 }
 
-/// A block entry in the document index (Obsidian `^block-id`).
-#[derive(Debug, Clone)]
-pub struct BlockEntry<'arena> {
-    /// The block identifier.
-    pub id: &'arena str,
-    /// Source range of the block.
-    pub range: Range,
-    /// Byte offset of the `^` character.
-    pub start_byte: usize,
-    /// Byte offset one past the last character of the block ID.
-    pub end_byte: usize,
+/// The kind of content block extracted from the document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockKind {
+    /// A paragraph block.
+    Paragraph,
+    /// A list item block.
+    ListItem,
+    /// A fenced or indented code block.
+    CodeBlock,
+    /// A blockquote.
+    BlockQuote,
+    /// A thematic break (`---`, `***`, `___`).
+    ThematicBreak,
+    /// A table.
+    Table,
 }
 
-/// Owned block payload used by incremental merge paths before arena allocation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlockOwned {
-    /// The block identifier.
-    pub id: String,
+/// A content block entry in the document index.
+///
+/// Represents a first-class content block (paragraph, list item, code block, etc.).
+/// Optionally carries an Obsidian `^block-id` marker. Replaces the former `BlockEntry`.
+#[derive(Debug, Clone, Copy)]
+pub struct ContentBlock<'arena> {
+    /// The kind of content block.
+    pub kind: BlockKind,
     /// Source range of the block.
     pub range: Range,
-    /// Byte offset of the `^` character.
+    /// Byte offset of the block start.
     pub start_byte: usize,
-    /// Byte offset one past the last character of the block ID.
+    /// Byte offset one past the block end.
     pub end_byte: usize,
+    /// Index of the nearest preceding heading, or `None` if before any heading.
+    pub parent_heading: Option<usize>,
+    /// Optional Obsidian `^block-id` marker.
+    pub block_id: Option<&'arena str>,
+}
+
+/// Owned content block payload used by incremental merge paths before arena allocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContentBlockOwned {
+    /// The kind of content block.
+    pub kind: BlockKind,
+    /// Source range of the block.
+    pub range: Range,
+    /// Byte offset of the block start.
+    pub start_byte: usize,
+    /// Byte offset one past the block end.
+    pub end_byte: usize,
+    /// Index of the nearest preceding heading, or `None` if before any heading.
+    pub parent_heading: Option<usize>,
+    /// Optional Obsidian `^block-id` marker.
+    pub block_id: Option<String>,
 }
 
 /// A table-of-contents entry.
@@ -221,13 +250,23 @@ pub struct MarkdownLinkEntry<'arena> {
     pub end_byte: usize,
 }
 
-/// A frontmatter value stored in the index.
+/// A frontmatter value stored in the index (arena-allocated).
 #[derive(Debug, Clone)]
 pub enum FrontmatterValueEntry<'arena> {
     /// A simple string value.
     String(&'arena str),
-    /// A list of string values.
-    List(&'arena [&'arena str]),
+    /// An integer value.
+    Integer(i64),
+    /// A floating-point value (always finite).
+    Float(f64),
+    /// A boolean value.
+    Boolean(bool),
+    /// A list of typed values.
+    List(&'arena [FrontmatterValueEntry<'arena>]),
+    /// A map of key-value pairs.
+    Map(&'arena [(&'arena str, FrontmatterValueEntry<'arena>)]),
+    /// An explicit null value.
+    Null,
 }
 
 /// A frontmatter key-value entry stored in the index.
@@ -239,13 +278,53 @@ pub struct FrontmatterEntry<'arena> {
     pub value: FrontmatterValueEntry<'arena>,
 }
 
+// ── Conversions to core FrontmatterValueRef / FrontmatterMap ───────
+
+impl<'a> From<&FrontmatterValueEntry<'a>> for FrontmatterValueRef<'a> {
+    fn from(value: &FrontmatterValueEntry<'a>) -> Self {
+        match value {
+            FrontmatterValueEntry::String(s) => FrontmatterValueRef::String(s),
+            FrontmatterValueEntry::Integer(n) => FrontmatterValueRef::Integer(*n),
+            FrontmatterValueEntry::Float(f) => {
+                debug_assert!(f.is_finite(), "FrontmatterValueEntry::Float must be finite");
+                FrontmatterValueRef::Float(*f)
+            }
+            FrontmatterValueEntry::Boolean(b) => FrontmatterValueRef::Boolean(*b),
+            FrontmatterValueEntry::List(items) => {
+                FrontmatterValueRef::List(items.iter().map(|v| v.into()).collect())
+            }
+            FrontmatterValueEntry::Map(entries) => {
+                FrontmatterValueRef::Map(entries.iter().map(|(k, v)| (*k, v.into())).collect())
+            }
+            FrontmatterValueEntry::Null => FrontmatterValueRef::Null,
+        }
+    }
+}
+
+/// Build a [`FrontmatterMap`] from a slice of index [`FrontmatterEntry`] values.
+pub fn frontmatter_map_from_entries<'a>(entries: &[FrontmatterEntry<'a>]) -> FrontmatterMap<'a> {
+    let pairs: Vec<(&'a str, FrontmatterValueRef<'a>)> =
+        entries.iter().map(|e| (e.key, (&e.value).into())).collect();
+    FrontmatterMap::from(pairs)
+}
+
 /// An owned frontmatter value for cross-module transfer (not arena-allocated).
 #[derive(Debug, Clone)]
 pub enum FrontmatterValueOwned {
     /// A simple string value.
     String(String),
-    /// A list of string values.
-    List(Vec<String>),
+    /// An integer value.
+    Integer(i64),
+    /// A floating-point value (always finite).
+    Float(f64),
+    /// A boolean value.
+    Boolean(bool),
+    /// A list of typed values.
+    List(Vec<FrontmatterValueOwned>),
+    /// A map of key-value pairs.
+    Map(Vec<(String, FrontmatterValueOwned)>),
+    /// An explicit null value.
+    Null,
 }
 
 /// An owned frontmatter key-value entry for cross-module transfer (not arena-allocated).

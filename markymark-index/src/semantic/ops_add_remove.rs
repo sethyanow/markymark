@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use crate::DocumentIndex;
 use markymark_core::prelude::*;
 
-use super::helpers::{fallback_heading, token_hashes};
+use super::helpers::{build_embedding_input, fallback_heading, section_block_texts, token_hashes};
 use super::{SemanticEntry, SemanticIndex};
 
 struct EntryPlan {
@@ -23,15 +23,18 @@ fn build_document_plan(uri: &DocumentUri, index: &DocumentIndex) -> DocumentPlan
     let mut ids = Vec::new();
     let mut entries = Vec::new();
     let mut token_set = BTreeSet::new();
+    let section_texts = section_block_texts(index);
 
     if index.headings().is_empty() {
         let heading = fallback_heading(uri);
         let id = format!("{}#fallback", uri.as_str());
+        let embedding_input =
+            build_embedding_input(&heading, section_texts.get(&None).map(String::as_str));
 
-        token_set.extend(token_hashes(&heading));
+        token_set.extend(token_hashes(&embedding_input));
         entries.push(EntryPlan {
             id: id.clone(),
-            embedding_input: heading.clone(),
+            embedding_input,
             entry: SemanticEntry {
                 doc_uri: uri.clone(),
                 heading,
@@ -49,17 +52,41 @@ fn build_document_plan(uri: &DocumentUri, index: &DocumentIndex) -> DocumentPlan
             }
 
             let id = format!("{}#{}#{i}", uri.as_str(), heading.slug);
-            token_set.extend(token_hashes(&text));
+            let embedding_input =
+                build_embedding_input(&text, section_texts.get(&Some(i)).map(String::as_str));
+            token_set.extend(token_hashes(&embedding_input));
 
             entries.push(EntryPlan {
                 id: id.clone(),
-                embedding_input: text.clone(),
+                embedding_input,
                 entry: SemanticEntry {
                     doc_uri: uri.clone(),
                     heading: text,
                     heading_level: heading.level,
                     section_start: heading.range.start,
                     section_end: heading.range.end,
+                },
+            });
+            ids.push(id);
+        }
+
+        // Fallback: all headings were blank/whitespace — treat like no headings.
+        if entries.is_empty() {
+            let heading = fallback_heading(uri);
+            let id = format!("{}#fallback", uri.as_str());
+            let embedding_input =
+                build_embedding_input(&heading, section_texts.get(&None).map(String::as_str));
+
+            token_set.extend(token_hashes(&embedding_input));
+            entries.push(EntryPlan {
+                id: id.clone(),
+                embedding_input,
+                entry: SemanticEntry {
+                    doc_uri: uri.clone(),
+                    heading,
+                    heading_level: 1,
+                    section_start: Position::new(0, 0),
+                    section_end: Position::new(0, 0),
                 },
             });
             ids.push(id);
@@ -145,10 +172,17 @@ impl SemanticIndex {
             ));
         }
 
+        let mut added_ids: Vec<String> = Vec::new();
         for (id, embedding) in staged_zig_adds {
-            self.index
-                .add(&id, &embedding)
-                .map_err(|e| EmbedError::InternalError(e.to_string()))?;
+            match self.index.add(&id, &embedding) {
+                Ok(()) => added_ids.push(id),
+                Err(e) => {
+                    for rollback_id in &added_ids {
+                        let _ = self.index.remove(rollback_id);
+                    }
+                    return Err(EmbedError::InternalError(e.to_string()));
+                }
+            }
         }
 
         for (id, entry) in pending_entries {
@@ -168,14 +202,46 @@ impl SemanticIndex {
     /// If the document has headings, one semantic entry is generated per
     /// heading. If it has no headings, a single fallback entry based on the
     /// document file stem is created.
+    ///
+    /// On embed failure the previous state is restored (snapshot-then-rollback).
     pub async fn add_document(
         &mut self,
         uri: DocumentUri,
         index: &DocumentIndex,
     ) -> Result<(), EmbedError> {
+        // Snapshot current state for rollback on failure.
+        let prev_ids = self.doc_to_ids.get(&uri).cloned();
+        let prev_entries: Vec<(String, SemanticEntry)> = prev_ids
+            .as_ref()
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| self.entries_by_id.get(id).cloned().map(|e| (id.clone(), e)))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let prev_tokens = self.doc_token_sets.get(&uri).cloned();
+
+        // Remove old entries (optimistic).
         self.remove_document(&uri);
-        self.apply_document_plans(vec![build_document_plan(&uri, index)])
+
+        // Attempt new indexing — rollback on failure.
+        if let Err(err) = self
+            .apply_document_plans(vec![build_document_plan(&uri, index)])
             .await
+        {
+            // Rollback: restore previous state.
+            for (id, entry) in prev_entries {
+                self.entries_by_id.insert(id, entry);
+            }
+            if let Some(ids) = prev_ids {
+                self.doc_to_ids.insert(uri.clone(), ids);
+            }
+            if let Some(tokens) = prev_tokens {
+                self.doc_token_sets.insert(uri, tokens);
+            }
+            return Err(err);
+        }
+        Ok(())
     }
 
     /// Add or replace semantic entries for multiple documents in one batch.
@@ -183,6 +249,9 @@ impl SemanticIndex {
     /// This method batches embedding generation across all provided documents.
     /// On batch provider failure, it logs and falls back to sequential per-text
     /// embedding to preserve resilience.
+    ///
+    /// On embed failure ALL documents are rolled back to their previous state
+    /// (snapshot-then-rollback).
     pub async fn add_documents(
         &mut self,
         docs: Vec<(DocumentUri, &DocumentIndex)>,
@@ -191,13 +260,49 @@ impl SemanticIndex {
             return Ok(());
         }
 
+        // Snapshot all documents for rollback.
+        let snapshots: Vec<_> = docs
+            .iter()
+            .map(|(uri, _)| {
+                let prev_ids = self.doc_to_ids.get(uri).cloned();
+                let prev_entries: Vec<(String, SemanticEntry)> = prev_ids
+                    .as_ref()
+                    .map(|ids| {
+                        ids.iter()
+                            .filter_map(|id| {
+                                self.entries_by_id.get(id).cloned().map(|e| (id.clone(), e))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let prev_tokens = self.doc_token_sets.get(uri).cloned();
+                (uri.clone(), prev_ids, prev_entries, prev_tokens)
+            })
+            .collect();
+
+        // Remove all old entries and build plans.
         let mut plans = Vec::with_capacity(docs.len());
         for (uri, index) in docs {
             self.remove_document(&uri);
             plans.push(build_document_plan(&uri, index));
         }
 
-        self.apply_document_plans(plans).await
+        // Attempt batch indexing — rollback ALL on failure.
+        if let Err(err) = self.apply_document_plans(plans).await {
+            for (uri, prev_ids, prev_entries, prev_tokens) in snapshots {
+                for (id, entry) in prev_entries {
+                    self.entries_by_id.insert(id, entry);
+                }
+                if let Some(ids) = prev_ids {
+                    self.doc_to_ids.insert(uri.clone(), ids);
+                }
+                if let Some(tokens) = prev_tokens {
+                    self.doc_token_sets.insert(uri, tokens);
+                }
+            }
+            return Err(err);
+        }
+        Ok(())
     }
 
     /// Remove semantic metadata for a document.

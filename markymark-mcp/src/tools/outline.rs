@@ -1,11 +1,27 @@
 //! get-outline and export-index tool handlers.
 
-use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult};
+use markymark_core::engine::{CoreEngine, CoreOperation, CoreOperationResult, OutlineTreeNode};
 use rmcp::{model::CallToolResult, ErrorData as McpError};
 use serde_json::json;
 
 use super::{parse_file_uri, tool_error, tool_error_from_core, unexpected_result_error};
 use crate::dto::*;
+
+/// Convert an owned `OutlineTreeNode` to the DTO for serialization.
+fn outline_tree_node_to_dto(node: OutlineTreeNode) -> OutlineTreeNodeDto {
+    OutlineTreeNodeDto {
+        title: node.title,
+        level: node.level,
+        range: range_to_dto(node.range),
+        text: node.text,
+        summary: node.summary,
+        children: node
+            .children
+            .into_iter()
+            .map(outline_tree_node_to_dto)
+            .collect(),
+    }
+}
 
 pub(crate) async fn handle_get_outline(
     engine: &dyn CoreEngine,
@@ -16,10 +32,24 @@ pub(crate) async fn handle_get_outline(
         Err(err) => return Ok(tool_error(&err.code, err.message)),
     };
 
+    let format = req.format.as_deref().unwrap_or("flat").to_string();
+    if format != "flat" && format != "tree" {
+        return Ok(tool_error(
+            "invalid_params",
+            format!(
+                "Unsupported outline format '{}'. Expected 'flat' or 'tree'.",
+                format
+            ),
+        ));
+    }
+    let include_text = req.include_text;
+
     match engine
         .execute(CoreOperation::GetOutline {
             uri,
             realm: req.realm.clone(),
+            format: format.clone(),
+            include_text,
         })
         .await
     {
@@ -27,6 +57,13 @@ pub(crate) async fn handle_get_outline(
             Ok(CallToolResult::structured(json!(OutlineResponse {
                 uri: req.uri,
                 headings,
+            })))
+        }
+        CoreOperationResult::OutlineTree(tree) => {
+            let tree_dto = outline_tree_node_to_dto(tree);
+            Ok(CallToolResult::structured(json!(OutlineTreeResponse {
+                uri: req.uri,
+                tree: tree_dto,
             })))
         }
         CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),
@@ -47,6 +84,7 @@ pub(crate) async fn handle_export_index(
         .execute(CoreOperation::ExportIndex {
             uri,
             realm: req.realm.clone(),
+            include_blocks: req.include_blocks,
         })
         .await
     {
@@ -58,6 +96,7 @@ pub(crate) async fn handle_export_index(
             markdown_links,
             frontmatter,
             properties,
+            content_blocks,
             ..
         } => {
             let headings: Vec<ExportedHeadingDto> = headings
@@ -105,6 +144,19 @@ pub(crate) async fn handle_export_index(
                 .map(|(key, value)| ExportedPropertyEntryDto { key, value })
                 .collect();
 
+            let content_blocks_dto: Option<Vec<ContentBlockDto>> = content_blocks.map(|blocks| {
+                blocks
+                    .into_iter()
+                    .map(|b| ContentBlockDto {
+                        kind: b.kind,
+                        range: range_to_dto(b.range),
+                        parent_heading_slug: b.parent_heading_slug,
+                        block_id: b.block_id,
+                        text: b.text,
+                    })
+                    .collect()
+            });
+
             Ok(CallToolResult::structured(json!(ExportIndexResponse {
                 uri: uri.as_str().to_string(),
                 headings,
@@ -113,6 +165,7 @@ pub(crate) async fn handle_export_index(
                 markdown_links,
                 frontmatter,
                 properties,
+                content_blocks: content_blocks_dto,
             })))
         }
         CoreOperationResult::Error(err) => Ok(tool_error_from_core(err)),

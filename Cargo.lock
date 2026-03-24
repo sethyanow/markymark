@@ -1582,7 +1582,7 @@ checksum = "670fdfda89751bc4a84ac13eaa63e205cf0fd22b4c9a5fbfa085b63c1f1d3a30"
 
 [[package]]
 name = "markymark-cli"
-version = "0.6.0"
+version = "0.7.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1595,7 +1595,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-core"
-version = "0.6.0"
+version = "0.7.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1615,7 +1615,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-index"
-version = "0.6.0"
+version = "0.7.1"
 dependencies = [
  "async-trait",
  "bumpalo",
@@ -1636,11 +1636,12 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+ "tree-sitter",
 ]
 
 [[package]]
 name = "markymark-kernels"
-version = "0.6.0"
+version = "0.7.1"
 dependencies = [
  "criterion",
  "markymark-core",
@@ -1653,7 +1654,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-lsp"
-version = "0.6.0"
+version = "0.7.1"
 dependencies = [
  "anyhow",
  "insta",
@@ -1673,7 +1674,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-mcp"
-version = "0.6.0"
+version = "0.7.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1695,7 +1696,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-parser"
-version = "0.6.0"
+version = "0.7.1"
 dependencies = [
  "bumpalo",
  "criterion",
@@ -2585,9 +2586,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.9"
+version = "0.103.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7df23109aa6c1567d1c575b9952556388da57401e4ace1d15f79eedad0d8f53"
+checksum = "df33b2b81ac578cabaf06b89b0631153a3f416b0a886e8a7a1707fb51abbd1ef"
 dependencies = [
  "ring",
  "rustls-pki-types",

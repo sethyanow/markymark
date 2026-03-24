@@ -158,12 +158,20 @@ fn from_hex(b: u8) -> Option<u8> {
 pub mod arena;
 pub mod embeddings;
 pub mod engine;
+pub mod frontmatter;
+pub mod graph_traits;
+pub mod inference;
+pub mod sidecar;
 pub mod structured;
+
+pub use frontmatter::TypedFrontmatter;
+pub use graph_traits::{EdgeKind, GraphNode};
 
 pub mod prelude {
     //! Prelude module with common imports
 
     pub use crate::embeddings::{EmbedError, EmbeddingProvider};
+    pub use crate::inference::{InferenceError, InferenceProvider};
     pub use crate::structured::{DocumentKind, KeyEntry, StructuredAst, ValueKind};
     pub use crate::{CoreError, CoreResult, DocumentUri, Position, Range};
 }

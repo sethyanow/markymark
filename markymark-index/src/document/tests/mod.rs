@@ -35,16 +35,19 @@ fn heading_entry_uses_arena_lifetime() {
 }
 
 #[test]
-fn block_entry_uses_arena_lifetime() {
+fn content_block_uses_arena_lifetime() {
     let arena = Bump::new();
-    let entry = BlockEntry {
-        id: arena.alloc_str("block-1"),
+    let entry = ContentBlock {
+        kind: BlockKind::Paragraph,
         range: Range::new(Position::new(0, 0), Position::new(0, 7)),
         start_byte: 0,
         end_byte: 7,
+        parent_heading: None,
+        block_id: Some(arena.alloc_str("block-1")),
     };
 
-    assert_eq!(entry.id, "block-1");
+    assert_eq!(entry.block_id, Some("block-1"));
+    assert_eq!(entry.kind, BlockKind::Paragraph);
 }
 
 #[test]
@@ -320,7 +323,7 @@ fn test_frontmatter_with_colon_in_value() {
                 "URL should not be truncated at second colon"
             );
         }
-        FrontmatterValueEntry::List(_) => panic!("URL should be a String, not List"),
+        other => panic!("URL should be a String, got {other:?}"),
     }
 }
 
@@ -357,6 +360,164 @@ fn test_no_properties_returns_empty() {
 // ---------------------------------------------------------------------------
 
 mod scan_tests;
+
+// ---------------------------------------------------------------------------
+// ContentBlock model tests (marky-3cy / marky-qhcg)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn content_block_all_kinds() {
+    let arena = Bump::new();
+    let range = Range::new(Position::new(0, 0), Position::new(0, 1));
+    for kind in [
+        BlockKind::Paragraph,
+        BlockKind::ListItem,
+        BlockKind::CodeBlock,
+        BlockKind::BlockQuote,
+        BlockKind::ThematicBreak,
+        BlockKind::Table,
+    ] {
+        let block = ContentBlock {
+            kind,
+            range,
+            start_byte: 0,
+            end_byte: 1,
+            parent_heading: None,
+            block_id: None,
+        };
+        // Verify Clone + Copy + PartialEq + Eq on BlockKind
+        let kind_copy = block.kind;
+        assert_eq!(kind_copy, kind);
+        // Verify Debug
+        let _ = format!("{:?}", block);
+    }
+    // Verify with parent_heading and block_id set
+    let block = ContentBlock {
+        kind: BlockKind::Paragraph,
+        range,
+        start_byte: 0,
+        end_byte: 5,
+        parent_heading: Some(2),
+        block_id: Some(arena.alloc_str("test-id")),
+    };
+    assert_eq!(block.parent_heading, Some(2));
+    assert_eq!(block.block_id, Some("test-id"));
+}
+
+#[test]
+fn content_block_owned_eq() {
+    let a = ContentBlockOwned {
+        kind: BlockKind::ListItem,
+        range: Range::new(Position::new(1, 0), Position::new(1, 10)),
+        start_byte: 5,
+        end_byte: 15,
+        parent_heading: Some(0),
+        block_id: Some("my-id".to_string()),
+    };
+    let b = a.clone();
+    assert_eq!(a, b);
+}
+
+#[test]
+fn block_text_returns_correct_slice() {
+    let source = "# Heading\n\nHello world paragraph.\n";
+    let index = build_index(source);
+    // "# Heading\n\n" = 11 bytes, so "Hello" starts at byte 11
+    let para_start = source.find("Hello").unwrap();
+    let para_end = source.len();
+    let synthetic = ContentBlock {
+        kind: BlockKind::Paragraph,
+        range: Range::new(Position::new(2, 0), Position::new(2, 22)),
+        start_byte: para_start,
+        end_byte: para_end,
+        parent_heading: Some(0),
+        block_id: None,
+    };
+    let text = index.block_text(&synthetic);
+    assert_eq!(text, "Hello world paragraph.\n");
+}
+
+#[test]
+fn block_text_multibyte_utf8() {
+    let source = "# Title\n\n🦀 Rust is great! 你好世界\n";
+    let index = build_index(source);
+    // Use find() to get correct byte offset, avoiding off-by-one with multibyte
+    let para_start = source.find('🦀').unwrap();
+    let para_end = source.len();
+    let synthetic = ContentBlock {
+        kind: BlockKind::Paragraph,
+        range: Range::new(Position::new(2, 0), Position::new(2, 20)),
+        start_byte: para_start,
+        end_byte: para_end,
+        parent_heading: Some(0),
+        block_id: None,
+    };
+    let text = index.block_text(&synthetic);
+    assert!(text.contains("🦀"));
+    assert!(text.contains("你好世界"));
+}
+
+#[test]
+fn block_text_out_of_bounds_returns_empty() {
+    let source = "# Short\n";
+    let index = build_index(source);
+    let synthetic = ContentBlock {
+        kind: BlockKind::Paragraph,
+        range: Range::new(Position::new(5, 0), Position::new(5, 10)),
+        start_byte: 999,
+        end_byte: 1999,
+        parent_heading: None,
+        block_id: None,
+    };
+    assert_eq!(index.block_text(&synthetic), "");
+}
+
+#[test]
+fn block_text_with_block_id() {
+    let source = "# Heading\n\nParagraph ^my-block\n";
+    let index = build_index(source);
+    let block = index.block_by_id("my-block");
+    assert!(block.is_some());
+    let text = index.block_text(block.unwrap());
+    // The text covers the ^my-block marker range, which is within source_text
+    assert!(!text.is_empty());
+}
+
+#[test]
+fn content_blocks_populated() {
+    let index = build_index("# Heading\n\nParagraph content.\n");
+    assert!(
+        !index.content_blocks().is_empty(),
+        "content_blocks should be populated via engine extraction"
+    );
+    assert!(
+        index
+            .content_blocks()
+            .iter()
+            .any(|b| b.kind == BlockKind::Paragraph),
+        "should have a Paragraph block"
+    );
+}
+
+#[test]
+fn block_by_id_returns_content_block() {
+    let index = build_index("# Heading\n\nSome text ^my-block\n");
+    let block = index.block_by_id("my-block");
+    assert!(block.is_some(), "block_by_id should find ^my-block");
+    let b = block.unwrap();
+    assert_eq!(b.block_id, Some("my-block"));
+    assert_eq!(b.kind, BlockKind::Paragraph);
+    assert!(b.range.start.line > 0 || b.range.start.character > 0);
+}
+
+#[test]
+fn block_ids_backward_compat() {
+    let index = build_index("^alpha\n\n^beta\n");
+    let ids: Vec<&str> = index.block_ids().collect();
+    assert!(ids.contains(&"alpha"), "should contain alpha");
+    assert!(ids.contains(&"beta"), "should contain beta");
+    assert_eq!(ids.len(), 2);
+}
 
 // ---------------------------------------------------------------------------
 // Block ref wiring tests (marky-waw)
@@ -441,16 +602,16 @@ fn test_block_ref_uuid_v4_format_preserved_exactly() {
 }
 
 // ---------------------------------------------------------------------------
-// from_ast delegation to from_scan: code spans are extracted
+// Code spans extraction
 // ---------------------------------------------------------------------------
 
 #[test]
-fn from_ast_extracts_code_spans_via_scan() {
+fn engine_extracts_code_spans() {
     let source = "# Hello\n\nUse `DocumentArena` for allocation.\n";
     let index = build_index(source);
     assert!(
         !index.code_spans().is_empty(),
-        "from_ast should extract code spans (delegates to from_scan)"
+        "engine should extract code spans"
     );
     assert_eq!(index.code_spans()[0].text, "DocumentArena");
 }
@@ -459,6 +620,7 @@ fn from_ast_extracts_code_spans_via_scan() {
 // incremental / fallback tests
 // ---------------------------------------------------------------------------
 
+mod content_block_tests;
 mod incremental_tests;
 
 // ---------------------------------------------------------------------------
@@ -594,4 +756,63 @@ fn from_text_empty_input() {
     assert!(idx.wiki_links().is_empty());
     assert!(idx.tags().is_empty());
     assert!(idx.frontmatter().is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Empty frontmatter with trailing newline (marky-840n)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn parse_frontmatter_owned_empty_lf() {
+    let source = "---\n---\nBody";
+    let (fm, _aliases) = helpers::parse_frontmatter_owned(source);
+    assert!(fm.is_empty(), "empty frontmatter should produce no keys");
+}
+
+#[test]
+fn parse_frontmatter_owned_empty_crlf() {
+    let source = "---\r\n---\r\nBody";
+    let (fm, _aliases) = helpers::parse_frontmatter_owned(source);
+    assert!(
+        fm.is_empty(),
+        "empty CRLF frontmatter should produce no keys"
+    );
+}
+
+#[test]
+fn parse_frontmatter_owned_empty_eof_newline() {
+    let source = "---\n---\n";
+    let (fm, _aliases) = helpers::parse_frontmatter_owned(source);
+    assert!(
+        fm.is_empty(),
+        "empty frontmatter at EOF should produce no keys"
+    );
+}
+
+#[test]
+fn mask_frontmatter_empty_lf() {
+    let source = "---\n---\nBody";
+    let masked = helpers::mask_frontmatter(source);
+    assert!(
+        !masked.starts_with("---"),
+        "empty frontmatter delimiters should be masked"
+    );
+    assert!(
+        masked.contains("Body"),
+        "body after empty frontmatter should be preserved"
+    );
+}
+
+#[test]
+fn mask_frontmatter_empty_crlf() {
+    let source = "---\r\n---\r\nBody";
+    let masked = helpers::mask_frontmatter(source);
+    assert!(
+        !masked.starts_with("---"),
+        "empty CRLF frontmatter delimiters should be masked"
+    );
+    assert!(
+        masked.contains("Body"),
+        "body after empty CRLF frontmatter should be preserved"
+    );
 }

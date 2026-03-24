@@ -7,12 +7,118 @@ use markymark_core::{Position, Range};
 use markymark_kernels::engine::{DocumentEngine, EngineExtraction};
 
 use super::{
-    helpers, BlockEntry, BlockRefEntry, CalloutEntry, CodeSpanEntry, DocumentDependent,
-    DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry, FrontmatterEntry,
-    FrontmatterOwnedEntry, FrontmatterValueEntry, FrontmatterValueOwned, HeadingEntry,
-    LinkDefinitionEntry, MarkdownLinkEntry, PropertyEntry, PropertyValueEntry, QueryBlockEntry,
-    TagEntry, TaskEntry, WikiLinkEntry, XmlTagEntry,
+    helpers, BlockKind, BlockRefEntry, CalloutEntry, CodeSpanEntry, ContentBlock,
+    DocumentDependent, DocumentIndex, DocumentIndexCell, DocumentOwner, EmbedEntry,
+    FrontmatterEntry, FrontmatterOwnedEntry, HeadingEntry, LinkDefinitionEntry, MarkdownLinkEntry,
+    PropertyEntry, PropertyValueEntry, QueryBlockEntry, TagEntry, TaskEntry, WikiLinkEntry,
+    XmlTagEntry,
 };
+
+/// Intermediate content block from tree-sitter block-tree parse.
+struct RawBlock {
+    kind: BlockKind,
+    start_byte: usize,
+    end_byte: usize,
+    start_row: u32,
+    start_col: u32,
+    end_row: u32,
+    end_col: u32,
+}
+
+/// Extract content blocks from source text via tree-sitter block-tree parsing.
+///
+/// Parses only the block grammar (no inline parsing). Blocks whose start_byte
+/// falls within the frontmatter region are excluded.
+fn extract_content_blocks(source: &str) -> Vec<RawBlock> {
+    let mut parser = match markymark_parser::Parser::new() {
+        Ok(p) => p,
+        Err(_) => return Vec::new(),
+    };
+    let block_tree = match parser.parse_block_tree_only(source, None) {
+        Some(t) => t,
+        None => return Vec::new(),
+    };
+    let fm_end = helpers::frontmatter_byte_end(source);
+    let root = block_tree.root_node();
+    let mut blocks = Vec::new();
+    collect_blocks(root, source, fm_end, &mut blocks);
+    blocks.sort_by_key(|b| b.start_byte);
+    blocks
+}
+
+/// Recursively walk tree-sitter nodes collecting content blocks.
+fn collect_blocks(
+    node: tree_sitter::Node,
+    source: &str,
+    fm_end: usize,
+    blocks: &mut Vec<RawBlock>,
+) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.start_byte() < fm_end {
+            continue;
+        }
+
+        let push = |blocks: &mut Vec<RawBlock>, kind: BlockKind, node: tree_sitter::Node| {
+            let sp = node.start_position();
+            let ep = node.end_position();
+            blocks.push(RawBlock {
+                kind,
+                start_byte: node.start_byte(),
+                end_byte: node.end_byte(),
+                start_row: sp.row as u32,
+                start_col: sp.column as u32,
+                end_row: ep.row as u32,
+                end_col: ep.column as u32,
+            });
+        };
+
+        match child.kind() {
+            "section" | "document" => {
+                collect_blocks(child, source, fm_end, blocks);
+            }
+            "paragraph" => push(blocks, BlockKind::Paragraph, child),
+            "list" => {
+                let mut list_cursor = child.walk();
+                for list_child in child.children(&mut list_cursor) {
+                    if list_child.kind() == "list_item" {
+                        if is_logseq_heading(list_child, source) {
+                            continue;
+                        }
+                        push(blocks, BlockKind::ListItem, list_child);
+                    }
+                }
+            }
+            "fenced_code_block" | "indented_code_block" => push(blocks, BlockKind::CodeBlock, child),
+            "block_quote" => push(blocks, BlockKind::BlockQuote, child),
+            "thematic_break" => push(blocks, BlockKind::ThematicBreak, child),
+            "pipe_table" => push(blocks, BlockKind::Table, child),
+            _ => {}
+        }
+    }
+}
+
+/// Check if a list_item is a Logseq-style heading (e.g., `- # Heading`).
+fn is_logseq_heading(node: tree_sitter::Node, source: &str) -> bool {
+    let text = match node.utf8_text(source.as_bytes()) {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+    let first_line = match text.lines().next() {
+        Some(l) => l,
+        None => return false,
+    };
+    let trimmed = first_line.trim_start();
+    let after_marker = if let Some(rest) = trimmed.strip_prefix("- ")
+        .or_else(|| trimmed.strip_prefix("* "))
+        .or_else(|| trimmed.strip_prefix("+ "))
+    {
+        rest
+    } else {
+        return false;
+    };
+    after_marker.starts_with('#')
+}
 
 impl DocumentIndex {
     /// Build a document index from raw markdown text via an ephemeral engine.
@@ -33,12 +139,13 @@ impl DocumentIndex {
         let extraction = result
             .to_extraction()
             .expect("from_text: to_extraction failed");
-        Self::from_engine_result_with_frontmatter(&extraction, fm, aliases)
+        let raw_blocks = extract_content_blocks(text);
+        Self::from_engine_result_full(&extraction, fm, aliases, text.to_string(), raw_blocks)
     }
 
     /// Build a document index from an owned engine extraction.
     pub fn from_engine_result(data: &EngineExtraction) -> Self {
-        Self::from_engine_result_inner(data, Vec::new(), Vec::new())
+        Self::from_engine_result_inner(data, Vec::new(), Vec::new(), String::new(), Vec::new())
     }
 
     /// Build a document index from engine extraction with pre-parsed frontmatter.
@@ -47,16 +154,30 @@ impl DocumentIndex {
         frontmatter: Vec<FrontmatterOwnedEntry>,
         aliases: Vec<String>,
     ) -> Self {
-        Self::from_engine_result_inner(data, frontmatter, aliases)
+        Self::from_engine_result_inner(data, frontmatter, aliases, String::new(), Vec::new())
+    }
+
+    /// Full construction with source text and content blocks (used by `from_text`).
+    fn from_engine_result_full(
+        data: &EngineExtraction,
+        frontmatter: Vec<FrontmatterOwnedEntry>,
+        aliases: Vec<String>,
+        source_text: String,
+        raw_blocks: Vec<RawBlock>,
+    ) -> Self {
+        Self::from_engine_result_inner(data, frontmatter, aliases, source_text, raw_blocks)
     }
 
     fn from_engine_result_inner(
         data: &EngineExtraction,
         fm_owned: Vec<FrontmatterOwnedEntry>,
         aliases_owned: Vec<String>,
+        source: String,
+        raw_blocks: Vec<RawBlock>,
     ) -> Self {
         let owner = DocumentOwner {
             arena: DocumentArena::new(),
+            source_text: source,
         };
         let cell = DocumentIndexCell::new(owner, move |owner| {
             let arena_ref = owner.arena.bump();
@@ -138,23 +259,67 @@ impl DocumentIndex {
             }
             let tags = tags_builder.into_bump_slice();
 
-            // --- Block IDs ---
-            let mut blocks: HashMap<&str, BlockEntry<'_>> = HashMap::new();
+            // --- Block IDs (Obsidian ^block-id markers) ---
+            let mut block_id_map: HashMap<&str, ContentBlock<'_>> = HashMap::new();
             for b in &data.block_ids {
                 let id = arena_alloc_str(arena_ref, &b.id);
                 let start_pos = Position::new(b.start_line, b.start_col);
                 let end_pos = Position::new(b.end_line, b.end_col);
                 let start_byte = b.source_offset as usize;
                 let end_byte = start_byte + 1 + b.id_len as usize;
-                blocks.insert(
+                block_id_map.insert(
                     id,
-                    BlockEntry {
-                        id,
+                    ContentBlock {
+                        kind: BlockKind::Paragraph,
                         range: Range::new(start_pos, end_pos),
                         start_byte,
                         end_byte,
+                        parent_heading: None,
+                        block_id: Some(id),
                     },
                 );
+            }
+
+            // --- Content blocks (from tree-sitter block-tree parse) ---
+            let mut cb_builder = BumpVec::new_in(arena_ref);
+            for rb in &raw_blocks {
+                // Parent heading: last heading on a line before this block
+                let parent_heading = headings
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .find(|(_, h)| h.range.start.line < rb.start_row)
+                    .map(|(i, _)| i);
+
+                // Merge block_id if a ^marker falls within this block's byte range
+                let merged_block_id = block_id_map.iter().find_map(|(&id, bid)| {
+                    if bid.start_byte >= rb.start_byte && bid.start_byte < rb.end_byte {
+                        Some(id)
+                    } else {
+                        None
+                    }
+                });
+
+                cb_builder.push(ContentBlock {
+                    kind: rb.kind,
+                    range: Range::new(
+                        Position::new(rb.start_row, rb.start_col),
+                        Position::new(rb.end_row, rb.end_col),
+                    ),
+                    start_byte: rb.start_byte,
+                    end_byte: rb.end_byte,
+                    parent_heading,
+                    block_id: merged_block_id,
+                });
+            }
+            let content_blocks = cb_builder.into_bump_slice();
+
+            // Overwrite block_id_map entries with merged content blocks
+            // so block_by_id() returns the full paragraph range, not just the ^marker.
+            for cb in content_blocks {
+                if let Some(id) = cb.block_id {
+                    block_id_map.insert(id, *cb);
+                }
             }
 
             // --- XML Tags ---
@@ -196,18 +361,7 @@ impl DocumentIndex {
             let mut frontmatter_builder = BumpVec::new_in(arena_ref);
             for fm in fm_owned {
                 let key = arena_alloc_str(arena_ref, &fm.key);
-                let value = match fm.value {
-                    FrontmatterValueOwned::String(s) => {
-                        FrontmatterValueEntry::String(arena_alloc_str(arena_ref, &s))
-                    }
-                    FrontmatterValueOwned::List(items) => {
-                        let mut list = BumpVec::new_in(arena_ref);
-                        for item in items {
-                            list.push(arena_alloc_str(arena_ref, &item));
-                        }
-                        FrontmatterValueEntry::List(list.into_bump_slice())
-                    }
-                };
+                let value = helpers::owned_value_to_arena(fm.value, arena_ref);
                 frontmatter_builder.push(FrontmatterEntry { key, value });
             }
             let frontmatter = frontmatter_builder.into_bump_slice();
@@ -340,7 +494,8 @@ impl DocumentIndex {
             DocumentDependent {
                 headings,
                 slug_to_heading,
-                blocks,
+                content_blocks,
+                block_id_map,
                 toc,
                 outline,
                 wiki_links,

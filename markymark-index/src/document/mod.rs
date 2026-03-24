@@ -24,13 +24,20 @@ use std::fmt;
 #[derive(Debug)]
 struct DocumentOwner {
     arena: DocumentArena,
+    /// Retained source text for zero-copy [`DocumentIndex::block_text()`] access.
+    source_text: String,
 }
 
 #[derive(Debug)]
 struct DocumentDependent<'a> {
     headings: &'a [HeadingEntry<'a>],
     slug_to_heading: HashMap<&'a str, usize>,
-    blocks: HashMap<&'a str, BlockEntry<'a>>,
+    /// Content blocks extracted from the document (paragraphs, list items, etc.).
+    content_blocks: &'a [ContentBlock<'a>],
+    /// Maps Obsidian `^block-id` strings to their [`ContentBlock`] entry.
+    /// Transitional: stores block-id markers directly until content block
+    /// extraction populates `content_blocks` with full block data.
+    block_id_map: HashMap<&'a str, ContentBlock<'a>>,
     toc: &'a [TocEntry<'a>],
     outline: OutlineNode<'a>,
     wiki_links: &'a [WikiLinkEntry<'a>],
@@ -106,9 +113,25 @@ impl DocumentIndex {
         dep.slug_to_heading.get(slug).map(|&idx| &dep.headings[idx])
     }
 
-    /// Look up a block by its ID.
-    pub fn block_by_id<'a>(&'a self, id: &str) -> Option<&'a BlockEntry<'a>> {
-        self.cell.borrow_dependent().blocks.get(id)
+    /// Look up a block by its Obsidian `^block-id`.
+    pub fn block_by_id<'a>(&'a self, id: &str) -> Option<&'a ContentBlock<'a>> {
+        self.cell.borrow_dependent().block_id_map.get(id)
+    }
+
+    /// Get all content blocks extracted from the document.
+    ///
+    /// Returns an empty slice until content block extraction is implemented.
+    pub fn content_blocks<'a>(&'a self) -> &'a [ContentBlock<'a>] {
+        self.cell.borrow_dependent().content_blocks
+    }
+
+    /// Get the source text of a content block via zero-copy byte range slice.
+    ///
+    /// Returns an empty string if the byte range is out of bounds (e.g. for
+    /// blob-constructed indices that have no source text).
+    pub fn block_text(&self, block: &ContentBlock<'_>) -> &str {
+        let source = &self.cell.borrow_owner().source_text;
+        source.get(block.start_byte..block.end_byte).unwrap_or("")
     }
 
     /// Get the flat table of contents.
@@ -162,7 +185,7 @@ impl DocumentIndex {
 
     /// Get all block IDs in this document.
     pub fn block_ids(&self) -> impl Iterator<Item = &str> + '_ {
-        self.cell.borrow_dependent().blocks.keys().copied()
+        self.cell.borrow_dependent().block_id_map.keys().copied()
     }
 
     /// Get all frontmatter entries for this document.
@@ -216,7 +239,8 @@ impl fmt::Debug for DocumentIndex {
         let dep = self.cell.borrow_dependent();
         f.debug_struct("DocumentIndex")
             .field("headings", &dep.headings.len())
-            .field("blocks", &dep.blocks.len())
+            .field("content_blocks", &dep.content_blocks.len())
+            .field("block_ids", &dep.block_id_map.len())
             .field("toc", &dep.toc.len())
             .field("outline", &dep.outline.children.len())
             .field("wiki_links", &dep.wiki_links.len())

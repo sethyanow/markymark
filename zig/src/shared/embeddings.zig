@@ -52,6 +52,23 @@ pub const EmbeddingIndex = struct {
         self.entries.deinit(self.allocator);
     }
 
+    /// Remove an entry by ID, freeing its allocations.
+    ///
+    /// Returns true if the entry was found and removed, false if not found.
+    pub fn remove(self: *EmbeddingIndex, id: []const u8) bool {
+        if (id.len == 0) return false;
+
+        for (self.entries.items, 0..) |entry, i| {
+            if (std.mem.eql(u8, entry.id, id)) {
+                self.allocator.free(entry.id);
+                self.allocator.free(entry.vector);
+                _ = self.entries.swapRemove(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// Add an embedding to the index. Copies both the ID string and vector.
     ///
     /// If an entry with the same ID already exists, it is replaced.
@@ -366,6 +383,43 @@ test "search_100_embeddings" {
     for (1..result_count) |j| {
         try testing.expect(results[j - 1].score >= results[j].score);
     }
+}
+
+test "remove_existing_entry" {
+    var idx = EmbeddingIndex.init(testing.allocator, 4) orelse
+        return error.TestUnexpectedResult;
+    defer idx.deinit();
+
+    try testing.expectEqual(@as(i32, 0), idx.add("doc1", &[_]f32{ 1.0, 0.0, 0.0, 0.0 }));
+    try testing.expectEqual(@as(i32, 0), idx.add("doc2", &[_]f32{ 0.0, 1.0, 0.0, 0.0 }));
+    try testing.expectEqual(@as(u32, 2), idx.count());
+
+    try testing.expect(idx.remove("doc1"));
+    try testing.expectEqual(@as(u32, 1), idx.count());
+
+    // Search should only find doc2
+    var results: [2]SearchResult = undefined;
+    const n = idx.search(&[_]f32{ 0.0, 1.0, 0.0, 0.0 }, &results);
+    try testing.expectEqual(@as(i32, 1), n);
+    try testing.expectEqualStrings("doc2", results[0].id_ptr[0..results[0].id_len]);
+}
+
+test "remove_nonexistent_returns_false" {
+    var idx = EmbeddingIndex.init(testing.allocator, 4) orelse
+        return error.TestUnexpectedResult;
+    defer idx.deinit();
+
+    try testing.expectEqual(@as(i32, 0), idx.add("doc1", &[_]f32{ 1.0, 0.0, 0.0, 0.0 }));
+    try testing.expect(!idx.remove("nonexistent"));
+    try testing.expectEqual(@as(u32, 1), idx.count());
+}
+
+test "remove_empty_id_returns_false" {
+    var idx = EmbeddingIndex.init(testing.allocator, 4) orelse
+        return error.TestUnexpectedResult;
+    defer idx.deinit();
+
+    try testing.expect(!idx.remove(""));
 }
 
 test "dimensions_common_sizes" {

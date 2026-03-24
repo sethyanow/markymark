@@ -54,6 +54,23 @@ export fn zig_embedding_index_add(
     return idx.add(id_ptr[0..id_len], emb_ptr[0..dims]);
 }
 
+/// Remove an entry from the index by ID, freeing its allocations.
+///
+/// Returns:
+///   0  — entry found and removed
+///  -1  — invalid input (null handle, null id, empty id) or entry not found
+export fn zig_embedding_index_remove(
+    handle: ?*anyopaque,
+    id: ?[*]const u8,
+    id_len: u32,
+) i32 {
+    const idx = castHandle(handle) orelse return -1;
+    const id_ptr = id orelse return -1;
+    if (id_len == 0) return -1;
+
+    return if (idx.remove(id_ptr[0..id_len])) 0 else -1;
+}
+
 /// Search the index for the top-K most similar embeddings to the query.
 ///
 /// Results are written into caller-provided parallel arrays:
@@ -330,6 +347,39 @@ test "zig_embedding_index_count_null_handle" {
 
 test "zig_embedding_index_dimensions_null_handle" {
     try testing.expectEqual(@as(i32, -1), zig_embedding_index_dimensions(null));
+}
+
+test "zig_embedding_index_remove_basic" {
+    const handle = zig_embedding_index_create(4);
+    try testing.expect(handle != null);
+    defer zig_embedding_index_destroy(handle);
+
+    const v1 = [_]f32{ 1.0, 0.0, 0.0, 0.0 };
+    const v2 = [_]f32{ 0.0, 1.0, 0.0, 0.0 };
+    _ = zig_embedding_index_add(handle, "doc1", 4, &v1, 4);
+    _ = zig_embedding_index_add(handle, "doc2", 4, &v2, 4);
+    try testing.expectEqual(@as(i32, 2), zig_embedding_index_count(handle));
+
+    try testing.expectEqual(@as(i32, 0), zig_embedding_index_remove(handle, "doc1", 4));
+    try testing.expectEqual(@as(i32, 1), zig_embedding_index_count(handle));
+}
+
+test "zig_embedding_index_remove_nonexistent" {
+    const handle = zig_embedding_index_create(4);
+    defer zig_embedding_index_destroy(handle);
+
+    try testing.expectEqual(@as(i32, -1), zig_embedding_index_remove(handle, "nope", 4));
+}
+
+test "zig_embedding_index_remove_null_handle" {
+    try testing.expectEqual(@as(i32, -1), zig_embedding_index_remove(null, "doc1", 4));
+}
+
+test "zig_embedding_index_remove_null_id" {
+    const handle = zig_embedding_index_create(4);
+    defer zig_embedding_index_destroy(handle);
+
+    try testing.expectEqual(@as(i32, -1), zig_embedding_index_remove(handle, null, 0));
 }
 
 test "zig_embedding_index_lifecycle_100_entries" {

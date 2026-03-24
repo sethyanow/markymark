@@ -2,7 +2,9 @@
 
 use markymark_core::engine::{CoreOperationResult, WorkspaceSearchResult};
 use markymark_core::DocumentUri;
-use markymark_index::{DocumentIndex, FrontmatterValueEntry, PropertyValueEntry, RealmIndex};
+use markymark_index::{
+    DocumentIndex, FrontmatterValueEntry, PropertyValueEntry, RealmIndex, StructuredDocumentIndex,
+};
 
 /// Execute a workspace search across all documents in a realm.
 ///
@@ -45,6 +47,22 @@ pub(crate) fn execute_search_workspace(
             )
         })
         .collect();
+
+    // Also search structured documents (JSON, YAML, TOML, etc.).
+    let structured: Vec<WorkspaceSearchResult> = realm
+        .iter_structured_documents()
+        .filter_map(|(uri, sdoc)| {
+            score_structured_document(
+                uri,
+                sdoc,
+                &query_lc,
+                &frontmatter_filter,
+                &property_filter,
+                &tag_filter,
+            )
+        })
+        .collect();
+    results.extend(structured);
 
     // Sort: score DESC, then URI ASC for determinism.
     results.sort_by(|a, b| {
@@ -155,6 +173,18 @@ fn score_document(
             }
         }
 
+        // Body text (content block) matches: score 0.4
+        for block in doc.content_blocks() {
+            let text = doc.block_text(block);
+            if !text.is_empty() && text.to_lowercase().contains(q.as_str()) {
+                score = score.max(0.4);
+                if !matched_fields.contains(&"body".to_string()) {
+                    matched_fields.push("body".to_string());
+                }
+                break;
+            }
+        }
+
         // No match at all: skip this document.
         if score == 0.0 {
             return None;
@@ -194,6 +224,71 @@ fn score_document(
     })
 }
 
+/// Score and build a `WorkspaceSearchResult` for one structured document,
+/// returning `None` if the document fails any active filter or does not match the query.
+///
+/// Structured docs have no frontmatter, properties, or tags, so any active filter
+/// immediately excludes them. Scoring mirrors the markdown tiers:
+/// URI stem match = 1.0, key-path match = 0.8, source-text match = 0.6.
+fn score_structured_document(
+    uri: &DocumentUri,
+    sdoc: &StructuredDocumentIndex,
+    query_lc: &Option<String>,
+    frontmatter_filter: &Option<(String, String)>,
+    property_filter: &Option<(String, String)>,
+    tag_filter: &Option<String>,
+) -> Option<WorkspaceSearchResult> {
+    // Structured docs cannot satisfy any markdown-oriented filter.
+    if frontmatter_filter.is_some() || property_filter.is_some() || tag_filter.is_some() {
+        return None;
+    }
+
+    let title = uri_to_title(uri);
+    let mut score: f32 = if query_lc.is_none() { 1.0 } else { 0.0 };
+    let mut matched_fields: Vec<String> = Vec::new();
+
+    if let Some(q) = query_lc {
+        let title_lc = title.to_lowercase();
+
+        // URI stem / title match: score 1.0
+        if title_lc.contains(q.as_str()) {
+            score = score.max(1.0);
+            matched_fields.push("title".to_string());
+        }
+
+        // Key-path match: score 0.8
+        if !sdoc.search_keys(q).is_empty() {
+            score = score.max(0.8);
+            matched_fields.push("key_path".to_string());
+        }
+
+        // Source-text (value) match: score 0.6
+        if sdoc.source_contains(q) {
+            score = score.max(0.6);
+            if !matched_fields.iter().any(|f| f == "content") {
+                matched_fields.push("content".to_string());
+            }
+        }
+
+        // No match at all: skip this document.
+        if score == 0.0 {
+            return None;
+        }
+    }
+
+    Some(WorkspaceSearchResult {
+        uri: uri.clone(),
+        title,
+        score,
+        matched_fields,
+        frontmatter_preview: vec![],
+        property_preview: vec![],
+        tags: vec![],
+        is_journal: false,
+        journal_date: None,
+    })
+}
+
 /// Extract a human-readable title from a document.
 /// Uses the first H1 heading if present; otherwise derives a title from the URI filename.
 fn extract_title(uri: &DocumentUri, doc: &DocumentIndex) -> String {
@@ -203,16 +298,22 @@ fn extract_title(uri: &DocumentUri, doc: &DocumentIndex) -> String {
     uri_to_title(uri)
 }
 
-/// Derive a display title from a URI by extracting the filename, stripping the markdown
-/// extension, and converting underscores and hyphens to spaces.
+/// Known file extensions to strip when deriving a display title from a URI.
+const TITLE_STRIP_EXTENSIONS: &[&str] = &[
+    ".mdx", ".md", ".json", ".jsonc", ".json5", ".jsonl", ".yaml", ".yml", ".toml", ".env", ".ini",
+    ".cfg",
+];
+
+/// Derive a display title from a URI by extracting the filename, stripping known
+/// extensions, and converting underscores and hyphens to spaces.
 fn uri_to_title(uri: &DocumentUri) -> String {
     uri.as_str()
         .rsplit('/')
         .next()
         .map(|filename| {
-            let stem = filename
-                .strip_suffix(".mdx")
-                .or_else(|| filename.strip_suffix(".md"))
+            let stem = TITLE_STRIP_EXTENSIONS
+                .iter()
+                .find_map(|ext| filename.strip_suffix(ext))
                 .unwrap_or(filename);
             stem.replace(['_', '-'], " ")
         })
@@ -220,13 +321,20 @@ fn uri_to_title(uri: &DocumentUri) -> String {
 }
 
 /// Check whether a `FrontmatterValueEntry` contains a given lowercase substring.
-/// For list variants, any element matching is sufficient.
+/// For list/map variants, any element matching is sufficient.
 fn fm_value_contains(value: &FrontmatterValueEntry<'_>, needle: &str) -> bool {
     match value {
         FrontmatterValueEntry::String(s) => s.to_lowercase().contains(needle),
-        FrontmatterValueEntry::List(items) => items
+        FrontmatterValueEntry::Integer(n) => n.to_string().contains(needle),
+        FrontmatterValueEntry::Float(f) => f.to_string().contains(needle),
+        FrontmatterValueEntry::Boolean(b) => b.to_string().contains(needle),
+        FrontmatterValueEntry::List(items) => {
+            items.iter().any(|item| fm_value_contains(item, needle))
+        }
+        FrontmatterValueEntry::Map(entries) => entries
             .iter()
-            .any(|item| item.to_lowercase().contains(needle)),
+            .any(|(k, v)| k.to_lowercase().contains(needle) || fm_value_contains(v, needle)),
+        FrontmatterValueEntry::Null => false,
     }
 }
 
@@ -234,7 +342,20 @@ fn fm_value_contains(value: &FrontmatterValueEntry<'_>, needle: &str) -> bool {
 fn fm_value_to_string(value: &FrontmatterValueEntry<'_>) -> String {
     match value {
         FrontmatterValueEntry::String(s) => s.to_string(),
-        FrontmatterValueEntry::List(items) => items.join(", "),
+        FrontmatterValueEntry::Integer(n) => n.to_string(),
+        FrontmatterValueEntry::Float(f) => f.to_string(),
+        FrontmatterValueEntry::Boolean(b) => b.to_string(),
+        FrontmatterValueEntry::List(items) => items
+            .iter()
+            .map(fm_value_to_string)
+            .collect::<Vec<_>>()
+            .join(", "),
+        FrontmatterValueEntry::Map(entries) => entries
+            .iter()
+            .map(|(k, v)| format!("{}: {}", k, fm_value_to_string(v)))
+            .collect::<Vec<_>>()
+            .join(", "),
+        FrontmatterValueEntry::Null => String::new(),
     }
 }
 

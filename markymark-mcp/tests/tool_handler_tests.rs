@@ -183,6 +183,7 @@ impl CoreEngine for MockEngine {
                 )],
                 frontmatter: vec![],
                 properties: vec![],
+                content_blocks: None,
             },
             (_, CoreOperation::SearchWorkspace { realm, query, .. }) => {
                 CoreOperationResult::WorkspaceSearchResults {
@@ -214,6 +215,65 @@ impl CoreEngine for MockEngine {
                 realm: realm.unwrap_or_else(|| "default".to_string()),
                 items: vec![],
             },
+            (_, CoreOperation::ExportDocsIndex { realm, .. }) => {
+                CoreOperationResult::DocsIndexExport {
+                    realm: realm.unwrap_or_else(|| "default".to_string()),
+                    entries: vec![
+                        "[test-docs]|root: ./docs/test|.:{README.md}|core:{_index.md,types.md}"
+                            .to_string(),
+                    ],
+                    doc_count: 3,
+                    root_count: 1,
+                    skipped_count: 0,
+                }
+            }
+            (_, CoreOperation::EnrichDocument { uri, .. }) => {
+                CoreOperationResult::EnrichmentResult {
+                    uri,
+                    sections_enriched: 3,
+                    was_stale: true,
+                    model_id: "mock-model".to_string(),
+                }
+            }
+            (_, CoreOperation::RecommendDocs { query, realm, .. }) => {
+                CoreOperationResult::Recommendations {
+                    realm: realm.unwrap_or_else(|| "default".to_string()),
+                    query,
+                    results: vec![],
+                }
+            }
+            (_, CoreOperation::CurationDiagnostics { realm, .. }) => {
+                CoreOperationResult::CurationReport {
+                    realm: realm.unwrap_or_else(|| "default".to_string()),
+                    report: markymark_core::engine::CurationReportData {
+                        orphan_docs: vec![],
+                        low_connectivity_docs: vec![],
+                        suggestions: vec![],
+                        stats: markymark_core::engine::CurationStats {
+                            total_docs: 5,
+                            orphan_count: 1,
+                            orphan_percentage: 20.0,
+                            avg_connectivity: 2.5,
+                            median_connectivity: 2.0,
+                            broken_link_count: 0,
+                        },
+                    },
+                }
+            }
+            (_, CoreOperation::GetContentBlocks { uri, .. }) => {
+                CoreOperationResult::ContentBlocks {
+                    uri,
+                    blocks: vec![],
+                }
+            }
+            (_, CoreOperation::SearchBlockText { realm, query, .. }) => {
+                CoreOperationResult::BlockTextMatches {
+                    realm: realm.unwrap_or_else(|| "default".to_string()),
+                    query,
+                    matches: vec![],
+                    truncated: false,
+                }
+            }
         }
     }
 }
@@ -264,6 +324,10 @@ fn registers_expected_rmcp_tools() {
     assert!(names.contains(&"search-workspace"));
     assert!(names.contains(&"search-for-pattern"));
     assert!(names.contains(&"graph-analysis"));
+    assert!(names.contains(&"export-docs-index"));
+    assert!(names.contains(&"recommend-docs"));
+    assert!(names.contains(&"curation-diagnostics"));
+    assert!(names.contains(&"get-content-blocks"));
 }
 
 #[tokio::test]
@@ -275,6 +339,8 @@ async fn outline_tool_returns_structured_success() {
         .get_outline_tool(Parameters(OutlineRequest {
             uri: "file:///vault/notes.md".to_string(),
             realm: None,
+            format: None,
+            include_text: false,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -294,6 +360,8 @@ async fn outline_tool_rejects_non_file_uri() {
         .get_outline_tool(Parameters(OutlineRequest {
             uri: "https://example.com/notes.md".to_string(),
             realm: None,
+            format: None,
+            include_text: false,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -867,6 +935,7 @@ async fn export_index_tool_returns_structured_document_export() {
         .export_index_tool(Parameters(ExportIndexRequest {
             uri: "file:///vault/notes.md".to_string(),
             realm: None,
+            include_blocks: false,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -885,6 +954,10 @@ async fn export_index_tool_returns_structured_document_export() {
     assert_eq!(payload.markdown_links.len(), 1);
     assert_eq!(payload.markdown_links[0].text, "Click here");
     assert_eq!(payload.markdown_links[0].url, "https://example.com");
+    assert!(
+        payload.content_blocks.is_none(),
+        "include_blocks=false should omit content_blocks from response"
+    );
 }
 
 #[tokio::test]
@@ -896,6 +969,7 @@ async fn export_index_tool_rejects_non_file_uri() {
         .export_index_tool(Parameters(ExportIndexRequest {
             uri: "https://example.com/notes.md".to_string(),
             realm: None,
+            include_blocks: false,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -914,6 +988,50 @@ async fn export_index_tool_maps_core_error() {
         .export_index_tool(Parameters(ExportIndexRequest {
             uri: "file:///vault/notes.md".to_string(),
             realm: None,
+            include_blocks: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "core_error");
+}
+
+// --- export-docs-index tool tests ---
+
+#[tokio::test]
+async fn export_docs_index_tool_returns_structured_response() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .export_docs_index_tool(Parameters(ExportDocsIndexRequest {
+            realm: None,
+            name_override: None,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: ExportDocsIndexResponse = result.into_typed().expect("typed response");
+    assert_eq!(payload.realm, "default");
+    assert_eq!(payload.entries.len(), 1);
+    assert_eq!(payload.doc_count, 3);
+    assert_eq!(payload.root_count, 1);
+    assert_eq!(payload.skipped_count, 0);
+    assert!(payload.entries[0].contains("[test-docs]"));
+}
+
+#[tokio::test]
+async fn export_docs_index_tool_maps_core_error() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::CoreError,
+    }));
+    let result = mcp
+        .export_docs_index_tool(Parameters(ExportDocsIndexRequest {
+            realm: None,
+            name_override: None,
         }))
         .await
         .expect("tool call should not return protocol error");
@@ -981,4 +1099,226 @@ async fn get_diagnostics_tool_rejects_non_file_uri() {
     assert_eq!(result.is_error, Some(true));
     let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
     assert_eq!(payload.error.code, "non_file_uri");
+}
+
+// ---------------------------------------------------------------------------
+// recommend-docs tool
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn recommend_docs_tool_returns_structured_success() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .recommend_docs_tool(Parameters(RecommendDocsRequest {
+            query: "test query".to_string(),
+            realm: None,
+            top_k: 5,
+            include_sections: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: RecommendDocsResponse = result.into_typed().expect("typed response");
+    assert_eq!(payload.realm, "default");
+    assert_eq!(payload.query, "test query");
+}
+
+#[tokio::test]
+async fn recommend_docs_tool_maps_core_error() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::CoreError,
+    }));
+    let result = mcp
+        .recommend_docs_tool(Parameters(RecommendDocsRequest {
+            query: "test".to_string(),
+            realm: None,
+            top_k: 5,
+            include_sections: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "core_error");
+}
+
+#[tokio::test]
+async fn recommend_docs_tool_rejects_empty_query() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .recommend_docs_tool(Parameters(RecommendDocsRequest {
+            query: "   ".to_string(),
+            realm: None,
+            top_k: 5,
+            include_sections: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "invalid_query");
+}
+
+// --- curation-diagnostics tool tests ---
+
+#[tokio::test]
+async fn curation_diagnostics_tool_returns_structured_report() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .curation_diagnostics_tool(Parameters(CurationDiagnosticsRequest {
+            realm: None,
+            include_suggestions: true,
+            max_suggestions: 20,
+            max_items_per_category: 50,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: CurationDiagnosticsResponse = result.into_typed().expect("typed response");
+    assert_eq!(payload.realm, "default");
+    assert_eq!(payload.stats.total_docs, 5);
+    assert_eq!(payload.stats.orphan_count, 1);
+    assert_eq!(payload.stats.orphan_percentage, 20.0);
+}
+
+#[tokio::test]
+async fn curation_diagnostics_tool_maps_core_error() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::CoreError,
+    }));
+    let result = mcp
+        .curation_diagnostics_tool(Parameters(CurationDiagnosticsRequest {
+            realm: None,
+            include_suggestions: false,
+            max_suggestions: 0,
+            max_items_per_category: 50,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "core_error");
+}
+
+#[tokio::test]
+async fn outline_tool_rejects_invalid_format() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .get_outline_tool(Parameters(OutlineRequest {
+            uri: "file:///vault/notes.md".to_string(),
+            realm: None,
+            format: Some("bogus".to_string()),
+            include_text: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "invalid_params");
+    assert!(payload.error.message.contains("bogus"));
+}
+
+#[tokio::test]
+async fn outline_tool_rejects_empty_format() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .get_outline_tool(Parameters(OutlineRequest {
+            uri: "file:///vault/notes.md".to_string(),
+            realm: None,
+            format: Some("".to_string()),
+            include_text: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "invalid_params");
+}
+
+// ---- get-content-blocks tool ----
+
+#[tokio::test]
+async fn get_content_blocks_tool_returns_structured_success() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .get_content_blocks_tool(Parameters(GetContentBlocksRequest {
+            uri: "file:///vault/notes.md".to_string(),
+            realm: None,
+            kind: None,
+            heading: None,
+            block_id: None,
+            include_text: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(false));
+    let payload: GetContentBlocksResponse =
+        result.into_typed().expect("typed content blocks response");
+    assert_eq!(payload.uri, "file:///vault/notes.md");
+    // MockEngine returns empty blocks vec
+    assert!(payload.content_blocks.is_empty());
+}
+
+#[tokio::test]
+async fn get_content_blocks_tool_rejects_non_file_uri() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::Happy,
+    }));
+    let result = mcp
+        .get_content_blocks_tool(Parameters(GetContentBlocksRequest {
+            uri: "https://example.com/notes.md".to_string(),
+            realm: None,
+            kind: None,
+            heading: None,
+            block_id: None,
+            include_text: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "non_file_uri");
+}
+
+#[tokio::test]
+async fn get_content_blocks_tool_maps_core_error() {
+    let mcp = MarkymarkMcp::new(Arc::new(MockEngine {
+        mode: MockMode::CoreError,
+    }));
+    let result = mcp
+        .get_content_blocks_tool(Parameters(GetContentBlocksRequest {
+            uri: "file:///vault/notes.md".to_string(),
+            realm: None,
+            kind: None,
+            heading: None,
+            block_id: None,
+            include_text: false,
+        }))
+        .await
+        .expect("tool call should not return protocol error");
+
+    assert_eq!(result.is_error, Some(true));
+    let payload: ToolErrorEnvelope = result.into_typed().expect("typed error");
+    assert_eq!(payload.error.code, "core_error");
 }

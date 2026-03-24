@@ -1,9 +1,13 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::sync::Arc;
 
 use crate::DocumentIndex;
 use markymark_core::prelude::*;
 
-use super::helpers::{compute_fetch_k, fallback_heading, jaccard_similarity, token_hashes};
+use super::helpers::{
+    build_embedding_input, compute_fetch_k, fallback_heading, jaccard_similarity,
+    section_block_texts, token_hashes,
+};
 use super::{DuplicateMatch, SearchResult, SemanticEntry, SemanticIndex};
 
 impl SemanticIndex {
@@ -26,6 +30,10 @@ impl SemanticIndex {
             return self.add_document(uri, index).await;
         };
 
+        // Seed reserved_ids with all existing IDs to prevent collision when
+        // new headings share a slug with reused or previously-assigned IDs.
+        let mut reserved_ids: HashSet<String> = old_ids.iter().cloned().collect();
+
         // Build map: heading_text → Vec<(entry_id, SemanticEntry)> from old entries.
         let mut old_by_text: HashMap<String, Vec<(String, SemanticEntry)>> = HashMap::new();
         for id in &old_ids {
@@ -37,25 +45,52 @@ impl SemanticIndex {
             }
         }
 
+        // Build section text map for per-section embedding.
+        let section_texts = section_block_texts(index);
+
         // Build new heading list from index.
+        // Tuple: (text, level, start, end, is_fallback, heading_idx)
         let new_headings: Vec<_> = if index.headings().is_empty() {
             let fb = fallback_heading(&uri);
-            vec![(fb, 1u8, Position::new(0, 0), Position::new(0, 0), true)]
+            vec![(
+                fb,
+                1u8,
+                Position::new(0, 0),
+                Position::new(0, 0),
+                true,
+                None,
+            )]
         } else {
-            index
+            let filtered: Vec<_> = index
                 .headings()
                 .iter()
-                .filter(|h| !h.text.trim().is_empty())
-                .map(|h| {
+                .enumerate()
+                .filter(|(_, h)| !h.text.trim().is_empty())
+                .map(|(i, h)| {
                     (
                         h.text.to_string(),
                         h.level,
                         h.range.start,
                         h.range.end,
                         false,
+                        Some(i),
                     )
                 })
-                .collect()
+                .collect();
+            // Fallback: all headings were blank/whitespace — treat like no headings.
+            if filtered.is_empty() {
+                let fb = fallback_heading(&uri);
+                vec![(
+                    fb,
+                    1u8,
+                    Position::new(0, 0),
+                    Position::new(0, 0),
+                    true,
+                    None,
+                )]
+            } else {
+                filtered
+            }
         };
 
         // Check if old entries were a fallback.
@@ -101,8 +136,15 @@ impl SemanticIndex {
         // Track which old text entries have been consumed (for duplicate text handling).
         let mut consumed_by_text: HashMap<String, usize> = HashMap::new();
 
-        for (text, level, start, end, is_fallback) in &new_headings {
-            token_set.extend(token_hashes(text));
+        for (text, level, start, end, is_fallback, heading_idx) in &new_headings {
+            // Build per-section embedding input: heading + block text.
+            let block_text = match heading_idx {
+                Some(idx) => section_texts.get(&Some(*idx)).map(String::as_str),
+                None if *is_fallback => section_texts.get(&None).map(String::as_str),
+                _ => None,
+            };
+            let embedding_input = build_embedding_input(text, block_text);
+            token_set.extend(token_hashes(&embedding_input));
 
             // Try to match by text.
             let consumed_idx = consumed_by_text.entry(text.clone()).or_insert(0);
@@ -114,6 +156,7 @@ impl SemanticIndex {
                 // Reuse existing entry — keep OLD ID so the Zig vector remains
                 // searchable, update metadata only, no re-embed.
                 *consumed_idx += 1;
+                reserved_ids.insert(old_id.clone());
 
                 staged_entries.push((
                     old_id.clone(),
@@ -128,7 +171,7 @@ impl SemanticIndex {
                 new_ids.push(old_id.clone());
             } else {
                 // New or changed heading — needs embedding.
-                let embedding = self.provider.embed(text).await?;
+                let embedding = self.provider.embed(&embedding_input).await?;
 
                 let id = if *is_fallback {
                     format!("{}#fallback", uri.as_str())
@@ -139,8 +182,14 @@ impl SemanticIndex {
                         .find(|h| h.text == *text && h.range.start == *start)
                         .map(|h| h.slug)
                         .unwrap_or("unknown");
-                    let idx = new_ids.len();
-                    format!("{}#{}#{idx}", uri.as_str(), slug)
+                    let mut idx = new_ids.len();
+                    loop {
+                        let candidate = format!("{}#{}#{idx}", uri.as_str(), slug);
+                        if reserved_ids.insert(candidate.clone()) {
+                            break candidate;
+                        }
+                        idx += 1;
+                    }
                 };
 
                 staged_zig_adds.push((id.clone(), embedding));
@@ -160,11 +209,18 @@ impl SemanticIndex {
 
         // --- Commit phase (all embed calls succeeded) ---
 
-        // Add new vectors to Zig index.
+        // Add new vectors to Zig index (with rollback on partial failure).
+        let mut added_ids: Vec<String> = Vec::new();
         for (id, embedding) in staged_zig_adds {
-            self.index
-                .add(&id, &embedding)
-                .map_err(|e| EmbedError::InternalError(e.to_string()))?;
+            match self.index.add(&id, &embedding) {
+                Ok(()) => added_ids.push(id),
+                Err(e) => {
+                    for rollback_id in &added_ids {
+                        let _ = self.index.remove(rollback_id);
+                    }
+                    return Err(EmbedError::InternalError(e.to_string()));
+                }
+            }
         }
 
         // Remove ALL old entries for this document.
@@ -184,10 +240,39 @@ impl SemanticIndex {
         Ok(())
     }
 
+    /// Get a clone of the embedding provider.
+    ///
+    /// Callers that care about lock contention should clone the provider,
+    /// call [`EmbeddingProvider::embed`] outside any lock, then call
+    /// [`search_with_embedding`](Self::search_with_embedding) inside the lock.
+    pub fn provider(&self) -> Arc<dyn EmbeddingProvider> {
+        self.provider.clone()
+    }
+
     /// Run semantic search over indexed entries.
+    ///
+    /// This embeds `query` via the provider and then performs the in-memory
+    /// index search. If the caller holds a lock (e.g., a `TokioMutex`),
+    /// consider using [`provider`](Self::provider) +
+    /// [`search_with_embedding`](Self::search_with_embedding) instead to avoid
+    /// holding the lock during the expensive embed step.
     pub async fn search(
         &self,
         query: &str,
+        top_k: u32,
+        min_score: f32,
+    ) -> Result<Vec<SearchResult>, EmbedError> {
+        let query_embedding = self.provider.embed(query).await?;
+        self.search_with_embedding(&query_embedding, top_k, min_score)
+    }
+
+    /// Search the index with a pre-computed query embedding (fast, in-memory only).
+    ///
+    /// Use this when the caller embeds the query outside any lock to avoid
+    /// serializing concurrent searches across the slow embed I/O step.
+    pub fn search_with_embedding(
+        &self,
+        query_embedding: &[f32],
         top_k: u32,
         min_score: f32,
     ) -> Result<Vec<SearchResult>, EmbedError> {
@@ -195,13 +280,11 @@ impl SemanticIndex {
             return Ok(Vec::new());
         }
 
-        let query_embedding = self.provider.embed(query).await?;
         let score_floor = min_score.clamp(0.0, 1.0);
-
         let fetch_k = compute_fetch_k(self.index.count(), self.entries_by_id.len() as u32, top_k);
         let raw = self
             .index
-            .search(&query_embedding, fetch_k)
+            .search(query_embedding, fetch_k)
             .map_err(|e| EmbedError::InternalError(e.to_string()))?;
 
         let mut out = Vec::new();

@@ -57,7 +57,7 @@ impl CoreEngine for MockEngine {
                     ),
                 ])
             }
-            CoreOperation::ExportIndex { uri, realm } => {
+            CoreOperation::ExportIndex { uri, realm, .. } => {
                 let mut captured = self
                     .captured_export_index_realm
                     .lock()
@@ -91,6 +91,7 @@ impl CoreEngine for MockEngine {
                     )],
                     frontmatter: vec![],
                     properties: vec![],
+                    content_blocks: None,
                 }
             }
             _ => CoreOperationResult::Error(CoreError::NotImplemented(

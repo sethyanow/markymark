@@ -1,0 +1,42 @@
+prefix: marky
+defaults:
+  feature:
+    start_phase: design
+    priority: 2
+  epic:
+    start_phase: design
+    priority: 1
+  task:
+    start_phase: implement
+    priority: 2
+  bug:
+    start_phase: design
+    priority: 1
+gates:
+  plan_to_implement:
+  - type: has_section
+    param: Plan
+  - type: has_section
+    param: Success Criteria
+  design_to_plan:
+  - type: has_section
+    param: Requirements
+  implement_to_review:
+  - type: has_owner
+formats:
+  list: compact
+  show: detailed
+audit:
+  max_file_size: 5242880
+  retention_days: 0
+  archive_dir: .bones/audit-archive
+semantic:
+  provider: local
+  local:
+    cache_dir: null
+  voyage:
+    api_key_env: VOYAGE_API_KEY
+    model: voyage-4
+    dimensions: 1024
+    base_url: null
+    batch_chunk_size: 128

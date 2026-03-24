@@ -76,6 +76,16 @@ export fn marky_engine_free_result(result: ?*CEngineResult) void {
     get_result.freeResult(r);
 }
 
+/// Get the content hash for the current engine state.
+///
+/// The hash is computed during `create` / `update` over the parsed text.
+/// Same text produces the same hash; different text produces a different hash.
+/// Returns 0 if handle is null (also the hash value for empty input).
+export fn marky_engine_get_content_hash(handle: ?*anyopaque) u64 {
+    const engine = castHandle(handle) orelse return 0;
+    return engine.content_hash;
+}
+
 /// Destroy a DocumentEngine, freeing all owned memory.
 ///
 /// After this call the handle is invalid. Passing null is a no-op.

@@ -2,11 +2,14 @@
 id: marky-ix3
 title: '[EPIC] ix3: Code span extraction + Zig extraction consolidation'
 status: open
+status: closed
 type: epic
 priority: 2
 owner: sethyanow@users.noreply.github.com
 depends_on: [marky-8s3, marky-bt3e, marky-pdyo]
 ---
+
+
 
 
 
@@ -80,6 +83,19 @@ This is a differentiating feature for markymark — no existing markdown LSP doe
 - [ ] RealmIndex dedup for code span entries
 - [ ] All existing tests pass after each migration step
 - [ ] New tests for code span extraction on each path
+- [x] CodeSpanEntry type in document/types.rs with optional kind and language_hint
+- [x] Tier 1: backtick inline code spans extracted via all 3 paths
+- [x] Blob v2: code_span_count field, reserved slots for future types, backward-compatible v1 read
+- [x] ScanBackend::scan_code_spans() implemented for ZigScanBackend and Md4cScanBackend
+- [x] LSP workspaceSymbol returns code span results
+- [x] LSP hover shows code span backlinks
+- [x] MCP search-symbols includes code spans
+- [x] extract.rs split into submodules (fgl8 superseded — Zig migration eliminated split target)
+- [x] All 11 extractors migrated from extract.rs to Zig ExtractionRenderer (except frontmatter)
+- [x] extract.rs reduced to frontmatter + orchestration shim
+- [x] RealmIndex dedup for code span entries
+- [x] All existing tests pass after each migration step
+- [x] New tests for code span extraction on each path
 - [ ] Pre-commit hooks passing
 
 ## Anti-Patterns (FORBIDDEN)
@@ -178,3 +194,7 @@ DO NOT REVISIT UNLESS: from_ast is removed from the codebase.
 - Blob v2 reserves generously (no v3 needed for Phase B)
 - kind field is Optional (Tier 1 cannot determine struct/fn/trait)
 - Confidence deferred to Tier 2/3
+
+## Log
+
+- [2026-03-23T13:20:50Z] [Seth] Implementation review APPROVED. All 14 success criteria verified with evidence. 1412/1412 tests pass, clippy clean, all 7 anti-patterns clear. fgl8 closed as superseded (Zig migration eliminated the split target). 20+ code span tests across 8 test modules, covering Zig FFI, ScanBackend, from_scan, from_blob (incl. v1 backward compat), RealmIndex dedup/cross-doc, MCP search. T3 observation: LSP integration tests lack explicit code span scenarios (low risk, mechanical dispatch).
