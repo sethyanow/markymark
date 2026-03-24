@@ -29,7 +29,16 @@ struct RawBlock {
 ///
 /// Parses only the block grammar (no inline parsing). Blocks whose start_byte
 /// falls within the frontmatter region are excluded.
+///
+/// Degrades gracefully to empty on parser failure or tree-sitter panics.
 fn extract_content_blocks(source: &str) -> Vec<RawBlock> {
+    // catch_unwind guards against tree-sitter panics on edge-case inputs
+    // (e.g. node byte ranges exceeding source length).
+    std::panic::catch_unwind(|| extract_content_blocks_inner(source))
+        .unwrap_or_default()
+}
+
+fn extract_content_blocks_inner(source: &str) -> Vec<RawBlock> {
     let mut parser = match markymark_parser::Parser::new() {
         Ok(p) => p,
         Err(_) => return Vec::new(),
