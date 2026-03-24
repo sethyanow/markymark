@@ -26,10 +26,10 @@ engine so it can reuse slugs for headings outside the edited region.
 - [x] `marky_engine_update` C signature extended with `edit_offset`, `edit_old_len`, `edit_new_len` (u32)
 - [x] Rust `DocumentEngine::update()` accepts optional `EditRange` parameter
 - [x] Zero-values (0/0/0) mean "no range info" — Zig side falls back to full slug computation
-- [ ] Zig `update()` stores previous heading offsets + slugs for comparison
-- [ ] Headings whose byte range is entirely before or after the edit range reuse previous slugs
-- [ ] Test: edit at end of document, heading slugs at start not recomputed (verified via hash or direct comparison)
-- [ ] Test: edit inside a heading causes that heading's slug to be recomputed
+- [x] Zig `update()` stores previous heading offsets + slugs for comparison
+- [x] Headings whose byte range is entirely before the edit range reuse previous slugs (before-only; after-edit headings not reused due to dedup suffix risk)
+- [x] Test: edit at end of document, heading slugs at start not recomputed (verified via hash or direct comparison)
+- [x] Test: edit inside a heading causes that heading's slug to be recomputed
 - [ ] LSP `apply_document_changes` computes cumulative edit byte bounds and passes to engine
 - [ ] Test: LSP threads incremental change ranges to engine update
 - [ ] All existing tests pass
