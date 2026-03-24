@@ -338,7 +338,7 @@ fn build_markdown_index_via_engine(
 
         match update_result {
             Ok(()) => {
-                match index_from_engine_result(uri_str, &engine, fm.clone(), aliases.clone()) {
+                match index_from_engine_result(uri_str, &engine, fm.clone(), aliases.clone(), source.to_string()) {
                     Ok(index) => return Some(index),
                     Err(e) => {
                         log::warn!(
@@ -359,7 +359,7 @@ fn build_markdown_index_via_engine(
         }
 
         // Stale engine snapshot fallback — get_result() returns last successful parse.
-        match index_from_engine_result(uri_str, &engine, fm.clone(), aliases.clone()) {
+        match index_from_engine_result(uri_str, &engine, fm.clone(), aliases.clone(), source.to_string()) {
             Ok(index) => return Some(index),
             Err(e) => {
                 log::warn!(
@@ -380,7 +380,7 @@ fn build_markdown_index_via_engine(
         } else {
             match DocumentEngine::new(&masked) {
                 Ok(engine) => {
-                    let built = index_from_engine_result(uri_str, &engine, fm, aliases);
+                    let built = index_from_engine_result(uri_str, &engine, fm, aliases, source.to_string());
                     realm
                         .engines
                         .insert(uri_str.to_string(), std::sync::Mutex::new(engine));
@@ -412,12 +412,16 @@ fn build_markdown_index_via_engine(
     }
 }
 
-/// Convert engine result to a DocumentIndex with frontmatter.
+/// Convert engine result to a DocumentIndex with frontmatter and source text.
+///
+/// When `source` is provided, the resulting index retains source text for
+/// `block_text()` and extracts content blocks via tree-sitter block parsing.
 fn index_from_engine_result(
     uri_str: &str,
     engine: &DocumentEngine,
     frontmatter: Vec<markymark_index::FrontmatterOwnedEntry>,
     aliases: Vec<String>,
+    source: String,
 ) -> Result<DocumentIndex, String> {
     let result = engine
         .get_result()
@@ -428,10 +432,11 @@ fn index_from_engine_result(
     let extraction = result
         .to_extraction()
         .map_err(|e| format!("to_extraction failed: {e:?}"))?;
-    Ok(DocumentIndex::from_engine_result_with_frontmatter(
+    Ok(DocumentIndex::from_engine_result_with_source(
         &extraction,
         frontmatter,
         aliases,
+        source,
     ))
 }
 

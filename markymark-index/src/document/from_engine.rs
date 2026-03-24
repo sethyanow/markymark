@@ -148,8 +148,7 @@ impl DocumentIndex {
         let extraction = result
             .to_extraction()
             .expect("from_text: to_extraction failed");
-        let raw_blocks = extract_content_blocks(text);
-        Self::from_engine_result_full(&extraction, fm, aliases, text.to_string(), raw_blocks)
+        Self::from_engine_result_with_source(&extraction, fm, aliases, text.to_string())
     }
 
     /// Build a document index from an owned engine extraction.
@@ -166,15 +165,19 @@ impl DocumentIndex {
         Self::from_engine_result_inner(data, frontmatter, aliases, String::new(), Vec::new())
     }
 
-    /// Full construction with source text and content blocks (used by `from_text`).
-    fn from_engine_result_full(
+    /// Build a document index from engine extraction with frontmatter and source text.
+    ///
+    /// When `source` is non-empty, content blocks are extracted via tree-sitter
+    /// block-tree parsing and `block_text()` returns original source slices.
+    /// Use this in production paths where the original text is available.
+    pub fn from_engine_result_with_source(
         data: &EngineExtraction,
         frontmatter: Vec<FrontmatterOwnedEntry>,
         aliases: Vec<String>,
-        source_text: String,
-        raw_blocks: Vec<RawBlock>,
+        source: String,
     ) -> Self {
-        Self::from_engine_result_inner(data, frontmatter, aliases, source_text, raw_blocks)
+        let raw_blocks = extract_content_blocks(&source);
+        Self::from_engine_result_inner(data, frontmatter, aliases, source, raw_blocks)
     }
 
     fn from_engine_result_inner(
