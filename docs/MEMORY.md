@@ -126,8 +126,9 @@ Improvement scales with document size due to eliminated per-string `.to_owned()`
 
 ### Active Work
 
-- **Epic marky-zsys**: Engine Pipeline v2 — Phases 1-2 closed. Phase 3: 9/9 criteria met.
-  Next: Phase 3 acceptance task, then epic-level review.
+- **Epic marky-zsys**: Engine Pipeline v2 — all three phases complete.
+  Phase 1 (content hash short-circuit), Phase 2 (edit range threading), Phase 3 (direct arena decode + blob-in-owner).
+  All success criteria met. Pending: epic-level review and closure.
 
 ### Failure Pattern: Unauthorized architectural switch (fail-from-ast-switch)
 
