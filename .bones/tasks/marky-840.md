@@ -1,11 +1,13 @@
 ---
 id: marky-840
 title: 'Phase 1 Acceptance: Content Hash Short-Circuit'
-status: active
+status: closed
 type: task
 priority: 2
 parent: marky-lpb
 ---
+
+
 
 
 
@@ -24,4 +26,8 @@ This task verifies the phase's work and updates documentation.
 ## Success Criteria
 - [x] docs/MEMORY.md updated with content hash short-circuit decision
 - [x] User walkthrough presented and verified
-- [ ] User closes this task after review
+- [x] User closes this task after review
+
+## Log
+
+- [2026-03-24T08:35:02Z] [Seth] Acceptance complete. MEMORY.md updated with content hash short-circuit decision. Walkthrough presented covering FFI hash tests (16), short-circuit tests (8), key code locations. User approved.

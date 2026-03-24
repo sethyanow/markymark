@@ -1,12 +1,13 @@
 ---
 id: marky-lpb
 title: 'Phase 1: Content Hash Short-Circuit'
-status: open
+status: closed
 type: epic
 priority: 2
 depends_on: [marky-a02, marky-1ic, marky-840]
 parent: marky-zsys
 ---
+
 
 
 
