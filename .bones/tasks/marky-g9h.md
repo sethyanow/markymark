@@ -1,11 +1,12 @@
 ---
 id: marky-g9h
 title: 'Task 2: Benchmark — verify from_engine_result_direct is measurably faster'
-status: active
+status: closed
 type: task
 priority: 2
 parent: marky-8d8
 ---
+
 
 
 
