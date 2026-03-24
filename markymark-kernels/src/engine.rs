@@ -6,10 +6,15 @@
 //!
 //! Created for marky-atsp (epic marky-io3h, Task 2).
 
-use crate::engine_ffi::{marky_engine_get_result, CEngineResult, EngineResult};
+use crate::engine_ffi::{marky_engine_get_result, CEngineResult};
 use crate::scan::KernelError;
 
-pub use crate::engine_ffi::{convert_engine_result, EngineExtraction};
+pub use crate::engine_ffi::{
+    convert_engine_result, read_blob_str, CEngineBlockId, CEngineBlockRef, CEngineCallout,
+    CEngineCodeSpan, CEngineEmbed, CEngineHeading, CEngineLink, CEngineLinkDefinition,
+    CEngineProperty, CEngineQueryBlock, CEngineTag, CEngineTask, CEngineXmlTag,
+    EngineExtraction, EngineResult,
+};
 
 // ---------------------------------------------------------------------------
 // Edit range for incremental updates

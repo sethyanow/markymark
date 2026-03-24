@@ -4,6 +4,7 @@ mod helpers;
 mod types;
 
 mod from_engine;
+mod from_engine_direct;
 
 #[cfg(test)]
 mod tests;

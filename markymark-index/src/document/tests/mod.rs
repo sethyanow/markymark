@@ -621,6 +621,7 @@ fn engine_extracts_code_spans() {
 // ---------------------------------------------------------------------------
 
 mod content_block_tests;
+mod from_engine_direct_tests;
 mod incremental_tests;
 
 // ---------------------------------------------------------------------------

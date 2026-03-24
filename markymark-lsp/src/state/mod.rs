@@ -146,14 +146,8 @@ impl ServerState {
         if Self::should_force_engine_result_conversion_fail_for_tests(uri_str) {
             return Err("forced engine result conversion failure (test hook, uri)".to_string());
         }
-        let extraction = result
-            .to_extraction()
-            .map_err(|e| format!("to_extraction failed: {e:?}"))?;
-        Ok(DocumentIndex::from_engine_result_with_frontmatter(
-            &extraction,
-            frontmatter,
-            aliases,
-        ))
+        DocumentIndex::from_engine_result_direct(&result, frontmatter, aliases)
+            .map_err(|e| format!("from_engine_result_direct failed: {e:?}"))
     }
 
     /// Create a new empty server state.

@@ -444,6 +444,91 @@ impl EngineResult {
     pub fn to_extraction(&self) -> Result<EngineExtraction, KernelError> {
         convert_engine_result(&self.raw)
     }
+
+    // -- Direct access to blob and typed C struct slices --
+
+    /// Returns the raw text blob bytes. All text offsets in C structs index into this blob.
+    pub fn text_blob(&self) -> &[u8] {
+        if self.raw.text_blob_len == 0 {
+            return &[];
+        }
+        if self.raw.text_blob.is_null() {
+            return &[];
+        }
+        let len = self.raw.text_blob_len as usize;
+        // SAFETY: `text_blob` is Zig-allocated and valid for `text_blob_len` bytes
+        // until `marky_engine_free_result` is called (handled by our Drop impl).
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage, semgrep.markymark.rust.unsafe-block
+        unsafe { std::slice::from_raw_parts(self.raw.text_blob, len) }
+    }
+
+    pub fn headings(&self) -> Result<&[CEngineHeading], KernelError> {
+        ptr_slice(self.raw.headings, self.raw.headings_count)
+    }
+
+    pub fn links(&self) -> Result<&[CEngineLink], KernelError> {
+        ptr_slice(self.raw.links, self.raw.links_count)
+    }
+
+    pub fn code_spans(&self) -> Result<&[CEngineCodeSpan], KernelError> {
+        ptr_slice(self.raw.code_spans, self.raw.code_spans_count)
+    }
+
+    pub fn tags(&self) -> Result<&[CEngineTag], KernelError> {
+        ptr_slice(self.raw.tags, self.raw.tags_count)
+    }
+
+    pub fn block_ids(&self) -> Result<&[CEngineBlockId], KernelError> {
+        ptr_slice(self.raw.block_ids, self.raw.block_ids_count)
+    }
+
+    pub fn tasks(&self) -> Result<&[CEngineTask], KernelError> {
+        ptr_slice(self.raw.tasks, self.raw.tasks_count)
+    }
+
+    pub fn embeds(&self) -> Result<&[CEngineEmbed], KernelError> {
+        ptr_slice(self.raw.embeds, self.raw.embeds_count)
+    }
+
+    pub fn callouts(&self) -> Result<&[CEngineCallout], KernelError> {
+        ptr_slice(self.raw.callouts, self.raw.callouts_count)
+    }
+
+    pub fn block_refs(&self) -> Result<&[CEngineBlockRef], KernelError> {
+        ptr_slice(self.raw.block_refs, self.raw.block_refs_count)
+    }
+
+    pub fn query_blocks(&self) -> Result<&[CEngineQueryBlock], KernelError> {
+        ptr_slice(self.raw.query_blocks, self.raw.query_blocks_count)
+    }
+
+    pub fn link_definitions(&self) -> Result<&[CEngineLinkDefinition], KernelError> {
+        ptr_slice(self.raw.link_definitions, self.raw.link_definitions_count)
+    }
+
+    pub fn properties(&self) -> Result<&[CEngineProperty], KernelError> {
+        ptr_slice(self.raw.properties, self.raw.properties_count)
+    }
+
+    pub fn xml_tags(&self) -> Result<&[CEngineXmlTag], KernelError> {
+        ptr_slice(self.raw.xml_tags, self.raw.xml_tags_count)
+    }
+
+    pub fn line_starts(&self) -> Result<&[u32], KernelError> {
+        ptr_slice(self.raw.line_starts, self.raw.line_starts_count)
+    }
+
+    pub fn token_estimate(&self) -> u32 {
+        self.raw.token_estimate
+    }
+
+    pub fn content_hash(&self) -> u64 {
+        self.raw.content_hash
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.raw.generation
+    }
 }
 
 impl Drop for EngineResult {
@@ -480,6 +565,15 @@ fn read_str(blob: &[u8], offset: u32, length: u32) -> Result<String, KernelError
     let bytes = safe_text_blob_slice(blob, offset, length)?;
     let s = std::str::from_utf8(bytes).map_err(|_| KernelError::InternalError(-100))?;
     Ok(s.to_owned())
+}
+
+/// Read a UTF-8 string slice from the text blob without allocating.
+///
+/// Returns a borrowed `&str` tied to the blob's lifetime. Use this in the direct
+/// arena decode path where the arena will copy the string anyway.
+pub fn read_blob_str(blob: &[u8], offset: u32, length: u32) -> Result<&str, KernelError> {
+    let bytes = safe_text_blob_slice(blob, offset, length)?;
+    std::str::from_utf8(bytes).map_err(|_| KernelError::InternalError(-100))
 }
 
 fn ptr_slice<'a, T>(ptr: *const T, count: u32) -> Result<&'a [T], KernelError> {
