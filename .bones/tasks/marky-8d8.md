@@ -4,9 +4,11 @@ title: 'Phase 3: Direct Arena Decode'
 status: open
 type: epic
 priority: 2
-depends_on: [marky-686, marky-u9q, marky-g9h]
+depends_on: [marky-686, marky-u9q, marky-g9h, marky-03r]
 parent: marky-zsys
 ---
+
+
 
 
 
