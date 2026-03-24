@@ -12,6 +12,7 @@ parent: marky-8d8
 
 
 
+
 ## Context
 
 Phase 3 (marky-8d8) of Engine Pipeline v2 (marky-zsys). First seam task — internal optimization.
@@ -230,3 +231,4 @@ a duplicate `c_result()`.
 ## Log
 
 - [2026-03-24T16:27:14Z] [Seth] SRE review (fresh session). Findings: (1) ptr_slice is private, not pub — skeleton claimed pub, fixed to typed accessor approach on EngineResult. (2) as_raw() already exists, removed duplicate c_result() proposal. (3) Content blocks NOT extracted in current hot path — skeleton wrongly said 'same as current path' for extract_content_blocks. (4) LSP test hook should_force_engine_result_conversion_fail_for_tests becomes dead code after wiring — must repurpose or replace. (5) Link parsing is highest-risk section — alias comparison ordering matters. Updated implementation steps, key considerations, edge cases, and adversarial failure catalog.
+- [2026-03-24T16:44:42Z] [Seth] Debrief: No workarounds. Key design decision: intermediate Vec collection pattern before self_cell closure (blob borrows can't enter closure). File split to from_engine_direct.rs (532 lines each) driven by 1000-line rule. EngineResult needed re-export. Reflections: SRE caught ptr_slice visibility error — fresh-eyes review prevented mid-implementation redesign. Skeleton inaccuracies (content blocks, c_result duplication) all caught by SRE. No user corrections needed.
