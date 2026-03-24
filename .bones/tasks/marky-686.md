@@ -4,9 +4,11 @@ title: 'Phase 2: Edit Range Threading'
 status: open
 type: epic
 priority: 2
-depends_on: [marky-lpb]
+depends_on: [marky-lpb, marky-f1w]
 parent: marky-zsys
 ---
+
+
 
 ## Context
 Parent epic marky-zsys, Phase 2. Depends on Phase 1 (marky-lpb).

@@ -1749,3 +1749,6 @@
 {"timestamp":"2026-03-24T08:35:02.389929+00:00","actor":"Seth","event_type":"logged","task_id":"marky-840","details":{"message":"Acceptance complete. MEMORY.md updated with content hash short-circuit decision. Walkthrough presented covering FFI hash tests (16), short-circuit tests (8), key code locations. User approved."}}
 {"timestamp":"2026-03-24T08:35:09.998629+00:00","actor":"Seth","event_type":"closed","task_id":"marky-840","details":{"notes":null}}
 {"timestamp":"2026-03-24T08:35:10.448323+00:00","actor":"Seth","event_type":"closed","task_id":"marky-lpb","details":{"notes":null}}
+{"timestamp":"2026-03-24T09:02:12.171878+00:00","actor":"Seth","event_type":"created","task_id":"marky-f1w","details":{}}
+{"timestamp":"2026-03-24T09:02:21.092597+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-686","details":{"kind":"parent-child","to":"marky-f1w"}}
+{"timestamp":"2026-03-24T09:02:21.093134+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-686","details":{"kind":"blocks","to":"marky-f1w"}}
