@@ -1771,3 +1771,10 @@
 {"timestamp":"2026-03-24T15:36:48.782112+00:00","actor":"Seth","event_type":"created","task_id":"marky-5ig","details":{}}
 {"timestamp":"2026-03-24T15:36:53.976317+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-686","details":{"kind":"parent-child","to":"marky-5ig"}}
 {"timestamp":"2026-03-24T15:36:53.976772+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-686","details":{"kind":"blocks","to":"marky-5ig"}}
+{"timestamp":"2026-03-24T15:51:44.913309+00:00","actor":"Seth","event_type":"logged","task_id":"marky-5ig","details":{"message":"User reviewed walkthrough, approved Phase 2. All edit range threading verified end-to-end."}}
+{"timestamp":"2026-03-24T15:51:45.375770+00:00","actor":"Seth","event_type":"closed","task_id":"marky-5ig","details":{"notes":null}}
+{"timestamp":"2026-03-24T15:51:52.034832+00:00","actor":"Seth","event_type":"logged","task_id":"marky-686","details":{"message":"Phase 2 complete. All 10/10 criteria met. Acceptance task marky-5ig closed by user. 3 tasks: FFI plumbing (f1w), Zig slug reuse (v60), LSP threading (enr)."}}
+{"timestamp":"2026-03-24T15:51:52.502887+00:00","actor":"Seth","event_type":"closed","task_id":"marky-686","details":{"notes":null}}
+{"timestamp":"2026-03-24T16:05:30.131604+00:00","actor":"Seth","event_type":"created","task_id":"marky-u9q","details":{}}
+{"timestamp":"2026-03-24T16:05:35.692063+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-8d8","details":{"kind":"parent-child","to":"marky-u9q"}}
+{"timestamp":"2026-03-24T16:05:35.692480+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-8d8","details":{"kind":"blocks","to":"marky-u9q"}}

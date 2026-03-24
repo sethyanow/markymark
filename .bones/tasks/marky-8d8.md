@@ -1,59 +1,68 @@
 ---
 id: marky-8d8
-title: 'Phase 3: Zero-Copy Blob'
+title: 'Phase 3: Direct Arena Decode'
 status: open
 type: epic
 priority: 2
-depends_on: [marky-686]
+depends_on: [marky-686, marky-u9q]
 parent: marky-zsys
 ---
 
+
+
 ## Context
-Parent epic marky-zsys, Phase 3. Depends on Phase 2 (marky-686).
-Currently `from_blob()` does two copies: blob text pool → `DecodedOwnedData` (owned Vecs)
-→ bumpalo arena (`arena_alloc_str`). This phase first eliminates the intermediate owned Vecs
-(3a), then makes DocumentIndex borrow from blob data directly (3b), then propagates the
-lifetime through RealmIndex and LSP state (3c).
+Parent epic marky-zsys, Phase 3. Depends on Phase 2 (marky-686, now closed).
+
+**Architecture update (2026-03-24):** Epic originally targeted `from_blob()`/`DecodedOwnedData`
+— all eliminated by marky-0xtn (blob serialization removed). The double-copy now lives in:
+1. `convert_engine_result()` in engine_ffi.rs: reads CEngineResult.text_blob → owned Strings in EngineExtraction
+2. `from_engine_result_inner()` in from_engine.rs: copies EngineExtraction Strings → bumpalo arena
+
+Phase 3a eliminates the EngineExtraction intermediary by reading text_blob directly into the arena.
+Phase 3b/3c parameterize DocumentIndex on text_blob lifetime for zero-copy borrowing.
 
 ## Requirements
-- R5: `from_blob()` decodes blob text pool directly into bumpalo arena, eliminating intermediate owned Vec allocation
-- R6: `DocumentIndex` parameterized on blob lifetime — borrows text from engine-owned blob
+- R5: Direct arena decode — `from_engine_result_direct` reads CEngineResult.text_blob directly into bumpalo arena, eliminating EngineExtraction owned Strings
+- R6: `DocumentIndex` parameterized on engine lifetime — borrows text from Zig text_blob
 - R7: `RealmIndex` and LSP `ServerState` adapted to hold lifetime-parameterized DocumentIndex
 
 ## Success Criteria
-- [ ] `from_blob_inner` no longer creates `DecodedOwnedData` — decodes directly into arena
-- [ ] `owned.rs` intermediate structs removed or reduced to non-text fields only
-- [ ] Benchmark: from_blob measurably faster after direct arena decode (Phase 3a alone)
-- [ ] `DocumentIndex<'blob>` compiles with blob lifetime parameter
-- [ ] Text fields in DocumentIndex entries borrow `&'blob str` from blob data
-- [ ] self_cell / DocumentIndexCell reworked to accommodate blob lifetime
+- [ ] `from_engine_result_direct` decodes CEngineResult.text_blob into arena — no intermediate EngineExtraction
+- [ ] EngineExtraction intermediary not used in the LSP hot path (old path may remain as fallback)
+- [ ] Benchmark: direct decode measurably faster than EngineExtraction path (Phase 3a alone)
+- [ ] `DocumentIndex<'engine>` compiles with engine lifetime parameter
+- [ ] Text fields in DocumentIndex entries borrow `&'engine str` from text_blob
+- [ ] self_cell / DocumentIndexCell reworked to accommodate text_blob lifetime
 - [ ] `RealmIndex` holds DocumentIndex with correct lifetime
-- [ ] `ServerState` engine + blob + index lifetime relationships are sound
+- [ ] `ServerState` engine + text_blob + index lifetime relationships are sound
 - [ ] No unsafe lifetime transmutes or 'static escape hatches
 - [ ] All existing tests pass after each sub-phase (3a, 3b, 3c independently)
 
 ## Anti-Patterns
 - NO unsafe lifetime transmutes or 'static extensions (sound lifetime modeling or nothing)
-- NO keeping DecodedOwnedData as "compatibility layer" (the whole point is eliminating it)
+- NO keeping EngineExtraction in the hot path as "compatibility layer" after 3a
 - NO doing only 3a and deferring 3b+3c (epic requires R6+R7)
 
 ## Key Considerations
-- `DocumentIndexCell` uses `self_cell` pattern where the arena owns the text. With blob borrowing,
-  the cell needs to accommodate an external lifetime. This may require replacing self_cell with
-  explicit lifetime management or a different self-referential pattern.
-- `ScanBlob<'_>` borrows `&self` from DocumentEngine. For DocumentIndex to borrow from blob,
-  the engine must not be mutated while the index is alive. Currently engines are behind
-  `Mutex<DocumentEngine>` — the lock scope must ensure blob validity.
+- `CEngineResult.text_blob` is Zig-owned memory, valid until `marky_engine_free_result` is called
+  (which happens on `EngineResult::drop`). Phase 3a copies into arena (safe — arena outlives the
+  EngineResult borrow). Phase 3b/3c borrow from it (requires sound lifetime modeling).
+- `DocumentIndexCell` uses `self_cell` pattern where the arena owns the text. With text_blob
+  borrowing, the cell needs to accommodate an external lifetime. May require replacing self_cell
+  with explicit lifetime management.
+- `EngineResult` is obtained via `engine.get_result()` which borrows `&self` from DocumentEngine.
+  For Phase 3b/3c, DocumentIndex must not outlive the EngineResult. Currently engines are behind
+  `Mutex<DocumentEngine>` — the lock scope must ensure text_blob validity.
 - Phase 3a (direct arena decode) is a standalone win that doesn't change the public API.
   3b+3c change the type signature and cascade. If 3b+3c prove infeasible, 3a is still valuable.
 
 ## Acceptance Requirements
 **Agent Documentation:**
 - [ ] CLAUDE.md: update Architecture section if DocumentIndex type signature changes
-- [ ] docs/MEMORY.md: update with zero-copy blob decision and lifetime model
+- [ ] docs/MEMORY.md: update with direct arena decode decision and lifetime model
 
 **User Walkthrough Must Cover:**
-- from_blob produces identical DocumentIndex content (parity test)
+- Direct decode produces identical DocumentIndex content (parity test)
 - Benchmark comparison: Phase 3a vs Phase 2 baseline
-- Lifetime soundness: engine update invalidates old blob, new index created from new blob
+- Lifetime soundness: engine update invalidates old text_blob, new index created from new result
 - Edge case: concurrent read of index while engine updates (lock semantics)

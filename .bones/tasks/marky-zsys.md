@@ -64,9 +64,9 @@ depends_on: [marky-n7wx, marky-lpb, marky-686, marky-8d8]
 - R2: LSP update path short-circuits blob serialization + deserialization when content hash is unchanged after `engine.update()`
 - R3: `DocumentEngine::update()` FFI accepts optional edit range parameters (byte offset + length of changed region)
 - R4: Zig engine reuses slugs for headings outside the edit range, skipping slug recomputation for unchanged headings
-- R5: `from_blob()` decodes blob text pool directly into bumpalo arena, eliminating the intermediate owned Vec allocation stage
-- R6: `DocumentIndex` parameterized on blob lifetime (`DocumentIndex<'blob>`) — borrows text from engine-owned blob instead of copying into arena
-- R7: `RealmIndex` and LSP `ServerState` adapted to hold lifetime-parameterized `DocumentIndex<'blob>`
+- R5: Direct arena decode — `from_engine_result_direct` reads CEngineResult.text_blob directly into bumpalo arena, eliminating the intermediate EngineExtraction owned Strings
+- R6: `DocumentIndex` parameterized on engine lifetime (`DocumentIndex<'engine>`) — borrows text from Zig text_blob instead of copying into arena
+- R7: `RealmIndex` and LSP `ServerState` adapted to hold lifetime-parameterized `DocumentIndex<'engine>`
 
 ## Success Criteria
 
@@ -76,9 +76,9 @@ depends_on: [marky-n7wx, marky-lpb, marky-686, marky-8d8]
 - [x] `marky_engine_update` accepts edit range info; Zig side receives byte offset + old_len + new_len
 - [x] Headings outside edit range reuse previous slugs (verified by test: edit at end of doc, heading slugs not recomputed)
 - [x] LSP `apply_document_changes` threads incremental edit byte bounds to engine update
-- [ ] `from_blob_inner` allocates directly into bumpalo arena — no intermediate `DecodedOwnedData` Vecs
-- [ ] `DocumentIndex<'blob>` compiles with blob lifetime; text fields borrow from blob data
-- [ ] `RealmIndex` and `ServerState` hold `DocumentIndex<'blob>` without lifetime conflicts
+- [ ] `from_engine_result_direct` decodes CEngineResult.text_blob into arena — no intermediate EngineExtraction Strings
+- [ ] `DocumentIndex<'engine>` compiles with engine lifetime; text fields borrow from text_blob
+- [ ] `RealmIndex` and `ServerState` hold `DocumentIndex<'engine>` without lifetime conflicts
 - [ ] All existing tests pass after each phase
 
 ## Anti-Patterns (FORBIDDEN)
@@ -158,17 +158,23 @@ Key files:
 - **2b — Zig slug reuse:** In `parseAll` or `update`, when edit range is provided, compare new headings with stored headings. For headings whose text bytes are entirely outside the edit range, reuse the previous slug instead of recomputing. Requires storing previous heading offsets.
 - **2c — LSP integration:** In `apply_document_changes`, collect the cumulative edit byte bounds from `IncrementalByteBounds` and pass them through `build_markdown_index_via_engine` to `engine.update(text, edit_range)`.
 
-### Phase 3: Zero-Copy Blob
+### Phase 3: Direct Arena Decode (updated 2026-03-24)
 **Scope:** R5, R6, R7
 **Gate:**
-- `cargo test -p markymark-index -- from_blob` → passes (direct arena decode works)
+- `cargo test -p markymark-index -- from_engine` → passes (direct arena decode works)
 - `cargo test --workspace` → passes (lifetime propagation compiles and works)
-- `cargo bench -p markymark-index -- realm_update` → from_blob measurably faster than Phase 2 baseline
+- `cargo bench -p markymark-index -- realm_update` → direct decode measurably faster than Phase 2 baseline
+
+**Architecture update:** Epic originally targeted `from_blob()`/`DecodedOwnedData`/`owned.rs` — all
+eliminated by marky-0xtn (blob serialization removed). The double-copy now lives in:
+1. `convert_engine_result()`: reads CEngineResult.text_blob → owned Strings in EngineExtraction
+2. `from_engine_result_inner()`: copies EngineExtraction Strings → bumpalo arena
+Key files: `markymark-kernels/src/engine_ffi.rs` (conversion), `markymark-index/src/document/from_engine.rs` (arena build).
 
 **Seams (3 tasks):**
-- **3a — Direct arena decode:** Rewrite `from_blob_inner` to decode blob text pool slices directly into bumpalo arena via `arena_alloc_str(arena, &blob[offset..offset+len])`, eliminating the intermediate `DecodedOwnedData` structs and their owned Vecs. Public API unchanged.
-- **3b — Lifetime parameterization:** Introduce `DocumentIndex<'blob>` where text fields (`&'blob str`) borrow from blob data. `DocumentIndexCell` / `self_cell` may need rethinking — the arena is no longer the sole text owner.
-- **3c — State propagation:** Update `RealmIndex` and `ServerState` to hold `DocumentIndex<'blob>` where `'blob` is tied to the engine's blob lifetime. This is the cascade: every consumer of DocumentIndex must handle the lifetime parameter.
+- **3a — Direct arena decode:** Create `DocumentIndex::from_engine_result_direct(&EngineResult, fm, aliases, source)` that reads CEngineResult.text_blob directly into arena via `safe_text_blob_slice` + `arena_alloc_str`, bypassing EngineExtraction. Add `EngineResult::text_blob() -> &[u8]` accessor. Public API unchanged — new constructor used internally.
+- **3b — Lifetime parameterization:** Introduce `DocumentIndex<'engine>` where text fields (`&'engine str`) borrow from text_blob. `DocumentIndexCell` / `self_cell` may need rethinking — the arena is no longer the sole text owner.
+- **3c — State propagation:** Update `RealmIndex` and `ServerState` to hold `DocumentIndex<'engine>` where `'engine` is tied to the Zig text_blob lifetime. This is the cascade: every consumer of DocumentIndex must handle the lifetime parameter.
 
 ## Agent Failure Mode Catalog
 

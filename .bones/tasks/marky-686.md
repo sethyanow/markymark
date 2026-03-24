@@ -1,12 +1,14 @@
 ---
 id: marky-686
 title: 'Phase 2: Edit Range Threading'
-status: open
+status: closed
 type: epic
 priority: 2
 depends_on: [marky-lpb, marky-f1w, marky-v60, marky-enr, marky-5ig]
 parent: marky-zsys
 ---
+
+
 
 
 
@@ -61,3 +63,7 @@ engine so it can reuse slugs for headings outside the edited region.
 - FFI round-trip: update with edit range, verify slug reuse for unchanged headings
 - Edge case: edit that spans a heading boundary forces slug recomputation
 - LSP integration: incremental didChange events produce correct edit ranges at engine
+
+## Log
+
+- [2026-03-24T15:51:52Z] [Seth] Phase 2 complete. All 10/10 criteria met. Acceptance task marky-5ig closed by user. 3 tasks: FFI plumbing (f1w), Zig slug reuse (v60), LSP threading (enr).

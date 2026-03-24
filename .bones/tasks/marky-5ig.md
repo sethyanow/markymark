@@ -1,11 +1,13 @@
 ---
 id: marky-5ig
 title: 'Phase 2 Acceptance: Edit Range Threading'
-status: open
+status: closed
 type: task
 priority: 2
 parent: marky-686
 ---
+
+
 
 
 
@@ -49,3 +51,7 @@ Observable outcomes:
 ## Success Criteria
 - [ ] User reviews walkthrough and confirms Phase 2 works as expected
 - [ ] User closes this acceptance task
+
+## Log
+
+- [2026-03-24T15:51:44Z] [Seth] User reviewed walkthrough, approved Phase 2. All edit range threading verified end-to-end.
