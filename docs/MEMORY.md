@@ -92,10 +92,27 @@ from incremental edits (min start_byte, sum old_len, sum new_len) and passes via
 - Skipped edits (`end_before_start`) excluded from accumulation
 - `build_markdown_index_via_engine` signature: `(&mut self, uri, text, Option<EditRange>)`
 
+### Phase 3a Complete: Direct Arena Decode (marky-u9q, 2026-03-24)
+
+`from_engine_result_direct` in `from_engine_direct.rs` reads CEngineResult.text_blob
+directly into bumpalo arena via typed EngineResult accessors + `read_blob_str`, bypassing
+EngineExtraction. LSP hot path now uses one copy (blob → arena) instead of two.
+
+**Key implementation details:**
+- EngineResult now has typed slice accessors (headings(), links(), etc.) wrapping private ptr_slice
+- `read_blob_str` returns `&str` (borrowed) vs old `read_str` which returned owned `String`
+- Intermediate Vec collection pattern: blob → owned Strings in Vecs → arena (necessary because
+  DocumentIndexCell's self_cell closure can't hold borrows from EngineResult)
+- Content blocks NOT extracted in the direct path (matches current LSP hot path behavior)
+- Link parsing replicates convert_engine_result logic exactly (wiki vs markdown split, alias detection)
+
+**Foundation for Phase 3b:** Typed accessors + read_blob_str enable borrowing from text_blob
+directly into DocumentIndex fields when DocumentIndex<'engine> lifetime parameterization lands.
+
 ### Active Work
 
-- **Epic marky-zsys**: Engine Pipeline v2 — Phase 2 complete (10/10), acceptance pending.
-  Next: Phase 2 acceptance task, then Phase 3 (zero-copy blob) unblocks.
+- **Epic marky-zsys**: Engine Pipeline v2 — Phase 1 + Phase 2 closed. Phase 3: 2/10 criteria met.
+  Next: scope Phase 3 benchmark task, then Phase 3b (lifetime parameterization).
 
 ### Failure Pattern: Unauthorized architectural switch (fail-from-ast-switch)
 
