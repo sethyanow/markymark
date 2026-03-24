@@ -1,11 +1,13 @@
 ---
 id: marky-03r
 title: 'Phase 3b: Blob-in-owner — eliminate intermediate String allocations'
-status: active
+status: closed
 type: task
 priority: 2
 parent: marky-8d8
 ---
+
+
 
 
 
@@ -175,3 +177,4 @@ Edit `.bones/tasks/marky-8d8.md` — check off satisfied criteria, annotate N/A 
 ## Log
 
 - [2026-03-24T18:24:07Z] [Seth] Task scoped during executing-plans session. Design divergence from R6/R7: user confirmed blob-in-owner approach over lifetime parameter cascade (2026-03-24). Key insight: double-copy exists because text_blob not in self_cell owner. Fix: Vec<u8> in DocumentOwner, try_new for fallible reads, direct &'a str borrows from owner.text_blob.
+- [2026-03-24T18:57:02Z] [Seth] Debrief: Clean refactor — try_new drop-in, &str subslicing worked as designed, 63% speedup at 100KB. Pre-closure Vecs hold Copy C structs (option a). No workarounds. Reflections: Benchmark improvement larger than expected (scales with doc count). SRE corrected Step 1 TDD framing (refactor baseline, not compile-error). Phase 3 sub-epic 9/9 — acceptance task marky-bt9 created.

@@ -109,23 +109,25 @@ EngineExtraction. LSP hot path now uses one copy (blob → arena) instead of two
 **Foundation for Phase 3b:** Typed accessors + read_blob_str enable borrowing from text_blob
 directly into DocumentIndex fields via blob-in-owner approach (see below).
 
-### Phase 3b Design Decision: Blob-in-owner replaces lifetime parameter (2026-03-24)
+### Phase 3b Complete: Blob-in-owner (marky-03r, 2026-03-24)
 
-R6/R7 originally specified `DocumentIndex<'engine>` with lifetime cascade through
-RealmIndex/ServerState. Analysis revealed the double-copy exists because text_blob
-isn't in the self_cell owner — a structural problem, not a lifetime problem.
+`DocumentOwner` gained `text_blob: Vec<u8>`. Inside the `try_new` closure,
+`read_blob_str(&owner.text_blob, offset, len)` returns `&'a str` borrowing
+from the owner — zero copy per string. Replaces R6/R7 lifetime parameter
+(user confirmed). No public API change, no RealmIndex/ServerState cascade.
 
-**Fix:** Add `text_blob: Vec<u8>` to DocumentOwner. Inside the self_cell closure,
-`read_blob_str(&owner.text_blob, offset, len)` returns `&'a str` borrowing from
-the owner. Zero copy per string. No lifetime parameter, no API cascade.
+**Key pattern:** Pre-closure Vecs hold Copy-type C structs (not owned Strings).
+Typed slices from EngineResult are collected via `.to_vec()` before the closure.
+Inside the closure, blob reads borrow from owner. Frontmatter/aliases still use
+`arena_alloc_str` (Rust-side data, not in blob).
 
-**User confirmed** this replaces R6/R7. Sub-epic criteria updated accordingly.
-Task: marky-03r.
+**Benchmark (direct vs via_extraction):** 21% faster at 1KB, 31% at 10KB, 63% at 100KB.
+Improvement scales with document size due to eliminated per-string `.to_owned()` + `arena_alloc_str`.
 
 ### Active Work
 
-- **Epic marky-zsys**: Engine Pipeline v2 — Phase 1 + Phase 2 closed. Phase 3: 3/10 criteria met.
-  Next: marky-03r (blob-in-owner), then Phase 3 acceptance.
+- **Epic marky-zsys**: Engine Pipeline v2 — Phases 1-2 closed. Phase 3: 9/9 criteria met.
+  Next: Phase 3 acceptance task, then epic-level review.
 
 ### Failure Pattern: Unauthorized architectural switch (fail-from-ast-switch)
 
