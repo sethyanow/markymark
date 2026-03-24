@@ -1,12 +1,13 @@
 ---
 id: marky-u9q
 title: 'Task 1: Direct arena decode — from_engine_result_direct bypasses EngineExtraction'
-status: active
+status: closed
 type: task
 priority: 2
 owner: Seth
 parent: marky-8d8
 ---
+
 
 
 
@@ -34,13 +35,13 @@ From parent sub-epic marky-8d8:
 
 ## Success Criteria
 
-- [ ] `EngineResult` exposes `text_blob() -> &[u8]` accessor and typed slice accessors (`headings() -> &[CEngineHeading]`, `links() -> &[CEngineLink]`, etc.)
-- [ ] `read_blob_str(blob, offset, len) -> Result<&str, KernelError>` is pub in markymark-kernels
-- [ ] `DocumentIndex::from_engine_result_direct(&EngineResult, fm, aliases) -> Result<Self, KernelError>` builds index reading text_blob directly into arena
-- [ ] `index_from_engine_result` in LSP state uses the direct path instead of `to_extraction()`
-- [ ] Parity test: direct path produces identical DocumentIndex content as old path (headings, links, tags, code spans, block_ids, tasks, embeds, callouts, block_refs, query_blocks, link_definitions, properties, xml_tags)
-- [ ] Old `from_engine_result_with_frontmatter` path remains available (not deleted — other consumers may use it)
-- [ ] All existing tests pass (1289+ workspace)
+- [x] `EngineResult` exposes `text_blob() -> &[u8]` accessor and typed slice accessors (`headings() -> &[CEngineHeading]`, `links() -> &[CEngineLink]`, etc.)
+- [x] `read_blob_str(blob, offset, len) -> Result<&str, KernelError>` is pub in markymark-kernels
+- [x] `DocumentIndex::from_engine_result_direct(&EngineResult, fm, aliases) -> Result<Self, KernelError>` builds index reading text_blob directly into arena
+- [x] `index_from_engine_result` in LSP state uses the direct path instead of `to_extraction()`
+- [x] Parity test: direct path produces identical DocumentIndex content as old path (headings, links, tags, code spans, block_ids, tasks, embeds, callouts, block_refs, query_blocks, link_definitions, properties, xml_tags)
+- [x] Old `from_engine_result_with_frontmatter` path remains available (not deleted — other consumers may use it)
+- [x] All existing tests pass (1294 workspace)
 
 ## Anti-Patterns
 

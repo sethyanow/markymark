@@ -76,7 +76,7 @@ depends_on: [marky-n7wx, marky-lpb, marky-686, marky-8d8]
 - [x] `marky_engine_update` accepts edit range info; Zig side receives byte offset + old_len + new_len
 - [x] Headings outside edit range reuse previous slugs (verified by test: edit at end of doc, heading slugs not recomputed)
 - [x] LSP `apply_document_changes` threads incremental edit byte bounds to engine update
-- [ ] `from_engine_result_direct` decodes CEngineResult.text_blob into arena — no intermediate EngineExtraction Strings
+- [x] `from_engine_result_direct` decodes CEngineResult.text_blob into arena — no intermediate EngineExtraction Strings
 - [ ] `DocumentIndex<'engine>` compiles with engine lifetime; text fields borrow from text_blob
 - [ ] `RealmIndex` and `ServerState` hold `DocumentIndex<'engine>` without lifetime conflicts
 - [ ] All existing tests pass after each phase

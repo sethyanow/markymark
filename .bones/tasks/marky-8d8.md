@@ -27,8 +27,8 @@ Phase 3b/3c parameterize DocumentIndex on text_blob lifetime for zero-copy borro
 - R7: `RealmIndex` and LSP `ServerState` adapted to hold lifetime-parameterized DocumentIndex
 
 ## Success Criteria
-- [ ] `from_engine_result_direct` decodes CEngineResult.text_blob into arena — no intermediate EngineExtraction
-- [ ] EngineExtraction intermediary not used in the LSP hot path (old path may remain as fallback)
+- [x] `from_engine_result_direct` decodes CEngineResult.text_blob into arena — no intermediate EngineExtraction
+- [x] EngineExtraction intermediary not used in the LSP hot path (old path may remain as fallback)
 - [ ] Benchmark: direct decode measurably faster than EngineExtraction path (Phase 3a alone)
 - [ ] `DocumentIndex<'engine>` compiles with engine lifetime parameter
 - [ ] Text fields in DocumentIndex entries borrow `&'engine str` from text_blob
