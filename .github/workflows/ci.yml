@@ -203,6 +203,11 @@ jobs:
           cargo test -p markymark-cli --test bench_lsp --release -- --nocapture
           echo "Benchmark tests completed"
 
+      - name: Run criterion benchmarks
+        run: |
+          cargo bench -p markymark-index --bench index_construction 2>&1 | tee benchmark-artifacts/criterion-index-construction.txt
+          echo "Criterion benchmarks completed"
+
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
         if: always()
