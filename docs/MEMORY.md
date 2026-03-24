@@ -79,12 +79,8 @@ rebuild unnecessarily) but never wrong (never skips a real change).
 
 ### Active Work
 
-- **Epic marky-z7uc**: Expose ContentBlock model via MCP tools
-  - marky-ehas (get-content-blocks): CLOSED. Full end-to-end implementation with hybrid
-    from_scan + tree-sitter block extraction. 8 integration tests, 3 tool handler tests.
-  - marky-k4cp (export-index enhancement): CLOSED. Added `include_blocks` parameter to
-    export-index. 3 new integration tests. Shared `block_kind_str` helper extracted.
-  - Next: search-workspace enhancement (body text matching) or search-block-text tool.
+- **Epic marky-zsys**: Engine Pipeline v2 — Phase 1 (content hash short-circuit) complete.
+  Next: marky-686 (Phase 2: Edit Range Threading).
 
 ### Failure Pattern: Unauthorized architectural switch (fail-from-ast-switch)
 
