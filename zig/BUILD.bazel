@@ -16,7 +16,6 @@ zig_static_library(
         "-fPIC",
         "-fno-stack-check",
         "-fno-unwind-tables",
-        "-femit-llvm-bc",
     ],
     visibility = ["//markymark-kernels:__pkg__"],
 )

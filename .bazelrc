@@ -49,6 +49,7 @@ build:release   --strip=always
 # Routes rustc link through Homebrew clang + ld64.lld.
 # clang-lto-wrapper strips -plugin-opt args that ld64.lld rejects.
 # extra_rustc_flag (singular) ACCUMULATES with extra_rustc_flags (plural).
+build:macos-lto --@rules_zig//zig/settings:zigopt=-femit-llvm-bc
 build:macos-lto --@rules_rust//rust/settings:extra_rustc_flag=-Clinker=/opt/homebrew/opt/llvm/bin/clang-lto-wrapper
 build:macos-lto --@rules_rust//rust/settings:extra_rustc_flag=-Clink-arg=-fuse-ld=/opt/homebrew/bin/ld64.lld
 build:macos-lto --@rules_rust//rust/settings:extra_rustc_flag=-Clink-arg=-flto=thin
