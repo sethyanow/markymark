@@ -154,32 +154,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Bazelisk
+        uses: bazelbuild/setup-bazelisk@v3
 
-      - name: Install Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
-          use-cache: false
-
-      - name: Cache cargo registry & build
+      - name: Cache Bazel
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}-${{ hashFiles('zig/**/*.zig', 'zig/build.zig', 'zig/build.zig.zon') }}
+          path: ~/.cache/bazel
+          key: ${{ runner.os }}-bazel-bench-${{ hashFiles('MODULE.bazel', 'Cargo.lock', '.bazelrc') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}-
-            ${{ runner.os }}-cargo-
-
-      - name: Purge stale Zig build artifacts
-        run: rm -rf .zig-cache zig/.zig-cache target/debug/build/markymark-kernels-*/out target/release/build/markymark-kernels-*/out
+            ${{ runner.os }}-bazel-bench-
 
       - name: Build release binary
-        run: cargo build --release -p markymark-cli
+        run: bazel build --config=release //markymark-cli:markymark
 
       - name: Create artifact directory
         run: mkdir -p benchmark-artifacts
@@ -188,13 +175,8 @@ jobs:
         env:
           BENCH_ARTIFACT_DIR: benchmark-artifacts
         run: |
-          cargo test -p markymark-cli --test bench_lsp --release -- --nocapture
+          bazel test --config=release //markymark-cli:markymark-cli_test --test_output=all 2>&1 | tee benchmark-artifacts/bazel-bench.txt
           echo "Benchmark tests completed"
-
-      - name: Run criterion benchmarks
-        run: |
-          cargo bench -p markymark-index --bench index_construction 2>&1 | tee benchmark-artifacts/criterion-index-construction.txt
-          echo "Criterion benchmarks completed"
 
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
