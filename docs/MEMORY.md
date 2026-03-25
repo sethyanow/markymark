@@ -278,10 +278,6 @@ rmcp stdio uses `writeln!` + `read_line`, not HTTP-style `Content-Length` header
 
 Agents NEVER merge PRs. Human merges all PRs. Agent prepares PRs and pushes branches only.
 
-### Security hook blocks Write on GitHub Actions YAML (fail-write-tool-gh-actions)
-
-`security_reminder_hook.py` intercepts Write on `.github/workflows/*.yml`. Use Bash heredoc.
-
 ### Agent used Grep/Read instead of LSP for code navigation (fail-lsp-not-used)
 
 Always use LSP tools first for Rust/Zig navigation. Read/Grep only after LSP narrows
