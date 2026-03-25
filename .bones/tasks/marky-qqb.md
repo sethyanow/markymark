@@ -10,6 +10,7 @@ parent: marky-o8e
 
 
 
+
 ## Context
 
 Promoted Bazel from "alongside Cargo" to the primary build system for markymark.
@@ -67,3 +68,4 @@ Work done on `optimize` branch (2026-03-24). Cargo kept as lightweight canary.
 ## Log
 
 - [2026-03-24T20:40:23Z] [Seth] Session log: LTO confirmed via .llvm.NNN suffixes, config split validated via bazel cquery, install script tested, all 7 Bazel tests + all Cargo canary tests pass locally. CI/release workflows written but untested on runners.
+- [2026-03-25T11:26:33Z] [Seth] PR #57 opened: optimize → ci-testing. Ready for workflow_dispatch CI test and v*-rc* tag for release matrix test.
