@@ -883,7 +883,11 @@ async fn lto_eliminates_fault_injection() {
     let dir = make_temp_realm_dir("lto-canary");
     // Magic filename that triggers forced create failure WITHOUT LTO.
     let path = dir.path().join("__marky_test_force_create_fail__.md");
-    fs::write(&path, "# LTO Canary\n\nEngine should create successfully under LTO.\n").unwrap();
+    fs::write(
+        &path,
+        "# LTO Canary\n\nEngine should create successfully under LTO.\n",
+    )
+    .unwrap();
 
     let mut realm = RealmData::new();
     index_root_into_realm(dir.path(), &mut realm).await;
