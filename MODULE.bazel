@@ -16,7 +16,7 @@ bazel_dep(name = "bazel_skylib", version = "1.8.2")
 # ── LLVM toolchain (hermetic LLVM 21.1.8 — matches rustc 1.93) ──────────────
 # Linux only. macOS uses apple_support — toolchains_llvm_bootstrapped macOS
 # is blocked by Apple SDK download 403.
-bazel_dep(name = "toolchains_llvm_bootstrapped", version = "0.3.1")
+bazel_dep(name = "toolchains_llvm_bootstrapped", version = "0.5.9")
 
 register_toolchains(
     "@toolchains_llvm_bootstrapped//toolchain:linux_x86_64_to_linux_x86_64",
