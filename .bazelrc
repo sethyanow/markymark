@@ -27,6 +27,9 @@ build           --@rules_cc//cc/toolchains/args/archiver_flags:use_libtool_on_ma
 
 # rules_rust bootstrap
 build           --@rules_rust//rust/settings:experimental_use_sh_toolchain_for_bootstrap_process_wrapper
+# Stub libgcc_s for hermetic LLVM — rustc injects -lgcc_s but the hermetic
+# sysroot uses compiler-rt. This provides an empty stub so the link succeeds.
+build           --@toolchains_llvm_bootstrapped//config:experimental_stub_libgcc_s=True
 
 # Runfiles support
 common          --enable_runfiles
