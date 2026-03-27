@@ -71,52 +71,48 @@ markymark is a Rust workspace producing a Markdown LSP + MCP server. Seven crate
 
 ## Quick Reference
 
-> **Note:** Always prefer using the `cargo-mcp` tools for building, testing, and running this project, as they provide the canonical workflows. Only use the raw `cargo` commands below if you specifically need to bypass `cargo-mcp` or for troubleshooting purposes.
-
+> **Bazel is the primary build system.** Cargo is kept as a canary for compatibility.
+> Prefer `cargo-mcp` tools for Bazel operations. Fall back to raw commands below.
 
 ```bash
-# Build
-cargo build --release
+# Build (primary — Bazel)
+bazel build //markymark-cli:markymark                                     # debug
+bazel build --config=release --config=macos-lto //markymark-cli:markymark # optimized (macOS)
+bazel build --config=release //markymark-cli:markymark                    # optimized (Linux)
 
 # Test
-cargo nextest
-cargo nextest -p markymark-core    # specific crate
+bazel test //...                                 # all tests
+bazel test //markymark-core:markymark-core_test  # specific crate
 
-# Lint
+# Install locally (~/.local/bin)
+./scripts/install.sh
+
+# Lint (still Cargo)
 cargo clippy --workspace --all-targets
+cargo fmt --all -- --check
 
-# Run LSP
-cargo run -- --lsp
+# Run LSP / MCP
+bazel run //markymark-cli:markymark -- --lsp
+bazel run //markymark-cli:markymark -- --mcp /path/to/workspace
 
-# Run MCP
-cargo run -- --mcp /path/to/workspace
+# Cargo canary (secondary)
+cargo test --workspace
 
 # Release preparation (guided workflow)
 # Use the prepare-release skill: /prepare-release
-# See .claude/skills/prepare-release/SKILL.md
 ```
 
-### Bazel Build (Release / Cross-Language LTO)
+### Bazel Build Details
 
-Bazel is the optimized release build path. It uses `toolchains_llvm_bootstrapped` (LLVM 21.1.8)
-with `rules_rust` and `rules_zig` to enable ThinLTO across the Rust-Zig FFI boundary.
-Cargo remains the day-to-day dev build system.
+Bazel provides cross-language ThinLTO between Rust and Zig via patched `rules_zig`,
+`toolchains_llvm_bootstrapped` (LLVM 21.1.8), and Homebrew LLVM on macOS.
 
-```bash
-# Debug build
-bazel build //markymark-cli:markymark
-
-# Release build (ThinLTO across Rust + Zig)
-bazel build //markymark-cli:markymark --config=release
-
-# Run tests
-bazel test //...
-
-# Build just the Zig kernels
-bazel build //zig:marky_kernels
-```
+- `--config=release` — common LTO flags (all platforms)
+- `--config=macos-lto` — macOS-specific: routes rustc through `clang-lto-wrapper` + `ld64.lld`
+- Linux release needs no extra config — ELF lld supports `-plugin-opt` natively
 
 **Key files:** `MODULE.bazel` (deps/toolchains), `.bazelrc` (LTO flags), `*/BUILD.bazel` (per-crate targets).
+**Prerequisites (macOS):** `brew install llvm` — provides clang, llvm-ar, ld64.lld.
 
 ## Code Navigation (LSP-first)
 

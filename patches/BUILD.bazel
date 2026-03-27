@@ -1,0 +1,4 @@
+exports_files([
+    "rules_zig_cdeps.patch",
+    "rules_zig_lto.patch",
+])

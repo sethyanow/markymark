@@ -1807,3 +1807,10 @@
 {"timestamp":"2026-03-24T19:14:55.136563+00:00","actor":"Seth","event_type":"closed","task_id":"marky-8d8","details":{"notes":null}}
 {"timestamp":"2026-03-24T19:48:13.355201+00:00","actor":"Seth","event_type":"closed","task_id":"marky-zsys","details":{"notes":null}}
 {"timestamp":"2026-03-24T19:48:20.064193+00:00","actor":"Seth","event_type":"logged","task_id":"marky-zsys","details":{"message":"Epic review-implementation APPROVED. All 3 phases closed (content hash short-circuit, edit range threading, direct arena decode). 9/9 success criteria met. 1293/1293 tests green. Clippy/fmt/anti-patterns clean. Adversarial reflection: all FFI boundaries validated, no blocking concerns. Three hygiene fixes applied (clippy len_zero, cargo fmt, stale TODO)."}}
+{"timestamp":"2026-03-24T20:21:29.667544+00:00","actor":"Seth","event_type":"created","task_id":"marky-qqb","details":{}}
+{"timestamp":"2026-03-24T20:21:51.876838+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-o8e","details":{"kind":"parent-child","to":"marky-qqb"}}
+{"timestamp":"2026-03-24T20:21:51.880758+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-o8e","details":{"kind":"blocks","to":"marky-qqb"}}
+{"timestamp":"2026-03-24T20:21:52.364162+00:00","actor":"Seth","event_type":"claimed","task_id":"marky-qqb","details":{"actor":"Seth"}}
+{"timestamp":"2026-03-24T20:40:23.231079+00:00","actor":"Seth","event_type":"updated","task_id":"marky-qqb","details":{"title":"Bazel primary build system — cross-language ThinLTO, CI, release, install"}}
+{"timestamp":"2026-03-24T20:40:23.698893+00:00","actor":"Seth","event_type":"logged","task_id":"marky-qqb","details":{"message":"Session log: LTO confirmed via .llvm.NNN suffixes, config split validated via bazel cquery, install script tested, all 7 Bazel tests + all Cargo canary tests pass locally. CI/release workflows written but untested on runners."}}
+{"timestamp":"2026-03-25T11:26:33.434211+00:00","actor":"Seth","event_type":"logged","task_id":"marky-qqb","details":{"message":"PR #57 opened: optimize → ci-testing. Ready for workflow_dispatch CI test and v*-rc* tag for release matrix test."}}

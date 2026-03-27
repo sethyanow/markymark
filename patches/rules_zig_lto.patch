@@ -1,0 +1,129 @@
+--- zig/private/common/zig_build.bzl	2026-03-24 05:58:32
++++ zig/private/common/zig_build.bzl	2026-03-24 08:16:41
+@@ -281,6 +281,7 @@
+     location_targets = ctx.attr.data
+ 
+     default_output_is_executable = False
++    _bc_file = None
+     default_output = None
+     solib_parents = []
+     if kind == "zig_binary" or kind == "zig_test":
+@@ -511,22 +512,27 @@
+             )
+ 
+             static_lib = ctx.actions.declare_file(ctx.label.name + _static_lib_extension(zigtargetinfo.triple.os))
+-            lib_args = ctx.actions.args()
+-            lib_args.add_all([
+-                "-fPIC",
+-                "-fcompiler-rt",
+-            ])
+-            lib_args.add(static_lib, format = "-femit-bin=%s")
+-            lib_args.add(bc)
+-            ctx.actions.run(
+-                outputs = [static_lib],
++            # Wrap raw LLVM bitcode in MachO object, then archive for ld64.lld LTO.
++            # clang -c -x ir wraps .bc in a MachO __LLVM,__bitcode section that
++            # ld64.lld recognizes. Raw .bc causes "Invalid record" at link time.
++            _llvm_prefix = "/opt/homebrew/opt/llvm/bin/"
++            bc_obj = ctx.actions.declare_file(ctx.label.name + ".lto.o")
++            ctx.actions.run_shell(
++                outputs = [bc_obj],
+                 inputs = [bc],
+-                executable = zigtoolchaininfo.zig_exe_path,
+-                arguments = ["build-lib", global_args, lib_args],
+-                mnemonic = "ZigBuildLib",
+-                progress_message = "zig build-lib %{label}",
+-                **zig_build_kwargs
++                command = _llvm_prefix + "clang -c -x ir " + bc.path + " -o " + bc_obj.path + " -flto=thin -target arm64-apple-macos",
++                mnemonic = "WrapBitcode",
++                progress_message = "clang -flto (wrap bitcode) %{label}",
++                execution_requirements = {"no-sandbox": ""},
+             )
++            ctx.actions.run_shell(
++                outputs = [static_lib],
++                inputs = [bc_obj],
++                command = _llvm_prefix + "llvm-ar rcs " + static_lib.path + " " + bc_obj.path,
++                mnemonic = "LlvmAr",
++                progress_message = "llvm-ar (LTO archive) %{label}",
++                execution_requirements = {"no-sandbox": ""},
++            )
+ 
+             cc_toolchain, feature_configuration = find_cc_toolchain(ctx, mandatory = True)
+             library_to_link = cc_common.create_library_to_link(
+@@ -566,16 +572,53 @@
+                 **zig_build_kwargs
+             )
+     elif kind == "zig_static_library":
+-        args.add(default_output, format = "-femit-bin=%s")
+-        ctx.actions.run(
+-            outputs = [default_output],
+-            inputs = inputs,
+-            executable = zigtoolchaininfo.zig_exe_path,
+-            arguments = ["build-lib", global_args, args],
+-            mnemonic = "ZigBuildStaticLib",
+-            progress_message = "zig build-lib %{label}",
+-            **zig_build_kwargs
+-        )
++        _emit_bc = "-femit-llvm-bc" in ctx.attr.zigopts
++        _bc_file = None
++        if _emit_bc:
++            bc = ctx.actions.declare_file(ctx.label.name + ".bc")
++            _bc_file = bc
++            bc_args = ctx.actions.args()
++            bc_args.add("-fno-emit-bin")
++            bc_args.add(bc, format = "-femit-llvm-bc=%s")
++            ctx.actions.run(
++                outputs = [bc],
++                inputs = inputs,
++                executable = zigtoolchaininfo.zig_exe_path,
++                arguments = ["build-lib", global_args, args, bc_args],
++                mnemonic = "ZigBuildStaticLib",
++                progress_message = "zig build-lib (bitcode) %{label}",
++                **zig_build_kwargs
++            )
++            # Wrap raw .bc in MachO bitcode object, then archive.
++            _llvm_prefix = "/opt/homebrew/opt/llvm/bin/"
++            bc_obj = ctx.actions.declare_file(ctx.label.name + ".lto.o")
++            ctx.actions.run_shell(
++                outputs = [bc_obj],
++                inputs = [bc],
++                command = _llvm_prefix + "clang -c -x ir " + bc.path + " -o " + bc_obj.path + " -flto=thin -target arm64-apple-macos",
++                mnemonic = "WrapBitcode",
++                progress_message = "clang -flto (wrap bitcode) %{label}",
++                execution_requirements = {"no-sandbox": ""},
++            )
++            ctx.actions.run_shell(
++                outputs = [default_output],
++                inputs = [bc_obj],
++                command = _llvm_prefix + "llvm-ar rcs " + default_output.path + " " + bc_obj.path,
++                mnemonic = "LlvmAr",
++                progress_message = "llvm-ar (LTO archive) %{label}",
++                execution_requirements = {"no-sandbox": ""},
++            )
++        else:
++            args.add(default_output, format = "-femit-bin=%s")
++            ctx.actions.run(
++                outputs = [default_output],
++                inputs = inputs,
++                executable = zigtoolchaininfo.zig_exe_path,
++                arguments = ["build-lib", global_args, args],
++                mnemonic = "ZigBuildStaticLib",
++                progress_message = "zig build-lib %{label}",
++                **zig_build_kwargs
++            )
+ 
+         cc_toolchain, feature_configuration = find_cc_toolchain(ctx, mandatory = False)
+         if cc_toolchain:
+@@ -653,10 +696,11 @@
+     else:
+         fail("Unknown rule kind '{}'.".format(kind))
+ 
++    _default_files = [default_output] + ([_bc_file] if _bc_file else [])
+     providers.extend([
+         DefaultInfo(
+             executable = default_output if default_output_is_executable else None,
+-            files = depset([default_output]),
++            files = depset(_default_files),
+             runfiles = zig_create_runfiles(
+                 ctx_runfiles = ctx.runfiles,
+                 direct_data = direct_data,
