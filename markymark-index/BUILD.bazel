@@ -1,28 +1,43 @@
-load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+
+_INDEX_DEPS = [
+    "//markymark-core",
+    "//markymark-kernels",
+    "//markymark-parser",
+    "@crates//:petgraph",
+    "@crates//:bumpalo",
+    "@crates//:hashbrown",
+    "@crates//:serde",
+    "@crates//:serde_json",
+    "@crates//:thiserror",
+    "@crates//:tree-sitter",
+    "@crates//:self_cell",
+    "@crates//:log",
+    "@crates//:lasso",
+]
+
+_INDEX_PROC_MACRO_DEPS = [
+    "@crates//:async-trait",
+]
 
 rust_library(
     name = "markymark-index",
     srcs = glob(["src/**/*.rs"]),
     crate_name = "markymark_index",
-    deps = [
-        "//markymark-core",
-        "//markymark-kernels",
-        "//markymark-parser",
-        "@crates//:petgraph",
-        "@crates//:bumpalo",
-        "@crates//:hashbrown",
-        "@crates//:serde",
-        "@crates//:serde_json",
-        "@crates//:thiserror",
-        "@crates//:tree-sitter",
-        "@crates//:self_cell",
-        "@crates//:log",
-        "@crates//:lasso",
-    ],
-    proc_macro_deps = [
-        "@crates//:async-trait",
-    ],
+    deps = _INDEX_DEPS,
+    proc_macro_deps = _INDEX_PROC_MACRO_DEPS,
     visibility = ["//visibility:public"],
+)
+
+# Feature-gated variant exposing bench_corpus/bench_config for benchmarks
+rust_library(
+    name = "markymark-index-bench",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "markymark_index",
+    crate_features = ["bench-internals"],
+    deps = _INDEX_DEPS,
+    proc_macro_deps = _INDEX_PROC_MACRO_DEPS,
+    testonly = True,
 )
 
 rust_test(
@@ -34,4 +49,17 @@ rust_test(
         "@crates//:criterion",
         "@crates//:tokio",
     ],
+)
+
+# Criterion benchmark: index construction paths (via_extraction vs direct)
+rust_binary(
+    name = "bench_index_construction",
+    srcs = ["benches/index_construction.rs"],
+    deps = [
+        ":markymark-index-bench",
+        "//markymark-kernels",
+        "@crates//:criterion",
+    ],
+    testonly = True,
+    tags = ["bench"],
 )

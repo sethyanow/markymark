@@ -54,3 +54,4 @@ harness = false
 [[bench]]
 name = "index_construction"
 harness = false
+required-features = ["bench-internals"]

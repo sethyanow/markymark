@@ -363,3 +363,105 @@ Ship it
         assert_eq!(old.depth, new.depth, "toc[{i}].depth");
     }
 }
+
+/// Adversarial: empty document — zero typed slices, minimal text_blob.
+/// Verifies try_new succeeds when no blob reads are needed.
+#[test]
+fn test_direct_empty_document() {
+    let source = "";
+    let engine = DocumentEngine::new(source).expect("engine create");
+    let result = engine.get_result().expect("get_result");
+    let index = DocumentIndex::from_engine_result_direct(&result, vec![], vec![])
+        .expect("direct should succeed on empty input");
+    assert_eq!(index.headings().len(), 0);
+    assert_eq!(index.wiki_links().len(), 0);
+    assert_eq!(index.tags().len(), 0);
+    assert_eq!(index.markdown_links().len(), 0);
+    assert_eq!(index.code_spans().len(), 0);
+    assert_eq!(index.tasks().len(), 0);
+    assert_eq!(index.embeds().len(), 0);
+    assert_eq!(index.callouts().len(), 0);
+    assert_eq!(index.block_refs().len(), 0);
+    assert_eq!(index.query_blocks().len(), 0);
+    assert_eq!(index.link_definitions().len(), 0);
+    assert_eq!(index.properties().len(), 0);
+    assert_eq!(index.xml_tags().len(), 0);
+    assert_eq!(index.frontmatter().len(), 0);
+    assert_eq!(index.aliases().len(), 0);
+}
+
+/// Adversarial: multi-byte UTF-8 in headings, wiki links, tags.
+/// Verifies read_blob_str correctly handles multi-byte char boundaries
+/// when borrowing from owner.text_blob. Uses parity against old path.
+#[test]
+fn test_direct_multibyte_utf8_parity() {
+    // Use format known to work with engine: heading with space, wiki link, tag
+    let source = "# 日本語の見出し\n\nSome text with [[Ñoño]] and [[café#sección|表示]]\n\n#タグ名 more text\n\nUse `コード` here.\n";
+    let engine = DocumentEngine::new(source).expect("engine create");
+    let result = engine.get_result().expect("get_result");
+    let extraction = result.to_extraction().expect("extraction");
+
+    let old = DocumentIndex::from_engine_result_with_frontmatter(&extraction, vec![], vec![]);
+    let new = DocumentIndex::from_engine_result_direct(&result, vec![], vec![])
+        .expect("direct should handle multibyte");
+
+    // Headings — at minimum the h1 should be extracted
+    assert_eq!(old.headings().len(), new.headings().len(), "headings count");
+    assert!(
+        !new.headings().is_empty(),
+        "should have at least one heading"
+    );
+    assert_eq!(old.headings()[0].text, new.headings()[0].text);
+    assert_eq!(new.headings()[0].text, "日本語の見出し");
+
+    // Wiki links — parity between old and new, however many the engine extracts
+    assert_eq!(old.wiki_links().len(), new.wiki_links().len(), "wiki count");
+    for (i, (o, n)) in old.wiki_links().iter().zip(new.wiki_links()).enumerate() {
+        assert_eq!(o.target, n.target, "wiki[{i}].target");
+        assert_eq!(o.alias, n.alias, "wiki[{i}].alias");
+        assert_eq!(o.heading, n.heading, "wiki[{i}].heading");
+    }
+
+    // Tags — parity
+    assert_eq!(old.tags().len(), new.tags().len(), "tags count");
+    for (i, (o, n)) in old.tags().iter().zip(new.tags()).enumerate() {
+        assert_eq!(o.name, n.name, "tag[{i}].name");
+    }
+
+    // Code spans — parity
+    assert_eq!(
+        old.code_spans().len(),
+        new.code_spans().len(),
+        "code_spans count"
+    );
+    for (i, (o, n)) in old.code_spans().iter().zip(new.code_spans()).enumerate() {
+        assert_eq!(o.text, n.text, "code_span[{i}].text");
+    }
+}
+
+/// Adversarial: second run — two indexes from same EngineResult.
+/// Verifies owner.text_blob is an independent copy (no shared mutable state).
+#[test]
+fn test_direct_second_run_independent() {
+    let source = "# Heading\n\n[[Link]]\n\n#tag\n";
+    let engine = DocumentEngine::new(source).expect("engine create");
+    let result = engine.get_result().expect("get_result");
+
+    let idx1 = DocumentIndex::from_engine_result_direct(&result, vec![], vec![])
+        .expect("first construction");
+    let idx2 = DocumentIndex::from_engine_result_direct(&result, vec![], vec![])
+        .expect("second construction");
+
+    // Both should produce identical content
+    assert_eq!(idx1.headings()[0].text, idx2.headings()[0].text);
+    assert_eq!(idx1.wiki_links()[0].target, idx2.wiki_links()[0].target);
+    assert_eq!(idx1.tags()[0].name, idx2.tags()[0].name);
+
+    // But they should be independent allocations (different pointers)
+    let ptr1 = idx1.headings()[0].text.as_ptr();
+    let ptr2 = idx2.headings()[0].text.as_ptr();
+    assert_ne!(
+        ptr1, ptr2,
+        "text fields should be independent copies in separate owners"
+    );
+}

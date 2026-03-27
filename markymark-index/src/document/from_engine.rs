@@ -192,6 +192,7 @@ impl DocumentIndex {
         let owner = DocumentOwner {
             arena: DocumentArena::new(),
             source_text: source,
+            text_blob: Vec::new(),
         };
         let cell = DocumentIndexCell::new(owner, move |owner| {
             let arena_ref = owner.arena.bump();

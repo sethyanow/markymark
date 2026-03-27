@@ -7,7 +7,6 @@
 |tools:{docs/tools/README.md,docs/tools/*.md}
 |plans:{docs/plans/*.md}
 |research:{docs/research/*.md}
-|memory:{docs/MEMORY.md,docs/memory/zig-patterns.md,docs/memory/architecture.md,docs/memory/archive.md}
 </docs_index>
 </agent>
 
@@ -16,24 +15,10 @@
 
 ## Agent Memory
 
-<read_this_first>
-**Read [docs/MEMORY.md](docs/MEMORY.md) at session start.** This is the single source of truth
-for cross-session knowledge: architectural decisions, failure patterns, reusable conventions,
-quality assessments, and lessons learned.
-</read_this_first>
-
-**Session discipline:**
-- **Start:** Read MEMORY.md before doing any work. Check the Key Architectural Decisions
-  and Key Failure Patterns sections — they prevent re-debating closed questions and repeating
-  known mistakes.
-- **During:** When you make a significant decision, discover a failure pattern, or learn
-  something reusable, append it to MEMORY.md immediately (not at session end).
-- **Curate often:** If a section grows stale, outdated, or redundant with the codebase,
-  trim or consolidate it. MEMORY.md should stay concise and high-signal. Remove entries
-  that are now obvious from the code itself.
-- **Do NOT use claude-mem `save_memory`** for this project — the API is unreliable. Use
-  MEMORY.md as the sole persistent memory store. claude-mem search/timeline/get_observations
-  are fine for reading cross-project history.
+Cross-session knowledge lives in **auto-memory** (persisted by Claude Code, not checked into repo).
+Auto-memory is loaded automatically at session start. Do NOT use claude-mem `save_memory` — use
+the auto-memory Write tool to `~/.claude/projects/.../memory/` files instead.
+claude-mem search/timeline/get_observations are fine for reading cross-project history.
 
 ## Development Philosophy
 

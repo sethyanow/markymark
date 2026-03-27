@@ -27,6 +27,10 @@ struct DocumentOwner {
     arena: DocumentArena,
     /// Retained source text for zero-copy [`DocumentIndex::block_text()`] access.
     source_text: String,
+    /// Raw text_blob bytes from Zig engine — text fields in the dependent borrow
+    /// directly from this via `read_blob_str(&self.text_blob, offset, len)`.
+    /// Empty for construction paths that don't use the engine (e.g., `from_ast`).
+    text_blob: Vec<u8>,
 }
 
 #[derive(Debug)]

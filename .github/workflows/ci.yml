@@ -178,6 +178,11 @@ jobs:
           bazel test --config=release //markymark-cli:markymark-cli_test --test_output=all 2>&1 | tee benchmark-artifacts/bazel-bench.txt
           echo "Benchmark tests completed"
 
+      - name: Run criterion benchmarks
+        run: |
+          bazel run --config=release //markymark-index:bench_index_construction -- --bench 2>&1 | tee benchmark-artifacts/criterion-index-construction.txt
+          echo "Criterion benchmarks completed"
+
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
         if: always()
