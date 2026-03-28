@@ -11,13 +11,13 @@ set -euo pipefail
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 mkdir -p "$INSTALL_DIR"
 
-CONFIGS="--config=release"
+CONFIGS=(--config=release)
 case "$(uname -s)" in
-  Darwin) CONFIGS="$CONFIGS --config=macos-lto" ;;
+  Darwin) CONFIGS+=(--config=macos-lto) ;;
 esac
 
 echo "Building markymark (release + LTO)..."
-bazel build $CONFIGS //markymark-cli:markymark
+bazel build "${CONFIGS[@]}" //markymark-cli:markymark
 
-cp -f "$(bazel info bazel-bin $CONFIGS)/markymark-cli/markymark" "$INSTALL_DIR/markymark"
-echo "installed: $INSTALL_DIR/markymark ($(${INSTALL_DIR}/markymark --version 2>/dev/null || echo 'version check skipped'))"
+cp -f "$(bazel info bazel-bin "${CONFIGS[@]}")/markymark-cli/markymark" "$INSTALL_DIR/markymark"
+echo "installed: ${INSTALL_DIR}/markymark ($("${INSTALL_DIR}/markymark" --version 2>/dev/null || echo 'version check skipped'))"
