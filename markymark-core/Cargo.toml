@@ -13,11 +13,12 @@ categories = ["development-tools", "text-processing"]
 default = []
 zig-kernels = ["dep:markymark-kernels"]
 semantic-search = ["dep:reqwest"]
-local-embeddings = ["dep:fastembed", "dep:tokio"]
+local-embeddings = ["dep:fastembed", "dep:tokio", "dep:openssl"]
 
 [dependencies]
 async-trait = { workspace = true }
 fastembed = { workspace = true, optional = true }
+openssl = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 serde = { workspace = true }
 tokio = { workspace = true, optional = true }
