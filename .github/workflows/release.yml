@@ -56,10 +56,14 @@ jobs:
       - name: Install Homebrew LLVM (macOS)
         if: matrix.bazel && runner.os == 'macOS'
         run: |
-          brew install llvm
+          brew install llvm lld
           # Install clang-lto-wrapper alongside Homebrew LLVM tools
           cp tools/clang-lto-wrapper.sh /opt/homebrew/opt/llvm/bin/clang-lto-wrapper
           chmod +x /opt/homebrew/opt/llvm/bin/clang-lto-wrapper
+
+      - name: Install OpenSSL (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
 
       - name: Bazel release build
         if: matrix.bazel
