@@ -14,6 +14,13 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BinDir = Join-Path $ScriptDir "..\bin"
 
 function Main {
+    # Prefer system-installed markymark if already on PATH
+    $systemBinary = Get-Command markymark -ErrorAction SilentlyContinue
+    if ($systemBinary) {
+        & $systemBinary.Source @args
+        exit $LASTEXITCODE
+    }
+
     $binary = Join-Path $BinDir "markymark.exe"
 
     if (-not (Test-Path $binary)) {

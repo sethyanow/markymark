@@ -74,6 +74,13 @@ download_binary() {
 }
 
 main() {
+    # Prefer system-installed markymark if already on PATH
+    local system_binary
+    system_binary="$(command -v markymark 2>/dev/null || true)"
+    if [[ -n "${system_binary}" ]]; then
+        exec "${system_binary}" "$@"
+    fi
+
     local binary="${BIN_DIR}/markymark"
     local exe_suffix=""
 
