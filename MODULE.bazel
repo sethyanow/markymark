@@ -53,14 +53,6 @@ crate.spec(
     features = ["ort-download-binaries", "hf-hub-native-tls"],
 )
 
-# OpenSSL vendored — hermetic Bazel sysroot can't find system OpenSSL headers.
-# Vendored compiles OpenSSL from bundled source inside the sandbox.
-crate.spec(
-    package = "openssl",
-    version = "0.10",
-    features = ["vendored"],
-)
-
 use_repo(crate, "crates")
 
 # ── Zig ──────────────────────────────────────────────────────────────────────

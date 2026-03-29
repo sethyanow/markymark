@@ -56,9 +56,6 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 # Embedding (local ONNX inference)
 fastembed = { version = "5.11", default-features = false, features = ["ort-download-binaries", "hf-hub-native-tls"] }
 
-# OpenSSL — vendored so Bazel hermetic sysroot and cross containers work
-openssl = { version = "0.10", features = ["vendored"] }
-
 # Testing
 insta = { version = "1.42", features = ["yaml"] }
 proptest = "1.5"

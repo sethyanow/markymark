@@ -28,11 +28,6 @@ bumpalo = { workspace = true }
 hashbrown = { workspace = true }
 markymark-kernels = { path = "../markymark-kernels", optional = true }
 
-# Vendor OpenSSL on Unix — hermetic Bazel sysroot and cross containers
-# can't find system headers. Windows uses SChannel, not OpenSSL.
-[target.'cfg(unix)'.dependencies]
-openssl = { workspace = true }
-
 [dev-dependencies]
 insta = { workspace = true }
 proptest = { workspace = true }
