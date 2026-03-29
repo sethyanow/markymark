@@ -61,13 +61,13 @@ jobs:
           cp tools/clang-lto-wrapper.sh /opt/homebrew/opt/llvm/bin/clang-lto-wrapper
           chmod +x /opt/homebrew/opt/llvm/bin/clang-lto-wrapper
 
-      - name: Install OpenSSL (Linux)
+      - name: Install OpenSSL dev headers (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config perl
 
       - name: Bazel release build
         if: matrix.bazel
-        run: bazel build ${{ matrix.bazel_config }} --action_env=OPENSSL_DIR=/usr //markymark-cli:markymark
+        run: bazel build ${{ matrix.bazel_config }} //markymark-cli:markymark
 
       - name: Prepare Bazel binary (Unix)
         if: matrix.bazel && runner.os != 'Windows'
@@ -111,8 +111,6 @@ jobs:
 
       - name: Cargo release build
         if: ${{ !matrix.bazel }}
-        env:
-          OPENSSL_DIR: /usr
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
             if [ -z "${ZIG_DIR:-}" ]; then
