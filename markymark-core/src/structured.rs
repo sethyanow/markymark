@@ -43,7 +43,7 @@ impl DocumentKind {
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             let lower = ext.to_ascii_lowercase();
             return match lower.as_str() {
-                "md" | "markdown" => Some(Self::Markdown),
+                "md" | "markdown" | "mdx" => Some(Self::Markdown),
                 "json" => Some(Self::Json),
                 "jsonc" => Some(Self::JsonC),
                 "json5" => Some(Self::Json5),
@@ -67,7 +67,7 @@ impl DocumentKind {
     /// Return the file extensions associated with this document kind.
     pub fn extensions(&self) -> &[&str] {
         match self {
-            Self::Markdown => &["md", "markdown"],
+            Self::Markdown => &["md", "markdown", "mdx"],
             Self::Json => &["json"],
             Self::JsonC => &["jsonc"],
             Self::Json5 => &["json5"],

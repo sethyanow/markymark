@@ -8,21 +8,13 @@
   "license": "AGPL-3.0-only",
   "repository": "https://github.com/sethyanow/markymark",
   "homepage": "https://github.com/sethyanow/markymark",
-  "keywords": ["markdown", "lsp", "mcp", "language-server", "wiki-links", "obsidian", "logseq"],
-  "mcpServers": {
-    "markymark": {
-      "command": "markymark",
-      "args": ["--mcp"]
-    }
-  },
-  "lspServers": {
-    "markdown": {
-      "command": "markymark",
-      "args": ["--lsp"],
-      "extensionToLanguage": {
-        ".md": "markdown",
-        ".mdx": "markdown"
-      }
-    }
-  }
+  "keywords": [
+    "markdown",
+    "lsp",
+    "mcp",
+    "language-server",
+    "wiki-links",
+    "obsidian",
+    "logseq"
+  ]
 }
