@@ -871,12 +871,15 @@ async fn engine_fallback_stale_on_update_failure() {
 
 /// LTO canary: verifies cross-language ThinLTO eliminates the test-only fault
 /// injection in the Zig engine. Under LTO, the magic-filename check is optimized
-/// away, so the engine creates successfully. Without LTO (debug builds), the
-/// fault injection fires and this test is skipped.
+/// away, so the engine creates successfully. Without LTO, the fault injection
+/// fires and this test must be skipped.
+///
+/// Gated on `MARKYMARK_LTO_ENABLED=1` (set by Bazel LTO configs) rather than
+/// `cfg!(debug_assertions)`, which is false in any opt build — not just LTO.
 #[tokio::test]
 async fn lto_eliminates_fault_injection() {
-    // In debug builds the fault injection is live — skip.
-    if cfg!(debug_assertions) {
+    // Only run under LTO builds — without LTO the fault injection is live.
+    if std::env::var("MARKYMARK_LTO_ENABLED").as_deref() != Ok("1") {
         return;
     }
 

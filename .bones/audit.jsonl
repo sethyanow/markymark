@@ -1814,3 +1814,5 @@
 {"timestamp":"2026-03-24T20:40:23.231079+00:00","actor":"Seth","event_type":"updated","task_id":"marky-qqb","details":{"title":"Bazel primary build system — cross-language ThinLTO, CI, release, install"}}
 {"timestamp":"2026-03-24T20:40:23.698893+00:00","actor":"Seth","event_type":"logged","task_id":"marky-qqb","details":{"message":"Session log: LTO confirmed via .llvm.NNN suffixes, config split validated via bazel cquery, install script tested, all 7 Bazel tests + all Cargo canary tests pass locally. CI/release workflows written but untested on runners."}}
 {"timestamp":"2026-03-25T11:26:33.434211+00:00","actor":"Seth","event_type":"logged","task_id":"marky-qqb","details":{"message":"PR #57 opened: optimize → ci-testing. Ready for workflow_dispatch CI test and v*-rc* tag for release matrix test."}}
+{"timestamp":"2026-03-29T18:20:32.657996+00:00","actor":"Seth","event_type":"created","task_id":"marky-hgz","details":{}}
+{"timestamp":"2026-03-29T18:20:55.780775+00:00","actor":"Seth","event_type":"dep_added","task_id":"marky-qqb","details":{"kind":"blocks","to":"marky-hgz"}}

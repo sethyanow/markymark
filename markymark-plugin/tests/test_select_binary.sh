@@ -431,7 +431,7 @@ test_plugin_json_valid() {
 test_lsp_json_uses_plugin_root() {
     if command -v python3 &>/dev/null; then
         local cmd
-        cmd=$(python3 -c "import json; print(json.load(open('${PLUGIN_DIR}/.lsp.json'))['markdown']['command'])" 2>/dev/null)
+        cmd=$(python3 -c "import json; print(json.load(open('${PLUGIN_DIR}/.lsp.json'))['markymark']['command'])" 2>/dev/null)
         if [[ "${cmd}" == *'${CLAUDE_PLUGIN_ROOT}'* ]]; then
             pass ".lsp.json uses \${CLAUDE_PLUGIN_ROOT} in command"
         else
@@ -727,9 +727,8 @@ test_falls_back_to_bundled_without_system() {
     chmod +x "${bundled}"
 
     # Use a PATH that definitely has no markymark
-    local clean_path="/usr/bin:/bin"
     local output
-    output="$(PATH="${clean_path}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
+    output="$(PATH="${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
 
     if [[ "${output}" == "BUNDLED_FALLBACK" ]]; then
         pass "falls back to bundled binary when no system binary on PATH"

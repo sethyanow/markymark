@@ -23,10 +23,6 @@ jobs:
             os: macos-latest
             bazel: true
             bazel_config: "--config=release --config=macos-lto"
-          - target: x86_64-apple-darwin
-            os: macos-13
-            bazel: true
-            bazel_config: "--config=release --config=macos-lto"
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             bazel: true
@@ -119,9 +115,9 @@ jobs:
             export PATH="$ZIG_DIR:$PATH"
           fi
           if [ "${{ matrix.cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} -p markymark-cli
+            cross build --release --target ${{ matrix.target }} -p markymark-cli --features semantic-search,local-embeddings
           else
-            cargo build --release --target ${{ matrix.target }} -p markymark-cli
+            cargo build --release --target ${{ matrix.target }} -p markymark-cli --features semantic-search,local-embeddings
           fi
         shell: bash
 

@@ -13,7 +13,16 @@ mkdir -p "$INSTALL_DIR"
 
 CONFIGS=(--config=release)
 case "$(uname -s)" in
-  Darwin) CONFIGS+=(--config=macos-lto) ;;
+  Darwin)
+    CONFIGS+=(--config=macos-lto)
+    # Install clang-lto-wrapper alongside Homebrew LLVM if not already present
+    LLVM_BIN="$(brew --prefix llvm)/bin"
+    if [[ ! -x "${LLVM_BIN}/clang-lto-wrapper" ]]; then
+      SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+      cp "${SCRIPT_DIR}/../tools/clang-lto-wrapper.sh" "${LLVM_BIN}/clang-lto-wrapper"
+      chmod +x "${LLVM_BIN}/clang-lto-wrapper"
+    fi
+    ;;
 esac
 
 echo "Building markymark (release + LTO)..."

@@ -5,8 +5,10 @@ status: active
 type: task
 priority: 1
 owner: Seth
+depends_on: [marky-hgz]
 parent: marky-o8e
 ---
+
 
 
 

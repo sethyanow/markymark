@@ -50,6 +50,7 @@ build:release   --copt=-flto=thin
 build:release   --linkopt=-flto=thin
 build:release   --@rules_rust//:extra_rustc_flags=-Clinker-plugin-lto,-Ccodegen-units=1,-Cembed-bitcode=yes
 build:release   --strip=always
+test:release    --test_env=MARKYMARK_LTO_ENABLED=1
 
 # ── macOS LTO (use with: --config=release --config=macos-lto) ────────────────
 # Routes rustc link through Homebrew clang + ld64.lld.
