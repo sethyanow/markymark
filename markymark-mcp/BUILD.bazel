@@ -4,6 +4,7 @@ rust_library(
     name = "markymark-mcp",
     srcs = glob(["src/**/*.rs"]),
     crate_name = "markymark_mcp",
+    crate_features = ["semantic-search"],
     deps = [
         "//markymark-core",
         "//markymark-index",

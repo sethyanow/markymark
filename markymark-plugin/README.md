@@ -191,10 +191,6 @@ cargo build --release
 
 See the main repo [README](https://github.com/sethyanow/markymark) for development setup.
 
-## License
-
-MIT OR Apache-2.0
-
 ## Links
 
 - [GitHub Repository](https://github.com/sethyanow/markymark)

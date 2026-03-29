@@ -4,6 +4,10 @@ rust_binary(
     name = "markymark",
     srcs = glob(["src/**/*.rs"]),
     crate_name = "markymark",
+    crate_features = [
+        "semantic-search",
+        "local-embeddings",
+    ],
     deps = [
         "//markymark-core",
         "//markymark-lsp",

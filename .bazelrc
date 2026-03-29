@@ -38,6 +38,9 @@ common          --enable_runfiles
 build:macos     --sandbox_add_mount_pair=/var/tmp
 build:linux     --sandbox_add_mount_pair=/tmp
 
+# ort-sys (ONNX Runtime) needs HOME to locate its download cache
+build           --action_env=HOME
+
 # Print test errors in console
 test            --test_output=errors
 

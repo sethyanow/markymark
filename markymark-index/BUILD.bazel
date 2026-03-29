@@ -24,7 +24,8 @@ rust_library(
     name = "markymark-index",
     srcs = glob(["src/**/*.rs"]),
     crate_name = "markymark_index",
-    deps = _INDEX_DEPS,
+    crate_features = ["embeddings"],
+    deps = _INDEX_DEPS + ["@crates//:tokio"],
     proc_macro_deps = _INDEX_PROC_MACRO_DEPS,
     visibility = ["//visibility:public"],
 )

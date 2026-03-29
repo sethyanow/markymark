@@ -43,6 +43,16 @@ crate.from_cargo(
     cargo_lockfile = "//:Cargo.lock",
     manifests = ["//:Cargo.toml"],
 )
+
+# fastembed is optional in Cargo.toml (behind local-embeddings feature).
+# crate_universe only resolves non-optional deps, so we add it explicitly.
+crate.spec(
+    package = "fastembed",
+    version = "5.13",
+    default_features = False,
+    features = ["ort-download-binaries", "hf-hub-native-tls"],
+)
+
 use_repo(crate, "crates")
 
 # ── Zig ──────────────────────────────────────────────────────────────────────
