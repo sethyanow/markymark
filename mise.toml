@@ -1,0 +1,66 @@
+# Reproducible toolchain for markymark.
+#
+# Bootstrap (fresh machine):
+#   curl https://mise.run | sh
+#   eval "$(mise activate bash)"    # or zsh/fish
+#   cd /path/to/markymark && mise trust && mise install
+#
+# See docs/DEVELOPMENT.md for the full setup guide, including system
+# dependencies that mise does NOT manage (clang/llvm-ar/ld.lld on Linux;
+# `brew install llvm` on macOS).
+
+[tools]
+# Rust toolchain — pinned to match rules_rust in MODULE.bazel:32.
+# MSRV is 1.80 (Cargo.toml:16) but dev uses 1.93.1 so `cargo clippy` and
+# the Bazel hermetic toolchain agree.
+rust = { version = "1.93.1", components = "rustfmt,clippy,rust-src" }
+
+# Zig FFI core — verified by compile-time gate in zig/build.zig:3-11.
+zig = "0.15.2"
+
+# Bazel — exact pin. bazel_compatibility is ">=7.4.0" (MODULE.bazel:4).
+bazel = "7.4.1"
+
+# Git hooks runner (repo has lefthook.yml).
+lefthook = "latest"
+
+# Cargo-installed dev tools used by lefthook (lefthook.yml:9).
+"cargo:cargo-audit" = "latest"
+
+[env]
+RUST_BACKTRACE = "1"
+
+[tasks.build]
+description = "Bazel debug build of the CLI"
+run = "bazel build //markymark-cli:markymark"
+
+[tasks.build-release]
+description = "Bazel release build (Linux LTO)"
+run = "bazel build --config=release //markymark-cli:markymark"
+
+[tasks.test]
+description = "Run all Bazel tests"
+run = "bazel test //..."
+
+[tasks.test-cargo]
+description = "Cargo canary test suite (proves Rust + Zig FFI without Bazel)"
+run = "cargo test --workspace"
+
+[tasks.lint]
+description = "clippy + rustfmt check"
+run = [
+  "cargo clippy --workspace --all-targets -- -D warnings",
+  "cargo fmt --all -- --check",
+]
+
+[tasks.audit]
+description = "cargo-audit vulnerability scan"
+run = "cargo audit"
+
+[tasks.install-local]
+description = "Install markymark to ~/.local/bin"
+run = "./scripts/install.sh"
+
+[tasks.lsp]
+description = "Run the LSP server on stdio"
+run = "bazel run //markymark-cli:markymark -- --lsp"
