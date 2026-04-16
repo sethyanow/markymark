@@ -73,6 +73,8 @@ markymark is a Rust workspace producing a Markdown LSP + MCP server. Seven crate
 
 > **Bazel is the primary build system.** Cargo is kept as a canary for compatibility.
 > Prefer `cargo-mcp` tools for Bazel operations. Fall back to raw commands below.
+>
+> **Toolchain**: versions are pinned in `mise.toml`. Bootstrap with `mise trust && mise install` (see [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)). Common commands are available as `mise run <task>` (e.g. `mise run test`, `mise run lint`).
 
 ```bash
 # Build (primary — Bazel)
