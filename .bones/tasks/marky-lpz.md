@@ -1,13 +1,14 @@
 ---
 id: marky-lpz
 title: Wire integration tests into Bazel across all crates
-status: active
+status: closed
 type: task
 priority: 2
 owner: Seth
 depends_on: [marky-prs]
 parent: marky-p88
 ---
+
 
 
 
