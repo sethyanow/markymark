@@ -14,9 +14,9 @@ walkdir = "2"
 criterion = { workspace = true }
 md5 = "0.7"
 regex = { workspace = true }
-markymark-core = { path = "../markymark-core", features = ["zig-kernels"] }
-markymark-index = { path = "../markymark-index" }
-markymark-parser = { path = "../markymark-parser" }
+markymark-core = { workspace = true, features = ["zig-kernels"] }
+markymark-index = { workspace = true }
+markymark-parser = { workspace = true }
 
 [[bench]]
 name = "brza_kernels"

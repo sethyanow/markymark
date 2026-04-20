@@ -1,9 +1,11 @@
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
+load("//:version.bzl", "VERSION")
 
 rust_binary(
     name = "markymark",
     srcs = glob(["src/**/*.rs"]),
     crate_name = "markymark",
+    version = VERSION,
     crate_features = [
         "semantic-search",
         "local-embeddings",

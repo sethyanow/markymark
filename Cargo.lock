@@ -657,6 +657,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "direct-cargo-bazel-deps"
+version = "0.0.1"
+dependencies = [
+ "fastembed",
+]
+
+[[package]]
 name = "dirs"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1581,7 +1588,7 @@ checksum = "670fdfda89751bc4a84ac13eaa63e205cf0fd22b4c9a5fbfa085b63c1f1d3a30"
 
 [[package]]
 name = "markymark-cli"
-version = "0.7.1"
+version = "0.8.0-dev0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1594,7 +1601,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-core"
-version = "0.7.1"
+version = "0.8.0-dev0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1603,7 +1610,6 @@ dependencies = [
  "hashbrown 0.16.1",
  "insta",
  "markymark-kernels",
- "openssl",
  "proptest",
  "reqwest",
  "serde",
@@ -1615,7 +1621,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-index"
-version = "0.7.1"
+version = "0.8.0-dev0"
 dependencies = [
  "async-trait",
  "bumpalo",
@@ -1641,7 +1647,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-kernels"
-version = "0.7.1"
+version = "0.8.0-dev0"
 dependencies = [
  "criterion",
  "markymark-core",
@@ -1654,7 +1660,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-lsp"
-version = "0.7.1"
+version = "0.8.0-dev0"
 dependencies = [
  "anyhow",
  "insta",
@@ -1674,7 +1680,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-mcp"
-version = "0.7.1"
+version = "0.8.0-dev0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1696,7 +1702,7 @@ dependencies = [
 
 [[package]]
 name = "markymark-parser"
-version = "0.7.1"
+version = "0.8.0-dev0"
 dependencies = [
  "bumpalo",
  "criterion",
@@ -1961,15 +1967,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
-name = "openssl-src"
-version = "300.5.5+3.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f1787d533e03597a7934fd0a765f0d28e94ecc5fb7789f8053b1e699a56f709"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "openssl-sys"
 version = "0.9.112"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1977,7 +1974,6 @@ checksum = "57d55af3b3e226502be1526dfdba67ab0e9c96fc293004e79576b2b9edb0dbdb"
 dependencies = [
  "cc",
  "libc",
- "openssl-src",
  "pkg-config",
  "vcpkg",
 ]
@@ -2602,9 +2598,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.10"
+version = "0.103.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df33b2b81ac578cabaf06b89b0631153a3f416b0a886e8a7a1707fb51abbd1ef"
+checksum = "8279bb85272c9f10811ae6a6c547ff594d6a7f3c6c6b02ee9726d1d0dcfcdd06"
 dependencies = [
  "ring",
  "rustls-pki-types",

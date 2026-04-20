@@ -1,6 +1,6 @@
 module(
     name = "markymark",
-    version = "0.7.1",
+    version = "0.8.0-dev0",
     bazel_compatibility = [">=7.4.0"],
 )
 

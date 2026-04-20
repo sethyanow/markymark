@@ -11,14 +11,23 @@ members = [
 ]
 
 [workspace.package]
-version = "0.7.1"
+version = "0.8.0-dev0"
 edition = "2021"
 rust-version = "1.80"
 license = "AGPL-3.0"
 repository = "https://github.com/sethyanow/markymark"
-authors = ["Seth Yanow <seth@yanow.me>"]
+authors = ["Seth Yanow <seth.yanow@gmail.com>"]
 
 [workspace.dependencies]
+# Internal crates — versions must match [workspace.package] version above.
+# See RELEASING.md for the bump checklist.
+markymark-core = { path = "markymark-core", version = "0.8.0-dev0" }
+markymark-kernels = { path = "markymark-kernels", version = "0.8.0-dev0" }
+markymark-parser = { path = "markymark-parser", version = "0.8.0-dev0" }
+markymark-index = { path = "markymark-index", version = "0.8.0-dev0" }
+markymark-lsp = { path = "markymark-lsp", version = "0.8.0-dev0" }
+markymark-mcp = { path = "markymark-mcp", version = "0.8.0-dev0" }
+
 # Core dependencies
 async-trait = "0.1"
 tokio = { version = "1.42", features = ["full", "test-util"] }
