@@ -47,8 +47,16 @@ impl Drop for ChildGuard {
     }
 }
 
-/// Get the path to the markymark binary built by cargo.
+/// Get the path to the markymark binary built by cargo or declared by Bazel.
+///
+/// Under Bazel, the test target declares the markymark binary as a `data` dep
+/// and exports `MARKYMARK_BIN` via `rustc_env`/`env` so the test can locate it
+/// inside the runfiles tree. Under cargo, the env var is unset and we fall
+/// back to deriving the path from `current_exe()` relative to `target/debug`.
 pub fn markymark_bin() -> PathBuf {
+    if let Ok(bin) = std::env::var("MARKYMARK_BIN") {
+        return PathBuf::from(bin);
+    }
     let mut path = std::env::current_exe()
         .expect("failed to get current exe path")
         .parent()
@@ -98,7 +106,24 @@ macro_rules! require_marksman {
     };
 }
 
+/// Directory containing test corpus markdown files.
+///
+/// Under Bazel, the test target declares `tests/corpus/**` as a `data` dep
+/// and exports `MARKYMARK_CORPUS_DIR` anchored on a specific corpus file
+/// (because `$(rlocationpath)` needs a single-file label). We detect that
+/// by checking if the path points at a file and strip the filename. Under
+/// cargo, the env var is unset and we fall back to `CARGO_MANIFEST_DIR/tests/corpus`.
 pub fn corpus_dir() -> PathBuf {
+    if let Ok(path) = std::env::var("MARKYMARK_CORPUS_DIR") {
+        let p = PathBuf::from(path);
+        return if p.is_file() {
+            p.parent()
+                .expect("corpus file has parent dir")
+                .to_path_buf()
+        } else {
+            p
+        };
+    }
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/corpus")
 }
 

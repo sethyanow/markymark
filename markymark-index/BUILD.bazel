@@ -52,22 +52,90 @@ rust_test(
     ],
 )
 
-# Integration test: parse panic-safety / data-loss regressions.
-#
-# This target exercises the panic path through DocumentIndex::from_text,
-# which under the bug swallows a tree-sitter off-by-one via catch_unwind
-# and silently drops content blocks. See the test file for full context.
-#
-# Integration tests under tests/*.rs are NOT covered by the unit-test target
-# above (which uses `crate = ":markymark-index"`). Each integration test file
-# needs its own rust_test target with `srcs = ["tests/name.rs"]`. A follow-up
-# should add targets for every other file in tests/ — currently cargo runs
-# them but Bazel CI does not.
+# Integration tests under tests/*.rs — each file gets its own rust_test
+# target. See marky-lpz for the pattern and rationale.
+
 rust_test(
     name = "parse_robustness_test",
     srcs = ["tests/parse_robustness.rs"],
     edition = "2021",
     deps = [":markymark-index"],
+)
+
+rust_test(
+    name = "connection_graph_test",
+    srcs = ["tests/connection_graph.rs"],
+    edition = "2021",
+    deps = [
+        ":markymark-index",
+        "//markymark-core",
+    ],
+)
+
+rust_test(
+    name = "document_index_test",
+    srcs = ["tests/document_index.rs"],
+    edition = "2021",
+    deps = [":markymark-index"],
+)
+
+# include_str!("../src/document/{mod,types,helpers}.rs") — paths relative to
+# this package. No runtime deps; test is a structural check on source files.
+rust_test(
+    name = "document_self_cell_test",
+    srcs = ["tests/document_self_cell.rs"],
+    edition = "2021",
+    compile_data = [
+        "src/document/mod.rs",
+        "src/document/types.rs",
+        "src/document/helpers.rs",
+    ],
+)
+
+rust_test(
+    name = "realm_index_test",
+    srcs = ["tests/realm_index.rs"],
+    edition = "2021",
+    deps = [
+        ":markymark-index",
+        "//markymark-core",
+        "@crates//:tokio",
+    ],
+)
+
+rust_test(
+    name = "resolution_test",
+    srcs = ["tests/resolution.rs"],
+    edition = "2021",
+    deps = [
+        ":markymark-index",
+        "//markymark-core",
+        "@crates//:tokio",
+    ],
+)
+
+rust_test(
+    name = "semantic_index_test",
+    srcs = ["tests/semantic_index.rs"],
+    edition = "2021",
+    deps = [
+        ":markymark-index",
+        "//markymark-core",
+        "//markymark-parser",
+        "@crates//:tokio",
+    ],
+    proc_macro_deps = ["@crates//:async-trait"],
+)
+
+rust_test(
+    name = "typed_frontmatter_test",
+    srcs = ["tests/typed_frontmatter.rs"],
+    edition = "2021",
+    deps = [
+        ":markymark-index",
+        "//markymark-core",
+        "//markymark-parser",
+    ],
 )
 
 # Criterion benchmark: index construction paths (via_extraction vs direct)

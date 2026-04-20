@@ -38,3 +38,34 @@ rust_test(
         "@crates//:reqwest",
     ],
 )
+
+# Integration tests under tests/*.rs — each file gets its own rust_test
+# target. See marky-lpz for the pattern and rationale.
+
+rust_test(
+    name = "basic_types_test",
+    srcs = ["tests/basic_types.rs"],
+    edition = "2021",
+    deps = [":markymark-core"],
+)
+
+rust_test(
+    name = "core_engine_test",
+    srcs = ["tests/core_engine.rs"],
+    edition = "2021",
+    deps = [
+        ":markymark-core",
+        "@crates//:tokio",
+    ],
+    proc_macro_deps = ["@crates//:async-trait"],
+)
+
+rust_test(
+    name = "miri_arena_test",
+    srcs = ["tests/miri_arena.rs"],
+    edition = "2021",
+    deps = [
+        ":markymark-core",
+        "@crates//:bumpalo",
+    ],
+)

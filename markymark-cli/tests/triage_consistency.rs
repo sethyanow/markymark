@@ -22,6 +22,12 @@ const ALIGNMENT_METHODS: &[&str] = &[
 const VALID_CLASSIFICATIONS: &[&str] = &["match", "intentional divergence", "bug"];
 
 fn triage_doc_path() -> std::path::PathBuf {
+    // Under Bazel, declare docs/research/*.md as a data dep and export
+    // `MARKYMARK_TRIAGE_DOC` via rustc_env; under cargo, fall back to
+    // the workspace-relative path.
+    if let Ok(p) = std::env::var("MARKYMARK_TRIAGE_DOC") {
+        return std::path::PathBuf::from(p);
+    }
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("markymark-cli should have parent dir (workspace root)")

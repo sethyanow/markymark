@@ -44,8 +44,12 @@ impl Drop for ChildGuard {
     }
 }
 
-/// Get the path to the markymark binary built by cargo.
+/// Get the path to the markymark binary. Honours `MARKYMARK_BIN` (Bazel)
+/// then falls back to `current_exe()` under cargo.
 fn markymark_bin() -> PathBuf {
+    if let Ok(bin) = std::env::var("MARKYMARK_BIN") {
+        return PathBuf::from(bin);
+    }
     let mut path = std::env::current_exe()
         .expect("failed to get current exe path")
         .parent()
@@ -57,8 +61,20 @@ fn markymark_bin() -> PathBuf {
     path
 }
 
-/// Get the path to the test corpus directory.
+/// Get the path to the test corpus directory. Honours `MARKYMARK_CORPUS_DIR`
+/// (Bazel — anchored on a specific file, test strips filename) then falls
+/// back to `CARGO_MANIFEST_DIR/tests/corpus` under cargo.
 fn corpus_dir() -> PathBuf {
+    if let Ok(path) = std::env::var("MARKYMARK_CORPUS_DIR") {
+        let p = PathBuf::from(&path);
+        return if p.is_file() {
+            p.parent()
+                .expect("corpus file has parent dir")
+                .to_path_buf()
+        } else {
+            p
+        };
+    }
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/corpus")
 }
 

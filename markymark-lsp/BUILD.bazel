@@ -1,24 +1,39 @@
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
+_LSP_DEPS = [
+    "//markymark-core",
+    "//markymark-index",
+    "//markymark-kernels",
+    "//markymark-parser",
+    "@crates//:tower-lsp-server",
+    "@crates//:lsp-types",
+    "@crates//:tokio",
+    "@crates//:serde",
+    "@crates//:serde_json",
+    "@crates//:thiserror",
+    "@crates//:anyhow",
+    "@crates//:log",
+]
+
 rust_library(
     name = "markymark-lsp",
     srcs = glob(["src/**/*.rs"]),
     crate_name = "markymark_lsp",
-    deps = [
-        "//markymark-core",
-        "//markymark-index",
-        "//markymark-kernels",
-        "//markymark-parser",
-        "@crates//:tower-lsp-server",
-        "@crates//:lsp-types",
-        "@crates//:tokio",
-        "@crates//:serde",
-        "@crates//:serde_json",
-        "@crates//:thiserror",
-        "@crates//:anyhow",
-        "@crates//:log",
-    ],
+    deps = _LSP_DEPS,
     visibility = ["//visibility:public"],
+)
+
+# Integration tests enable the `test-helpers` feature (see Cargo.toml
+# [dev-dependencies]: `markymark-lsp = { path = ".", features = ["test-helpers"] }`).
+# Creates a parallel compilation of markymark_lsp with drain_pending/try_apply_drained
+# exposed on Backend — needed for deterministic debounce testing.
+rust_library(
+    name = "markymark-lsp-testing",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "markymark_lsp",
+    crate_features = ["test-helpers"],
+    deps = _LSP_DEPS,
+    testonly = True,
 )
 
 rust_test(
@@ -27,4 +42,123 @@ rust_test(
     deps = [
         "@crates//:insta",
     ],
+)
+
+# Integration tests under tests/*.rs — each file gets its own rust_test target.
+# All depend on :markymark-lsp-testing (test-helpers feature) matching Cargo's
+# dev-dep setup. See marky-lpz for the pattern.
+
+_LSP_INTEGRATION_DEPS = [
+    ":markymark-lsp-testing",
+    "//markymark-core",
+    "@crates//:tokio",
+]
+
+_LSP_SERVER_TEST_DEPS = _LSP_INTEGRATION_DEPS + [
+    "@crates//:tower-lsp-server",
+]
+
+rust_test(
+    name = "capabilities_test",
+    srcs = ["tests/capabilities.rs"],
+    edition = "2021",
+    deps = _LSP_SERVER_TEST_DEPS,
+)
+
+rust_test(
+    name = "completion_acceptance_test",
+    srcs = ["tests/completion_acceptance.rs"],
+    edition = "2021",
+    deps = _LSP_INTEGRATION_DEPS,
+)
+
+rust_test(
+    name = "completion_context_test",
+    srcs = ["tests/completion_context.rs"],
+    edition = "2021",
+    deps = _LSP_INTEGRATION_DEPS,
+)
+
+rust_test(
+    name = "completion_results_test",
+    srcs = ["tests/completion_results.rs"],
+    edition = "2021",
+    deps = _LSP_INTEGRATION_DEPS,
+)
+
+rust_test(
+    name = "conversions_test",
+    srcs = ["tests/conversions.rs"],
+    edition = "2021",
+    deps = _LSP_SERVER_TEST_DEPS,
+)
+
+rust_test(
+    name = "debounce_test",
+    srcs = ["tests/debounce.rs"],
+    edition = "2021",
+    deps = _LSP_SERVER_TEST_DEPS,
+)
+
+rust_test(
+    name = "diagnostics_lsp_test",
+    srcs = ["tests/diagnostics.rs"],
+    edition = "2021",
+    deps = _LSP_INTEGRATION_DEPS,
+)
+
+rust_test(
+    name = "document_symbol_test",
+    srcs = ["tests/document_symbol_tests.rs"],
+    edition = "2021",
+    deps = _LSP_SERVER_TEST_DEPS,
+)
+
+rust_test(
+    name = "goto_definition_test",
+    srcs = ["tests/goto_definition_tests.rs"],
+    edition = "2021",
+    deps = _LSP_SERVER_TEST_DEPS,
+)
+
+rust_test(
+    name = "hover_test",
+    srcs = ["tests/hover_tests.rs"],
+    edition = "2021",
+    deps = _LSP_SERVER_TEST_DEPS,
+)
+
+rust_test(
+    name = "navigation_test",
+    srcs = ["tests/navigation.rs"],
+    edition = "2021",
+    deps = _LSP_INTEGRATION_DEPS + ["//markymark-index"],
+)
+
+rust_test(
+    name = "references_lsp_test",
+    srcs = ["tests/references_tests.rs"],
+    edition = "2021",
+    deps = _LSP_SERVER_TEST_DEPS,
+)
+
+rust_test(
+    name = "rename_lsp_test",
+    srcs = ["tests/rename.rs"],
+    edition = "2021",
+    deps = _LSP_SERVER_TEST_DEPS,
+)
+
+rust_test(
+    name = "state_test",
+    srcs = ["tests/state_tests.rs"],
+    edition = "2021",
+    deps = _LSP_INTEGRATION_DEPS + ["//markymark-index"],
+)
+
+rust_test(
+    name = "workspace_symbols_test",
+    srcs = ["tests/workspace_symbols.rs"],
+    edition = "2021",
+    deps = _LSP_SERVER_TEST_DEPS,
 )

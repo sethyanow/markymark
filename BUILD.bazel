@@ -4,3 +4,11 @@ exports_files([
     "Cargo.toml",
     "Cargo.lock",
 ])
+
+# Cross-package docs accessed from integration tests (e.g.,
+# markymark-cli:triage_consistency needs docs/research/marksman-alignment-triage.md).
+# The docs/ tree has no BUILD.bazel, so it's part of the root package.
+exports_files(
+    ["docs/research/marksman-alignment-triage.md"],
+    visibility = ["//markymark-cli:__subpackages__"],
+)

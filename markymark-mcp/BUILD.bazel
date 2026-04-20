@@ -34,3 +34,117 @@ rust_test(
         "@crates//:tempfile",
     ],
 )
+
+# Integration tests under tests/*.rs — each file gets its own rust_test target.
+# See marky-lpz for the pattern.
+#
+# Several tests declare `mod common;` → srcs must include tests/common/mod.rs.
+# runtime_engine_tests.rs declares the whole runtime_engine_tests/ subdirectory
+# as a module tree → its srcs includes all files under that directory.
+
+_MCP_BASE_DEPS = [
+    ":markymark-mcp",
+    "//markymark-core",
+    "@crates//:tokio",
+]
+
+_MCP_COMMON_DEPS = _MCP_BASE_DEPS + ["@crates//:tempfile"]
+
+_MCP_MOCK_ENGINE_DEPS = _MCP_BASE_DEPS + [
+    "@crates//:rmcp",
+    "@crates//:serde_json",
+]
+
+rust_test(
+    name = "diagnostics_tests",
+    srcs = [
+        "tests/diagnostics_tests.rs",
+        "tests/common/mod.rs",
+    ],
+    edition = "2021",
+    deps = _MCP_COMMON_DEPS,
+)
+
+rust_test(
+    name = "multi_root_federation",
+    srcs = [
+        "tests/multi_root_federation.rs",
+        "tests/common/mod.rs",
+    ],
+    edition = "2021",
+    deps = _MCP_COMMON_DEPS + ["@crates//:rmcp"],
+)
+
+rust_test(
+    name = "prompt_handler_tests",
+    srcs = ["tests/prompt_handler_tests.rs"],
+    edition = "2021",
+    deps = _MCP_MOCK_ENGINE_DEPS,
+    proc_macro_deps = ["@crates//:async-trait"],
+)
+
+rust_test(
+    name = "resource_handler_tests",
+    srcs = ["tests/resource_handler_tests.rs"],
+    edition = "2021",
+    deps = _MCP_MOCK_ENGINE_DEPS,
+    proc_macro_deps = ["@crates//:async-trait"],
+)
+
+rust_test(
+    name = "runtime_engine_tests",
+    srcs = [
+        "tests/runtime_engine_tests.rs",
+        "tests/common/mod.rs",
+    ] + glob(["tests/runtime_engine_tests/**/*.rs"]),
+    edition = "2021",
+    deps = _MCP_COMMON_DEPS,
+)
+
+rust_test(
+    name = "runtime_tools",
+    srcs = [
+        "tests/runtime_tools.rs",
+        "tests/common/mod.rs",
+    ],
+    edition = "2021",
+    deps = _MCP_COMMON_DEPS + ["@crates//:rmcp"],
+)
+
+rust_test(
+    name = "search_symbols_tests",
+    srcs = [
+        "tests/search_symbols_tests.rs",
+        "tests/common/mod.rs",
+    ],
+    edition = "2021",
+    deps = _MCP_COMMON_DEPS,
+)
+
+rust_test(
+    name = "slim_router_tests",
+    srcs = ["tests/slim_router_tests.rs"],
+    edition = "2021",
+    deps = _MCP_MOCK_ENGINE_DEPS,
+    proc_macro_deps = ["@crates//:async-trait"],
+)
+
+rust_test(
+    name = "subscription_tests",
+    srcs = ["tests/subscription_tests.rs"],
+    edition = "2021",
+    deps = _MCP_MOCK_ENGINE_DEPS,
+    proc_macro_deps = ["@crates//:async-trait"],
+)
+
+rust_test(
+    name = "tool_handler_tests",
+    srcs = ["tests/tool_handler_tests.rs"],
+    edition = "2021",
+    # Mirror the library's semantic-search feature so cfg gates in the test
+    # align with the behaviour under test. The library target declares
+    # crate_features = ["semantic-search"].
+    crate_features = ["semantic-search"],
+    deps = _MCP_MOCK_ENGINE_DEPS,
+    proc_macro_deps = ["@crates//:async-trait"],
+)
