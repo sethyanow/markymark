@@ -6,6 +6,7 @@
 #![warn(clippy::all)]
 
 use markymark_core::prelude::*;
+use std::borrow::Cow;
 use tree_sitter_md::MarkdownParser;
 
 mod ast;
@@ -18,6 +19,28 @@ pub use extract::*;
 pub use tree_sitter::InputEdit;
 pub use tree_sitter::Point;
 pub use tree_sitter_md::MarkdownTree;
+
+/// Normalize markdown source for tree-sitter-md's block grammar.
+///
+/// tree-sitter-md requires a trailing newline for valid block parsing;
+/// content without one produces `ERROR` nodes and node byte positions that
+/// can overshoot the source length.
+///
+/// Callers whose node byte positions must remain valid indices into the
+/// source they retain (e.g. anyone calling [`tree_sitter::Node::utf8_text`])
+/// MUST pass `&*normalize_block_source(src)` to both the parser and any
+/// subsequent slicing — the two strings must refer to the same bytes.
+///
+/// Returns `Cow::Borrowed(source)` when already normalized (including the
+/// empty string), `Cow::Owned` when a trailing `\n` had to be appended.
+#[must_use]
+pub fn normalize_block_source(source: &str) -> Cow<'_, str> {
+    if source.is_empty() || source.ends_with('\n') {
+        Cow::Borrowed(source)
+    } else {
+        Cow::Owned(format!("{source}\n"))
+    }
+}
 pub use types::*;
 
 /// Markdown parser using tree-sitter
@@ -47,19 +70,12 @@ impl Parser {
         source: &str,
         old_block_tree: Option<&tree_sitter::Tree>,
     ) -> Option<tree_sitter::Tree> {
-        let needs_newline = !source.is_empty() && !source.ends_with('\n');
-        let normalized;
-        let parse_source: &[u8] = if needs_newline {
-            normalized = format!("{source}\n");
-            normalized.as_bytes()
-        } else {
-            source.as_bytes()
-        };
+        let parse_source = normalize_block_source(source);
         let mut ts_parser = tree_sitter::Parser::new();
         ts_parser
             .set_language(&tree_sitter_md::LANGUAGE.into())
             .expect("block language load");
-        ts_parser.parse(parse_source, old_block_tree)
+        ts_parser.parse(parse_source.as_bytes(), old_block_tree)
     }
 
     /// Parse markdown text and return only the MarkdownTree, skipping AST element collection.
@@ -72,14 +88,7 @@ impl Parser {
         source: &str,
         old_tree: Option<&MarkdownTree>,
     ) -> Option<MarkdownTree> {
-        let needs_newline = !source.is_empty() && !source.ends_with('\n');
-        let normalized;
-        let parse_source = if needs_newline {
-            normalized = format!("{source}\n");
-            normalized.as_str()
-        } else {
-            source
-        };
+        let parse_source = normalize_block_source(source);
         self.parser.parse(parse_source.as_bytes(), old_tree)
     }
 
@@ -95,24 +104,18 @@ impl Parser {
         source: &str,
         old_tree: Option<&MarkdownTree>,
     ) -> CoreResult<Ast> {
-        // tree-sitter-md requires a trailing newline for valid block parsing.
-        // Normalize input to avoid ERROR nodes for content without one.
-        let needs_newline = !source.is_empty() && !source.ends_with('\n');
-        let normalized;
-        let parse_source = if needs_newline {
-            normalized = format!("{source}\n");
-            normalized.as_str()
-        } else {
-            source
-        };
+        // tree-sitter-md requires a trailing newline for valid block parsing;
+        // see [`normalize_block_source`]. The resulting `parse_source` is
+        // stored on the Ast so all downstream node byte ranges remain valid
+        // indices into the retained source.
+        let parse_source = normalize_block_source(source);
 
         let md_tree = self
             .parser
             .parse(parse_source.as_bytes(), old_tree)
             .ok_or_else(|| CoreError::Message("Failed to parse".to_string()))?;
 
-        // Store the parse source (with newline) so node byte ranges remain valid
-        Ast::from_markdown_tree(md_tree, parse_source)
+        Ast::from_markdown_tree(md_tree, &parse_source)
     }
 }
 

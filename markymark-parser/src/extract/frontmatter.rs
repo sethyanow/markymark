@@ -11,10 +11,8 @@ pub fn extract_frontmatter<'a>(
     // Check if document starts with --- followed by a newline (LF or CRLF)
     let rest = if let Some(r) = source.strip_prefix("---\r\n") {
         r
-    } else if let Some(r) = source.strip_prefix("---\n") {
-        r
     } else {
-        return None;
+        source.strip_prefix("---\n")?
     };
 
     // Handle empty frontmatter: closing --- at start of rest (with or without trailing newline)
