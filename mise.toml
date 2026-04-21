@@ -1,2 +1,14 @@
 [tools]
+# Zig — used by markymark-kernels FFI crate and the standalone zig/ build.
+# 0.15.2 matches MODULE.bazel zig.toolchain pin.
 zig = "0.15.2"
+
+# Rust — matches MODULE.bazel rust.toolchain pin (1.93.1).
+# Cargo.toml workspace MSRV is 1.80; pinning to the Bazel version keeps
+# cargo-canary builds aligned with the primary Bazel build.
+rust = "1.93.1"
+
+# Bazelisk — primary build driver. Auto-selects a compatible Bazel version
+# from MODULE.bazel (bazel_compatibility = ">=7.4.0"). Uses the npm backend
+# to avoid GitHub API rate limits on aqua:bazelbuild/bazelisk.
+"npm:@bazel/bazelisk" = "1.26.0"
