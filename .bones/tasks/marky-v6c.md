@@ -1,12 +1,13 @@
 ---
 id: marky-v6c
 title: Add ignore-filter to collect_documents (workspace scan hygiene)
-status: active
+status: closed
 type: task
 priority: 2
 depends_on: [marky-lpz]
 parent: marky-p88
 ---
+
 
 
 
