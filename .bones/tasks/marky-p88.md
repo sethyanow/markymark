@@ -19,6 +19,7 @@ depends_on: [marky-prs, marky-lpz, marky-v6c, marky-4g3, marky-gnk, marky-vew]
 
 
 
+
 ## Context
 
 Session on 2026-04-20 investigated why `markymark --mcp` wasn't showing tools in a live Claude session. Diagnosis via `/debugging-with-tools` surfaced a confirmed panic (`range end index N+1 out of range for slice of length N` at `tree-sitter-0.26.7/binding_rust/lib.rs:2010`) caused by a normalization-contract violation between `markymark_parser::Parser::parse_block_tree_only` and its caller in `markymark-index/src/document/from_engine.rs`.
@@ -50,3 +51,7 @@ Execute one per session via `/executing-plans`. Each is blocked by the previous 
 - [ ] Integration tests running in Bazel CI
 - [ ] Workspace scan respects `.gitignore` conventions
 - [ ] No silent file drops or silent `block_text()` empty returns
+
+## Log
+
+- [2026-04-22T03:59:46Z] [Seth] Adversarial finding from v6c TDD: collect_documents filter_entry uses name.to_string_lossy() for HARD_IGNORE_DIRS comparison. On Windows with non-UTF-16-valid directory names, lossy replacement chars could cause a legitimate 'target' dir to slip through hard-ignore, or unrelated names to spuriously match after replacement. macOS/Linux unaffected (UTF-8 native). Minor — worth a follow-up task if Windows support lands. markymark-mcp/src/engine/helpers.rs:140-148.

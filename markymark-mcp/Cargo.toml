@@ -29,6 +29,7 @@ schemars = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
+ignore = "0.4"
 
 [dev-dependencies]
 insta = { workspace = true }

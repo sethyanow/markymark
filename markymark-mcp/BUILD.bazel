@@ -11,6 +11,7 @@ rust_library(
         "//markymark-kernels",
         "//markymark-parser",
         "@crates//:rmcp",
+        "@crates//:ignore",
         "@crates//:regex",
         "@crates//:tokio",
         "@crates//:serde",

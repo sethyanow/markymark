@@ -1,12 +1,14 @@
 ---
 id: marky-v6c
 title: Add ignore-filter to collect_documents (workspace scan hygiene)
-status: open
+status: active
 type: task
 priority: 2
 depends_on: [marky-lpz]
 parent: marky-p88
 ---
+
+
 
 
 
@@ -144,13 +146,17 @@ Perform in this order. Each step has a verification gate.
 
 ## Success Criteria
 
-- [ ] `ignore` crate added to `markymark-mcp/Cargo.toml` and `markymark-mcp/BUILD.bazel`, `Cargo.lock` committed (req 1)
-- [ ] Hard-ignore baseline rejects `.git/`, `target/`, `bazel-*/`, `node_modules/`, `__pycache__/`, `.venv/`, `venv/` (req 2)
-- [ ] `.gitignore` / `.ignore` / `.markymarkignore` rules honoured during scan (req 1)
-- [ ] Output still sorted by path — determinism preserved (req 4)
-- [ ] Workspace with NO ignore files of any kind still gets the baseline hard-ignore (req 5)
-- [ ] Symlink cycles terminate without hanging or panicking (req 3)
-- [ ] Regression test covers all five scenarios (2a–2e above)
-- [ ] `bazel test //markymark-mcp:markymark-mcp_test` green
-- [ ] `bazel test //...` green
-- [ ] Measurable speedup recorded in `bn log`: before/after wall-clock of `collect_documents` on this worktree (was hanging past 60s)
+- [x] `ignore` crate added to `markymark-mcp/Cargo.toml` and `markymark-mcp/BUILD.bazel`, `Cargo.lock` committed (req 1)
+- [x] Hard-ignore baseline rejects `.git/`, `target/`, `bazel-*/`, `node_modules/`, `__pycache__/`, `.venv/`, `venv/` (req 2)
+- [x] `.gitignore` / `.ignore` / `.markymarkignore` rules honoured during scan (req 1)
+- [x] Output still sorted by path — determinism preserved (req 4)
+- [x] Workspace with NO ignore files of any kind still gets the baseline hard-ignore (req 5)
+- [x] Symlink cycles terminate without hanging or panicking (req 3)
+- [x] Regression test covers all five scenarios (2a–2e above) — plus 8 adversarial tests
+- [x] `bazel test //markymark-mcp:markymark-mcp_test` green
+- [x] `bazel test //...` green
+- [x] Measurable speedup recorded in `bn log`: 628 docs in 29.4ms vs >60s prior (logged 2026-04-22)
+
+## Log
+
+- [2026-04-22T04:00:28Z] [Seth] Speedup measurement: v6c_speedup_probe (debug build) collects 628 docs from /Volumes/code/markymark_worktrees/optimize in 29.4ms. Prior session (2026-04-20) documented > 60s hang on same worktree without ignore-filter. > 2000x improvement. Probe lives in markymark-mcp/src/engine/tests/mod.rs as an #[ignore]d test.
