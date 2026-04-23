@@ -35,7 +35,7 @@ impl markymark_core::inference::InferenceProvider for TestInferenceProvider {
 
 #[tokio::test]
 async fn enrich_document_no_provider_returns_not_implemented() {
-    let dir = make_temp_realm_dir("enrich-no-provider");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "# Hello\n\nSome content.\n").unwrap();
     let engine = make_engine_with_custom_realm("enrich-np", dir.path()).await;
     let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
@@ -60,7 +60,7 @@ async fn enrich_document_no_provider_returns_not_implemented() {
 
 #[tokio::test]
 async fn enrich_document_basic() {
-    let dir = make_temp_realm_dir("enrich-basic");
+    let dir = make_temp_realm_dir();
     let doc_content = "# Title\n\nSome content here.\n\n## Section\n\nMore content.\n";
     fs::write(dir.path().join("doc.md"), doc_content).unwrap();
 
@@ -110,7 +110,7 @@ async fn enrich_document_basic() {
 
 #[tokio::test]
 async fn enrich_document_skips_when_fresh() {
-    let dir = make_temp_realm_dir("enrich-fresh");
+    let dir = make_temp_realm_dir();
     let doc_content = "# Title\n\nContent.\n";
     fs::write(dir.path().join("doc.md"), doc_content).unwrap();
 
@@ -159,7 +159,7 @@ async fn enrich_document_skips_when_fresh() {
 
 #[tokio::test]
 async fn enrich_document_force_regenerates() {
-    let dir = make_temp_realm_dir("enrich-force");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "# Title\n\nContent.\n").unwrap();
 
     let engine = make_engine_with_custom_realm("enrich-force", dir.path()).await;
@@ -200,7 +200,7 @@ async fn enrich_document_force_regenerates() {
 
 #[tokio::test]
 async fn enrich_document_stale_after_content_change() {
-    let dir = make_temp_realm_dir("enrich-stale");
+    let dir = make_temp_realm_dir();
     let doc_path = dir.path().join("doc.md");
     fs::write(&doc_path, "# Title\n\nOriginal content.\n").unwrap();
 
@@ -245,7 +245,7 @@ async fn enrich_document_stale_after_content_change() {
 
 #[tokio::test]
 async fn enrich_document_custom_sidecar_dir() {
-    let dir = make_temp_realm_dir("enrich-custom-dir");
+    let dir = make_temp_realm_dir();
     let custom_sidecar = dir.path().join("custom-sidecars");
     fs::write(dir.path().join("doc.md"), "# Title\n\nContent.\n").unwrap();
 
@@ -282,7 +282,7 @@ async fn enrich_document_custom_sidecar_dir() {
 
 #[tokio::test]
 async fn enrich_document_no_headings() {
-    let dir = make_temp_realm_dir("enrich-no-headings");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "Just plain text.\n").unwrap();
 
     let engine = make_engine_with_custom_realm("enrich-nohead", dir.path()).await;
@@ -318,7 +318,7 @@ async fn enrich_document_no_headings() {
 
 #[tokio::test]
 async fn write_sidecar_error_propagated() {
-    let dir = make_temp_realm_dir("enrich-write-error");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "# Title\n\nContent.\n").unwrap();
 
     // Create a read-only directory as sidecar override — writes will fail.
@@ -370,7 +370,7 @@ async fn write_sidecar_error_propagated() {
 
 #[tokio::test]
 async fn sidecar_override_no_collision() {
-    let dir = make_temp_realm_dir("enrich-no-collision");
+    let dir = make_temp_realm_dir();
     let custom_sidecar = dir.path().join("shared-sidecars");
 
     // Create two files with the same name in different subdirectories.
@@ -539,7 +539,7 @@ fn inject_summaries_no_match_leaves_none() {
 
 #[tokio::test]
 async fn get_outline_tree_includes_sidecar_summaries() {
-    let dir = make_temp_realm_dir("enrich-outline-e2e");
+    let dir = make_temp_realm_dir();
     fs::write(
         dir.path().join("doc.md"),
         "# Title\n\nSome content.\n\n## Section\n\nMore content.\n",
@@ -613,7 +613,7 @@ async fn get_outline_tree_includes_sidecar_summaries() {
 
 #[tokio::test]
 async fn get_outline_tree_without_enrichment_has_no_summaries() {
-    let dir = make_temp_realm_dir("outline-no-enrich");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "# Title\n\nContent.\n").unwrap();
 
     let engine = make_engine_with_custom_realm("no-enrich", dir.path()).await;

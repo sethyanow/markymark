@@ -2,7 +2,7 @@ use super::*;
 use markymark_core::{Position, Range};
 use std::fs;
 
-fn make_temp_realm_dir(_suffix: &str) -> tempfile::TempDir {
+fn make_temp_realm_dir() -> tempfile::TempDir {
     tempfile::tempdir().expect("failed to create temp dir")
 }
 
@@ -37,7 +37,7 @@ mod preview_profiling;
 
 #[tokio::test]
 async fn get_outline_uses_named_realm() {
-    let dir = make_temp_realm_dir("get-outline");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "# Hello World\n\n## Section\n").unwrap();
     let engine = make_engine_with_custom_realm("my-realm", dir.path()).await;
 
@@ -78,7 +78,7 @@ async fn get_outline_uses_named_realm() {
 
 #[tokio::test]
 async fn outline_flat_format_backward_compat() {
-    let dir = make_temp_realm_dir("outline-flat");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "# Hello World\n\n## Section\n").unwrap();
     let engine = make_engine_with_custom_realm("flat-realm", dir.path()).await;
     let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
@@ -101,7 +101,7 @@ async fn outline_flat_format_backward_compat() {
 
 #[tokio::test]
 async fn outline_tree_format_nested_hierarchy() {
-    let dir = make_temp_realm_dir("outline-tree");
+    let dir = make_temp_realm_dir();
     fs::write(
         dir.path().join("doc.md"),
         "# Root\n\n## Child\n\n### Grandchild\n",
@@ -147,7 +147,7 @@ async fn outline_tree_format_nested_hierarchy() {
 #[tokio::test]
 async fn outline_tree_format_skipped_levels() {
     // h1 followed by h3 (no h2) should still produce correct hierarchy
-    let dir = make_temp_realm_dir("outline-skip");
+    let dir = make_temp_realm_dir();
     fs::write(
         dir.path().join("doc.md"),
         "# Top\n\n### Deep\n\n## Middle\n",
@@ -182,7 +182,7 @@ async fn outline_tree_format_skipped_levels() {
 
 #[tokio::test]
 async fn outline_tree_format_no_headings() {
-    let dir = make_temp_realm_dir("outline-empty");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "Just some text, no headings.\n").unwrap();
     let engine = make_engine_with_custom_realm("empty-realm", dir.path()).await;
     let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
@@ -208,7 +208,7 @@ async fn outline_tree_format_no_headings() {
 #[tokio::test]
 async fn outline_tree_root_node_no_heading() {
     // Root OutlineNode has heading=None; verify it serializes correctly
-    let dir = make_temp_realm_dir("outline-root");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "# Title\n").unwrap();
     let engine = make_engine_with_custom_realm("root-realm", dir.path()).await;
     let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
@@ -233,7 +233,7 @@ async fn outline_tree_root_node_no_heading() {
 
 #[tokio::test]
 async fn outline_include_text_false_omits_field() {
-    let dir = make_temp_realm_dir("outline-notext");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "# Title\n\nSome content here.\n").unwrap();
     let engine = make_engine_with_custom_realm("notext-realm", dir.path()).await;
     let uri = DocumentUri::from_file_path(&dir.path().join("doc.md"));
@@ -261,7 +261,7 @@ async fn outline_include_text_false_omits_field() {
 
 #[tokio::test]
 async fn outline_include_text_true_inlines_content() {
-    let dir = make_temp_realm_dir("outline-text");
+    let dir = make_temp_realm_dir();
     fs::write(
         dir.path().join("doc.md"),
         "# Title\n\nParagraph one.\n\n## Section\n\nParagraph two.\n",
@@ -308,7 +308,7 @@ async fn outline_include_text_true_inlines_content() {
 #[tokio::test]
 async fn outline_structured_doc_tree_fallback_to_flat() {
     // JSON/YAML documents should return flat format even when tree requested
-    let dir = make_temp_realm_dir("outline-structured");
+    let dir = make_temp_realm_dir();
     fs::write(
         dir.path().join("config.json"),
         r#"{"key": "value", "nested": {"inner": 42}}"#,
@@ -334,7 +334,7 @@ async fn outline_structured_doc_tree_fallback_to_flat() {
 
 #[tokio::test]
 async fn outline_unicode_headings() {
-    let dir = make_temp_realm_dir("outline-unicode");
+    let dir = make_temp_realm_dir();
     fs::write(
         dir.path().join("doc.md"),
         "# 日本語タイトル\n\n## Über-docs\n\n### 🎉 Emoji\n",
@@ -365,7 +365,7 @@ async fn outline_unicode_headings() {
 
 #[tokio::test]
 async fn export_index_uses_named_realm() {
-    let dir = make_temp_realm_dir("export-index");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "# Title\n").unwrap();
     let engine = make_engine_with_custom_realm("export-realm", dir.path()).await;
 
@@ -398,7 +398,7 @@ async fn export_index_uses_named_realm() {
 
 #[tokio::test]
 async fn search_symbols_uses_named_realm() {
-    let dir = make_temp_realm_dir("search-symbols");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "# UniqueHeadingXYZ\n").unwrap();
     let engine = make_engine_with_custom_realm("search-realm", dir.path()).await;
 
@@ -434,7 +434,7 @@ async fn search_symbols_uses_named_realm() {
 
 #[tokio::test]
 async fn find_references_uses_named_realm() {
-    let dir = make_temp_realm_dir("find-refs");
+    let dir = make_temp_realm_dir();
     // A heading with a wiki-link reference in the same file
     fs::write(
         dir.path().join("doc.md"),
@@ -485,7 +485,7 @@ async fn find_references_uses_named_realm() {
 
 #[tokio::test]
 async fn rename_uses_named_realm() {
-    let dir = make_temp_realm_dir("rename");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "# Old Name\n").unwrap();
     let engine = make_engine_with_custom_realm("rename-realm", dir.path()).await;
 
@@ -533,7 +533,7 @@ async fn rename_uses_named_realm() {
 
 #[tokio::test]
 async fn find_references_structured_doc_key_returns_empty_locations() {
-    let dir = make_temp_realm_dir("find-refs-structured-key");
+    let dir = make_temp_realm_dir();
     fs::write(
         dir.path().join("config.json"),
         "{\n  \"database\": {\n    \"host\": \"localhost\"\n  }\n}\n",
@@ -563,7 +563,7 @@ async fn find_references_structured_doc_key_returns_empty_locations() {
 
 #[tokio::test]
 async fn find_references_structured_doc_off_key_returns_error() {
-    let dir = make_temp_realm_dir("find-refs-structured-off-key");
+    let dir = make_temp_realm_dir();
     fs::write(
         dir.path().join("config.json"),
         "{\n  \"database\": {\n    \"host\": \"localhost\"\n  }\n}\n",
@@ -595,7 +595,7 @@ async fn find_references_structured_doc_off_key_returns_error() {
 
 #[tokio::test]
 async fn rename_structured_doc_returns_not_supported_error() {
-    let dir = make_temp_realm_dir("rename-structured");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("config.toml"), "host = \"localhost\"\n").unwrap();
     let engine = make_engine_with_custom_realm("rename-structured", dir.path()).await;
     let uri = DocumentUri::from_file_path(&dir.path().join("config.toml"));
@@ -735,7 +735,7 @@ async fn hash_embedding_rejects_zero_dims() {
 /// return results.
 #[tokio::test]
 async fn batch_indexed_docs_have_code_spans() {
-    let dir = make_temp_realm_dir("code-spans");
+    let dir = make_temp_realm_dir();
     fs::write(
         dir.path().join("doc.md"),
         "# Code Spans Test\n\nThe `HashMap` type is a key-value store.\n\nUse `Vec<T>` for lists.\n",
@@ -767,7 +767,7 @@ async fn batch_indexed_docs_have_code_spans() {
 /// `from_scan_with_frontmatter` constructor correctly preserves frontmatter.
 #[tokio::test]
 async fn batch_indexed_docs_preserve_frontmatter() {
-    let dir = make_temp_realm_dir("frontmatter-preservation");
+    let dir = make_temp_realm_dir();
     fs::write(
         dir.path().join("doc.md"),
         "---\ntitle: Test Document\ntags: [rust, zig]\n---\n\n# Content\n\nSome text here.\n",
@@ -1102,7 +1102,7 @@ async fn v6c_speedup_probe() {
 
 #[tokio::test]
 async fn engine_index_creates_persistent_engines() {
-    let dir = make_temp_realm_dir("engine-creates");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("one.md"), "# Heading One\n\nSome text.\n").unwrap();
     fs::write(dir.path().join("two.md"), "# Heading Two\n\nMore text.\n").unwrap();
 
@@ -1122,7 +1122,7 @@ async fn engine_index_creates_persistent_engines() {
 
 #[tokio::test]
 async fn engine_fallback_stale_on_update_failure() {
-    let dir = make_temp_realm_dir("update-fail");
+    let dir = make_temp_realm_dir();
     // Magic filename triggers forced update failure on second index.
     let path = dir.path().join("__marky_test_force_update_fail__.md");
     fs::write(&path, "# Original\n\nFirst version.\n").unwrap();
@@ -1174,7 +1174,7 @@ async fn lto_eliminates_fault_injection() {
         return;
     }
 
-    let dir = make_temp_realm_dir("lto-canary");
+    let dir = make_temp_realm_dir();
     // Magic filename that triggers forced create failure WITHOUT LTO.
     let path = dir.path().join("__marky_test_force_create_fail__.md");
     fs::write(
@@ -1203,7 +1203,7 @@ async fn lto_eliminates_fault_injection() {
 
 #[tokio::test]
 async fn engine_cleanup_on_root_removal() {
-    let dir = make_temp_realm_dir("cleanup");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "# Cleanup Test\n\nContent.\n").unwrap();
 
     let mut realm = RealmData::new();
@@ -1229,7 +1229,7 @@ async fn engine_cleanup_on_root_removal() {
 
 #[tokio::test]
 async fn engine_frontmatter_preserved() {
-    let dir = make_temp_realm_dir("frontmatter-engine");
+    let dir = make_temp_realm_dir();
     fs::write(
         dir.path().join("doc.md"),
         "---\ntitle: Engine FM Test\ntags: [alpha, beta]\naliases: [efm]\n---\n\n# Content\n\nBody text.\n",

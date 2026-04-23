@@ -54,7 +54,7 @@ async fn semantic_search_does_not_block_realm_writes() {
     let (slow_provider, embed_started) = SlowEmbeddingProvider::new(32, delay);
     let provider: Arc<dyn EmbeddingProvider> = Arc::new(slow_provider);
 
-    let dir = make_temp_realm_dir("concurrency");
+    let dir = make_temp_realm_dir();
     fs::write(
         dir.path().join("doc.md"),
         "# Hello World\n\nSome content.\n",
@@ -146,7 +146,7 @@ async fn add_root_does_not_block_realm_writes() {
     });
 
     // Create a temp dir with a markdown file that has a heading (triggers embedding).
-    let dir = make_temp_realm_dir("add-root-concurrency");
+    let dir = make_temp_realm_dir();
     fs::write(
         dir.path().join("doc.md"),
         "# Slow Embedding Test\n\nSome content.\n",
@@ -227,7 +227,7 @@ async fn add_root_concurrent_remove_discards_documents() {
         provider: Some(provider),
     });
 
-    let dir = make_temp_realm_dir("add-root-remove-race");
+    let dir = make_temp_realm_dir();
     fs::write(
         dir.path().join("doc.md"),
         "# Concurrent Remove\n\nBody content.\n",
@@ -325,7 +325,7 @@ async fn remove_root_does_not_deadlock_during_search() {
         provider: Some(provider),
     });
 
-    let dir = make_temp_realm_dir("remove-root-concurrency");
+    let dir = make_temp_realm_dir();
     fs::write(
         dir.path().join("doc.md"),
         "# Slow Embedding Test\n\nSome content.\n",
@@ -415,7 +415,7 @@ async fn realm_stats_does_not_deadlock_during_search() {
         provider: Some(provider),
     });
 
-    let dir = make_temp_realm_dir("realm-stats-concurrency");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "# Alpha\n\nsemantic content\n").unwrap();
     let add_result = engine
         .execute(CoreOperation::AddRoot {

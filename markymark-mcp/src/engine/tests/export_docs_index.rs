@@ -65,7 +65,7 @@ async fn nonexistent_realm_returns_error() {
 
 #[tokio::test]
 async fn single_root_flat_files() {
-    let dir = make_temp_realm_dir("export-flat");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("README.md"), "# Root Doc\n").unwrap();
     fs::write(dir.path().join("guide.md"), "# Guide\n").unwrap();
 
@@ -94,7 +94,7 @@ async fn single_root_flat_files() {
 
 #[tokio::test]
 async fn single_root_nested_dirs() {
-    let dir = make_temp_realm_dir("export-nested");
+    let dir = make_temp_realm_dir();
     fs::create_dir_all(dir.path().join("core")).unwrap();
     fs::create_dir_all(dir.path().join("advanced")).unwrap();
     fs::write(dir.path().join("core/_index.md"), "# Core Index\n").unwrap();
@@ -129,7 +129,7 @@ async fn single_root_nested_dirs() {
 
 #[tokio::test]
 async fn deep_nesting_preserves_subpath() {
-    let dir = make_temp_realm_dir("export-deep");
+    let dir = make_temp_realm_dir();
     fs::create_dir_all(dir.path().join("tooling/sub")).unwrap();
     fs::write(dir.path().join("tooling/sub/deep.md"), "# Deep Doc\n").unwrap();
 
@@ -152,7 +152,7 @@ async fn deep_nesting_preserves_subpath() {
 
 #[tokio::test]
 async fn name_override_replaces_derived_name() {
-    let dir = make_temp_realm_dir("export-override");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "# Doc\n").unwrap();
 
     let engine = make_engine_with_root(dir.path()).await;
@@ -173,7 +173,7 @@ async fn name_override_replaces_derived_name() {
 
 #[tokio::test]
 async fn deterministic_output() {
-    let dir = make_temp_realm_dir("export-deterministic");
+    let dir = make_temp_realm_dir();
     fs::create_dir_all(dir.path().join("z")).unwrap();
     fs::create_dir_all(dir.path().join("a")).unwrap();
     fs::write(dir.path().join("z/zebra.md"), "# Zebra\n").unwrap();
@@ -203,7 +203,7 @@ async fn deterministic_output() {
 
 #[tokio::test]
 async fn root_with_zero_docs_is_skipped() {
-    let dir = make_temp_realm_dir("export-empty-root");
+    let dir = make_temp_realm_dir();
     // Create a root with only non-md files.
     fs::write(dir.path().join("data.json"), "{}").unwrap();
 
@@ -222,8 +222,8 @@ async fn root_with_zero_docs_is_skipped() {
 
 #[tokio::test]
 async fn multiple_roots_produce_multiple_entries() {
-    let dir1 = make_temp_realm_dir("export-multi-1");
-    let dir2 = make_temp_realm_dir("export-multi-2");
+    let dir1 = make_temp_realm_dir();
+    let dir2 = make_temp_realm_dir();
     fs::write(dir1.path().join("a.md"), "# A\n").unwrap();
     fs::write(dir2.path().join("b.md"), "# B\n").unwrap();
 
@@ -255,7 +255,7 @@ async fn multiple_roots_produce_multiple_entries() {
 
 #[tokio::test]
 async fn mixed_root_and_nested_files() {
-    let dir = make_temp_realm_dir("export-mixed");
+    let dir = make_temp_realm_dir();
     fs::create_dir_all(dir.path().join("core")).unwrap();
     fs::write(dir.path().join("README.md"), "# Root\n").unwrap();
     fs::write(dir.path().join("core/types.md"), "# Types\n").unwrap();
@@ -283,7 +283,7 @@ async fn mixed_root_and_nested_files() {
 
 #[tokio::test]
 async fn kebab_name_from_underscore_root() {
-    let dir = make_temp_realm_dir("export-kebab");
+    let dir = make_temp_realm_dir();
     // tempdir names are random, but let's test the name logic indirectly
     // by using name_override=None and checking the entry starts with [...]
     fs::write(dir.path().join("doc.md"), "# Doc\n").unwrap();
@@ -307,8 +307,8 @@ async fn kebab_name_from_underscore_root() {
 
 #[tokio::test]
 async fn root_count_excludes_empty_roots() {
-    let dir_with_md = make_temp_realm_dir("export-count-md");
-    let dir_without_md = make_temp_realm_dir("export-count-nomd");
+    let dir_with_md = make_temp_realm_dir();
+    let dir_without_md = make_temp_realm_dir();
     fs::write(dir_with_md.path().join("doc.md"), "# Doc\n").unwrap();
     fs::write(dir_without_md.path().join("data.json"), "{}").unwrap();
 
@@ -344,7 +344,7 @@ async fn root_count_excludes_empty_roots() {
 
 #[tokio::test]
 async fn root_display_absolute_path() {
-    let dir = make_temp_realm_dir("export-abs-display");
+    let dir = make_temp_realm_dir();
     fs::write(dir.path().join("doc.md"), "# Doc\n").unwrap();
 
     let engine = make_engine_with_root(dir.path()).await;

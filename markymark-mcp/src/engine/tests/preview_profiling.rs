@@ -54,7 +54,7 @@ fn streamed_preview(path: &std::path::Path, target_line: u32, max_bytes: usize) 
 #[tokio::test]
 #[ignore = "performance profiling -- run manually: cargo test -p markymark-mcp --features semantic-search -- preview_io_cost_large_file --ignored --nocapture"]
 async fn preview_io_cost_large_file() {
-    let dir = make_temp_realm_dir("preview-io-profile");
+    let dir = make_temp_realm_dir();
     const ITERS: u32 = 50;
 
     eprintln!(
@@ -118,7 +118,7 @@ async fn preview_io_cost_large_file() {
 #[tokio::test]
 #[ignore = "performance profiling -- run manually: cargo test -p markymark-mcp --features semantic-search -- preview_io_cost_multi_file --ignored --nocapture"]
 async fn preview_io_cost_multi_file() {
-    let dir = make_temp_realm_dir("preview-io-multi");
+    let dir = make_temp_realm_dir();
     const FILE_BYTES: usize = 500_000; // 500 KB per file
     const ITERS: u32 = 20;
 
