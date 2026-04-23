@@ -45,18 +45,15 @@ pub(crate) const SEMANTIC_SEARCH_MAX_TOP_K: u32 = 100;
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for MarkymarkMcp {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some(
-                "markymark MCP tools and resources for markdown indexing".to_string(),
-            ),
-            capabilities: ServerCapabilities::builder()
+        ServerInfo::new(
+            ServerCapabilities::builder()
                 .enable_prompts()
                 .enable_tools()
                 .enable_resources()
                 .enable_resources_subscribe()
                 .build(),
-            ..ServerInfo::default()
-        }
+        )
+        .with_instructions("markymark MCP tools and resources for markdown indexing")
     }
 
     fn subscribe(
@@ -117,7 +114,7 @@ impl ServerHandler for MarkymarkMcp {
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
         let result = self.read_resource(&request.uri).await;
-        result.map(|contents| ReadResourceResult { contents })
+        result.map(ReadResourceResult::new)
     }
 }
 

@@ -26,7 +26,7 @@
 
 ```toml
 [dependencies]
-rmcp = { version = "0.15", features = ["server", "transport-io"] }
+rmcp = { version = "1.5", features = ["server", "transport-io"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 schemars = "1.2"
@@ -215,7 +215,7 @@ impl ServerHandler for MarkymarkMcp {
 **Solution:** Enable the right features:
 ```toml
 # Server with stdio transport
-rmcp = { version = "0.15", features = ["server", "transport-io"] }
+rmcp = { version = "1.5", features = ["server", "transport-io"] }
 
 # Client connecting to child process
 rmcp = { version = "0.15", features = ["client", "transport-child-process"] }
