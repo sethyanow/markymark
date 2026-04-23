@@ -6,6 +6,20 @@ fn make_temp_realm_dir() -> tempfile::TempDir {
     tempfile::tempdir().expect("failed to create temp dir")
 }
 
+/// Index `dir` into the default realm and return the engine.
+/// Distinct from `make_engine_with_custom_realm`: uses the default realm
+/// directly (no CreateRealm step).
+async fn make_engine_with_root(dir: &Path) -> RuntimeEngine {
+    let engine = RuntimeEngine::default();
+    engine
+        .execute(CoreOperation::AddRoot {
+            realm: "default".to_string(),
+            root: dir.to_path_buf(),
+        })
+        .await;
+    engine
+}
+
 async fn make_engine_with_custom_realm(realm_name: &str, dir: &Path) -> RuntimeEngine {
     let engine = RuntimeEngine::default();
     // create the realm
