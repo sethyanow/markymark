@@ -46,14 +46,9 @@ pub struct SlimMarkymarkMcp {
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for SlimMarkymarkMcp {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some(
-                "Slim markymark MCP router. Use execute({operation, params}) for all operations."
-                    .to_string(),
-            ),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            ..ServerInfo::default()
-        }
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+            "Slim markymark MCP router. Use execute({operation, params}) for all operations.",
+        )
     }
 }
 

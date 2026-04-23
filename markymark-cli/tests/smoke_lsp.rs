@@ -35,8 +35,12 @@ impl Drop for ChildGuard {
     }
 }
 
-/// Get the path to the markymark binary built by cargo.
+/// Get the path to the markymark binary. Honours `MARKYMARK_BIN` (Bazel)
+/// then falls back to `current_exe()` under cargo.
 fn markymark_bin() -> String {
+    if let Ok(bin) = std::env::var("MARKYMARK_BIN") {
+        return bin;
+    }
     let mut path = std::env::current_exe()
         .expect("failed to get current exe path")
         .parent()

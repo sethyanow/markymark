@@ -4,12 +4,25 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::bail;
+use ignore::WalkBuilder;
 use markymark_core::structured::DocumentKind;
 use markymark_core::DocumentUri;
 #[cfg(feature = "semantic-search")]
 use markymark_core::Range;
 use markymark_index::RealmIndex;
 use markymark_kernels::tokens;
+
+/// Directory names that are hard-ignored regardless of user `.gitignore`
+/// configuration. Matches build-artefact and vendored-dep conventions common
+/// across Rust, Python, JS, and Bazel ecosystems.
+const HARD_IGNORE_DIRS: &[&str] = &[
+    ".git",
+    "target",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+];
 
 /// Count total estimated tokens across all documents in a realm.
 pub(crate) fn total_tokens_for_realm(realm: &RealmIndex) -> (u64, usize) {
@@ -113,33 +126,57 @@ pub(crate) fn validate_workspace_root(root: &Path) -> anyhow::Result<()> {
 }
 
 pub(crate) fn collect_documents(root: &Path) -> Vec<(PathBuf, DocumentKind)> {
-    let mut stack = vec![root.to_path_buf()];
-    let mut files = Vec::new();
+    let walker = WalkBuilder::new(root)
+        .add_custom_ignore_filename(".markymarkignore")
+        // Apply .gitignore rules in any markymark workspace, not only inside
+        // a git repo. Users expect a .gitignore placed next to their notes
+        // to be honoured regardless of whether `git init` has been run.
+        .require_git(false)
+        // Walk hidden files — `.env` is a first-class `DocumentKind::DotEnv`
+        // and the prior `fs::read_dir` walker did not filter hidden entries.
+        // Hidden dirs we actually want to skip (`.git/`) are handled by the
+        // explicit `HARD_IGNORE_DIRS` filter below.
+        .hidden(false)
+        // Follow symlinks — Bazel runfiles expose test fixtures as symlinks,
+        // and the prior `fs::read_dir` + `Path::is_dir` walker followed links
+        // by default. `ignore` has built-in cycle detection (terminates on
+        // loops) so we do not need to keep links off for safety.
+        .follow_links(true)
+        .filter_entry(|entry| {
+            // Apply hard-ignore to directories only — a regular file named
+            // "target" should not be rejected here; file-kind filtering happens
+            // below via DocumentKind::from_path.
+            if entry.file_type().is_some_and(|ft| ft.is_dir()) {
+                let name = entry.file_name().to_string_lossy();
+                if HARD_IGNORE_DIRS.contains(&name.as_ref()) {
+                    return false;
+                }
+                if name.starts_with("bazel-") {
+                    return false;
+                }
+            }
+            true
+        })
+        .build();
 
-    while let Some(dir) = stack.pop() {
-        let read_dir = match fs::read_dir(&dir) {
-            Ok(read_dir) => read_dir,
+    let mut files = Vec::new();
+    for entry in walker {
+        // Log-and-continue on permission / I/O / loop errors to match the
+        // prior fs::read_dir contract (helpers.rs had `Err(_) => continue`).
+        let entry = match entry {
+            Ok(entry) => entry,
             Err(_) => continue,
         };
-
-        for entry in read_dir {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(_) => continue,
-            };
-            let path = entry.path();
-
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-
-            if let Some(kind) = DocumentKind::from_path(&path) {
-                files.push((path, kind));
-            }
+        if !entry.file_type().is_some_and(|ft| ft.is_file()) {
+            continue;
+        }
+        let path = entry.into_path();
+        if let Some(kind) = DocumentKind::from_path(&path) {
+            files.push((path, kind));
         }
     }
 
+    // ignore::Walk visit order is unspecified; preserve existing sort contract.
     files.sort_by(|(a, _), (b, _)| a.cmp(b));
     files
 }

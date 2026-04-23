@@ -28,19 +28,45 @@ bash markymark-plugin/tests/test_hooks.sh
 
 ## Version Bumping
 
-The workspace uses a single version in the root `Cargo.toml`:
+The workspace version is replicated across **five** source files. Each
+ecosystem (Bazel, Cargo, plugin manifest, VSCode extension) needs its own
+literal — none can load `version.bzl`, and `MODULE.bazel` is evaluated in
+a restricted context that can't read `Cargo.toml`.
 
-```toml
-[workspace.package]
-version = "0.1.0"
-```
+| # | File | Lines to edit | Purpose |
+|---|------|---------------|---------|
+| 1 | `version.bzl` (root) | 1 | `VERSION` constant loaded by `BUILD.bazel` files; drives `CARGO_PKG_VERSION` in Bazel-built binaries so `markymark --version` reports correctly |
+| 2 | `Cargo.toml` (root) | 7 | `[workspace.package].version` + six `[workspace.dependencies]` entries for internal crates (`markymark-core`, `-kernels`, `-parser`, `-index`, `-lsp`, `-mcp`). All six must match the package version for Cargo/crates.io publish. |
+| 3 | `MODULE.bazel` | 1 | Bazel module declaration |
+| 4 | `markymark-plugin/.claude-plugin/plugin.json` | 1 | Claude Code plugin manifest (not auto-derived) |
+| 5 | `markymark-vscode/package.json` | 1 | VSCode extension manifest |
 
-All crates inherit via `version.workspace = true`. To bump:
+Member crates use `version.workspace = true` and internal deps use
+`{ workspace = true }`, so no per-crate `Cargo.toml` edits are needed.
 
-1. Edit `version` in `Cargo.toml` (root, under `[workspace.package]`)
-2. Edit `version` in `markymark-plugin/.claude-plugin/plugin.json` (not auto-derived)
-3. Run `cargo build` to regenerate `Cargo.lock` (7 internal crate entries change)
-4. Commit all three files together: `Cargo.toml`, `plugin.json`, `Cargo.lock`
+To bump:
+
+1. Edit `VERSION` in `version.bzl`
+2. Edit `Cargo.toml`: update `[workspace.package].version` AND all 6
+   `[workspace.dependencies]` entries for `markymark-*` (seven version
+   strings total, all in root `Cargo.toml`)
+3. Edit `version` in `MODULE.bazel`
+4. Edit `version` in `markymark-plugin/.claude-plugin/plugin.json`
+5. Edit `version` in `markymark-vscode/package.json`
+6. Run `cargo update -p markymark-core -p markymark-parser -p markymark-index -p markymark-kernels -p markymark-lsp -p markymark-mcp -p markymark-cli` to refresh `Cargo.lock` (faster than a full build; doesn't require Zig on PATH)
+7. Run `bazel build //markymark-cli:markymark` and verify `bazel-bin/markymark-cli/markymark --version` reports the new version (not `0.0.0` — that indicates a missed `rust_binary(version = VERSION)` wiring in some `BUILD.bazel`)
+8. Commit together: `version.bzl`, `Cargo.toml`, `MODULE.bazel`, `plugin.json`, `package.json`, `Cargo.lock`
+
+**Why multiple places?** Cargo, Bazel, and the plugin manifest each have
+their own version literal because none can read the others:
+
+- `MODULE.bazel` can't `load()` arbitrary `.bzl` files (restricted evaluation context)
+- `version.bzl` can't be read by Cargo or `plugin.json`
+- `rust_binary` defaults `CARGO_PKG_VERSION` to `"0.0.0"` when the `version` attr is unset (rules_rust `rustc.bzl`); `version.bzl` consolidates all `BUILD.bazel` targets so they don't each need a literal
+
+Within each system we've minimized duplication: a single `VERSION` in
+`version.bzl` for all Bazel targets, `version.workspace = true` for all
+member crates, and `{ workspace = true }` for all internal deps.
 
 ## crates.io Publishing
 

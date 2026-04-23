@@ -183,10 +183,8 @@ pub(crate) fn build_outline<'arena>(
 /// items are silently ignored — aliases are always strings in practice.
 fn collect_alias_strings(value: &FrontmatterValueOwned, aliases: &mut Vec<String>) {
     match value {
-        FrontmatterValueOwned::String(s) => {
-            if !s.is_empty() {
-                aliases.push(s.clone());
-            }
+        FrontmatterValueOwned::String(s) if !s.is_empty() => {
+            aliases.push(s.clone());
         }
         FrontmatterValueOwned::List(items) => {
             for item in items {

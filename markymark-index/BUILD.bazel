@@ -1,28 +1,44 @@
-load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+
+_INDEX_DEPS = [
+    "//markymark-core",
+    "//markymark-kernels",
+    "//markymark-parser",
+    "@crates//:petgraph",
+    "@crates//:bumpalo",
+    "@crates//:hashbrown",
+    "@crates//:serde",
+    "@crates//:serde_json",
+    "@crates//:thiserror",
+    "@crates//:tree-sitter",
+    "@crates//:self_cell",
+    "@crates//:log",
+    "@crates//:lasso",
+]
+
+_INDEX_PROC_MACRO_DEPS = [
+    "@crates//:async-trait",
+]
 
 rust_library(
     name = "markymark-index",
     srcs = glob(["src/**/*.rs"]),
     crate_name = "markymark_index",
-    deps = [
-        "//markymark-core",
-        "//markymark-kernels",
-        "//markymark-parser",
-        "@crates//:petgraph",
-        "@crates//:bumpalo",
-        "@crates//:hashbrown",
-        "@crates//:serde",
-        "@crates//:serde_json",
-        "@crates//:thiserror",
-        "@crates//:tree-sitter",
-        "@crates//:self_cell",
-        "@crates//:log",
-        "@crates//:lasso",
-    ],
-    proc_macro_deps = [
-        "@crates//:async-trait",
-    ],
+    crate_features = ["embeddings"],
+    deps = _INDEX_DEPS + ["@crates//:tokio"],
+    proc_macro_deps = _INDEX_PROC_MACRO_DEPS,
     visibility = ["//visibility:public"],
+)
+
+# Feature-gated variant exposing bench_corpus/bench_config for benchmarks
+rust_library(
+    name = "markymark-index-bench",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "markymark_index",
+    crate_features = ["bench-internals"],
+    deps = _INDEX_DEPS,
+    proc_macro_deps = _INDEX_PROC_MACRO_DEPS,
+    testonly = True,
 )
 
 rust_test(
@@ -34,4 +50,103 @@ rust_test(
         "@crates//:criterion",
         "@crates//:tokio",
     ],
+)
+
+# Integration tests under tests/*.rs — each file gets its own rust_test
+# target. See marky-lpz for the pattern and rationale.
+
+rust_test(
+    name = "parse_robustness_test",
+    srcs = ["tests/parse_robustness.rs"],
+    edition = "2021",
+    deps = [":markymark-index"],
+)
+
+rust_test(
+    name = "connection_graph_test",
+    srcs = ["tests/connection_graph.rs"],
+    edition = "2021",
+    deps = [
+        ":markymark-index",
+        "//markymark-core",
+    ],
+)
+
+rust_test(
+    name = "document_index_test",
+    srcs = ["tests/document_index.rs"],
+    edition = "2021",
+    deps = [":markymark-index"],
+)
+
+# include_str!("../src/document/{mod,types,helpers}.rs") — paths relative to
+# this package. No runtime deps; test is a structural check on source files.
+rust_test(
+    name = "document_self_cell_test",
+    srcs = ["tests/document_self_cell.rs"],
+    edition = "2021",
+    compile_data = [
+        "src/document/mod.rs",
+        "src/document/types.rs",
+        "src/document/helpers.rs",
+    ],
+)
+
+rust_test(
+    name = "realm_index_test",
+    srcs = ["tests/realm_index.rs"],
+    edition = "2021",
+    deps = [
+        ":markymark-index",
+        "//markymark-core",
+        "@crates//:tokio",
+    ],
+)
+
+rust_test(
+    name = "resolution_test",
+    srcs = ["tests/resolution.rs"],
+    edition = "2021",
+    deps = [
+        ":markymark-index",
+        "//markymark-core",
+        "@crates//:tokio",
+    ],
+)
+
+rust_test(
+    name = "semantic_index_test",
+    srcs = ["tests/semantic_index.rs"],
+    edition = "2021",
+    deps = [
+        ":markymark-index",
+        "//markymark-core",
+        "//markymark-parser",
+        "@crates//:tokio",
+    ],
+    proc_macro_deps = ["@crates//:async-trait"],
+)
+
+rust_test(
+    name = "typed_frontmatter_test",
+    srcs = ["tests/typed_frontmatter.rs"],
+    edition = "2021",
+    deps = [
+        ":markymark-index",
+        "//markymark-core",
+        "//markymark-parser",
+    ],
+)
+
+# Criterion benchmark: index construction paths (via_extraction vs direct)
+rust_binary(
+    name = "bench_index_construction",
+    srcs = ["benches/index_construction.rs"],
+    deps = [
+        ":markymark-index-bench",
+        "//markymark-kernels",
+        "@crates//:criterion",
+    ],
+    testonly = True,
+    tags = ["bench"],
 )

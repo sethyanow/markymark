@@ -3,7 +3,13 @@
 use std::process::Command;
 
 /// Helper to get the path to the markymark binary.
+///
+/// Under Bazel, `MARKYMARK_BIN` is set via `rustc_env` from `$(rootpath)`.
+/// Under cargo, falls back to `current_exe()` relative to `target/debug`.
 fn markymark_bin() -> String {
+    if let Ok(bin) = std::env::var("MARKYMARK_BIN") {
+        return bin;
+    }
     let mut path = std::env::current_exe()
         .expect("current exe")
         .parent()

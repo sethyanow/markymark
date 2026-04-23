@@ -30,10 +30,16 @@ struct RawBlock {
 /// Parses only the block grammar (no inline parsing). Blocks whose start_byte
 /// falls within the frontmatter region are excluded.
 ///
+/// Callers MUST pass source pre-normalized via [`normalize_for_block_parse`]
+/// so that tree-sitter-md's internal newline normalization does not produce
+/// node byte positions that overshoot the caller's source length.
+///
 /// Degrades gracefully to empty on parser failure or tree-sitter panics.
 fn extract_content_blocks(source: &str) -> Vec<RawBlock> {
     // catch_unwind guards against tree-sitter panics on edge-case inputs
-    // (e.g. node byte ranges exceeding source length).
+    // (e.g. node byte ranges exceeding source length). Defence-in-depth:
+    // the normalization at the entry point should prevent these, but we keep
+    // the guard so that any still-unknown panic path doesn't abort indexing.
     std::panic::catch_unwind(|| extract_content_blocks_inner(source)).unwrap_or_default()
 }
 
@@ -172,12 +178,33 @@ impl DocumentIndex {
     /// When `source` is non-empty, content blocks are extracted via tree-sitter
     /// block-tree parsing and `block_text()` returns original source slices.
     /// Use this in production paths where the original text is available.
+    ///
+    /// # Source normalization
+    ///
+    /// `markymark_parser::Parser::parse_block_tree_only` internally appends `\n`
+    /// to source that lacks a trailing newline so tree-sitter-md's block
+    /// grammar produces a clean tree instead of ERROR nodes. The resulting
+    /// node byte positions reference that normalized buffer, which is one byte
+    /// longer than the caller's source when normalization fired.
+    ///
+    /// We apply the same normalization up-front so that every downstream
+    /// consumer — the tree-walking in `extract_content_blocks`, the
+    /// `is_logseq_heading` call that slices source via `Node::utf8_text`, and
+    /// the stored `DocumentOwner.source_text` used by `block_text()` — agrees
+    /// on a single byte sequence. Without this, an off-by-one in `utf8_text`
+    /// either panics (caught by `catch_unwind`, entire file silently dropped)
+    /// or `block_text` silently returns `""` for the final block.
     pub fn from_engine_result_with_source(
         data: &EngineExtraction,
         frontmatter: Vec<FrontmatterOwnedEntry>,
         aliases: Vec<String>,
         source: String,
     ) -> Self {
+        // See [`markymark_parser::normalize_block_source`]. We must apply the
+        // same normalization up-front so that `DocumentOwner.source_text`,
+        // the tree walked by `collect_blocks`, and the slices taken by
+        // `is_logseq_heading::utf8_text` all agree on a single byte sequence.
+        let source = markymark_parser::normalize_block_source(&source).into_owned();
         let raw_blocks = extract_content_blocks(&source);
         Self::from_engine_result_inner(data, frontmatter, aliases, source, raw_blocks)
     }

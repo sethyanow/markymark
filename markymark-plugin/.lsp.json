@@ -1,10 +1,21 @@
 {
-  "markdown": {
+  "markymark": {
     "command": "${CLAUDE_PLUGIN_ROOT}/scripts/select-binary.sh",
     "args": ["--lsp"],
     "extensionToLanguage": {
       ".md": "markdown",
-      ".mdx": "markdown"
+      ".markdown": "markdown",
+      ".mdx": "markdown",
+      ".json": "json",
+      ".jsonc": "jsonc",
+      ".json5": "json5",
+      ".jsonl": "jsonl",
+      ".yaml": "yaml",
+      ".yml": "yaml",
+      ".toml": "toml",
+      ".env": "dotenv",
+      ".ini": "ini",
+      ".cfg": "ini"
     }
   }
 }

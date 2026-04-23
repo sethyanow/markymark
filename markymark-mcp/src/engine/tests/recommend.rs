@@ -2,18 +2,7 @@
 
 use super::*;
 
-// ── Helpers ──
-
-async fn make_engine_with_root(dir: &Path) -> RuntimeEngine {
-    let engine = RuntimeEngine::default();
-    engine
-        .execute(CoreOperation::AddRoot {
-            realm: "default".to_string(),
-            root: dir.to_path_buf(),
-        })
-        .await;
-    engine
-}
+// ── Helpers (domain-specific; `make_engine_with_root` lives in tests/mod.rs) ──
 
 fn extract_recommendations(
     result: CoreOperationResult,

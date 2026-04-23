@@ -22,29 +22,17 @@ impl MarkymarkMcp {
                 "explain-link",
                 Some("Analyze and explain a markdown link target in document context"),
                 Some(vec![
-                    PromptArgument {
-                        name: "uri".to_string(),
-                        title: None,
-                        description: Some("Document URI (file://) containing the link".to_string()),
-                        required: Some(true),
-                    },
-                    PromptArgument {
-                        name: "target".to_string(),
-                        title: None,
-                        description: Some(
-                            "Link target (e.g. page-name, page#heading, #local-heading)"
-                                .to_string(),
-                        ),
-                        required: Some(true),
-                    },
-                    PromptArgument {
-                        name: "realm".to_string(),
-                        title: None,
-                        description: Some(
-                            "Optional realm name (defaults to 'default')".to_string(),
-                        ),
-                        required: Some(false),
-                    },
+                    PromptArgument::new("uri")
+                        .with_description("Document URI (file://) containing the link")
+                        .with_required(true),
+                    PromptArgument::new("target")
+                        .with_description(
+                            "Link target (e.g. page-name, page#heading, #local-heading)",
+                        )
+                        .with_required(true),
+                    PromptArgument::new("realm")
+                        .with_description("Optional realm name (defaults to 'default')")
+                        .with_required(false),
                 ]),
             ),
             Prompt::new(
@@ -53,32 +41,18 @@ impl MarkymarkMcp {
                     "Suggest relevant references for content at a position in a markdown document",
                 ),
                 Some(vec![
-                    PromptArgument {
-                        name: "uri".to_string(),
-                        title: None,
-                        description: Some("Document URI (file://) to analyze".to_string()),
-                        required: Some(true),
-                    },
-                    PromptArgument {
-                        name: "line".to_string(),
-                        title: None,
-                        description: Some("0-based line number".to_string()),
-                        required: Some(true),
-                    },
-                    PromptArgument {
-                        name: "character".to_string(),
-                        title: None,
-                        description: Some("0-based character offset".to_string()),
-                        required: Some(true),
-                    },
-                    PromptArgument {
-                        name: "realm".to_string(),
-                        title: None,
-                        description: Some(
-                            "Optional realm name (defaults to 'default')".to_string(),
-                        ),
-                        required: Some(false),
-                    },
+                    PromptArgument::new("uri")
+                        .with_description("Document URI (file://) to analyze")
+                        .with_required(true),
+                    PromptArgument::new("line")
+                        .with_description("0-based line number")
+                        .with_required(true),
+                    PromptArgument::new("character")
+                        .with_description("0-based character offset")
+                        .with_required(true),
+                    PromptArgument::new("realm")
+                        .with_description("Optional realm name (defaults to 'default')")
+                        .with_required(false),
                 ]),
             ),
         ]
@@ -193,13 +167,11 @@ impl MarkymarkMcp {
              {context_block}"
         );
 
-        Ok(GetPromptResult {
-            description: Some(format!("Explain link target '{target}' in {uri_str}")),
-            messages: vec![PromptMessage::new_text(
-                PromptMessageRole::User,
-                prompt_text,
-            )],
-        })
+        Ok(GetPromptResult::new(vec![PromptMessage::new_text(
+            PromptMessageRole::User,
+            prompt_text,
+        )])
+        .with_description(format!("Explain link target '{target}' in {uri_str}")))
     }
 
     async fn suggest_references_prompt(
@@ -324,14 +296,12 @@ impl MarkymarkMcp {
              {context_block}"
         );
 
-        Ok(GetPromptResult {
-            description: Some(format!(
-                "Suggest references for {uri_str} at {line}:{character}"
-            )),
-            messages: vec![PromptMessage::new_text(
-                PromptMessageRole::User,
-                prompt_text,
-            )],
-        })
+        Ok(GetPromptResult::new(vec![PromptMessage::new_text(
+            PromptMessageRole::User,
+            prompt_text,
+        )])
+        .with_description(format!(
+            "Suggest references for {uri_str} at {line}:{character}"
+        )))
     }
 }

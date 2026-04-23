@@ -35,6 +35,22 @@ fail() {
     printf "${RED}FAIL${NC}: %s\n  Expected: %s\n  Got:      %s\n" "$1" "$2" "$3"
 }
 
+# Build a PATH that excludes any real markymark binary.
+# Keeps /usr/bin, /bin, and other standard dirs but drops any directory
+# that contains a markymark executable. Tests that WANT a system binary
+# on PATH prepend their own mock dir before CLEAN_PATH.
+build_clean_path() {
+    local clean=""
+    local IFS=':'
+    for dir in ${PATH}; do
+        if [[ ! -x "${dir}/markymark" ]]; then
+            clean="${clean:+${clean}:}${dir}"
+        fi
+    done
+    echo "${clean}"
+}
+CLEAN_PATH="$(build_clean_path)"
+
 # Create a temporary plugin directory structure for testing
 setup_test_env() {
     TEST_DIR="$(mktemp -d)"
@@ -70,7 +86,7 @@ test_bundled_binary() {
     chmod +x "${mock_binary}"
 
     local output
-    output="$("${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
+    output="$(PATH="${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
 
     if [[ "${output}" == "BUNDLED" ]]; then
         pass "finds and executes bundled bin/markymark"
@@ -90,7 +106,7 @@ test_forwards_arguments() {
     chmod +x "${mock_binary}"
 
     local output
-    output="$("${TEST_DIR}/scripts/select-binary.sh" --lsp --foo bar 2>&1)" || true
+    output="$(PATH="${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" --lsp --foo bar 2>&1)" || true
 
     if [[ "${output}" == "ARGS: --lsp --foo bar" ]]; then
         pass "forwards arguments to bundled binary"
@@ -113,7 +129,7 @@ test_missing_binary_attempts_download() {
     chmod +x "${TEST_DIR}/mock-bin/curl"
 
     local output exit_code
-    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" && exit_code=0 || exit_code=$?
+    output="$(PATH="${TEST_DIR}/mock-bin:${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" && exit_code=0 || exit_code=$?
 
     # Should mention attempting download
     if [[ "${output}" == *"downloading"* ]] || [[ "${output}" == *"Downloading"* ]]; then
@@ -135,7 +151,7 @@ test_download_failure_shows_manual_instructions() {
     chmod +x "${TEST_DIR}/mock-bin/curl"
 
     local output exit_code
-    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" && exit_code=0 || exit_code=$?
+    output="$(PATH="${TEST_DIR}/mock-bin:${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" && exit_code=0 || exit_code=$?
 
     if [[ ${exit_code} -ne 0 ]] && [[ "${output}" == *"GitHub Releases"* ]]; then
         pass "download failure shows manual instructions (exit ${exit_code})"
@@ -169,7 +185,7 @@ MOCK_CURL
     chmod +x "${TEST_DIR}/mock-bin/curl"
 
     local output exit_code
-    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" && exit_code=0 || exit_code=$?
+    output="$(PATH="${TEST_DIR}/mock-bin:${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" && exit_code=0 || exit_code=$?
 
     if [[ "${output}" == *"DOWNLOADED"* ]]; then
         pass "successful download places binary and executes it"
@@ -190,7 +206,7 @@ test_download_url_has_correct_target() {
     chmod +x "${TEST_DIR}/mock-bin/curl"
 
     local output
-    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
+    output="$(PATH="${TEST_DIR}/mock-bin:${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
 
     local os arch expected_target
     os="$(uname -s)"
@@ -239,7 +255,7 @@ test_error_suggests_platform_archive() {
     chmod +x "${TEST_DIR}/mock-bin/curl"
 
     local output
-    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
+    output="$(PATH="${TEST_DIR}/mock-bin:${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
 
     if [[ "${output}" == *"GitHub Releases"* ]]; then
         pass "error message mentions GitHub Releases"
@@ -291,7 +307,7 @@ test_makes_binary_executable() {
     chmod -x "${mock_binary}"
 
     local output
-    output="$("${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
+    output="$(PATH="${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
 
     if [[ "${output}" == "EXECUTED" ]]; then
         pass "makes non-executable binary executable and runs it"
@@ -347,7 +363,7 @@ test_ignores_platform_specific_binaries() {
     chmod +x "${TEST_DIR}/mock-bin/curl"
 
     local output exit_code
-    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" && exit_code=0 || exit_code=$?
+    output="$(PATH="${TEST_DIR}/mock-bin:${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" && exit_code=0 || exit_code=$?
 
     if [[ ${exit_code} -ne 0 ]]; then
         pass "ignores platform-specific binary (old model not found, exit ${exit_code})"
@@ -415,7 +431,7 @@ test_plugin_json_valid() {
 test_lsp_json_uses_plugin_root() {
     if command -v python3 &>/dev/null; then
         local cmd
-        cmd=$(python3 -c "import json; print(json.load(open('${PLUGIN_DIR}/.lsp.json'))['markdown']['command'])" 2>/dev/null)
+        cmd=$(python3 -c "import json; print(json.load(open('${PLUGIN_DIR}/.lsp.json'))['markymark']['command'])" 2>/dev/null)
         if [[ "${cmd}" == *'${CLAUDE_PLUGIN_ROOT}'* ]]; then
             pass ".lsp.json uses \${CLAUDE_PLUGIN_ROOT} in command"
         else
@@ -585,7 +601,7 @@ test_windows_binary_has_exe_suffix() {
     chmod +x "${mock_binary}"
 
     local output
-    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
+    output="$(PATH="${TEST_DIR}/mock-bin:${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
 
     if [[ "${output}" == "WINDOWS_EXE" ]]; then
         pass "Windows binary path uses .exe suffix"
@@ -612,7 +628,7 @@ test_windows_download_url_has_exe_suffix() {
 
     # Do NOT create bin/markymark.exe so download path triggers
     local output
-    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
+    output="$(PATH="${TEST_DIR}/mock-bin:${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
 
     if [[ "${output}" == *"markymark-x86_64-pc-windows-msvc.exe"* ]]; then
         pass "Windows download URL includes .exe suffix"
@@ -639,12 +655,85 @@ test_non_windows_binary_no_exe_suffix() {
     chmod +x "${mock_binary}"
 
     local output
-    output="$(PATH="${TEST_DIR}/mock-bin:${PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
+    output="$(PATH="${TEST_DIR}/mock-bin:${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
 
     if [[ "${output}" == "LINUX_BIN" ]]; then
         pass "Non-Windows binary path has no .exe suffix"
     else
         fail "Non-Windows binary path has no .exe suffix" "LINUX_BIN" "${output}"
+    fi
+
+    cleanup_test_env
+}
+
+# ─── Test: Prefers system binary on PATH over bundled ────────────
+# When markymark is already installed system-wide (e.g. ~/.local/bin),
+# select-binary.sh should use it instead of the plugin-local copy.
+test_prefers_system_binary_over_bundled() {
+    setup_test_env
+
+    # Create a bundled binary in the plugin bin/ dir
+    local bundled="${TEST_DIR}/bin/markymark"
+    printf '#!/usr/bin/env bash\necho "BUNDLED"\n' > "${bundled}"
+    chmod +x "${bundled}"
+
+    # Create a "system" binary in a separate directory on PATH
+    local system_dir="${TEST_DIR}/system-bin"
+    mkdir -p "${system_dir}"
+    printf '#!/usr/bin/env bash\necho "SYSTEM"\n' > "${system_dir}/markymark"
+    chmod +x "${system_dir}/markymark"
+
+    local output
+    output="$(PATH="${system_dir}:${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
+
+    if [[ "${output}" == "SYSTEM" ]]; then
+        pass "prefers system binary on PATH over bundled"
+    else
+        fail "prefers system binary on PATH over bundled" "SYSTEM" "${output}"
+    fi
+
+    cleanup_test_env
+}
+
+# ─── Test: System binary receives forwarded arguments ────────────
+test_system_binary_receives_args() {
+    setup_test_env
+
+    # No bundled binary — only system
+    local system_dir="${TEST_DIR}/system-bin"
+    mkdir -p "${system_dir}"
+    printf '#!/usr/bin/env bash\necho "SYS_ARGS: $*"\n' > "${system_dir}/markymark"
+    chmod +x "${system_dir}/markymark"
+
+    local output
+    output="$(PATH="${system_dir}:${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" --mcp /workspace 2>&1)" || true
+
+    if [[ "${output}" == "SYS_ARGS: --mcp /workspace" ]]; then
+        pass "system binary receives forwarded arguments"
+    else
+        fail "system binary receives forwarded arguments" "SYS_ARGS: --mcp /workspace" "${output}"
+    fi
+
+    cleanup_test_env
+}
+
+# ─── Test: Falls back to bundled when no system binary ───────────
+test_falls_back_to_bundled_without_system() {
+    setup_test_env
+
+    # Create bundled binary only — strip markymark from PATH
+    local bundled="${TEST_DIR}/bin/markymark"
+    printf '#!/usr/bin/env bash\necho "BUNDLED_FALLBACK"\n' > "${bundled}"
+    chmod +x "${bundled}"
+
+    # Use a PATH that definitely has no markymark
+    local output
+    output="$(PATH="${CLEAN_PATH}" "${TEST_DIR}/scripts/select-binary.sh" 2>&1)" || true
+
+    if [[ "${output}" == "BUNDLED_FALLBACK" ]]; then
+        pass "falls back to bundled binary when no system binary on PATH"
+    else
+        fail "falls back to bundled binary when no system binary on PATH" "BUNDLED_FALLBACK" "${output}"
     fi
 
     cleanup_test_env
@@ -674,6 +763,9 @@ test_ignores_platform_specific_binaries
 test_windows_binary_has_exe_suffix
 test_windows_download_url_has_exe_suffix
 test_non_windows_binary_no_exe_suffix
+test_prefers_system_binary_over_bundled
+test_system_binary_receives_args
+test_falls_back_to_bundled_without_system
 
 echo ""
 echo "─────────────────────────────"

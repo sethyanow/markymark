@@ -11,17 +11,26 @@ members = [
 ]
 
 [workspace.package]
-version = "0.7.1"
+version = "0.8.0-dev0"
 edition = "2021"
 rust-version = "1.80"
 license = "AGPL-3.0"
 repository = "https://github.com/sethyanow/markymark"
-authors = ["Seth Yanow <seth@yanow.me>"]
+authors = ["Seth Yanow <seth.yanow@gmail.com>"]
 
 [workspace.dependencies]
+# Internal crates — versions must match [workspace.package] version above.
+# See RELEASING.md for the bump checklist.
+markymark-core = { path = "markymark-core", version = "0.8.0-dev0" }
+markymark-kernels = { path = "markymark-kernels", version = "0.8.0-dev0" }
+markymark-parser = { path = "markymark-parser", version = "0.8.0-dev0" }
+markymark-index = { path = "markymark-index", version = "0.8.0-dev0" }
+markymark-lsp = { path = "markymark-lsp", version = "0.8.0-dev0" }
+markymark-mcp = { path = "markymark-mcp", version = "0.8.0-dev0" }
+
 # Core dependencies
 async-trait = "0.1"
-tokio = { version = "1.42", features = ["full", "test-util"] }
+tokio = { version = "1.52", features = ["full", "test-util"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 schemars = "1.2"
@@ -32,7 +41,7 @@ tower-lsp-server = "0.23"
 lsp-types = "0.97"
 
 # MCP dependencies
-rmcp = { version = "0.15", features = ["server", "transport-io"] }
+rmcp = { version = "1.5", features = ["server", "transport-io"] }
 
 # Parser dependencies
 tree-sitter = "0.26"
@@ -54,10 +63,10 @@ self_cell = "1.2.2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # Embedding (local ONNX inference)
-fastembed = { version = "5.11", default-features = false, features = ["ort-download-binaries", "hf-hub-native-tls"] }
+fastembed = { version = "5.13", default-features = false, features = ["ort-download-binaries", "hf-hub-native-tls"] }
 
 # Testing
-insta = { version = "1.42", features = ["yaml"] }
+insta = { version = "1.47", features = ["yaml"] }
 proptest = "1.5"
 tempfile = "3"
 wiremock = "0.6"

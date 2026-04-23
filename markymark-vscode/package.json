@@ -2,9 +2,9 @@
   "name": "markymark",
   "displayName": "Markymark",
   "description": "Markdown LSP intelligence — hover, completions, references, diagnostics for .md and .mdx",
-  "version": "0.1.0",
+  "version": "0.8.0-dev0",
   "publisher": "sethyanow",
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/sethyanow/markymark"
@@ -12,8 +12,16 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
-  "keywords": ["markdown", "lsp", "obsidian", "logseq", "pkm"],
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "markdown",
+    "lsp",
+    "obsidian",
+    "logseq",
+    "pkm"
+  ],
   "activationEvents": [
     "onLanguage:markdown",
     "onLanguage:mdx"
@@ -23,8 +31,13 @@
     "languages": [
       {
         "id": "mdx",
-        "extensions": [".mdx"],
-        "aliases": ["MDX", "mdx"]
+        "extensions": [
+          ".mdx"
+        ],
+        "aliases": [
+          "MDX",
+          "mdx"
+        ]
       }
     ],
     "configuration": {

@@ -4,12 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 env:
-  CARGO_TERM_COLOR: always
   BINARY_NAME: markymark
 
 jobs:
@@ -22,32 +22,66 @@ jobs:
         include:
           - target: aarch64-apple-darwin
             os: macos-latest
-          - target: x86_64-apple-darwin
-            os: macos-latest
+            bazel: true
+            bazel_config: "--config=release --config=macos-lto"
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+            bazel: true
+            bazel_config: "--config=release"
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
+            bazel: false
             cross: true
           - target: x86_64-pc-windows-msvc
             os: windows-latest
+            bazel: false
 
     steps:
       - uses: actions/checkout@v4
 
+      # ── Bazel build path ──────────────────────────────────────────────
+      - name: Setup Bazelisk
+        if: matrix.bazel
+        uses: bazelbuild/setup-bazelisk@v3
+
+      - name: Cache Bazel
+        if: matrix.bazel
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/bazel
+          key: ${{ runner.os }}-${{ matrix.target }}-bazel-release-${{ hashFiles('MODULE.bazel', 'Cargo.lock', '.bazelrc') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-bazel-release-
+
+      - name: Install Homebrew LLVM (macOS)
+        if: matrix.bazel && runner.os == 'macOS'
+        run: |
+          brew install llvm
+          # Install clang-lto-wrapper alongside Homebrew LLVM tools
+          cp tools/clang-lto-wrapper.sh /opt/homebrew/opt/llvm/bin/clang-lto-wrapper
+          chmod +x /opt/homebrew/opt/llvm/bin/clang-lto-wrapper
+
+      - name: Bazel release build
+        if: matrix.bazel
+        run: bazel build ${{ matrix.bazel_config }} //markymark-cli:markymark
+
+      - name: Prepare Bazel binary (Unix)
+        if: matrix.bazel && runner.os != 'Windows'
+        run: |
+          BAZEL_BIN="$(bazel info bazel-bin ${{ matrix.bazel_config }})"
+          cp "${BAZEL_BIN}/markymark-cli/${{ env.BINARY_NAME }}" \
+             ${{ env.BINARY_NAME }}-${{ matrix.target }}
+          chmod +x ${{ env.BINARY_NAME }}-${{ matrix.target }}
+
+      # ── Cargo build path (Windows + Linux cross) ──────────────────────
       - name: Install Rust stable
+        if: ${{ !matrix.bazel }}
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install Zig (Unix / non-cross)
-        if: ${{ !matrix.cross && runner.os != 'Windows' }}
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
-
       - name: Install Zig (Windows)
-        if: runner.os == 'Windows'
+        if: ${{ !matrix.bazel && runner.os == 'Windows' }}
         env:
           ZIG_VER: '0.15.2'
         run: |
@@ -60,48 +94,54 @@ jobs:
           echo "ZIG_DIR=$zigDirUnix" >> $env:GITHUB_ENV
         shell: pwsh
 
+      - name: Install Zig (Linux cross)
+        if: ${{ !matrix.bazel && matrix.cross }}
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+          use-cache: false
+
       - name: Install cross (Linux ARM64)
         if: matrix.cross
         run: cargo install cross --git https://github.com/cross-rs/cross
 
-      - name: Build release binary
+      - name: Cargo release build
+        if: ${{ !matrix.bazel }}
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
             if [ -z "${ZIG_DIR:-}" ]; then
-              echo "::error::ZIG_DIR not set; Install Zig (Windows) may have failed"
+              echo "::error::ZIG_DIR not set"
               exit 1
             fi
             export PATH="$ZIG_DIR:$PATH"
-            zig version || { echo "::error::zig not found in $ZIG_DIR"; exit 1; }
           fi
           if [ "${{ matrix.cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} -p markymark-cli
+            cross build --release --target ${{ matrix.target }} -p markymark-cli --features semantic-search,local-embeddings
           else
-            cargo build --release --target ${{ matrix.target }} -p markymark-cli
+            cargo build --release --target ${{ matrix.target }} -p markymark-cli --features semantic-search,local-embeddings
           fi
         shell: bash
 
-      - name: Prepare standalone binary (Unix)
-        if: runner.os != 'Windows'
+      - name: Prepare Cargo binary (Unix)
+        if: ${{ !matrix.bazel && runner.os != 'Windows' }}
         run: |
           cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }} \
              ${{ env.BINARY_NAME }}-${{ matrix.target }}
           chmod +x ${{ env.BINARY_NAME }}-${{ matrix.target }}
         shell: bash
 
-      - name: Prepare standalone binary (Windows)
-        if: runner.os == 'Windows'
+      - name: Prepare Cargo binary (Windows)
+        if: ${{ !matrix.bazel && runner.os == 'Windows' }}
         run: |
           cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}.exe `
              ${{ env.BINARY_NAME }}-${{ matrix.target }}.exe
         shell: pwsh
 
+      # ── Common: plugin packaging + upload ─────────────────────────────
       - name: Package per-platform plugin archive (Unix)
         if: runner.os != 'Windows'
         run: |
           TAG="${GITHUB_REF_NAME}"
-
-          # Create staging directory with plugin contents
           mkdir -p staging/markymark-plugin/bin
           cp -r markymark-plugin/.claude-plugin staging/markymark-plugin/
           cp -r markymark-plugin/hooks staging/markymark-plugin/
@@ -110,14 +150,9 @@ jobs:
           cp markymark-plugin/.lsp.json staging/markymark-plugin/
           cp markymark-plugin/.mcp.json staging/markymark-plugin/
           cp markymark-plugin/README.md staging/markymark-plugin/ 2>/dev/null || true
-
-          # Copy the platform binary as bin/markymark (bundled name)
-          cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }} \
-             staging/markymark-plugin/bin/markymark
+          cp ${{ env.BINARY_NAME }}-${{ matrix.target }} staging/markymark-plugin/bin/markymark
           chmod +x staging/markymark-plugin/bin/markymark
           chmod +x staging/markymark-plugin/scripts/*.sh
-
-          # Create per-platform plugin archive
           tar -czf "markymark-plugin-${{ matrix.target }}-${TAG}.tar.gz" \
               -C staging markymark-plugin
         shell: bash
@@ -126,8 +161,6 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           $Tag = $env:GITHUB_REF_NAME
-
-          # Create staging directory with plugin contents
           New-Item -ItemType Directory -Force -Path staging/markymark-plugin/bin
           Copy-Item -Recurse markymark-plugin/.claude-plugin staging/markymark-plugin/
           Copy-Item -Recurse markymark-plugin/hooks staging/markymark-plugin/
@@ -138,12 +171,8 @@ jobs:
           if (Test-Path markymark-plugin/README.md) {
             Copy-Item markymark-plugin/README.md staging/markymark-plugin/
           }
-
-          # Copy the platform binary as bin/markymark.exe (bundled name)
           Copy-Item "target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}.exe" `
                     staging/markymark-plugin/bin/markymark.exe
-
-          # Create per-platform plugin archive (zip for Windows)
           Compress-Archive -Path staging/markymark-plugin -DestinationPath `
               "markymark-plugin-${{ matrix.target }}-${Tag}.zip"
         shell: pwsh
@@ -186,17 +215,12 @@ jobs:
       - name: Collect release assets
         run: |
           mkdir -p release-assets
-
-          # Standalone binaries
           for dir in artifacts/binary-*/; do
             cp "${dir}"* release-assets/ 2>/dev/null || true
           done
-
-          # Per-platform plugin archives
           for dir in artifacts/plugin-*/; do
             cp "${dir}"* release-assets/ 2>/dev/null || true
           done
-
           echo "Release assets:"
           ls -lh release-assets/
 

@@ -30,3 +30,58 @@ rust_test(
         "@crates//:proptest",
     ],
 )
+
+# Integration tests under tests/*.rs — each file gets its own rust_test
+# target. See marky-lpz for the pattern and rationale.
+
+rust_test(
+    name = "ast_self_cell_test",
+    srcs = ["tests/ast_self_cell.rs"],
+    edition = "2021",
+    # include_str!("../src/ast.rs") — relative path resolves from this package.
+    compile_data = ["src/ast.rs"],
+)
+
+rust_test(
+    name = "frontmatter_and_properties_test",
+    srcs = ["tests/frontmatter_and_properties.rs"],
+    edition = "2021",
+    deps = [":markymark-parser"],
+)
+
+rust_test(
+    name = "structured_json5_test",
+    srcs = ["tests/structured_json5.rs"],
+    edition = "2021",
+    deps = [
+        ":markymark-parser",
+        "//markymark-core",
+    ],
+)
+
+rust_test(
+    name = "structured_jsonc_test",
+    srcs = ["tests/structured_jsonc.rs"],
+    edition = "2021",
+    deps = [
+        ":markymark-parser",
+        "//markymark-core",
+    ],
+)
+
+rust_test(
+    name = "tree_sitter_integration_test",
+    srcs = ["tests/tree_sitter_integration.rs"],
+    edition = "2021",
+    deps = [":markymark-parser"],
+)
+
+rust_test(
+    name = "typed_frontmatter_test",
+    srcs = ["tests/typed_frontmatter.rs"],
+    edition = "2021",
+    deps = [
+        ":markymark-parser",
+        "//markymark-core",
+    ],
+)

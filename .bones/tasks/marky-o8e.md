@@ -4,7 +4,10 @@ title: Bazel adoption refinement — CI, release process, and docs
 status: open
 type: task
 priority: 2
+depends_on: [marky-qqb]
 ---
+
+
 
 ## Requirements
 

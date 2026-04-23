@@ -616,6 +616,10 @@ async fn test_engine_result_path_indexes_markdown_features() {
     );
 }
 
+// Exercises the `cfg!(debug_assertions)`-gated test hook in
+// `markymark-lsp/src/state/mod.rs:130`. The hook only fires in debug builds,
+// so this test is only applicable in debug builds.
+#[cfg(debug_assertions)]
 #[tokio::test]
 async fn test_update_failure_returns_stale_index_not_empty() {
     let mut state = ServerState::new();
@@ -641,6 +645,9 @@ async fn test_update_failure_returns_stale_index_not_empty() {
     assert_eq!(after.tags()[0].name, "keep");
 }
 
+// Exercises the `cfg!(debug_assertions)`-gated test hook in
+// `markymark-lsp/src/state/mod.rs:134`. The hook only fires in debug builds.
+#[cfg(debug_assertions)]
 #[tokio::test]
 async fn test_result_conversion_failure_uses_fallback_path() {
     let mut state = ServerState::new();
